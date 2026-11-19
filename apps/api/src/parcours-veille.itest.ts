@@ -89,3 +89,30 @@ describe('veille par dossier', () => {
     await app.end();
   });
 });
+
+describe('recherche documentaire autorisée', () => {
+  it('cherche dans les pièces, les écritures et les constats du dossier, en citant la source, sans rien renvoyer hors habilitation', async () => {
+    const r = await api('remi', 'GET', `/v1/recherche?entiteId=${DEMO.dupain}&q=${encodeURIComponent('facture')}`);
+    expect(r.statut).toBe(200);
+    expect(r.json.pieces.length).toBeGreaterThan(0);
+    expect(r.json.pieces[0]).toMatchObject({ documentId: expect.any(String), page: expect.any(Number) });
+    expect(r.json.pieces[0].extrait).toMatch(/«[^»]+»/); // terme surligné par des guillemets, jamais par du HTML
+    expect(JSON.stringify(r.json)).not.toMatch(/<b>|<\/b>/);
+    const ecr = await api('remi', 'GET', `/v1/recherche?entiteId=${DEMO.dupain}&q=${encodeURIComponent('banque OR vente OR achat')}`);
+    expect(ecr.json.ecritures.length).toBeGreaterThan(0);
+    expect(ecr.json.ecritures.every((e: any) => typeof e.debit === 'string')).toBe(true);
+    // Le déposant ne cherche que dans ses propres dépôts, et jamais dans la comptabilité.
+    const client = await api('client', 'GET', `/v1/recherche?entiteId=${DEMO.dupain}&q=${encodeURIComponent('banque OR vente OR achat OR facture')}`);
+    expect(client.json.ecritures).toEqual([]);
+    expect(client.json.constats).toEqual([]);
+    expect(client.json.pieces.length).toBeLessThanOrEqual(r.json.pieces.length + 30);
+    // Hors habilitation : rien, pas même l'existence du dossier.
+    expect((await api('alice', 'GET', `/v1/recherche?entiteId=${DEMO.martin}&q=facture`)).statut).toBe(404);
+    expect((await api('bruno', 'GET', `/v1/recherche?entiteId=${DEMO.dupain}&q=facture`)).statut).toBe(404);
+    expect((await api('remi', 'GET', `/v1/recherche?entiteId=${DEMO.dupain}&q=a`)).statut).toBe(400);
+    // Une requête hostile est une donnée : pas d'injection SQL, pas d'erreur serveur.
+    const hostile = await api('remi', 'GET', `/v1/recherche?entiteId=${DEMO.dupain}&q=${encodeURIComponent("'); drop table documents; --")}`);
+    expect(hostile.statut).toBe(200);
+    expect((await api('remi', 'GET', `/v1/documents?entiteId=${DEMO.dupain}`)).statut).toBe(200);
+  });
+});

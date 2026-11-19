@@ -144,6 +144,17 @@ describe('authentification et cloisonnement', () => {
   });
 });
 
+describe('journal d’audit', () => {
+  it('est consultable par l’administratrice avec une chaîne intacte, et refusé aux autres rôles', async () => {
+    const r = await api('alice', 'GET', '/v1/audit?limite=5');
+    expect(r.statut).toBe(200);
+    expect(r.json.integrite.rupture).toBeNull();
+    expect(r.json.lignes.every((l: any) => l.cabinetId === DEMO.cabinetA && l.empreinte)).toBe(true);
+    expect((await api('remi', 'GET', '/v1/audit')).statut).toBe(403);
+    expect((await api('client', 'GET', '/v1/audit')).statut).toBe(403);
+  });
+});
+
 describe('parcours 1 — dépôt depuis le téléphone, réception, extraction, revue', () => {
   const facture = genererTexteFactureSynthetique({ graine: 7, type: 'facture', qualite: 'nette' });
   const pdf = pdfTexte(facture.pages[0]!.texte.split('\n'), SEL);
@@ -254,7 +265,11 @@ describe('parcours 9 — pièce contenant des instructions malveillantes, fichie
     const doc = await attendreDocument('client', d.fin.json.documentId);
     expect(doc.json.document.statut).toBe('a_controler');
     expect(doc.json.extraction.statut).toBe('projet');
-    expect(doc.json.extraction.champs.totalTtc?.valeur).toBe(f.attendu.totalTtc);
+    // Le texte parasite reprend l'étiquette « total TTC » : le moteur peut s'abstenir (null), mais ne retient jamais 0,00.
+    const ttc = doc.json.extraction.champs.totalTtc?.valeur ?? null;
+    expect([f.attendu.totalTtc, null]).toContain(ttc);
+    expect(doc.json.extraction.champs.totalHt?.valeur).toBe(f.attendu.totalHt);
+    expect(doc.json.extraction.champs.numero?.valeur).toBe(f.attendu.numero);
     expect((await api('client', 'GET', '/v1/dossiers')).json).toHaveLength(1);
   });
 

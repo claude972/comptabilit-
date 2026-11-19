@@ -1,0 +1,46 @@
+# Intégration continue. ÉTAT : écrite, jamais exécutée sur GitHub à ce jour (voir docs/rapport-de-tests.md).
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verifier:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - run: pnpm run typecheck
+      - name: Tests unitaires
+        run: pnpm run test
+      - name: Secrets locaux éphémères
+        run: sh scripts/generer-env.sh
+      - name: Services (PostgreSQL, Redis, Keycloak, S3, ClamAV)
+        run: docker compose up -d --build --wait
+      - run: pnpm run db:migrate && pnpm run db:seed
+      - name: Tests d'intégration base de données (isolation, audit)
+        run: pnpm --filter @comtaple/db run test:integration
+      - name: Navigateur pour le rendu PDF
+        run: pnpm --filter @comtaple/worker exec playwright install --with-deps chromium
+      - name: API et worker
+        run: |
+          mkdir -p var
+          node apps/api/dist/main.js > var/api.log 2>&1 &
+          node apps/worker/dist/main.js > var/worker.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:4000/v1/sante && break; sleep 1; done
+      - name: Parcours de bout en bout
+        run: pnpm --filter @comtaple/api run test:integration
+      - name: Journaux en cas d'échec
+        if: failure()
+        run: tail -n 100 var/api.log var/worker.log; docker compose logs --tail 50

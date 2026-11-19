@@ -3,6 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { creerAccesBd, urlBd } from '@comtaple/db';
 import { connexionRedis, Files, lireConfig, Stockage } from '@comtaple/plateforme';
 import { GardeAcces } from './acces.js';
+import { AuditController } from './audit.controller.js';
 import { ComptabiliteController } from './comptabilite.controller.js';
 import { DocumentsController } from './documents.controller.js';
 import { BD, CONFIG, STOCKAGE, TACHES } from './jetons.js';
@@ -11,7 +12,7 @@ import { ReferenceController } from './reference.controller.js';
 import { TeleversementsController } from './televersements.controller.js';
 
 @Module({
-  controllers: [ProfilController, TeleversementsController, DocumentsController, ComptabiliteController, ReferenceController],
+  controllers: [ProfilController, TeleversementsController, DocumentsController, ComptabiliteController, ReferenceController, AuditController],
   providers: [
     { provide: CONFIG, useFactory: () => lireConfig() },
     // Le serveur interactif se connecte avec le rôle comtaple_app : jamais propriétaire, jamais BYPASSRLS.

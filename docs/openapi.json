@@ -1,0 +1,1084 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/v1/sante": {
+      "get": {
+        "operationId": "ProfilController_sante",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "État du service (sans authentification, sans donnée)",
+        "tags": [
+          "Profil et dossiers"
+        ]
+      }
+    },
+    "/v1/moi": {
+      "get": {
+        "operationId": "ProfilController_moi",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Identité, cabinet courant et rôle, établis à partir du jeton vérifié",
+        "tags": [
+          "Profil et dossiers"
+        ]
+      }
+    },
+    "/v1/dossiers": {
+      "get": {
+        "description": "Un gestionnaire voit la liste complète du cabinet ; « niveau » vaut null pour les dossiers où il n’est pas habilité (contenu inaccessible).",
+        "operationId": "ProfilController_dossiers",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Dossiers accessibles avec le niveau d’habilitation",
+        "tags": [
+          "Profil et dossiers"
+        ]
+      }
+    },
+    "/v1/dossiers/{entiteId}/exercices": {
+      "get": {
+        "operationId": "ProfilController_exercices",
+        "parameters": [
+          {
+            "name": "entiteId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Exercices d’un dossier",
+        "tags": [
+          "Profil et dossiers"
+        ]
+      }
+    },
+    "/v1/televersements": {
+      "post": {
+        "description": "Le client annonce la taille et l’empreinte SHA-256 du fichier. Si un téléversement identique est déjà ouvert pour ce déposant, il est renvoyé avec le nombre d’octets déjà reçus : le client reprend à cet endroit.",
+        "operationId": "TeleversementsController_ouvrir",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "entiteId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                  },
+                  "nomFichier": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  },
+                  "taille": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "typeMime": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "canal": {
+                    "type": "string",
+                    "enum": [
+                      "telephone",
+                      "ordinateur"
+                    ]
+                  },
+                  "usage": {
+                    "default": "piece",
+                    "type": "string",
+                    "enum": [
+                      "piece",
+                      "fec"
+                    ]
+                  },
+                  "nature": {
+                    "default": "a_qualifier",
+                    "type": "string",
+                    "enum": [
+                      "facture_achat",
+                      "facture_vente",
+                      "avoir",
+                      "releve_bancaire",
+                      "lettre_mission",
+                      "contrat",
+                      "autre",
+                      "a_qualifier"
+                    ]
+                  },
+                  "commentaire": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "exerciceId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                  },
+                  "statutDonnees": {
+                    "type": "string",
+                    "enum": [
+                      "travail_avant_cloture",
+                      "fec"
+                    ]
+                  }
+                },
+                "required": [
+                  "entiteId",
+                  "nomFichier",
+                  "taille",
+                  "sha256",
+                  "canal",
+                  "usage",
+                  "nature"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Ouvre (ou reprend) un téléversement reprenable",
+        "tags": [
+          "Téléversements"
+        ]
+      }
+    },
+    "/v1/televersements/{id}": {
+      "get": {
+        "operationId": "TeleversementsController_etat",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "État d’un téléversement (octets confirmés par le serveur)",
+        "tags": [
+          "Téléversements"
+        ]
+      }
+    },
+    "/v1/televersements/{id}/morceaux": {
+      "put": {
+        "description": "Le décalage doit être égal au nombre d’octets déjà confirmés. Un morceau déjà reçu est accepté sans effet (rejeu sûr). En cas de désaccord, 409 avec le décalage attendu.",
+        "operationId": "TeleversementsController_morceau",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "decalage",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Envoie un morceau (application/octet-stream) à partir du décalage indiqué",
+        "tags": [
+          "Téléversements"
+        ]
+      }
+    },
+    "/v1/televersements/{id}/terminer": {
+      "post": {
+        "description": "Le statut « reçu » n’existe qu’après cette vérification. Un binaire déjà présent dans le dossier donne une nouvelle occurrence de réception (doublon binaire) sans nouveau document.",
+        "operationId": "TeleversementsController_terminer",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Clôt le téléversement : le serveur vérifie taille et empreinte avant de confirmer la réception",
+        "tags": [
+          "Téléversements"
+        ]
+      }
+    },
+    "/v1/documents": {
+      "get": {
+        "operationId": "DocumentsController_lister",
+        "parameters": [
+          {
+            "name": "entiteId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "statut",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Liste des documents d’un dossier (un déposant ne voit que ses propres dépôts)",
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
+    "/v1/documents/{id}": {
+      "get": {
+        "operationId": "DocumentsController_detail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Détail d’un document : réceptions, extraction en vigueur (projet ou validée), vérifications, échanges",
+        "tags": [
+          "Documents"
+        ]
+      },
+      "patch": {
+        "operationId": "DocumentsController_qualifier",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "nature": {
+                    "type": "string",
+                    "enum": [
+                      "facture_achat",
+                      "facture_vente",
+                      "avoir",
+                      "releve_bancaire",
+                      "lettre_mission",
+                      "contrat",
+                      "autre",
+                      "a_qualifier"
+                    ]
+                  },
+                  "exerciceId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Qualifier la nature du document ou le rattacher à un exercice",
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
+    "/v1/documents/{id}/contenu": {
+      "get": {
+        "description": "Pas de lien public : chaque lecture passe par les habilitations et est journalisée.",
+        "operationId": "DocumentsController_contenu",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Contenu de l’original, servi sous contrôle d’accès (jamais avant le verdict antivirus)",
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
+    "/v1/documents/{id}/echanges": {
+      "post": {
+        "operationId": "DocumentsController_echanger",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "signalement_erreur",
+                      "demande_complement",
+                      "reponse"
+                    ]
+                  },
+                  "message": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  }
+                },
+                "required": [
+                  "type",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Signaler une erreur, demander un complément (collaborateur) ou y répondre",
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
+    "/v1/documents/{id}/extraction": {
+      "put": {
+        "description": "Les vérifications arithmétiques sont recalculées par le moteur déterministe. Le résultat reste un projet jusqu’à validation.",
+        "operationId": "DocumentsController_corriger",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "champs": {
+                    "type": "object",
+                    "properties": {
+                      "typeDocument": {
+                        "type": "string",
+                        "enum": [
+                          "facture",
+                          "avoir",
+                          "inconnu"
+                        ]
+                      },
+                      "numero": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "dateEmission": {
+                        "type": "string",
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                      },
+                      "dateEcheance": {
+                        "type": "string",
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                      },
+                      "emetteurNom": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "emetteurSiren": {
+                        "type": "string",
+                        "maxLength": 20
+                      },
+                      "emetteurSiret": {
+                        "type": "string",
+                        "maxLength": 20
+                      },
+                      "emetteurTva": {
+                        "type": "string",
+                        "maxLength": 20
+                      },
+                      "totalHt": {
+                        "type": "string",
+                        "pattern": "^-?\\d{1,13}(\\.\\d{1,6})?$"
+                      },
+                      "totalTva": {
+                        "type": "string",
+                        "pattern": "^-?\\d{1,13}(\\.\\d{1,6})?$"
+                      },
+                      "totalTtc": {
+                        "type": "string",
+                        "pattern": "^-?\\d{1,13}(\\.\\d{1,6})?$"
+                      },
+                      "devise": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 3
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "champs"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Corriger des champs extraits : crée une nouvelle version de l’extraction (les versions précédentes sont conservées)",
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
+    "/v1/documents/{id}/validation": {
+      "post": {
+        "description": "La validation porte sur une version déterminée de l’extraction ; toute correction ultérieure crée une nouvelle version non validée.",
+        "operationId": "DocumentsController_validerExtraction",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "decision": {
+                    "type": "string",
+                    "enum": [
+                      "valider",
+                      "rejeter"
+                    ]
+                  },
+                  "motif": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "decision"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Valider ou rejeter l’extraction en vigueur (réviseur habilité)",
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
+    "/v1/documents/{id}/reanalyse": {
+      "post": {
+        "operationId": "DocumentsController_reanalyser",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Relancer l’analyse d’un document (collaborateur habilité)",
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
+    "/v1/exercices/{id}/imports": {
+      "get": {
+        "operationId": "ComptabiliteController_imports",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Lots d’import comptable d’un exercice (versions successives, lot actif, rapports)",
+        "tags": [
+          "Révision comptable"
+        ]
+      }
+    },
+    "/v1/imports/{id}": {
+      "get": {
+        "operationId": "ComptabiliteController_lot",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "État et rapport d’un lot d’import (progression, lisible / conforme / suffisant, anomalies ligne par ligne)",
+        "tags": [
+          "Révision comptable"
+        ]
+      }
+    },
+    "/v1/exercices/{id}/revue": {
+      "get": {
+        "description": "Chaque contrôle porte son statut (sans anomalie détectée, constat, non applicable, non réalisé faute de données, erreur technique). « obsolete » signale que les données ont changé depuis l’exécution.",
+        "operationId": "ComptabiliteController_revue",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Dernière exécution des contrôles : résultats par contrôle et constats",
+        "tags": [
+          "Révision comptable"
+        ]
+      }
+    },
+    "/v1/exercices/{id}/controles": {
+      "post": {
+        "operationId": "ComptabiliteController_lancer",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Lancer une nouvelle exécution des contrôles sur le lot actif de l’exercice",
+        "tags": [
+          "Révision comptable"
+        ]
+      }
+    },
+    "/v1/constats/{id}": {
+      "get": {
+        "operationId": "ComptabiliteController_constat",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Détail d’un constat : écritures concernées, preuves, historique des décisions et commentaires",
+        "tags": [
+          "Révision comptable"
+        ]
+      },
+      "patch": {
+        "description": "Accepter, rejeter, confirmer, clôturer et rouvrir exigent une habilitation de révision et un motif. Chaque action est historisée avec la version des données.",
+        "operationId": "ComptabiliteController_traiter",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "prendre_en_charge",
+                      "affecter",
+                      "commenter",
+                      "demander_piece",
+                      "corriger",
+                      "accepter",
+                      "rejeter",
+                      "confirmer_anomalie",
+                      "cloturer",
+                      "rouvrir"
+                    ]
+                  },
+                  "motif": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  },
+                  "affecteA": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Traiter un constat : prendre en charge, affecter, commenter, demander une pièce, corriger, accepter, rejeter, confirmer, clôturer",
+        "tags": [
+          "Révision comptable"
+        ]
+      }
+    },
+    "/v1/exercices/{id}/dossier-revision": {
+      "post": {
+        "description": "Le dossier est figé sur la dernière exécution des contrôles et porte la mention « projet » tant qu’aucune validation professionnelle n’est enregistrée.",
+        "operationId": "ComptabiliteController_demanderDossier",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Demander la génération du dossier de révision (PDF + données structurées + inventaire des pièces)",
+        "tags": [
+          "Révision comptable"
+        ]
+      }
+    },
+    "/v1/exercices/{id}/dossiers-revision": {
+      "get": {
+        "operationId": "ComptabiliteController_dossiersRevision",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Dossiers de révision générés pour un exercice",
+        "tags": [
+          "Révision comptable"
+        ]
+      }
+    },
+    "/v1/dossiers-revision/{id}/{format}": {
+      "get": {
+        "operationId": "ComptabiliteController_telecharger",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Télécharger le dossier de révision (format « pdf » ou « donnees »)",
+        "tags": [
+          "Révision comptable"
+        ]
+      }
+    },
+    "/v1/reference/controles": {
+      "get": {
+        "operationId": "ReferenceController_controles",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Catalogue des contrôles : objectif, périmètre, données requises, logique, paramètres, source et version",
+        "tags": [
+          "Référentiel"
+        ]
+      }
+    },
+    "/v1/audit": {
+      "get": {
+        "description": "« rupture » vaut null si la chaîne d’empreintes est intacte, sinon l’identifiant de la première ligne incohérente.",
+        "operationId": "AuditController_journal",
+        "parameters": [
+          {
+            "name": "limite",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Journal d’audit du cabinet (administrateur ou associé) et contrôle d’intégrité de la chaîne",
+        "tags": [
+          "Audit"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "Comtaple — API métier",
+    "description": "API REST de collecte, de contrôle et de révision. Les montants sont transportés sous forme de chaînes décimales. Toute production non validée par un professionnel habilité est un projet.",
+    "version": "0.1.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
+      }
+    },
+    "schemas": {}
+  }
+}

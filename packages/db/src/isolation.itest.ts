@@ -50,7 +50,13 @@ describe('isolation entre cabinets', () => {
 
   it('un utilisateur du cabinet B ne voit aucun dossier du cabinet A', async () => {
     const vus = await app.avecContexte(ctx(DEMO.cabinetB, DEMO.bruno), (tx) => tx.select().from(s.entites));
-    expect(vus.map((e) => e.id)).toEqual([DEMO.leroy]);
+    // La base locale conserve les dossiers créés par les autres parcours : on vérifie la propriété, pas une liste figée.
+    expect(vus.map((e) => e.id)).toContain(DEMO.leroy);
+    expect(vus.every((e) => e.cabinetId === DEMO.cabinetB)).toBe(true);
+    const deA = await app.avecContexte(ctx(DEMO.cabinetA, DEMO.alice), (tx) => tx.select().from(s.entites));
+    expect(deA.length).toBeGreaterThan(0);
+    const idsVus = new Set(vus.map((e) => e.id));
+    expect(deA.some((e) => idsVus.has(e.id))).toBe(false);
   });
 
   it('usurper le cabinet A avec un utilisateur du cabinet B ne donne accès à rien', async () => {

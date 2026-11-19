@@ -64,6 +64,7 @@ describe('annulation réversible d’un import comptable', () => {
     // Rien n'est supprimé : le lot annulé garde son rapport, son fichier et son nombre de lignes.
     expect(apres.find((l) => l.id === v2)).toMatchObject({ actif: false, statut: 'annule', progression: fecPropre.nbLignes });
     expect(apres.find((l) => l.id === v2).fichierId).toBeTruthy();
+    expect(apres.find((l) => l.id === v2).annuleParNom).toBe('Rémi Réviseur');
     expect((await api('remi', 'GET', `/v1/dossiers/${d.A.entite}/exercices`)).json[0].versionDonnees).toBe(versionAvant + 1);
     // Les contrôles sont relancés sur le lot redevenu actif : l'anomalie de la première version réapparaît.
     const revue = await revueSur('A', v1);

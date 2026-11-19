@@ -116,6 +116,18 @@ describe('nouvelle version d’une pièce', () => {
     expect(v.filter((x: any) => x.statut === 'remplace')).toHaveLength(2);
   });
 
+  it('la liste des pièces se filtre sur les versions courantes et se cherche par nom, sur tout le dossier', async () => {
+    const toutes = (await api('remi', 'GET', `/v1/documents?entiteId=${entiteId}`)).json;
+    const courantes = (await api('remi', 'GET', `/v1/documents?entiteId=${entiteId}&versions=courantes`)).json;
+    expect(toutes.documents.filter((x: any) => x.remplacePar).length).toBe(2);
+    expect(courantes.documents.every((x: any) => x.remplacePar === null)).toBe(true);
+    expect(courantes.total).toBe(toutes.total - 2);
+    const v3seule = (await api('remi', 'GET', `/v1/documents?entiteId=${entiteId}&q=${encodeURIComponent('FACTURE-V3')}`)).json;
+    expect(v3seule.documents.map((x: any) => x.nomOrigine)).toEqual(['facture-v3.pdf']);
+    // Les caractères jokers d'une recherche sont pris littéralement.
+    expect((await api('remi', 'GET', `/v1/documents?entiteId=${entiteId}&q=${encodeURIComponent('%')}`)).json.total).toBe(0);
+  });
+
   it('un déposant peut remplacer sa propre pièce tant qu’elle n’est pas validée', async () => {
     const a = pdfTexte(['Photo floue'], `${SEL}-a`);
     const b = pdfTexte(['Photo nette'], `${SEL}-b`);

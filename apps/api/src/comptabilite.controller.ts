@@ -68,7 +68,8 @@ export class ComptabiliteController {
     exigerUuid(id);
     return this.bd.avecContexte(acces, async (tx) => {
       await this.exercice(tx, id, 'lecture');
-      return tx.select().from(s.lotsImport).where(eq(s.lotsImport.exerciceId, id)).orderBy(desc(s.lotsImport.version));
+      const lots = await tx.select().from(s.lotsImport).where(eq(s.lotsImport.exerciceId, id)).orderBy(desc(s.lotsImport.version));
+      return avecNomsAnnulation(tx, lots);
     });
   }
 
@@ -79,7 +80,7 @@ export class ComptabiliteController {
     return this.bd.avecContexte(acces, async (tx) => {
       const [lot] = await tx.select().from(s.lotsImport).where(eq(s.lotsImport.id, id));
       if (!lot) throw new NotFoundException('Import introuvable');
-      return lot;
+      return (await avecNomsAnnulation(tx, [lot]))[0];
     });
   }
 
@@ -317,4 +318,12 @@ export class ComptabiliteController {
     res.setHeader('Cache-Control', 'private, no-store');
     (await this.stockage.lireFlux(cle)).pipe(res);
   }
+}
+
+/** Complète des lots d'import par le nom de l'auteur d'une annulation (membre du cabinet), pour l'affichage. */
+export async function avecNomsAnnulation<T extends { annulePar: string | null }>(tx: Tx, lots: T[]): Promise<Array<T & { annuleParNom: string | null }>> {
+  const ids = [...new Set(lots.map((l) => l.annulePar).filter((x): x is string => Boolean(x)))];
+  const noms = ids.length ? await tx.select({ id: s.utilisateurs.id, nom: s.utilisateurs.nom }).from(s.utilisateurs).where(inArray(s.utilisateurs.id, ids)) : [];
+  const nomDe = new Map(noms.map((n) => [n.id, n.nom]));
+  return lots.map((l) => ({ ...l, annuleParNom: l.annulePar ? (nomDe.get(l.annulePar) ?? null) : null }));
 }

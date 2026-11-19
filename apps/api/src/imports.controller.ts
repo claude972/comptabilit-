@@ -201,12 +201,13 @@ export class ImportsController {
         .innerJoin(s.entites, eq(s.entites.id, s.lotsImport.entiteId))
         .where(eq(s.lotsImport.campagneId, id))
         .orderBy(asc(s.entites.raisonSociale), asc(s.lotsImport.creeLe));
-      const total = Number((await tx.execute(sql`select campagne_nb_lots(${id}::uuid) as n`)).rows[0]?.n ?? lots.length);
+      const totalDossiers = Number((await tx.execute(sql`select campagne_nb_dossiers(${id}::uuid) as n`)).rows[0]?.n ?? 0);
+      const dossiersVisibles = new Set(lots.map(({ lot }) => lot.entiteId)).size;
       const parStatut: Record<string, number> = {};
       for (const { lot } of lots) parStatut[lot.statut] = (parStatut[lot.statut] ?? 0) + 1;
       return {
         campagne: c,
-        dossiersHorsHabilitation: Math.max(0, total - lots.length),
+        dossiersHorsHabilitation: Math.max(0, totalDossiers - dossiersVisibles),
         synthese: { lots: lots.length, parStatut, enCours: (parStatut.en_attente ?? 0) + (parStatut.en_cours ?? 0) },
         elements: lots.map(({ lot, raisonSociale }) => {
           const r = (lot.rapport ?? {}) as Record<string, unknown>;

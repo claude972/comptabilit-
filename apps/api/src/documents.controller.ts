@@ -86,12 +86,16 @@ export class DocumentsController {
   @ApiQuery({ name: 'statut', required: false })
   @ApiQuery({ name: 'deposant', required: false, description: '« moi » : seulement mes propres dépôts (toujours appliqué au niveau dépôt)' })
   @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'q', required: false, description: 'Recherche dans le nom du fichier' })
+  @ApiQuery({ name: 'versions', required: false, description: '« courantes » : exclut les versions remplacées' })
   async lister(
     @AccesCourant() acces: Acces,
     @Query('entiteId') entiteId: string,
     @Query('statut') statut?: string,
     @Query('deposant') deposant?: string,
     @Query('page') pageBrute?: string,
+    @Query('q') q?: string,
+    @Query('versions') versions?: string,
   ) {
     const page = Math.max(Number(pageBrute) || 1, 1);
     const TAILLE = 100;
@@ -102,6 +106,10 @@ export class DocumentsController {
       const conditions = [eq(s.documents.entiteId, entiteId)];
       const indexStatut = statut ? conditions.length : -1;
       if (statut) conditions.push(eq(s.documents.statut, statut as (typeof s.statutDocument.enumValues)[number]));
+      // Recherche par nom de fichier (sous-chaîne, insensible à la casse) et exclusion des versions remplacées, sur tout le dossier.
+      const recherche = (q ?? '').trim().slice(0, 100);
+      if (recherche) conditions.push(sql`${s.documents.nomOrigine} ilike ${`%${recherche.replace(/[\\%_]/g, (c) => `\\${c}`)}%`}`);
+      if (versions === 'courantes') conditions.push(sql`${s.documents.remplacePar} is null`);
       if (niveau === 'depot' || deposant === 'moi') {
         conditions.push(
           sql`exists (select 1 from receptions r where r.document_id = ${s.documents.id} and r.deposant_id = ${acces.utilisateurId}::uuid)`,

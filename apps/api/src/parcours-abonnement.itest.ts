@@ -3,6 +3,7 @@
  * remet son abonnement en période d'essai à la fin. Les opérations de l'éditeur (grille, échéances, virements,
  * suspension) passent par le provisionnement, jamais par l'API du cabinet. Montants de démonstration FICTIFS.
  */
+import { calculerEcheance, schemaOffre } from '@comtaple/core';
 import { urlBd } from '@comtaple/db';
 import { DEMO } from '@comtaple/db/amorcer';
 import { enregistrerVirement, genererEcheance, ouvrirEssai, suspendre } from '@comtaple/db/provisionnement';
@@ -16,6 +17,18 @@ const ouvrirDepot = (qui: string, entiteId: string) => {
   const contenu = Buffer.from(`%PDF-1.4 abonnement ${Math.random()}`);
   return api(qui, 'POST', '/v1/televersements', { entiteId, nomFichier: 'x.pdf', taille: contenu.length, sha256: sha(contenu), canal: 'ordinateur' });
 };
+
+/**
+ * Montant attendu pour une offre, d'après le nombre réel de dossiers actifs du cabinet : la base locale conserve les
+ * dossiers créés par les autres parcours et par la mesure de campagne, donc les dossiers au-delà du forfait varient.
+ * Le calcul lui-même est couvert par les tests unitaires du noyau ; ici on vérifie le branchement.
+ */
+async function attendu(codeOffre: string): Promise<{ totalHt: string; dossiers: number }> {
+  const o = await editeur.query('select definition from offres_abonnement where code = $1', [codeOffre]);
+  const offre = schemaOffre.parse(o.rows[0].definition);
+  const n = (await editeur.query('select count(*)::int as n from entites where cabinet_id = $1 and actif', [DEMO.cabinetB])).rows[0].n;
+  return { totalHt: calculerEcheance(offre, n).totalHt!, dossiers: n };
+}
 
 beforeAll(async () => {
   await ouvrirSessions();
@@ -38,7 +51,9 @@ describe('abonnement du cabinet', () => {
     expect(r.json.offre).toMatchObject({ code: 'demo-essentiel', fictif: true });
     expect(r.json.usage.dossiersActifs).toBeGreaterThanOrEqual(1);
     expect(r.json.usage.piecesCeMois).toMatchObject({ limite: 2000, depasse: false });
-    expect(r.json.estimation).toMatchObject({ statut: 'calcule', totalHt: '100.00', fictif: true }); // forfait seul : dossiers inclus
+    const essentiel = await attendu('demo-essentiel');
+    expect(r.json.usage.dossiersActifs).toBe(essentiel.dossiers);
+    expect(r.json.estimation).toMatchObject({ statut: 'calcule', totalHt: essentiel.totalHt, fictif: true });
     expect((await api('remi', 'GET', '/v1/abonnement')).statut).toBe(403);
     expect((await api('client', 'GET', '/v1/abonnement/echeances')).statut).toBe(403);
     expect((await api('client', 'GET', '/v1/abonnement/situation')).json).toMatchObject({ situation: 'essai', serviceOuvert: true });
@@ -48,12 +63,13 @@ describe('abonnement du cabinet', () => {
 
   it('le cabinet ne peut ni modifier un tarif ni se déclarer payé : seul l’éditeur émet et rapproche', async () => {
     const e = await genererEcheance(editeur, DEMO.cabinetB, `${aujourdhui.slice(0, 7)}-01`);
-    expect(e).toMatchObject({ totalHt: '100.00' });
+    const essentiel = await attendu('demo-essentiel');
+    expect(e).toMatchObject({ totalHt: essentiel.totalHt });
     expect(e!.reference).toMatch(/^CTP-BBBBBBBB-\d{6}$/);
     expect((await genererEcheance(editeur, DEMO.cabinetB, `${aujourdhui.slice(0, 7)}-01`))!.id).toBe(e!.id); // idempotent
     const liste = await api('bruno', 'GET', '/v1/abonnement/echeances');
     expect(liste.json).toHaveLength(1);
-    expect(liste.json[0]).toMatchObject({ statutPaiement: 'en_attente_virement', totalHt: '100.00', fictif: true });
+    expect(liste.json[0]).toMatchObject({ statutPaiement: 'en_attente_virement', totalHt: essentiel.totalHt, fictif: true });
     expect(liste.json[0].lignes[0]).toMatchObject({ nature: 'forfait', montant: '100.00' });
     // Aucune route d'écriture n'existe côté cabinet, et le rôle applicatif n'a pas le droit d'écrire ces tables.
     for (const [m, c] of [['POST', '/v1/abonnement/echeances'], ['PATCH', `/v1/abonnement/echeances/${e!.id}`], ['PUT', '/v1/abonnement/offres']] as const) {
@@ -81,7 +97,7 @@ describe('abonnement du cabinet', () => {
     expect((await api('bruno', 'GET', '/v1/abonnement')).json.offre.code).toBe('demo-essentiel'); // pas encore appliqué
     const suivant = new Date(Date.UTC(Number(aujourdhui.slice(0, 4)), Number(aujourdhui.slice(5, 7)), 1)).toISOString().slice(0, 10);
     const e = await genererEcheance(editeur, DEMO.cabinetB, suivant);
-    expect(e!.totalHt).toBe('300.00');
+    expect(e!.totalHt).toBe((await attendu('demo-cabinet')).totalHt);
     const a = (await api('bruno', 'GET', '/v1/abonnement')).json;
     expect(a.offre.code).toBe('demo-cabinet');
     expect(a.abonnement.offreDemandee).toBeNull();

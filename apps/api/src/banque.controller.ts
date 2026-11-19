@@ -5,6 +5,7 @@ import { type AccesBd, and, asc, desc, eq, gte, inArray, journaliser, lte, schem
 import type { Files, Stockage } from '@comtaple/plateforme';
 import { z } from 'zod';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
+import { avecNomsAnnulation } from './comptabilite.controller.js';
 import { BD, STOCKAGE, TACHES } from './jetons.js';
 import { schemaOpenApi, valider } from './validation.js';
 
@@ -47,7 +48,7 @@ export class BanqueController {
         .orderBy(desc(s.relevesBancaires.dateCloture))
         .then((l) => l.map((x) => x.r));
       const [{ n } = { n: 0 }] = (await tx.execute(sql`select count(*)::int as n from mouvements_bancaires m where m.entite_id = ${entiteId}::uuid and mouvement_pris_en_compte(m.id)`)).rows as Array<{ n: number }>;
-      return { imports, releves: releves.map(({ brut: _b, ...r }) => r), nbMouvements: n };
+      return { imports: await avecNomsAnnulation(tx, imports), releves: releves.map(({ brut: _b, ...r }) => r), nbMouvements: n };
     });
   }
 

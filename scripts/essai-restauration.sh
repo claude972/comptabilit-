@@ -3,7 +3,8 @@
 #  1) que les volumes de lignes correspondent à la base d'origine au moment de la sauvegarde,
 #  2) que la chaîne d'empreintes du journal d'audit est intacte pour chaque cabinet,
 #  3) que RLS est toujours activé et forcé sur toutes les tables portant cabinet_id,
-#  4) qu'un échantillon d'originaux du stockage objet correspond aux empreintes enregistrées.
+#  4) que la sauvegarde du stockage objet, rechargée dans une instance ISOLÉE, contient tous les objets référencés par
+#     la base restaurée, conformes à leur empreinte.
 # N'altère jamais la base « comtaple ».
 # Code de sortie : 0 = réussi ; 3 = données restaurées fidèlement mais journal d'audit non intègre ; autre = échec.
 set -eu
@@ -38,11 +39,42 @@ SANS_RLS=$($PSQL -d comtaple_essai_restauration -c "select count(*) from pg_clas
 POLITIQUES=$($PSQL -d comtaple_essai_restauration -c "select count(*) from pg_policies where schemaname = 'public'")
 echo "Politiques RLS restaurées : $POLITIQUES"
 
-echo "--- originaux du stockage objet (échantillon de 20) ---"
-$PSQL -d comtaple_essai_restauration -F ' ' -c "select cle_stockage, sha256 from fichiers where nature = 'original' order by cree_le desc limit 20" > var/sauvegardes/.echantillon
-node scripts/verifier-originaux.mjs var/sauvegardes/.echantillon
-rm -f var/sauvegardes/.echantillon
+# ── Stockage objet : restauration ISOLÉE ──
+# La sauvegarde des objets est rechargée dans une instance de stockage SÉPARÉE (autre conteneur, autre volume, autres
+# identifiants, autre port), créée pour l'essai et détruite ensuite. Puis TOUS les objets référencés par la base
+# restaurée y sont relus et comparés à l'empreinte enregistrée en base. Le stockage de l'application n'est pas lu.
+MANIFESTE="${SAUVEGARDE%.dump}.objets.json"
+if [ ! -f "$MANIFESTE" ]; then
+  echo "ÉCHEC : aucune sauvegarde du stockage objet pour cette sauvegarde de base ($MANIFESTE). Relancer scripts/sauvegarder.sh."
+  $PSQL -d postgres -c "DROP DATABASE comtaple_essai_restauration" >/dev/null; exit 1
+fi
+shasum -a 256 -c "$MANIFESTE.sha256" >/dev/null && echo "Empreinte du manifeste des objets : conforme"
+echo "--- stockage objet : restauration dans une instance isolée ---"
+nettoyer_s3() { docker rm -f comtaple-essai-s3 >/dev/null 2>&1 || true; docker volume rm comtaple_essai_s3 >/dev/null 2>&1 || true; rm -f var/sauvegardes/.s3-essai.json var/sauvegardes/.references; }
+nettoyer_s3
+export ESSAI_S3_ENDPOINT="http://127.0.0.1:${ESSAI_S3_PORT:-8334}" ESSAI_S3_BUCKET="comtaple-essai-restauration"
+export ESSAI_S3_ACCESS_KEY="essai$(openssl rand -hex 8)" ESSAI_S3_SECRET_KEY="$(openssl rand -hex 24)"
+printf '{"identities":[{"name":"essai","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List"]}]}' "$ESSAI_S3_ACCESS_KEY" "$ESSAI_S3_SECRET_KEY" > var/sauvegardes/.s3-essai.json
+docker create --name comtaple-essai-s3 -p "127.0.0.1:${ESSAI_S3_PORT:-8334}:8333" -v comtaple_essai_s3:/data chrislusf/seaweedfs:4.54 \
+  server -dir=/data -ip.bind=0.0.0.0 -volume.max=60 -master.volumeSizeLimitMB=256 -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json >/dev/null
+docker cp var/sauvegardes/.s3-essai.json comtaple-essai-s3:/etc/seaweedfs/s3.json
+docker start comtaple-essai-s3 >/dev/null
+i=0; until curl -s -o /dev/null -m 2 "$ESSAI_S3_ENDPOINT"; do i=$((i + 1)); [ "$i" -gt 60 ] && { echo "ÉCHEC : le stockage d'essai ne démarre pas"; nettoyer_s3; exit 1; }; sleep 1; done; sleep 3
+# Sans identifiants, l'instance d'essai doit refuser la lecture (elle n'est pas ouverte, même sur la boucle locale).
+ANONYME=$(curl -s -o /dev/null -w '%{http_code}' -m 5 "$ESSAI_S3_ENDPOINT/$ESSAI_S3_BUCKET/")
+DEBUT=$(date +%s)
+node scripts/objets.mjs restaurer "$MANIFESTE" || { nettoyer_s3; exit 1; }
+echo "Rechargement : $(( $(date +%s) - DEBUT )) s ; accès anonyme à l'instance d'essai : HTTP $ANONYME"
+$PSQL -d comtaple_essai_restauration -F ' ' -c "select cle_stockage, sha256 from fichiers
+  union all select cle_pdf, coalesce(sha256_pdf, '-') from exports_revision where cle_pdf is not null
+  union all select cle_donnees, coalesce(sha256_donnees, '-') from exports_revision where cle_donnees is not null
+  union all select cle_archive, coalesce(sha256, '-') from restitutions where cle_archive is not null" > var/sauvegardes/.references
+OBJETS_OK=1
+node scripts/objets.mjs verifier var/sauvegardes/.references "$MANIFESTE" || OBJETS_OK=0
+nettoyer_s3
+echo "Instance de stockage d'essai détruite (conteneur et volume)."
 $PSQL -d postgres -c "DROP DATABASE comtaple_essai_restauration" >/dev/null
+[ "$OBJETS_OK" = "1" ] || { echo "Essai de restauration : ÉCHEC — des objets référencés par la base manquent ou diffèrent dans le stockage restauré"; exit 1; }
 if [ "${JOURNAL_DEGRADE:-0}" = "1" ]; then
   echo "Essai de restauration : DONNÉES RESTAURÉES FIDÈLEMENT, mais CONTRÔLE D'INTÉGRITÉ DU JOURNAL EN ÉCHEC (voir ci-dessus)"
   exit 3

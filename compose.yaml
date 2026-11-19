@@ -11,10 +11,14 @@ services:
       POSTGRES_DB: comtaple
     ports: ["127.0.0.1:${PG_PORT:-5432}:5432"]
     volumes: ["pgdata:/var/lib/postgresql"]
+    # Un processus d'init recueille les processus orphelins (sondes interrompues, commandes « exec ») à la place de
+    # PostgreSQL : depuis la version 17, le serveur traite la fin anormale d'un enfant inconnu comme un crash et redémarre
+    # (constaté le 2026-11-19 sous forte charge disque, sonde expirée). La sonde est lancée sans shell intermédiaire.
+    init: true
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d comtaple"]
-      interval: 3s
-      timeout: 3s
+      test: ["CMD", "pg_isready", "-U", "${PG_ADMIN_USER:-comtaple_admin}", "-d", "comtaple"]
+      interval: 5s
+      timeout: 10s
       retries: 40
 
   redis:

@@ -109,6 +109,36 @@ test.describe('rentabilité d’une mission', () => {
     expect(erreurs).toEqual([]);
   });
 
+  test('affectation explicite d’un travail à une mission : choisie par la collaboratrice, lue par le réviseur, écartée de la rentabilité de l’autre mission', async ({ browser }) => {
+    const missionId = await preparer(browser);
+    const chloe = await ouvrir(browser, 'chloe', mission);
+    const erreurs = surveiller(chloe);
+    expect(await statutBff(chloe, 'POST', `v1/dossiers/${ID.dupain}/missions`, { libelle: 'Mission exceptionnelle 2025' })).toBe(201);
+    await chloe.reload();
+    const ligne = chloe.locator('tr[data-travail]', { hasText: 'Saisie de février' });
+    await expect(ligne).toHaveAttribute('data-situation', 'dans_le_perimetre');
+    await expect(ligne.getByLabel('Mission de ce travail')).toHaveValue(''); // rien n'est déduit : non affecté par défaut
+    await ligne.getByLabel('Mission de ce travail').selectOption({ label: 'Mission exceptionnelle 2025' });
+    await expect(ligne.getByText('Travail affecté.')).toBeVisible();
+    // Située par rapport aux seules lettres de sa mission, qui n'en a pas.
+    await expect(chloe.locator('tr[data-travail]', { hasText: 'Saisie de février' })).toHaveAttribute('data-situation', 'aucune_lettre_applicable');
+    const suite = await simulateur<{ travaux: Array<{ description: string; missionId: string | null }>; missions: Array<{ id: string; libelle: string }> }>('suite');
+    const autre = { missionId: suite.travaux.find((t) => t.description === 'Saisie de février')!.missionId! };
+    expect(autre.missionId).toBe(suite.missions.find((x) => x.libelle === 'Mission exceptionnelle 2025')!.id);
+    expect(autre.missionId).not.toBe(missionId);
+    expect(erreurs).toEqual([]);
+    await chloe.context().close();
+
+    const remi = await ouvrir(browser, 'remi', `${mission}/rentabilite?du=2025-01-01&au=2025-12-31`);
+    await expect(remi.getByTestId('mentions')).toContainText('1 travail(aux) de la période, affecté(s) à une autre mission du dossier, ne sont pas comptés ici.');
+    await expect(remi.getByTestId('mentions')).toContainText('ne sont affectés à aucune');
+    await remi.context().close();
+    // Le réviseur retrouve l'affectation enregistrée.
+    const relecture = await ouvrir(browser, 'remi', mission);
+    await expect(relecture.locator('tr[data-travail]', { hasText: 'Saisie de février' }).getByLabel('Mission de ce travail')).toHaveValue(autre.missionId);
+    await relecture.context().close();
+  });
+
   test('lettre au forfait sans montant : honoraires « non calculable » avec le motif de l’API, jamais zéro', async ({ browser }) => {
     await preparer(browser, null);
     const page = await ouvrir(browser, 'remi', `${mission}/rentabilite?du=2025-01-01&au=2025-12-31`);

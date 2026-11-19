@@ -50,7 +50,13 @@ test('administration : création d’un dossier, habilitations et ouverture de l
   const page = await ouvrir(browser, 'alice.admin@cabinet-a.test', '/administration');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Administration du cabinet');
   await expect(page.locator('tr[data-membre]').filter({ hasText: 'Rémi Réviseur' })).toContainText('Réviseur');
-  await expect(page.getByTestId('integrite-audit')).toContainText('Chaîne intacte');
+  // Aucune rupture inexpliquée. La base locale d'essai porte une irrégularité d'ordre CONSIGNÉE (défaut de chaînage
+  // concurrent corrigé par la migration 0025) : l'écran doit alors le dire, avec sa cause, et non afficher « intacte ».
+  await expect(page.getByTestId('integrite-audit')).not.toContainText('Rupture');
+  await expect(page.getByTestId('integrite-audit')).toContainText(/Chaîne intacte|Chaîne vérifiée, avec une irrégularité d’ordre consignée/);
+  if (await page.getByTestId('integrite-audit').getByText('irrégularité d’ordre consignée').count()) {
+    await expect(page.getByTestId('integrite-audit').getByRole('listitem').first()).toContainText(/Lignes n° \d+ à \d+ — .{30,}/);
+  }
 
   const creation = page.locator('form[data-formulaire="creer-dossier"]');
   await expect(creation.getByLabel('Territoire fiscal (obligatoire)')).toHaveValue('');

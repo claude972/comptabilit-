@@ -337,6 +337,14 @@ test('(f) rentabilité : honoraires et temps observés affichés ; marge « non 
     { dateTravail: '2025-02-10', prestation: 'tenue', description: 'Saisie de février', tempsObserveMinutes: 120 },
     { dateTravail: '2025-04-02', prestation: 'tenue', description: 'Saisie de mars, temps non relevé' },
   ]) expect((await bff(chloe, 'POST', `v1/dossiers/${dossierA}/travaux`, t)).statut).toBe(201);
+  // Affectation explicite d'un travail à la mission, par l'interface : enregistrée, et relue après rechargement.
+  await chloe.reload();
+  const ligne = chloe.locator('tr[data-travail]', { hasText: 'Saisie de février' });
+  await expect(ligne.getByLabel('Mission de ce travail')).toHaveValue('');
+  await ligne.getByLabel('Mission de ce travail').selectOption(mission.json.id);
+  await expect(ligne.getByText('Travail affecté.')).toBeVisible();
+  await chloe.reload();
+  await expect(chloe.locator('tr[data-travail]', { hasText: 'Saisie de février' }).getByLabel('Mission de ce travail')).toHaveValue(mission.json.id);
   // Une collaboratrice n'accède pas à la rentabilité.
   await chloe.goto(`/dossiers/${dossierA}/mission/rentabilite`);
   await expect(chloe.getByTestId('rentabilite-reservee')).toBeVisible();

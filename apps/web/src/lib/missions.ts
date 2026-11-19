@@ -49,6 +49,8 @@ export type Rattachement =
   | { situation: 'aucune_lettre_applicable'; motif: string };
 export interface Travail {
   id: string;
+  /** Affectation explicite à une mission du dossier ; null = non affecté. */
+  missionId: string | null;
   dateTravail: string;
   prestation: string;
   description: string;

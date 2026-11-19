@@ -2045,16 +2045,20 @@ function routerSuite(r: Requete, a: Acces): unknown {
     const mission = suite.missions.find((x) => x.id === id && x.cabinetId === a.cabinetId && visibleEnLecture(a, x.entiteId));
     if (!mission) throw new ErreurHttp(404, 'Mission introuvable');
     exigerNiveau(a, mission.entiteId, 'revision');
+    const tous = suite.travaux.filter((t) => t.entiteId === mission.entiteId && t.dateTravail >= du && t.dateTravail <= au);
+    const retenus = tous.filter((t) => !t.missionId || t.missionId === id);
+    const nonAffectes = retenus.filter((t) => !t.missionId).length;
     const resultat = calculerRentabiliteMission({
       periode: { debut: du, fin: au },
       lettres: suite.lettres.filter((l) => l.missionId === id).map((l) => ({ id: l.id, dateEffet: l.dateEffet, statut: l.statut, version: l.version, contenu: l.contenu as ContenuLettre })),
-      travaux: suite.travaux.filter((t) => t.entiteId === mission.entiteId && t.dateTravail >= du && t.dateTravail <= au).map((t) => ({ date: t.dateTravail, prestation: t.prestation, minutes: t.tempsObserveMinutes })),
+      travaux: retenus.map((t) => ({ date: t.dateTravail, prestation: t.prestation, minutes: t.tempsObserveMinutes })),
       coutHoraire: gestionnaire ? (suite.coutsHoraires.get(a.cabinetId)?.coutHoraireInterneHt ?? null) : null,
     });
     if (!gestionnaire) resultat.marge = { ...resultat.marge, motif: 'Le coût et la marge sont réservés aux administrateurs et associés du cabinet.' };
     const autres = suite.missions.filter((x) => x.entiteId === mission.entiteId && x.id !== id).length;
-    if (autres > 0) resultat.mentions.push(`Ce dossier a ${autres} autre(s) mission(s) : les travaux ne sont pas affectés à une mission, ceux hors du périmètre de celle-ci peuvent relever d’une autre.`);
-    return { mission, mention: 'Aide à la gestion, calculée sur les saisies du cabinet ; ni une facturation, ni une comptabilité analytique.', ...resultat };
+    if (tous.length > retenus.length) resultat.mentions.push(`${tous.length - retenus.length} travail(aux) de la période, affecté(s) à une autre mission du dossier, ne sont pas comptés ici.`);
+    if (autres > 0 && nonAffectes > 0) resultat.mentions.push(`Ce dossier a ${autres} autre(s) mission(s) et ${nonAffectes} travail(aux) de la période ne sont affectés à aucune : ils sont comptés ici, mais peuvent relever d’une autre mission.`);
+    return { mission, affectation: { affectesACetteMission: retenus.length - nonAffectes, nonAffectes, affectesAUneAutreMission: tous.length - retenus.length }, mention: 'Aide à la gestion, calculée sur les saisies du cabinet ; ni une facturation, ni une comptabilité analytique.', ...resultat };
   }
 
   // ── Règles du cabinet ──
@@ -2291,6 +2295,11 @@ function routerSuite(r: Requete, a: Acces): unknown {
     tracerAudit(a, 'lettre_mission.validee', 'lettre_mission', id, lettre.entiteId, { version: lettre.version, dateEffet: lettre.dateEffet });
     return lettre;
   }
+  // Un travail affecté à une mission est situé par rapport aux seules lettres de cette mission (comme l'API).
+  const situerAffecte = (t: Enr) => {
+    const lettres = suite.lettres.filter((l) => l.entiteId === t.entiteId && (!t.missionId || l.missionId === t.missionId)).map((l) => ({ id: l.id, dateEffet: l.dateEffet, statut: l.statut, version: l.version, contenu: l.contenu as ContenuLettre }));
+    return situerTravail(lettres, { date: t.dateTravail, prestation: t.prestation });
+  };
   if (s[0] === 'dossiers' && s[2] === 'travaux' && s.length === 3) {
     const id = exigerUuid(s[1]);
     if (m === 'POST') {
@@ -2300,15 +2309,28 @@ function routerSuite(r: Requete, a: Acces): unknown {
       const description = chaine(d, 'description', 1, 2000);
       if (d.tempsObserveMinutes !== undefined && (!Number.isInteger(d.tempsObserveMinutes) || d.tempsObserveMinutes <= 0 || d.tempsObserveMinutes > 100_000)) throw invalide('tempsObserveMinutes', 'entier positif attendu');
       exigerNiveau(a, id, 'collaboration');
-      const t = { id: randomUUID(), cabinetId: a.cabinetId, entiteId: id, dateTravail, prestation: d.prestation, description, tempsObserveMinutes: d.tempsObserveMinutes ?? null, auteurId: a.utilisateurId, creeLe: instant() };
+      if (d.missionId !== undefined && !suite.missions.some((x) => x.id === d.missionId && x.entiteId === id)) throw new ErreurHttp(400, 'Cette mission n’appartient pas à ce dossier');
+      const t = { id: randomUUID(), cabinetId: a.cabinetId, entiteId: id, missionId: d.missionId ?? null, dateTravail, prestation: d.prestation, description, tempsObserveMinutes: d.tempsObserveMinutes ?? null, auteurId: a.utilisateurId, creeLe: instant() };
       suite.travaux.push(t);
-      return { ...t, rattachement: situerTravail(lettresDatees(id), { date: dateTravail, prestation: d.prestation }) };
+      return { ...t, rattachement: situerAffecte(t) };
     }
     if (m === 'GET') {
       exigerNiveau(a, id, 'lecture');
       const lettres = lettresDatees(id);
-      return suite.travaux.filter((t) => t.entiteId === id).sort((x, y) => y.dateTravail.localeCompare(x.dateTravail)).map((t) => ({ ...t, rattachement: situerTravail(lettres, { date: t.dateTravail, prestation: t.prestation }) }));
+      return suite.travaux.filter((t) => t.entiteId === id).sort((x, y) => y.dateTravail.localeCompare(x.dateTravail)).map((t) => ({ ...t, rattachement: situerAffecte(t) }));
     }
+  }
+  if (s[0] === 'travaux' && s[2] === 'mission' && s.length === 3 && m === 'PUT') {
+    const t = suite.travaux.find((x) => x.id === exigerUuid(s[1]) && x.cabinetId === a.cabinetId && visibleEnLecture(a, x.entiteId));
+    if (!t) throw new ErreurHttp(404, 'Travail introuvable');
+    exigerNiveau(a, t.entiteId, 'collaboration');
+    const d = r.json();
+    if (d.missionId !== null && !suite.missions.some((x) => x.id === d.missionId && x.entiteId === t.entiteId)) throw new ErreurHttp(400, 'Cette mission n’appartient pas à ce dossier');
+    if (t.missionId !== d.missionId) {
+      tracerAudit(a, 'travail.affecte', 'travail', t.id, t.entiteId, { de: t.missionId ?? null, vers: d.missionId });
+      t.missionId = d.missionId;
+    }
+    return { ...t, rattachement: situerAffecte(t) };
   }
   if (m === 'POST' && s[0] === 'travaux' && s[2] === 'proposition-avenant' && s.length === 3) {
     const id = exigerUuid(s[1]);

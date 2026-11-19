@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { PieceJointeAffichee } from '@/components/document/pieces-jointes';
 import { ErreurAcces } from '@/components/erreurs';
-import { ActionConfirmee, CreerMission, DefinirBareme, EnregistrerTravail, PreparerAvenant, RedigerLettre } from '@/components/mission/actions';
+import { ActionConfirmee, AffecterTravail, CreerMission, DefinirBareme, EnregistrerTravail, PreparerAvenant, RedigerLettre } from '@/components/mission/actions';
 import { SousNavigationMission } from '@/components/mission/sous-navigation';
 import { Alerte, Carte, Etiquette, MentionProjet, SousTitre, Tableau, type Ton } from '@/components/ui/base';
 import { estGestionnaire } from '@/lib/messagerie';
@@ -147,7 +147,7 @@ export default async function PageMission({ params }: { params: Promise<{ id: st
       <section aria-labelledby="titre-travaux" className="space-y-3">
         <SousTitre id="titre-travaux">Travaux et demandes ({travaux.ok ? travaux.donnees.length : '—'})</SousTitre>
         <Alerte ton="neutre" className="text-sm">
-          Chaque travail est rattaché à la lettre validée applicable à sa date. « {LIBELLE_RATTACHEMENT.potentiellement_hors_perimetre} » est un signalement, pas une conclusion contractuelle.
+          Chaque travail est rattaché à la lettre validée applicable à sa date. L’affectation à une mission est un choix explicite, jamais déduit : un travail affecté est situé par rapport aux seules lettres de sa mission, et n’est compté que dans la rentabilité de celle-ci. « {LIBELLE_RATTACHEMENT.potentiellement_hors_perimetre} » est un signalement, pas une conclusion contractuelle.
         </Alerte>
         {!travaux.ok ? (
           <Alerte ton="attention">Les travaux n’ont pas pu être chargés. {travaux.message}</Alerte>
@@ -160,6 +160,7 @@ export default async function PageMission({ params }: { params: Promise<{ id: st
                 <th scope="col">Date</th>
                 <th scope="col">Prestation et description</th>
                 <th scope="col" className="text-right">Temps observé</th>
+                <th scope="col">Mission</th>
                 <th scope="col">Rattachement</th>
               </tr>
             </thead>
@@ -177,6 +178,13 @@ export default async function PageMission({ params }: { params: Promise<{ id: st
                       <span className="block whitespace-pre-wrap">{t.description}</span>
                     </td>
                     <td className="text-right tabular-nums">{t.tempsObserveMinutes === null ? 'Non saisi' : formaterMinutes(t.tempsObserveMinutes)}</td>
+                    <td>
+                      {collaboration ? (
+                        <AffecterTravail travailId={t.id} missionId={t.missionId ?? null} missions={missions.donnees.map((m) => ({ id: m.id, libelle: m.libelle }))} />
+                      ) : (
+                        <span data-testid="affectation">{missions.donnees.find((m) => m.id === t.missionId)?.libelle ?? 'Non affecté'}</span>
+                      )}
+                    </td>
                     <td className="space-y-1">
                       <Etiquette ton={TON_RATTACHEMENT[r.situation] ?? 'neutre'} className="whitespace-normal" data-testid="rattachement">
                         {LIBELLE_RATTACHEMENT[r.situation] ?? r.situation}

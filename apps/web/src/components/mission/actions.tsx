@@ -297,6 +297,33 @@ export function EnregistrerTravail({ dossierId, prestations }: { dossierId: stri
   );
 }
 
+/** Affectation explicite d'un travail à une mission du dossier (`PUT v1/travaux/:id/mission`) ; jamais déduite. */
+export function AffecterTravail({ travailId, missionId, missions }: { travailId: string; missionId: string | null; missions: Array<{ id: string; libelle: string }> }) {
+  const appel = useAppel();
+  const id = useId();
+  return (
+    <div className="space-y-1" data-testid="affectation">
+      <Libelle htmlFor={id} className="sr-only">
+        Mission de ce travail
+      </Libelle>
+      <Liste
+        id={id}
+        value={missionId ?? ''}
+        disabled={appel.occupe}
+        onChange={(e) => void appel.executer(`v1/travaux/${travailId}/mission`, { method: 'PUT', json: { missionId: e.target.value || null } }, e.target.value ? 'Travail affecté.' : 'Affectation retirée.')}
+      >
+        <option value="">Non affecté</option>
+        {missions.map((m) => (
+          <option key={m.id} value={m.id}>
+            {m.libelle}
+          </option>
+        ))}
+      </Liste>
+      <Retours erreur={appel.erreur} succes={appel.succes} />
+    </div>
+  );
+}
+
 /** Projet d'avenant pour un travail potentiellement hors périmètre (`POST v1/travaux/:id/proposition-avenant`). */
 export function PreparerAvenant({ travailId, projetExistant }: { travailId: string; projetExistant: number | null }) {
   const appel = useAppel();

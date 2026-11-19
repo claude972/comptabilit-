@@ -1,6 +1,6 @@
 # Rapport de tests
 
-Dernière exécution complète : 2026-11-19 (troisième passe, après les lots versions de pièces, aperçu CSV, pièces jointes, annulation et campagnes d'import, rentabilité), poste de développement macOS (Apple Silicon), services locaux dans une machine virtuelle Docker (4 processeurs, 6 Go). La base locale contient les données accumulées par les exécutions successives des parcours.
+Dernière exécution complète : 2026-11-19 (quatrième passe, après le correctif du journal d'audit, l'affectation des travaux et les lots versions de pièces, aperçu CSV, pièces jointes, annulation et campagnes d'import, rentabilité), poste de développement macOS (Apple Silicon), services locaux dans une machine virtuelle Docker (4 processeurs, 6 Go). La base locale contient les données accumulées par les exécutions successives des parcours.
 
 Tous les jeux de données sont SYNTHÉTIQUES. Aucun service externe réel (Google, Microsoft, OVHcloud), aucun appareil réel, aucune donnée de cabinet.
 
@@ -11,17 +11,17 @@ Tous les jeux de données sont SYNTHÉTIQUES. Aucun service externe réel (Googl
 | Moteur métier | `pnpm --filter @comtaple/core run test` | 458 réussis / 458 | Mémoire, jeux synthétiques |
 | Connecteurs mail (bibliothèque) | `pnpm --filter @comtaple/mail run test` | 57 réussis / 57 | Simulateur local des API Gmail et Graph |
 | Application web (logique) | `pnpm --filter @comtaple/web run test` | 139 réussis / 139 | Mémoire |
-| Isolation et audit | `pnpm --filter @comtaple/db run test:integration` | 12 réussis / 12 | PostgreSQL réel |
+| Isolation et audit | `pnpm --filter @comtaple/db run test:integration` | 14 réussis / 14 | PostgreSQL réel |
 | Surveillance des sources et rattrapage | `pnpm --filter @comtaple/worker run test:integration` | 8 réussis / 8 | PostgreSQL réel, lecture HTTP injectée |
-| Parcours de bout en bout | `pnpm --filter @comtaple/api run test:integration` | 121 réussis / 121 (11 fichiers) | Pile réelle : Keycloak, API, worker, PostgreSQL, Redis, S3, ClamAV, OCR. Les 20 parcours mail utilisent en plus le simulateur de messagerie |
-| Navigateur, API simulée | `pnpm --filter @comtaple/web run test:e2e` | 107 réussis / 107 | Vrai Keycloak ; API remplacée par un simulateur de test ; Chromium ordinateur et émulation Pixel 7 |
+| Parcours de bout en bout | `pnpm --filter @comtaple/api run test:integration` | 122 réussis / 122 (11 fichiers) | Pile réelle : Keycloak, API, worker, PostgreSQL, Redis, S3, ClamAV, OCR. Les 20 parcours mail utilisent en plus le simulateur de messagerie |
+| Navigateur, API simulée | `pnpm --filter @comtaple/web run test:e2e` | 108 réussis / 108 | Vrai Keycloak ; API remplacée par un simulateur de test ; Chromium ordinateur et émulation Pixel 7 |
 | Navigateur, pile réelle | `pnpm --filter @comtaple/web exec playwright test -c playwright.reel.config.ts` | 28 réussis / 28 | Tout réel en local, Chromium ordinateur et émulation Pixel 7 |
 | Service OCR | tests pytest dans l'image `comtaple-ocr:tests` | 48 réussis / 48 (exécution du développeur du service, non relancée lors des dernières passes) | Conteneur sans réseau |
-| Sauvegarde et restauration | `scripts/sauvegarder.sh && scripts/essai-restauration.sh` | Réussi (402 800 lignes d'écriture, 7 532 événements d'audit, 464 pièces, 109 politiques RLS, 20 originaux relus sur 20) | Base locale restaurée dans une base neuve |
+| Sauvegarde et restauration | `scripts/sauvegarder.sh && scripts/essai-restauration.sh` | Réussi (419 757 lignes d'écriture, 8 364 événements d'audit, 514 pièces, 110 politiques RLS, 20 originaux relus sur 20 ; journal : aucune rupture inexpliquée, 1 anomalie d'enchaînement consignée) | Base locale restaurée dans une base neuve |
 | Images de conteneurs | `docker build --target api\|worker\|web` puis démarrage | Trois images construites et démarrées | Réseau des services locaux ; lecture seule, sans capacités, utilisateur non privilégié |
 | Infrastructure | `tofu validate` dans `infra/opentofu` | Valide | Schéma du fournisseur uniquement ; jamais planifiée ni appliquée |
 
-Typage : réussi pour tous les paquets. 18 migrations rejouées depuis zéro au moins une fois ; les six suivantes (24 au total) n'ont été appliquées que de façon incrémentale sur la base locale, jamais rejouées depuis une base vide.
+Typage : réussi pour tous les paquets. 18 migrations rejouées depuis zéro au moins une fois ; les huit suivantes (26 au total) n'ont été appliquées que de façon incrémentale sur la base locale, jamais rejouées depuis une base vide.
 
 Les images de conteneurs, la validation OpenTofu et les tests du service OCR n'ont PAS été relancés lors de cette passe : leurs résultats datent des passes précédentes.
 
@@ -41,6 +41,8 @@ Non exécuté : l'intégration continue GitHub (fichier écrit, dépôt distant 
 
 **Annulation et campagnes d'import** — annulation motivée par un réviseur, lot précédent réactivé, rétablissement, annulation pendant le traitement sans ligne conservée, reprise d'un import en échec, campagne sur plusieurs dossiers avec échec isolé, décompte en dossiers distincts, dossiers hors habilitation comptés sans être révélés, nom de l'auteur d'une annulation.
 
+**Journal d'audit** — chaîne linéaire sous 80 écritures parallèles ; consignation d'une anomalie refusée sans irrégularité réelle, sans cause décrite ou sur une plage large, et impossible avec le rôle applicatif ; une irrégularité n'est tolérée par l'API que consignée avec sa cause.
+
 **Comptabilité** — import FEC en flux et idempotent ; anomalies injectées détectées ; revue des constats ; dossier de révision ; nouvelle version rendant les travaux « à revoir » ; faux FEC rejeté ; contrôles fiscaux non réalisés hors métropole ; cohérence entre deux exercices importés.
 
 **Banque** — relevé camt.053 cadré ; réimport sans doublon ; CSV ambigu : aperçu des premières lignes puis profil confirmé ; faux relevé rejeté ; rapprochement vérifié arithmétiquement de façon indépendante ; mouvements sans contrepartie jamais appariés ; validation et rejet par le réviseur ; obsolescence après nouveau relevé.
@@ -49,7 +51,7 @@ Non exécuté : l'intégration continue GitHub (fichier écrit, dépôt distant 
 
 **Règles, états, inventaire** — règle proposée, impact mesuré, approuvée par une autre personne, appliquée et tracée, retirée ; balance, projets d'états, indicateurs tracés et non calculables motivés ; écriture d'inventaire équilibrée, approuvée par un tiers, balance ajustée, export, « à revoir » après changement des données.
 
-**Missions, conseils, veille, recherche, restitution** — lettre validée, travail hors périmètre, projet d'avenant avec estimation sur base nommée ; rentabilité par mission (honoraires saisis, temps observés, coût horaire saisi, « non calculable » motivé sinon) ; pièces du dossier jointes à un conseil, une lettre, une écriture d'inventaire ; conseil validé puis autorisé puis faits consignés ; évolution qualifiée, applicabilité en trois états, suivi par cabinet ; recherche citant ses sources ; archive de restitution rouverte et vérifiée fichier par fichier contre son manifeste.
+**Missions, conseils, veille, recherche, restitution** — lettre validée, travail hors périmètre, projet d'avenant avec estimation sur base nommée ; rentabilité par mission (honoraires saisis, temps observés, coût horaire saisi, « non calculable » motivé sinon) ; affectation explicite d'un travail à une mission, écartée de la rentabilité des autres, retirée, journalisée ; pièces du dossier jointes à un conseil, une lettre, une écriture d'inventaire ; conseil validé puis autorisé puis faits consignés ; évolution qualifiée, applicabilité en trois états, suivi par cabinet ; recherche citant ses sources ; archive de restitution rouverte et vérifiée fichier par fichier contre son manifeste.
 
 **Messagerie (contre simulateur)** — réception, pièce jointe, analyse ; doublon entre mail et téléversement ; notification répétée, falsifiée, manquée ; jeton révoqué ; cloisonnement ; file de qualification ; facture derrière un lien signalée sans requête vers le lien.
 
@@ -82,6 +84,7 @@ Aucune mesure sur des pièces réelles. Sur les gabarits synthétiques, numéro,
 
 | Sujet | État |
 |---|---|
+| **Journal d'audit : bifurcation de la chaîne sous écritures simultanées** (numéro attribué avant le verrou). Constaté une fois en local, reproduit sur une copie | Corrigé (migration 0025, D-038). L'irrégularité passée du cabinet Alpha fictif est consignée, non effacée. L'affichage d'une anomalie consignée n'est vérifié au navigateur que sur la base locale qui en porte une, pas contre le simulateur. Aucun ancrage externe des empreintes |
 | Lignes d'un constat dans un format incohérent ; contrôles fiscaux exécutés quel que soit le territoire | Corrigés |
 | Membres d'un dossier, cabinets d'un compte, pagination des documents et des anomalies, abandon et purge d'un téléversement, doublon à la clôture rejouée | Corrigés |
 | Caractère nul dans un nom de fichier provoquant une erreur serveur | Corrigé (refus 400) |
@@ -100,6 +103,7 @@ Aucune mesure sur des pièces réelles. Sur les gabarits synthétiques, numéro,
 | Points d'entrée publics de notification mail sans limitation de débit | Ouvert |
 | Rotation de la clé de chiffrement des jetons mail | Corrigé (anciennes clés acceptées en déchiffrement seulement ; testé en bibliothèque) |
 | Reprise après redémarrage de Redis pour les traitements en attente | Rattrapage au démarrage du worker, testé sur base réelle ; aucun essai avec un arrêt réel de Redis |
+| Travaux non affectés comptés dans chaque mission d'un même dossier | Voulu et signalé avec leur nombre ; l'affectation explicite les départage |
 | Rentabilité : quand la marge n'est pas calculable, des sommes partielles non nulles restent renvoyées à côté du motif | Ouvert (l'interface affiche « non calculable ») |
 | Projet d'avenant automatique : pas de choix de la lettre signée de référence quand il y en a plusieurs | Ouvert |
 | Tests d'abonnement et d'isolation dépendant du nombre de dossiers présents en base | Corrigé (les attendus sont calculés d'après l'état réel) |

@@ -24,6 +24,8 @@ const schema = z.object({
   TAILLE_MAX_FEC: z.coerce.number().int().default(500 * 1024 * 1024),
   TAILLE_MORCEAU: z.coerce.number().int().default(4 * 1024 * 1024),
   API_PORT: z.coerce.number().int().default(4000),
+  /** Adresse d'écoute de l'API : locale par défaut ; 0.0.0.0 dans un conteneur, derrière un réseau privé. */
+  API_HOTE: z.string().default('127.0.0.1'),
   /** Ports des points de collecte Prometheus (adresse locale uniquement) ; 0 = désactivé. */
   METRIQUES_PORT_API: z.coerce.number().int().default(9464),
   METRIQUES_PORT_WORKER: z.coerce.number().int().default(9465),

@@ -1,0 +1,14 @@
+**/node_modules
+**/dist
+**/.next
+**/test-results
+**/playwright-report
+**/tests/.auth
+.git
+.env
+.env.*
+!.env.example
+var
+docs
+services
+infra

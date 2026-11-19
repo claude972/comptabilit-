@@ -8,7 +8,8 @@ import { DEMO } from '@comtaple/db/amorcer';
 import { ouvrirEssai } from '@comtaple/db/provisionnement';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { api, attendre, choisirCabinet, deposer, ouvrirSessions, pdfTexte } from './essais/outils.js';
+import { genererFecSynthetique } from '@comtaple/core';
+import { api, attendre, attendreLot, choisirCabinet, deposer, ouvrirSessions, pdfTexte } from './essais/outils.js';
 
 const SEL = randomBytes(4).toString('hex');
 const COMPTES = ['alice', 'remi', 'chloe', 'client'] as const;
@@ -122,5 +123,78 @@ describe('notifications internes', () => {
     expect(JSON.stringify(apres)).not.toContain(NOM);
     expect(JSON.stringify(apres)).not.toContain('TIE-001');
     for (const n of apres.notifications) expect(n).toMatchObject({ titre: 'Notification d’un dossier auquel vous n’avez plus accès', lien: null });
+  });
+});
+
+describe('notifications d’import, de constat affecté, et préférences', () => {
+  let exercice = '';
+  let constats: any[] = [];
+  const types = async (qui: string) => (await notifs(qui)).notifications.map((n: any) => n.type);
+
+  it('import terminé : la personne qui l’a lancé est prévenue par le traitement en arrière-plan, et elle seule', async () => {
+    expect((await notifs('remi')).total).toBe(0);
+    exercice = (await api('remi', 'POST', `/v1/dossiers/${dossier}/exercices`, { debut: '2025-01-01', fin: '2025-12-31' })).json.id;
+    const fec = genererFecSynthetique({ exercice: { debut: '2025-01-01', fin: '2025-12-31' }, nbEcritures: 120, graine: Number.parseInt(SEL.slice(0, 6), 16), anomalies: ['caisse_crediteur', 'client_crediteur'] });
+    const d = await deposer('remi', dossier, Buffer.from(fec.contenu), { usage: 'fec', exerciceId: exercice, statutDonnees: 'travail_avant_cloture' }, fec.nomFichier);
+    await attendreLot('remi', d.fin.json.lotImportId);
+    const liste = await attendre(() => notifs('remi'), (n) => n.total > 0);
+    expect(liste.notifications).toHaveLength(1);
+    expect(liste.notifications[0]).toMatchObject({ type: 'import.termine', lien: `/dossiers/${dossier}/comptabilite` });
+    expect(liste.notifications[0].titre).toMatch(/^L’import des écritures comptables est terminé/);
+    expect(liste.notifications[0].message).toMatch(/Terminé ne veut pas dire conforme/);
+    expect(await types('alice')).not.toContain('import.termine');
+  });
+
+  it('import en échec : prévenu aussi, avec un titre qui le dit', async () => {
+    const faux = await deposer('remi', dossier, Buffer.from('ceci n’est pas un fichier des écritures comptables\n'.repeat(20)), { usage: 'fec', exerciceId: exercice, statutDonnees: 'travail_avant_cloture' }, 'faux-fec.txt');
+    const lot = await attendreLot('remi', faux.fin.json.lotImportId);
+    expect(lot.json.statut).toBe('echec');
+    const liste = await attendre(() => notifs('remi'), (n) => n.notifications.some((x: any) => x.type === 'import.echec'));
+    expect(liste.notifications[0]).toMatchObject({ type: 'import.echec', titre: 'L’import des écritures comptables a échoué' });
+  });
+
+  it('constat affecté : la personne désignée est prévenue ; se l’affecter soi-même ne notifie personne', async () => {
+    const revue = await attendre(() => api('remi', 'GET', `/v1/exercices/${exercice}/revue`), (r) => r.json?.execution?.statut === 'termine' && r.json.constats?.length >= 2, 120_000);
+    constats = revue.json.constats;
+    const avant = (await notifs('remi')).total;
+    expect((await api('alice', 'PATCH', `/v1/constats/${constats[0].id}`, { action: 'affecter', affecteA: DEMO.remi })).statut).toBeLessThan(300);
+    const liste = await notifs('remi');
+    expect(liste.total).toBe(avant + 1);
+    expect(liste.notifications[0]).toMatchObject({ type: 'constat.affecte', titre: 'Un constat de révision vous a été affecté', lien: `/dossiers/${dossier}/revision` });
+    expect(liste.notifications[0].message).toContain(constats[0].controleId);
+    const alice = (await notifs('alice')).total;
+    expect((await api('alice', 'PATCH', `/v1/constats/${constats[1].id}`, { action: 'affecter', affecteA: DEMO.alice })).statut).toBeLessThan(300);
+    expect((await api('remi', 'PATCH', `/v1/constats/${constats[0].id}`, { action: 'prendre_en_charge' })).statut).toBeLessThan(300);
+    expect((await notifs('alice')).total).toBe(alice);
+    expect((await notifs('remi')).total).toBe(avant + 1);
+  });
+
+  it('préférences : une famille désactivée n’est plus notifiée à cette personne, et à elle seule ; rien d’extérieur à régler', async () => {
+    const p = (await api('remi', 'GET', '/v1/notifications/preferences')).json;
+    expect(p.envoiExterne).toBe(false);
+    expect(p.familles.map((f: any) => [f.famille, f.active])).toEqual([['regles', true], ['pieces', true], ['imports', true], ['constats', true], ['restitutions', true]]);
+    expect((await api('remi', 'PUT', '/v1/notifications/preferences', { famille: 'inconnue', active: false })).statut).toBe(400);
+    expect((await api('remi', 'PUT', '/v1/notifications/preferences', { famille: 'constats', active: 'non' })).statut).toBe(400);
+    expect((await api('remi', 'PUT', '/v1/notifications/preferences', { famille: 'constats', active: false })).json).toMatchObject({ famille: 'constats', active: false });
+    expect((await api('remi', 'GET', '/v1/notifications/preferences')).json.familles.find((f: any) => f.famille === 'constats').active).toBe(false);
+    // Les préférences d'Alice ne sont pas touchées par celles de Rémi.
+    expect((await api('alice', 'GET', '/v1/notifications/preferences')).json.familles.every((f: any) => f.active)).toBe(true);
+
+    const avant = (await notifs('remi')).total;
+    expect((await api('alice', 'PATCH', `/v1/constats/${constats[1].id}`, { action: 'affecter', affecteA: DEMO.remi })).statut).toBeLessThan(300);
+    expect((await notifs('remi')).total).toBe(avant); // famille désactivée : pas de notification, les anciennes restent
+    // Les autres familles restent actives pour lui.
+    const d = await deposer('remi', dossier, Buffer.from('toujours pas un fichier des écritures comptables\n'.repeat(20)), { usage: 'fec', exerciceId: exercice, statutDonnees: 'travail_avant_cloture' }, 'faux-fec-2.txt');
+    await attendreLot('remi', d.fin.json.lotImportId);
+    await attendre(() => notifs('remi'), (n) => n.total === avant + 1);
+    // Réactivée : notifié de nouveau.
+    expect((await api('remi', 'PUT', '/v1/notifications/preferences', { famille: 'constats', active: true })).json.active).toBe(true);
+    expect((await api('alice', 'PATCH', `/v1/constats/${constats[1].id}`, { action: 'affecter', affecteA: DEMO.remi })).statut).toBeLessThan(300);
+    expect((await notifs('remi')).notifications[0].type).toBe('constat.affecte');
+    expect((await notifs('remi')).total).toBe(avant + 2);
+    // Famille à deux préfixes : désactiver « restitutions » coupe les archives de dossier ET de cabinet.
+    await api('remi', 'PUT', '/v1/notifications/preferences', { famille: 'restitutions', active: false });
+    const lignes = (await editeur.query('select famille, active from preferences_notification where cabinet_id = $1 and utilisateur_id = $2 order by famille', [cabinet, DEMO.remi])).rows;
+    expect(lignes).toEqual([{ famille: 'constat', active: true }, { famille: 'restitution', active: false }, { famille: 'restitution_cabinet', active: false }]);
   });
 });

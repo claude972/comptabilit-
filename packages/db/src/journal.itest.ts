@@ -560,3 +560,67 @@ describe('notifications internes : écriture contrôlée, lecture par le seul de
     expect(apres.lue_le).not.toBeNull();
   });
 });
+
+describe('notifications : fin d’import et préférences, au niveau de la base', () => {
+  const lot = async (extra: { campagne?: boolean } = {}) => {
+    const campagne = extra.campagne ? (await admin.query(`insert into campagnes_import (cabinet_id, libelle, type, cree_par) values ($1, 'Campagne d’essai', 'fec', $2) returning id`, [DEMO.cabinetA, DEMO.chloe])).rows[0].id : null;
+    return (await admin.query(`insert into lots_import (cabinet_id, entite_id, type, cle_idempotence, lance_par, campagne_id) values ($1, $2, 'fec', gen_random_uuid()::text, $3, $4) returning id`, [DEMO.cabinetA, DEMO.dupain, DEMO.chloe, campagne])).rows[0].id as string;
+  };
+  /** Change le statut d'un lot comme le fait le worker : contexte du cabinet, sans utilisateur. */
+  const passer = (id: string, statut: string) => worker.avecContexte({ cabinetId: DEMO.cabinetA }, (tx) => tx.execute(sql`update lots_import set statut = ${statut}::statut_lot where id = ${id}::uuid`));
+  const recues = async (id: string) => (await admin.query('select type, destinataire_id, donnees from notifications where cible_id = $1 order by cree_le', [id])).rows;
+
+  it('seule la fin d’un traitement notifie la personne qui a lancé l’import : ni la prise en charge, ni une annulation, ni un rétablissement', async () => {
+    const id = await lot();
+    await passer(id, 'en_cours');
+    expect(await recues(id)).toEqual([]);
+    await passer(id, 'termine_avec_erreurs');
+    expect(await recues(id)).toEqual([{ type: 'import.termine', destinataire_id: DEMO.chloe, donnees: { type: 'fec', statut: 'termine_avec_erreurs', version: 1 } }]);
+    // Annulation puis rétablissement par une personne : le statut repasse à « terminé » sans nouvelle notification.
+    await passer(id, 'annule');
+    await passer(id, 'termine_avec_erreurs');
+    expect(await recues(id)).toHaveLength(1);
+    const echec = await lot();
+    await passer(echec, 'en_cours');
+    await passer(echec, 'echec');
+    expect((await recues(echec)).map((n) => n.type)).toEqual(['import.echec']);
+  });
+
+  it('les imports d’une campagne ne notifient pas un par un ; une notification impossible ne fait pas échouer l’import', async () => {
+    const enCampagne = await lot({ campagne: true });
+    await passer(enCampagne, 'en_cours');
+    await passer(enCampagne, 'termine');
+    expect(await recues(enCampagne)).toEqual([]);
+    // Changement de statut hors de tout contexte de cabinet (rôle d'administration) : pas de notification, pas d'erreur.
+    const horsContexte = await lot();
+    await admin.query(`update lots_import set statut = 'en_cours' where id = $1`, [horsContexte]);
+    await admin.query(`update lots_import set statut = 'termine' where id = $1`, [horsContexte]);
+    expect((await admin.query('select statut from lots_import where id = $1', [horsContexte])).rows[0].statut).toBe('termine');
+    expect(await recues(horsContexte)).toEqual([]);
+  });
+
+  it('préférences : chacun ne règle que les siennes, une famille désactivée n’est plus notifiée, une famille inconnue est refusée', async () => {
+    const regler = (qui: string, pour: string, famille: string, active: boolean) =>
+      app.avecContexte(ctx(DEMO.cabinetA, qui), (tx) =>
+        tx.execute(sql`insert into preferences_notification (cabinet_id, utilisateur_id, famille, active) values (${DEMO.cabinetA}::uuid, ${pour}::uuid, ${famille}, ${active})
+                       on conflict (cabinet_id, utilisateur_id, famille) do update set active = excluded.active`),
+      );
+    await expect(regler(DEMO.remi, DEMO.chloe, 'import', false)).rejects.toThrow(); // les préférences d'une autre personne
+    await expect(regler(DEMO.chloe, DEMO.chloe, 'famille_inconnue', false)).rejects.toThrow();
+    await regler(DEMO.chloe, DEMO.chloe, 'import', false);
+    expect(await app.avecContexte(ctx(DEMO.cabinetA, DEMO.remi), (tx) => tx.select().from(s.preferencesNotification))).toEqual([]); // invisibles pour un autre
+    const id = await lot();
+    await passer(id, 'en_cours');
+    await passer(id, 'termine');
+    expect(await recues(id)).toEqual([]);
+    // Les autres familles restent notifiées, et la réactivation rétablit la notification.
+    await app.avecContexte(ctx(DEMO.cabinetA, DEMO.alice), (tx) => notifier(tx, [DEMO.chloe], { type: 'constat.affecte', cibleId: 'pref-1' }));
+    expect(await recues('pref-1')).toHaveLength(1);
+    await regler(DEMO.chloe, DEMO.chloe, 'import', true);
+    const autre = await lot();
+    await passer(autre, 'en_cours');
+    await passer(autre, 'termine');
+    expect((await recues(autre)).map((n) => n.type)).toEqual(['import.termine']);
+    await expect(app.avecContexte(ctx(DEMO.cabinetA, DEMO.chloe), (tx) => tx.execute(sql`delete from preferences_notification`))).rejects.toThrow();
+  });
+});

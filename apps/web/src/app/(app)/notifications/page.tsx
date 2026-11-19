@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ErreurAcces } from '@/components/erreurs';
+import { type FamilleNotification, PreferencesNotification } from '@/components/preferences-notification';
 import { BoutonAction } from '@/components/revision-actions';
 import { Alerte, Carte, Etiquette, Titre } from '@/components/ui/base';
 import { formaterHorodatage } from '@/lib/montants';
@@ -21,7 +22,7 @@ interface PageNotifications {
 export default async function PageNotificationsInternes({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const brute = (await searchParams).page;
   const page = Math.max(1, Number.parseInt((Array.isArray(brute) ? brute[0] : brute) ?? '1', 10) || 1);
-  const r = await tenter<PageNotifications>(`v1/notifications?page=${page}`);
+  const [r, preferences] = await Promise.all([tenter<PageNotifications>(`v1/notifications?page=${page}`), tenter<{ familles: FamilleNotification[] }>('v1/notifications/preferences')]);
   if (!r.ok) return <ErreurAcces statut={r.statut} message={r.message} />;
   const d = r.donnees;
   return (
@@ -57,6 +58,11 @@ export default async function PageNotificationsInternes({ searchParams }: { sear
           </li>
         ))}
       </ul>
+      {preferences.ok ? (
+        <Carte>
+          <PreferencesNotification familles={preferences.donnees.familles} />
+        </Carte>
+      ) : null}
       {d.total > d.taillePage || page > 1 ? (
         <nav aria-label="Pages de notifications" className="flex flex-wrap items-center gap-3">
           {page > 1 ? <Link href={`/notifications?page=${page - 1}`} prefetch={false} rel="prev">← Plus récentes</Link> : <span className="text-texte-doux">← Plus récentes</span>}

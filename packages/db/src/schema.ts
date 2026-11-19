@@ -19,6 +19,7 @@ import {
   numeric,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -1205,4 +1206,21 @@ export const notifications = pgTable(
     lueLe: horodatage('lue_le'),
   },
   (t) => [index('notifications_destinataire').on(t.destinataireId, t.lueLe, t.creeLe)],
+);
+
+/**
+ * Préférences de notification INTERNES d'une personne dans un cabinet : une famille désactivée n'est plus notifiée.
+ * Absence de ligne = famille active. Ne concerne que l'application : il n'existe aucun envoi extérieur à régler.
+ */
+export const preferencesNotification = pgTable(
+  'preferences_notification',
+  {
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    utilisateurId: uuid('utilisateur_id').notNull().references(() => utilisateurs.id),
+    /** Préfixe du type de notification : regle, document, restitution, restitution_cabinet, import, constat. */
+    famille: text('famille').notNull(),
+    active: boolean('active').notNull(),
+    majLe: horodatage('maj_le').notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.cabinetId, t.utilisateurId, t.famille] })],
 );

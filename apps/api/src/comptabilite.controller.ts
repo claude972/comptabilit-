@@ -14,7 +14,7 @@ import {
   Res,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { type AccesBd, and, asc, desc, eq, inArray, journaliser, schema as s, type Tx } from '@comtaple/db';
+import { type AccesBd, and, asc, desc, eq, inArray, journaliser, notifier, schema as s, type Tx } from '@comtaple/db';
 import type { Files, Stockage } from '@comtaple/plateforme';
 import type { Response } from 'express';
 import { z } from 'zod';
@@ -223,6 +223,8 @@ export class ComptabiliteController {
         })
         .where(eq(s.constats.id, id))
         .returning();
+      // La personne à qui le constat est affecté est prévenue dans l'application (jamais l'auteur de l'affectation lui-même).
+      if (d.action === 'affecter') await notifier(tx, [d.affecteA], { type: 'constat.affecte', entiteId: c.entiteId, cibleType: 'constat', cibleId: id, donnees: { controleId: c.controleId } });
       await tx.insert(s.decisions).values({
         cabinetId: acces.cabinetId,
         entiteId: c.entiteId,

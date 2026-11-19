@@ -31,7 +31,8 @@ for (const l of readFileSync(join(racine, '.env'), 'utf8').split('\n')) {
   const m = /^([A-Z0-9_]+)=(.*)$/.exec(l.trim());
   if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2];
 }
-const DEPOT = join(racine, 'var', 'sauvegardes', 'objets');
+// Dépôt des fichiers d'objets ; SAUVEGARDE_DEPOT_OBJETS désigne un autre dépôt (essai de restauration depuis des copies déchiffrées).
+const DEPOT = process.env.SAUVEGARDE_DEPOT_OBJETS ? process.env.SAUVEGARDE_DEPOT_OBJETS : join(racine, 'var', 'sauvegardes', 'objets');
 const cheminBlob = (sha) => join(DEPOT, sha.slice(0, 2), sha);
 
 const client = (endpoint, cle, secret) => new S3Client({ endpoint, region: process.env.S3_REGION ?? 'local', forcePathStyle: true, credentials: { accessKeyId: cle, secretAccessKey: secret } });

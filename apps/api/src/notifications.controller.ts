@@ -1,8 +1,10 @@
-import { BadRequestException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { BadRequestException, Body, Controller, Get, HttpCode, Inject, NotFoundException, Param, Post, Put, Query } from '@nestjs/common';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { z } from 'zod';
 import { type AccesBd, sql } from '@comtaple/db';
 import { type Acces, AccesCourant, exigerUuid } from './acces.js';
 import { BD } from './jetons.js';
+import { schemaOpenApi, valider } from './validation.js';
 
 interface LigneNotification {
   id: string;
@@ -40,6 +42,19 @@ export function presenterNotification(n: LigneNotification): { titre: string; me
       return { titre: 'Un complément vous est demandé sur une pièce', message: `Le cabinet a posé une question sur une pièce déposée${dossier}.`, lien: n.cibleId ? `/depots/${n.cibleId}` : '/depots' };
     case 'document.reponse':
       return { titre: 'Une réponse a été apportée à votre demande de complément', message: `Le déposant a répondu sur une pièce${dossier}.`, lien: n.cibleId ? `/depots/${n.cibleId}` : '/depots' };
+    case 'import.termine':
+    case 'import.echec': {
+      const quoi = n.donnees.type === 'fec' ? 'des écritures comptables' : 'du relevé bancaire';
+      const lien = n.entiteId ? `/dossiers/${n.entiteId}/${n.donnees.type === 'fec' ? 'comptabilite' : 'banque'}` : null;
+      if (n.type === 'import.echec') return { titre: `L’import ${quoi} a échoué`, message: `Aucune donnée n’a été prise en compte ; le rapport d’import en donne la raison${dossier}.`, lien };
+      return {
+        titre: n.donnees.statut === 'termine_avec_erreurs' ? `L’import ${quoi} est terminé, avec des anomalies` : `L’import ${quoi} est terminé`,
+        message: `Le rapport d’import est disponible${dossier}. Terminé ne veut pas dire conforme : lisez le rapport.`,
+        lien,
+      };
+    }
+    case 'constat.affecte':
+      return { titre: 'Un constat de révision vous a été affecté', message: `Constat du contrôle ${texte(n.donnees.controleId)} à examiner${dossier}.`, lien: n.entiteId ? `/dossiers/${n.entiteId}/revision` : null };
     case 'restitution.prete':
       return { titre: 'L’archive de restitution du dossier est prête', message: `Elle peut être téléchargée${dossier}.`, lien: n.entiteId ? `/dossiers/${n.entiteId}/restitution` : null };
     case 'restitution.echec':
@@ -52,6 +67,16 @@ export function presenterNotification(n: LigneNotification): { titre: string; me
       return { titre: 'Notification', message: '', lien: null };
   }
 }
+
+/** Familles de notifications réglables par chacun. La clé de base est le préfixe du type (`regle.a_decider` → `regle`). */
+export const FAMILLES_NOTIFICATION = [
+  { famille: 'regles', prefixes: ['regle'], libelle: 'Règles du cabinet et correspondances à décider ou décidées' },
+  { famille: 'pieces', prefixes: ['document'], libelle: 'Compléments demandés sur une pièce et réponses' },
+  { famille: 'imports', prefixes: ['import'], libelle: 'Imports terminés ou en échec' },
+  { famille: 'constats', prefixes: ['constat'], libelle: 'Constats de révision qui me sont affectés' },
+  { famille: 'restitutions', prefixes: ['restitution', 'restitution_cabinet'], libelle: 'Archives de restitution prêtes ou en échec' },
+] as const;
+const preference = z.object({ famille: z.enum(FAMILLES_NOTIFICATION.map((f) => f.famille) as [string, ...string[]]), active: z.boolean() });
 
 @ApiTags('Notifications')
 @ApiBearerAuth()
@@ -100,6 +125,35 @@ export class NotificationsController {
     return this.bd.avecContexte(acces, async (tx) => {
       const [d] = (await tx.execute(sql`select count(*)::int as "nonLues" from notifications where destinataire_id = ${acces.utilisateurId}::uuid and lue_le is null`)).rows as Array<{ nonLues: number }>;
       return { nonLues: d?.nonLues ?? 0 };
+    });
+  }
+
+  @Get('preferences')
+  @ApiOperation({
+    summary: 'Mes préférences de notification dans l’application',
+    description: 'Par famille de notifications. Une famille désactivée n’est plus notifiée à l’appelant ; les notifications déjà reçues restent. Aucun réglage d’envoi extérieur n’existe : rien n’est jamais envoyé hors de l’application.',
+  })
+  async preferences(@AccesCourant() acces: Acces) {
+    return this.bd.avecContexte(acces, async (tx) => {
+      const lignes = (await tx.execute(sql`select famille, active from preferences_notification where utilisateur_id = ${acces.utilisateurId}::uuid`)).rows as Array<{ famille: string; active: boolean }>;
+      const inactives = new Set(lignes.filter((l) => !l.active).map((l) => l.famille));
+      return { envoiExterne: false, familles: FAMILLES_NOTIFICATION.map((f) => ({ famille: f.famille, libelle: f.libelle, active: !f.prefixes.some((p) => inactives.has(p)) })) };
+    });
+  }
+
+  @Put('preferences')
+  @ApiOperation({ summary: 'Activer ou désactiver une famille de notifications pour moi, dans ce cabinet' })
+  @ApiBody({ schema: schemaOpenApi(preference) })
+  async reglerPreference(@AccesCourant() acces: Acces, @Body() corps: unknown) {
+    const d = valider(preference, corps);
+    const f = FAMILLES_NOTIFICATION.find((x) => x.famille === d.famille)!;
+    return this.bd.avecContexte(acces, async (tx) => {
+      for (const prefixe of f.prefixes) {
+        await tx.execute(sql`
+          insert into preferences_notification (cabinet_id, utilisateur_id, famille, active) values (${acces.cabinetId}::uuid, ${acces.utilisateurId}::uuid, ${prefixe}, ${d.active})
+          on conflict (cabinet_id, utilisateur_id, famille) do update set active = excluded.active, maj_le = now()`);
+      }
+      return { famille: f.famille, libelle: f.libelle, active: d.active };
     });
   }
 

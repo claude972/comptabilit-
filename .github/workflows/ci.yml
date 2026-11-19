@@ -1,6 +1,6 @@
-# Intégration continue. ÉTAT au 2026-11-19 : première exécution entièrement réussie, run 44560095560 (commit af548a9),
-# après deux corrections établies par le diagnostic publié en annotations (docs/decisions.md, D-063). L'étape Firefox a
-# été ajoutée ensuite. Voir docs/rapport-de-tests.md.
+# Intégration continue. Toutes les étapes ont réussi pour la première fois le 2026-11-19 (run 44560095560), Firefox compris
+# à partir du run 44571948858. Le diagnostic d'un échec est publié en annotations de l'exécution, lisibles sans compte
+# (docs/decisions.md, D-063). Dernier résultat connu : docs/rapport-de-tests.md.
 name: ci
 on:
   push:

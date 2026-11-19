@@ -24,6 +24,14 @@ export interface TacheControles {
   cabinetId: string;
   executionId: string;
 }
+export interface TacheImportReleve {
+  cabinetId: string;
+  lotImportId: string;
+}
+export interface TacheRapprochement {
+  cabinetId: string;
+  executionId: string;
+}
 export interface TacheDossierRevision {
   cabinetId: string;
   exportId: string;
@@ -72,6 +80,12 @@ export class Files {
   }
   executerControles(t: TacheControles) {
     return this.comptabilite.add('controles', t, { jobId: `ctl-${t.executionId}` });
+  }
+  importerReleve(t: TacheImportReleve) {
+    return this.comptabilite.add('importer-releve', t, { jobId: `rel-${t.lotImportId}-${Date.now()}` });
+  }
+  executerRapprochement(t: TacheRapprochement) {
+    return this.comptabilite.add('rapprochement', t, { jobId: `rap-${t.executionId}` });
   }
   genererDossier(t: TacheDossierRevision) {
     return this.exports.add('dossier-revision', t, { jobId: `exp-${t.exportId}` });

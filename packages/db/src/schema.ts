@@ -286,6 +286,8 @@ export const televersements = pgTable('televersements', {
   exerciceId: uuid('exercice_id').references(() => exercices.id),
   statutDonnees: statutDonnees('statut_donnees'),
   lotImportId: uuid('lot_import_id'),
+  /** Paramètres propres à l'usage (ex. profil de colonnes confirmé pour un relevé CSV). */
+  parametres: jsonb('parametres'),
   statut: statutTeleversement('statut').notNull().default('ouvert'),
   documentId: uuid('document_id'),
   creeLe: creeLe(),
@@ -406,18 +408,57 @@ export const lignesEcriture = pgTable(
   ],
 );
 
-export const mouvementsBancaires = pgTable('mouvements_bancaires', {
+/** Un relevé d'un compte bancaire tel que lu dans un fichier importé (un fichier peut contenir plusieurs relevés). */
+export const relevesBancaires = pgTable('releves_bancaires', {
   id: id(),
   cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
   entiteId: uuid('entite_id').notNull().references(() => entites.id),
-  lotImportId: uuid('lot_import_id').references(() => lotsImport.id),
+  lotImportId: uuid('lot_import_id').notNull().references(() => lotsImport.id),
+  format: text('format').notNull(),
   iban: text('iban'),
-  dateOperation: date('date_operation', { mode: 'string' }).notNull(),
-  dateValeur: date('date_valeur', { mode: 'string' }),
-  montant: montant('montant').notNull(),
-  libelle: text('libelle').notNull(),
-  referenceBanque: text('reference_banque'),
+  identifiant: text('identifiant'),
+  devise: text('devise'),
+  soldeOuverture: montant('solde_ouverture'),
+  dateOuverture: date('date_ouverture', { mode: 'string' }),
+  soldeCloture: montant('solde_cloture'),
+  dateCloture: date('date_cloture', { mode: 'string' }),
+  totalMouvements: montant('total_mouvements').notNull(),
+  nbMouvements: integer('nb_mouvements').notNull(),
+  /** ok | ecart | non_verifiable — « non vérifiable » n'est jamais assimilé à « ok ». */
+  cadrage: text('cadrage').notNull(),
+  ecart: montant('ecart'),
+  /** Relevé tel que produit par le moteur (sert à reconstituer l'entrée des contrôles). */
+  brut: jsonb('brut').notNull(),
+  creeLe: creeLe(),
 });
+
+export const mouvementsBancaires = pgTable(
+  'mouvements_bancaires',
+  {
+    id: id(),
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    entiteId: uuid('entite_id').notNull().references(() => entites.id),
+    /** Lot qui a introduit le mouvement ; un réimport ou un relevé chevauchant ne le duplique pas. */
+    lotImportId: uuid('lot_import_id').references(() => lotsImport.id),
+    releveId: uuid('releve_id').references(() => relevesBancaires.id),
+    rang: integer('rang').notNull().default(0),
+    cleIdempotence: text('cle_idempotence').notNull(),
+    iban: text('iban'),
+    identifiantCompte: text('identifiant_compte'),
+    devise: text('devise'),
+    dateOperation: date('date_operation', { mode: 'string' }).notNull(),
+    dateValeur: date('date_valeur', { mode: 'string' }),
+    /** Signé : positif = encaissement sur le compte, négatif = décaissement. */
+    montant: montant('montant').notNull(),
+    libelle: text('libelle').notNull(),
+    referenceBanque: text('reference_banque'),
+    referenceBoutEnBout: text('reference_bout_en_bout'),
+    contrepartieNom: text('contrepartie_nom'),
+    brut: jsonb('brut').notNull(),
+    creeLe: creeLe(),
+  },
+  (t) => [uniqueIndex('mouvements_idempotence').on(t.entiteId, t.cleIdempotence), index('mouvements_date').on(t.entiteId, t.dateOperation)],
+);
 
 /** Factures, avoirs, échéances : alimenté par les extractions validées. */
 export const factures = pgTable('factures', {
@@ -438,18 +479,58 @@ export const factures = pgTable('factures', {
   devise: text('devise').notNull().default('EUR'),
 });
 
-/** Liens pièce ↔ écriture ↔ mouvement (n-n), proposés ou validés, avec leurs critères. */
-export const rapprochements = pgTable('rapprochements', {
+/** Exécution du rapprochement banque ↔ comptabilité d'un exercice, figée sur une version des données. */
+export const executionsRapprochement = pgTable('executions_rapprochement', {
   id: id(),
   cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
   entiteId: uuid('entite_id').notNull().references(() => entites.id),
-  niveau: text('niveau').notNull(), // exact | regle | suggestion_ia
-  elements: jsonb('elements').notNull(),
-  criteres: jsonb('criteres').notNull(),
-  ecart: montant('ecart'),
-  statut: text('statut').notNull().default('propose'),
+  exerciceId: uuid('exercice_id').notNull().references(() => exercices.id),
+  lotImportId: uuid('lot_import_id').notNull().references(() => lotsImport.id),
+  versionDonnees: integer('version_donnees').notNull(),
+  statut: statutLot('statut').notNull().default('en_attente'),
+  obsolete: boolean('obsolete').notNull().default(false),
+  parametres: jsonb('parametres').notNull().default(sql`'{}'::jsonb`),
+  mesures: jsonb('mesures'),
+  /** Identifiants des lignes d'écriture de banque et des mouvements bancaires restés sans rapprochement. */
+  nonRapprochesEcritures: jsonb('non_rapproches_ecritures'),
+  nonRapprochesMouvements: jsonb('non_rapproches_mouvements'),
+  /** Plusieurs solutions équivalentes : aucune n'est retenue. */
+  ambiguites: jsonb('ambiguites'),
+  /** Recherches abandonnées (budget de combinaisons épuisé) : dit explicitement, jamais silencieux. */
+  abandons: jsonb('abandons'),
+  erreur: text('erreur'),
+  lancePar: uuid('lance_par').references(() => utilisateurs.id),
   creeLe: creeLe(),
+  termineLe: horodatage('termine_le'),
 });
+
+/** Liens écritures ↔ mouvements (n-n) proposés par le moteur, avec leurs critères ; validés ou rejetés par un humain. */
+export const rapprochements = pgTable(
+  'rapprochements',
+  {
+    id: id(),
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    entiteId: uuid('entite_id').notNull().references(() => entites.id),
+    exerciceId: uuid('exercice_id').notNull().references(() => exercices.id),
+    executionId: uuid('execution_id').notNull().references(() => executionsRapprochement.id),
+    niveau: text('niveau').notNull(), // exact | regle
+    regle: text('regle').notNull(),
+    /** Identifiants de lignes d'écriture (côté comptabilité). */
+    cotesEcritures: jsonb('cotes_ecritures').notNull(),
+    /** Identifiants de mouvements bancaires (côté banque). */
+    cotesMouvements: jsonb('cotes_mouvements').notNull(),
+    criteres: jsonb('criteres').notNull(),
+    explication: text('explication').notNull(),
+    ecart: montant('ecart').notNull(),
+    /** propose → valide | rejete ; une proposition n'est jamais une validation. */
+    statut: text('statut').notNull().default('propose'),
+    motif: text('motif'),
+    decidePar: uuid('decide_par').references(() => utilisateurs.id),
+    decideLe: horodatage('decide_le'),
+    creeLe: creeLe(),
+  },
+  (t) => [index('rapprochements_execution').on(t.executionId, t.statut)],
+);
 
 // ───────────────────────────── Contrôles, constats, décisions ─────────────────────────────
 

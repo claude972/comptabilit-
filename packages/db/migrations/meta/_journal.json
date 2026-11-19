@@ -36,6 +36,20 @@
       "when": 1795066205638,
       "tag": "0004_mail_securite",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795068379322,
+      "tag": "0005_banque",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795068386563,
+      "tag": "0006_banque_securite",
+      "breakpoints": true
     }
   ]
 }

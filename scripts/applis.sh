@@ -1,5 +1,5 @@
 #!/bin/sh
-# Démarre ou arrête l'API et le worker en local (journaux dans var/). Usage : scripts/applis.sh demarrer|arreter|etat
+# Démarre ou arrête l'API et le worker en local (journaux dans var/). Usage : scripts/applis.sh demarrer|arreter|etat|web
 set -eu
 cd "$(dirname "$0")/.."
 . "$HOME/.comtaple-outils/env.sh"
@@ -32,6 +32,12 @@ case "${1:-etat}" in
       echo "Web : non construit (pnpm --filter @comtaple/web run build)"
     fi
     echo "API : http://127.0.0.1:4000 (documentation /docs) — worker démarré." ;;
+  web)
+    # Redémarre UNIQUEMENT l'application web construite (sans toucher à l'API ni au worker).
+    [ -f var/web.pid ] && kill "$(cat var/web.pid)" 2>/dev/null || true
+    (cd apps/web && exec node node_modules/next/dist/bin/next start --port 3100) > var/web.log 2>&1 &
+    echo $! > var/web.pid
+    echo "Web : http://localhost:3100" ;;
   arreter) arreter; echo "Arrêtés." ;;
   etat)
     for nom in api worker web; do

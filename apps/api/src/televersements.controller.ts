@@ -31,7 +31,9 @@ const ouverture = z.object({
   sha256: z.string().regex(/^[0-9a-f]{64}$/, 'empreinte SHA-256 hexadécimale attendue'),
   typeMime: z.string().max(100).optional(),
   canal: z.enum(['telephone', 'ordinateur']),
-  usage: z.enum(['piece', 'fec']).default('piece'),
+  usage: z.enum(['piece', 'fec', 'banque']).default('piece'),
+  /** Relevé CSV : profil de colonnes confirmé par l'utilisateur (facultatif ; sinon proposition prudente du moteur). */
+  profilCsv: z.record(z.string(), z.unknown()).optional(),
   nature: z.enum(s.natureDocument.enumValues).default('a_qualifier'),
   commentaire: z.string().max(2000).optional(),
   exerciceId: uuid.optional(),
@@ -77,7 +79,7 @@ export class TeleversementsController {
       throw new BadRequestException('exerciceId et statutDonnees sont requis pour un import comptable');
     }
     return this.bd.avecContexte(acces, async (tx) => {
-      await exigerNiveau(tx, d.entiteId, d.usage === 'fec' ? 'collaboration' : 'depot');
+      await exigerNiveau(tx, d.entiteId, d.usage === 'piece' ? 'depot' : 'collaboration');
       if (d.exerciceId) {
         const [ex] = await tx.select().from(s.exercices).where(and(eq(s.exercices.id, d.exerciceId), eq(s.exercices.entiteId, d.entiteId)));
         if (!ex) throw new NotFoundException('Exercice introuvable pour ce dossier');
@@ -112,6 +114,7 @@ export class TeleversementsController {
           nature: d.nature,
           commentaire: d.commentaire ?? null,
           usage: d.usage,
+          parametres: d.profilCsv ? { profilCsv: d.profilCsv } : null,
           exerciceId: d.exerciceId ?? null,
           statutDonnees: d.statutDonnees ?? null,
           expireLe: sql`now() + interval '7 days'`,
@@ -243,6 +246,40 @@ export class TeleversementsController {
         return { t: maj!, nouveau: cree, lotImportId: lot!.id };
       }
 
+      if (t.usage === 'banque') {
+        // Relevé bancaire : un même fichier réimporté dans le même dossier renvoie le lot existant (idempotence).
+        const cle = `banque:${t.entiteId}:${sha256}`;
+        let [lot] = await tx.select().from(s.lotsImport).where(eq(s.lotsImport.cleIdempotence, cle));
+        let cree = false;
+        if (!lot) {
+          [lot] = await tx
+            .insert(s.lotsImport)
+            .values({
+              cabinetId: acces.cabinetId,
+              entiteId: t.entiteId,
+              type: 'releve_bancaire',
+              fichierId: fichier.id,
+              cleIdempotence: cle,
+              actif: false,
+              lancePar: acces.utilisateurId,
+              rapport: { nomFichier: t.nomFichier, ...((t.parametres as Record<string, unknown> | null) ?? {}) },
+            })
+            .returning();
+          cree = true;
+        }
+        const [maj] = await tx.update(s.televersements).set({ statut: 'complet', lotImportId: lot!.id }).where(eq(s.televersements.id, t.id)).returning();
+        await journaliser(tx, {
+          cabinetId: acces.cabinetId,
+          acteurId: acces.utilisateurId,
+          action: cree ? 'import.releve.recu' : 'import.releve.deja_importe',
+          cibleType: 'lot_import',
+          cibleId: lot!.id,
+          entiteId: t.entiteId,
+          details: { sha256, taille },
+        });
+        return { t: maj!, nouveau: cree, lotImportId: lot!.id, banque: true as const };
+      }
+
       // Pièce : doublon binaire dans le même dossier → nouvelle occurrence de réception, pas de nouveau document
       // (logique commune à tous les canaux, voir `enregistrerReception`).
       const r = await enregistrerReception(tx, {
@@ -268,7 +305,8 @@ export class TeleversementsController {
       await this.taches.analyserDocument({ cabinetId: acces.cabinetId, documentId: resultat.documentId }).catch(() => undefined);
     }
     if (resultat.nouveau && 'lotImportId' in resultat && resultat.lotImportId) {
-      await this.taches.importerFec({ cabinetId: acces.cabinetId, lotImportId: resultat.lotImportId }).catch(() => undefined);
+      if ('banque' in resultat) await this.taches.importerReleve({ cabinetId: acces.cabinetId, lotImportId: resultat.lotImportId }).catch(() => undefined);
+      else await this.taches.importerFec({ cabinetId: acces.cabinetId, lotImportId: resultat.lotImportId }).catch(() => undefined);
     }
     return {
       ...vue(resultat.t, this.cfg.TAILLE_MORCEAU),

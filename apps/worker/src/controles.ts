@@ -1,6 +1,7 @@
 import { CATALOGUE_CONTROLES, executerControles, type LigneEcriture } from '@comtaple/core';
-import { and, asc, desc, eq, journaliser, ne, schema as s, sql } from '@comtaple/db';
+import { and, desc, eq, journaliser, lt, ne, schema as s, sql } from '@comtaple/db';
 import type { TacheControles } from '@comtaple/plateforme';
+import { lignesDuLot, relevesDuDossier } from './banque.js';
 import type { Contexte } from './contexte.js';
 
 /** Contrôles dont la règle ou le seuil relève de la fiscalité métropolitaine (taux de TVA, tolérance des biens de faible valeur). */
@@ -20,37 +21,27 @@ export async function executerControlesExecution(c: Contexte, t: TacheControles)
     await tx.delete(s.constats).where(eq(s.constats.executionId, execution.id));
     await tx.delete(s.resultatsControles).where(eq(s.resultatsControles.executionId, execution.id));
 
-    const brutes = await tx
+    const lignes = await lignesDuLot(tx, execution.lotImportId);
+    // Exercice précédent : celui qui se termine juste avant, s'il a des données comptables actives (sinon CLO-002 reste non réalisé).
+    const [precedentEx] = await tx
       .select()
-      .from(s.lignesEcriture)
-      .where(eq(s.lignesEcriture.lotImportId, execution.lotImportId))
-      .orderBy(asc(s.lignesEcriture.numeroLigne));
-    const lignes: LigneEcriture[] = brutes.map((l) => ({
-      id: l.id,
-      numeroLigne: l.numeroLigne,
-      journalCode: l.journalCode,
-      journalLib: l.journalLib,
-      ecritureNum: l.ecritureNum,
-      ecritureDate: l.ecritureDate,
-      compteNum: l.compteNum,
-      compteLib: l.compteLib,
-      compAuxNum: l.compAuxNum,
-      compAuxLib: l.compAuxLib,
-      pieceRef: l.pieceRef,
-      pieceDate: l.pieceDate,
-      ecritureLib: l.ecritureLib,
-      debit: l.debit,
-      credit: l.credit,
-      ecritureLet: l.ecritureLet,
-      dateLet: l.dateLet,
-      validDate: l.validDate,
-      montantDevise: l.montantDevise,
-      idevise: l.idevise,
-    }));
+      .from(s.exercices)
+      .where(and(eq(s.exercices.entiteId, execution.entiteId), lt(s.exercices.fin, exercice.debut)))
+      .orderBy(desc(s.exercices.fin))
+      .limit(1);
+    let exercicePrecedent: { lignes: LigneEcriture[] } | null = null;
+    if (precedentEx) {
+      const [lotPrecedent] = await tx
+        .select()
+        .from(s.lotsImport)
+        .where(and(eq(s.lotsImport.exerciceId, precedentEx.id), eq(s.lotsImport.type, 'fec'), eq(s.lotsImport.actif, true)));
+      if (lotPrecedent) exercicePrecedent = { lignes: await lignesDuLot(tx, lotPrecedent.id) };
+    }
+    const releves = await relevesDuDossier(tx, execution.entiteId);
 
     const [entite] = await tx.select().from(s.entites).where(eq(s.entites.id, execution.entiteId));
     const territoire = entite?.territoireFiscal ?? 'a_confirmer';
-    const resultats = executerControles({ lignes, exercice: { debut: exercice.debut, fin: exercice.fin }, exercicePrecedent: null }).map((r) => {
+    const resultats = executerControles({ lignes, exercice: { debut: exercice.debut, fin: exercice.fin }, exercicePrecedent, releves: releves.length ? releves : null }).map((r) => {
       // Les règles fiscales implémentées sont celles de la France métropolitaine : hors de ce territoire (ou tant qu'il
       // n'est pas confirmé), le contrôle n'est PAS réalisé et le dit, au lieu d'appliquer une règle inadaptée.
       if (territoire === 'metropole' || !CONTROLES_FISCAUX_METROPOLE.has(r.controleId)) return r;

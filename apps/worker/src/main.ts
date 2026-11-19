@@ -3,6 +3,7 @@ import { chargerEnvLocal } from '@comtaple/db/env';
 import { connecteursMail, connexionRedis, FILES, Files, lireConfig, Stockage } from '@comtaple/plateforme';
 import { Worker } from 'bullmq';
 import { analyserDocument } from './analyse-document.js';
+import { executerRapprochement, importerReleve } from './banque.js';
 import type { Contexte } from './contexte.js';
 import { executerControlesExecution } from './controles.js';
 import { genererDossierRevision } from './dossier-revision.js';
@@ -22,7 +23,14 @@ const workers = [
   new Worker(FILES.documents, (job) => analyserDocument(c, job.data), { connection: connexionRedis(cfg.REDIS_URL), concurrency: 2, prefix }),
   new Worker(
     FILES.comptabilite,
-    (job) => (job.name === 'importer-fec' ? importerFec(c, job.data) : executerControlesExecution(c, job.data)),
+    (job) =>
+      job.name === 'importer-fec'
+        ? importerFec(c, job.data)
+        : job.name === 'importer-releve'
+          ? importerReleve(c, job.data)
+          : job.name === 'rapprochement'
+            ? executerRapprochement(c, job.data)
+            : executerControlesExecution(c, job.data),
     { connection: connexionRedis(cfg.REDIS_URL), concurrency: 2, prefix },
   ),
   new Worker(FILES.exports, (job) => genererDossierRevision(c, job.data), { connection: connexionRedis(cfg.REDIS_URL), concurrency: 1, prefix }),

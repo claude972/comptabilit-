@@ -98,6 +98,7 @@ export async function importerFec(c: Contexte, t: TacheImportFec): Promise<void>
           .where(eq(s.exercices.id, exercice.id))
           .returning();
         await tx.update(s.executionsControles).set({ obsolete: true }).where(eq(s.executionsControles.exerciceId, exercice.id));
+        await tx.update(s.executionsRapprochement).set({ obsolete: true }).where(eq(s.executionsRapprochement.exerciceId, exercice.id));
         await tx
           .update(s.constats)
           .set({ aRevoir: true })

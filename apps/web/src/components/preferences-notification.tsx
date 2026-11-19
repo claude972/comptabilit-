@@ -22,6 +22,10 @@ export function PreferencesNotification({ familles }: { familles: FamilleNotific
               <input
                 type="checkbox"
                 checked={f.active}
+                // Firefox rétablit, au rechargement, l'état qu'avaient les cases avant de quitter la page, par-dessus
+                // celui rendu par le serveur : la case pouvait alors afficher autre chose que le réglage enregistré
+                // (constaté en CI, run 44565575352). « autoComplete="off" » désactive ce rétablissement.
+                autoComplete="off"
                 data-famille={f.famille}
                 onChange={(e) => void appel.executer('v1/notifications/preferences', { method: 'PUT', json: { famille: f.famille, active: e.target.checked } }, e.target.checked ? 'Notifications réactivées.' : 'Notifications désactivées pour cette famille.')}
               />

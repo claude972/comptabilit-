@@ -1,7 +1,7 @@
 import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CATALOGUE_CONTROLES, executerControles } from '@comtaple/core';
-import { type AccesBd, and, desc, eq, isNull, journaliser, schema as s, sql, type Tx } from '@comtaple/db';
+import { type AccesBd, and, desc, eq, inArray, isNull, journaliser, schema as s, sql, type Tx } from '@comtaple/db';
 import { lignesDuLot, parametresApprouves } from '@comtaple/plateforme';
 import { z } from 'zod';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
@@ -35,7 +35,14 @@ export class ReglesController {
   @ApiOperation({ summary: 'Règles et paramètres propres au cabinet : propositions, règles approuvées, règles retirées (versions conservées)' })
   async lister(@AccesCourant() acces: Acces) {
     if (acces.role === 'client_deposant' || acces.role === 'client_lecture') throw new ForbiddenException('Réservé aux membres du cabinet');
-    return this.bd.avecContexte(acces, (tx) => tx.select().from(s.reglesCabinet).orderBy(desc(s.reglesCabinet.creeLe)).limit(500));
+    return this.bd.avecContexte(acces, async (tx) => {
+      const regles = await tx.select().from(s.reglesCabinet).orderBy(desc(s.reglesCabinet.creeLe)).limit(500);
+      // Noms des auteurs (membres du cabinet), pour qu'un réviseur sache qui a proposé et qui a décidé.
+      const ids = [...new Set(regles.flatMap((r) => [r.proposeePar, r.approuveePar]).filter((x): x is string => Boolean(x)))];
+      const noms = ids.length ? await tx.select({ id: s.utilisateurs.id, nom: s.utilisateurs.nom }).from(s.utilisateurs).where(inArray(s.utilisateurs.id, ids)) : [];
+      const nomDe = new Map(noms.map((n) => [n.id, n.nom]));
+      return regles.map((r) => ({ ...r, proposeeParNom: r.proposeePar ? (nomDe.get(r.proposeePar) ?? null) : null, decideeParNom: r.approuveePar ? (nomDe.get(r.approuveePar) ?? null) : null }));
+    });
   }
 
   @Post()
@@ -156,7 +163,7 @@ export class ReglesController {
       if (!(await this.gestionnaire(tx))) throw new ForbiddenException('Réservé aux administrateurs et associés du cabinet');
       const r = await this.charger(tx, id);
       if (r.statut !== 'proposee') throw new ConflictException(`Règle au statut « ${r.statut} »`);
-      const [maj] = await tx.update(s.reglesCabinet).set({ statut: 'refusee', approuveePar: acces.utilisateurId, decideeLe: sql`now()` }).where(eq(s.reglesCabinet.id, id)).returning();
+      const [maj] = await tx.update(s.reglesCabinet).set({ statut: 'refusee', approuveePar: acces.utilisateurId, decideeLe: sql`now()`, motifDecision: d.motif }).where(eq(s.reglesCabinet.id, id)).returning();
       await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'regle.refusee', cibleType: 'regle_cabinet', cibleId: id, entiteId: r.entiteId, details: { motif: d.motif } });
       return maj;
     });

@@ -97,6 +97,11 @@ describe('recherche documentaire autorisée', () => {
     expect(r.json.pieces.length).toBeGreaterThan(0);
     expect(r.json.pieces[0]).toMatchObject({ documentId: expect.any(String), page: expect.any(Number) });
     expect(r.json.pieces[0].extrait).toMatch(/«[^»]+»/); // terme surligné par des guillemets, jamais par du HTML
+    // Forme structurée, sans ambiguïté avec les guillemets d'une pièce : segments de texte, le terme trouvé marqué.
+    const segments = r.json.pieces[0].segments;
+    expect(segments.some((x: any) => x.trouve && /factur/i.test(x.texte))).toBe(true);
+    expect(segments.map((x: any) => x.texte).join('')).toBe(r.json.pieces[0].extrait.replace(/[«»]/g, ''));
+    expect(JSON.stringify(r.json)).not.toMatch(/[\uE000\uE001]/);
     expect(JSON.stringify(r.json)).not.toMatch(/<b>|<\/b>/);
     const ecr = await api('remi', 'GET', `/v1/recherche?entiteId=${DEMO.dupain}&q=${encodeURIComponent('banque OR vente OR achat')}`);
     expect(ecr.json.ecritures.length).toBeGreaterThan(0);

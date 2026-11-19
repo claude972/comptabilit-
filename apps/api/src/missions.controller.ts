@@ -175,6 +175,7 @@ export class MissionsController {
           dateEffet: t.dateTravail,
           contenu: { ...contenu, perimetre: [...contenu.perimetre, { prestation: t.prestation as ContenuLettre['perimetre'][number]['prestation'], precision: `Ajout proposé à la suite du travail du ${t.dateTravail}` }] },
           origine: 'proposition_avenant',
+          estimation,
           version: max + 1,
           redigeePar: acces.utilisateurId,
         })

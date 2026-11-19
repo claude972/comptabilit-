@@ -17,6 +17,18 @@ const dossier = z.object({
   territoireFiscal: z.enum(s.territoireFiscal.enumValues),
   codeNaf: z.string().max(10).optional(),
 });
+/** Modification : les champs facultatifs peuvent être EFFACÉS (null) ; le référentiel comptable est modifiable. */
+const modificationDossier = z
+  .object({
+    raisonSociale: z.string().min(1).max(200),
+    siren: z.string().regex(/^\d{9}$/, 'SIREN à 9 chiffres').nullable(),
+    formeJuridique: z.string().max(50).nullable(),
+    regimeFiscal: z.string().max(50).nullable(),
+    territoireFiscal: z.enum(s.territoireFiscal.enumValues),
+    codeNaf: z.string().max(10).nullable(),
+    referentielComptable: z.string().min(1).max(50),
+  })
+  .partial();
 const exercice = z.object({ debut: dateIso, fin: dateIso }).refine((e) => e.debut < e.fin, 'la fin doit suivre le début');
 const habilitation = z.object({ niveau: z.enum(s.niveauHabilitation.enumValues) });
 const membre = z.object({ role: z.enum(s.roleCabinet.enumValues).optional(), actif: z.boolean().optional() }).refine((m) => m.role !== undefined || m.actif !== undefined, 'aucune modification');
@@ -162,10 +174,10 @@ export class AdministrationController {
 
   @Patch('dossiers/:id')
   @ApiOperation({ summary: 'Modifier les caractéristiques d’un dossier, dont le territoire fiscal (gestionnaires)' })
-  @ApiBody({ schema: schemaOpenApi(dossier.partial()) })
+  @ApiBody({ schema: schemaOpenApi(modificationDossier) })
   async modifierDossier(@AccesCourant() acces: Acces, @Param('id') id: string, @Body() corps: unknown) {
     exigerUuid(id);
-    const d = valider(dossier.partial().refine((x) => Object.keys(x).length > 0, 'aucune modification'), corps);
+    const d = valider(modificationDossier.refine((x) => Object.keys(x).length > 0, 'aucune modification'), corps);
     if (d.siren && !validerSiren(d.siren).valide) throw new BadRequestException('SIREN invalide (clé de contrôle)');
     return this.bd.avecContexte(acces, async (tx) => {
       await exigerGestionnaire(tx);

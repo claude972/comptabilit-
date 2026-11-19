@@ -18,6 +18,8 @@ import {
   Res,
   ServiceUnavailableException,
   UnauthorizedException,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { type AccesBd, and, count, desc, eq, journaliser, lt, schema as s, sql, type Tx } from '@comtaple/db';
@@ -466,6 +468,7 @@ export class MailController {
   @HttpCode(204)
   @ApiOperation({ summary: 'Push Pub/Sub de Gmail (public) : jeton OIDC validé, puis mise en file d’une synchronisation' })
   async pushGmail(@Headers('authorization') autorisation: string | undefined, @Body() corps: unknown) {
+    limiterDebit('gmail');
     const push = { audience: this.cfg.GOOGLE_PUSH_AUDIENCE, compteService: this.cfg.GOOGLE_PUSH_COMPTE_SERVICE };
     if (!this.mail.fournisseurs.gmail || push.audience === '' || push.compteService === '') throw new NotFoundException();
     let adresse: string;
@@ -496,6 +499,7 @@ export class MailController {
     summary: 'Notifications Microsoft Graph (public) : validation du point d’entrée, clientState vérifié, puis mise en file',
   })
   async notificationsGraph(@Query('validationToken') jetonValidation: string | undefined, @Body() corps: unknown, @Res() res: Response) {
+    limiterDebit('microsoft');
     if (!this.mail.fournisseurs.microsoft || !this.mail.cles) throw new NotFoundException();
     if (typeof jetonValidation === 'string') {
       // Validation du point d'entrée : le jeton est renvoyé tel quel, en texte brut (jamais interprété comme HTML).
@@ -533,4 +537,20 @@ export class MailController {
     for (const [connexionId, cabinetId] of synchronisations) await this.taches.synchroniserMail({ cabinetId, connexionId, declencheur: 'notification' });
     res.status(202).end();
   }
+}
+
+/**
+ * Limitation de débit des points d'entrée PUBLICS de notification (par processus, fenêtre glissante d'une minute).
+ * Une notification ne fait que déclencher une synchronisation : en refuser sous charge ne perd rien, le rattrapage
+ * périodique récupère. Limite globale par fournisseur, volontairement simple (pas de dépendance à l'adresse source,
+ * peu fiable derrière un répartiteur).
+ */
+const FENETRE_MS = 60_000;
+const LIMITE_PAR_MINUTE = 300;
+const horodatages: Record<string, number[]> = {};
+export function limiterDebit(cle: string, maintenant = Date.now()): void {
+  const liste = (horodatages[cle] ??= []);
+  while (liste.length && liste[0]! <= maintenant - FENETRE_MS) liste.shift();
+  if (liste.length >= LIMITE_PAR_MINUTE) throw new HttpException('Trop de notifications : réessayer plus tard', HttpStatus.TOO_MANY_REQUESTS);
+  liste.push(maintenant);
 }

@@ -75,6 +75,14 @@ describe('dossiers et habilitations', () => {
     expect((await api('client', 'GET', '/v1/dossiers')).json.map((d: any) => d.id)).not.toContain(dossierId);
   });
 
+  it('les champs facultatifs d’un dossier se modifient et s’effacent ; le référentiel comptable est modifiable', async () => {
+    const m = await api('alice', 'PATCH', `/v1/dossiers/${dossierId}`, { formeJuridique: 'SARL', codeNaf: '10.71C', referentielComptable: 'PCG' });
+    expect(m.json).toMatchObject({ formeJuridique: 'SARL', codeNaf: '10.71C', referentielComptable: 'PCG' });
+    expect((await api('alice', 'PATCH', `/v1/dossiers/${dossierId}`, { formeJuridique: null, codeNaf: null })).json).toMatchObject({ formeJuridique: null, codeNaf: null });
+    expect((await api('alice', 'PATCH', `/v1/dossiers/${dossierId}`, { raisonSociale: null })).statut).toBe(400); // obligatoire
+    expect((await api('alice', 'PATCH', `/v1/dossiers/${dossierId}`, { referentielComptable: '' })).statut).toBe(400);
+  });
+
   it('liste les cabinets du compte, sans exiger le choix préalable d’un cabinet', async () => {
     const r = await api('alice', 'GET', '/v1/cabinets');
     expect(r.json).toEqual([{ id: DEMO.cabinetA, nom: expect.any(String), role: 'administrateur' }]);
@@ -86,6 +94,12 @@ describe('listes paginées et téléversements abandonnés', () => {
   it('les documents sont paginés, et « mes dépôts » filtre aussi pour un collaborateur', async () => {
     const tout = await api('chloe', 'GET', `/v1/documents?entiteId=${DEMO.dupain}`);
     expect(tout.json).toMatchObject({ page: 1, taillePage: 100 });
+    // Total et décomptes par statut sur tout le dossier, pas seulement sur la page.
+    expect(tout.json.total).toBeGreaterThanOrEqual(tout.json.documents.length);
+    expect(Object.values(tout.json.parStatut).reduce((t: number, n: any) => t + n, 0)).toBe(tout.json.total);
+    const filtre = await api('chloe', 'GET', `/v1/documents?entiteId=${DEMO.dupain}&statut=traite`);
+    expect(filtre.json.total).toBe(tout.json.parStatut.traite ?? 0);
+    expect(filtre.json.parStatut).toEqual(tout.json.parStatut);
     expect(typeof tout.json.suite).toBe('boolean');
     const miens = await api('chloe', 'GET', `/v1/documents?entiteId=${DEMO.dupain}&deposant=moi`);
     expect(miens.json.documents.length).toBeLessThanOrEqual(tout.json.documents.length);

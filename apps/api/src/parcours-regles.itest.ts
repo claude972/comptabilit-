@@ -78,7 +78,7 @@ describe('règles propres au cabinet', () => {
     const sienne = await api('alice', 'POST', '/v1/regles', { controleId: 'TIE-002', entiteId, motif: 'Essai d’auto-approbation', parametres: { seuil: '10.00' } });
     await api('alice', 'POST', `/v1/regles/${sienne.json.id}/impact`, { exerciceId });
     expect((await api('alice', 'POST', `/v1/regles/${sienne.json.id}/approuver`)).statut).toBe(403);
-    expect((await api('alice', 'POST', `/v1/regles/${sienne.json.id}/refuser`, { motif: 'Essai' })).json.statut).toBe('refusee');
+    expect((await api('alice', 'POST', `/v1/regles/${sienne.json.id}/refuser`, { motif: 'Essai' })).json).toMatchObject({ statut: 'refusee', motifDecision: 'Essai' });
 
     const ok = await api('alice', 'POST', `/v1/regles/${regleId}/approuver`);
     expect(ok.json).toMatchObject({ statut: 'approuvee', approuveePar: DEMO.alice });
@@ -98,6 +98,7 @@ describe('règles propres au cabinet', () => {
     expect(sans.source.regleCabinet).toBeNull();
     // L'historique conserve toutes les versions, et le journal d'audit la chaîne des décisions.
     const liste = (await api('remi', 'GET', '/v1/regles')).json.filter((r: any) => r.entiteId === entiteId);
+    expect(liste.find((r: any) => r.id === regleId)).toMatchObject({ proposeeParNom: 'Chloé Collab', decideeParNom: 'Alice Admin' }); // un réviseur voit qui a proposé et décidé
     expect(liste.map((r: any) => r.statut).sort()).toEqual(['refusee', 'retiree']);
     const actions = (await api('alice', 'GET', '/v1/audit?limite=60')).json.lignes.filter((l: any) => l.cibleId === regleId).map((l: any) => l.action);
     expect(actions).toEqual(expect.arrayContaining(['regle.proposee', 'regle.impact_mesure', 'regle.approuvee', 'regle.retiree']));
@@ -234,6 +235,18 @@ describe('écritures d’inventaire proposées et balance ajustée', () => {
     const etats = (await api('remi', 'GET', `/v1/exercices/${exerciceId}/etats`)).json;
     expect(b.balanceImportee.totalDebit).toBe(etats.balance.totalDebit);
     expect(b.balanceImportee.lignes.some((l: any) => l.compteNum === '408')).toBe(etats.balance.lignes.some((l: any) => l.compteNum === '408'));
+  });
+
+  it('les états peuvent être projetés sur la balance ajustée, et le disent', async () => {
+    const importes = (await api('remi', 'GET', `/v1/exercices/${exerciceId}/etats`)).json;
+    const ajustes = (await api('remi', 'GET', `/v1/exercices/${exerciceId}/etats?ajuste=1`)).json;
+    expect(importes.ajuste).toBe(false);
+    expect(ajustes).toMatchObject({ ajuste: true, inventaire: { ecritures: 1, ecartees: 0 } });
+    expect(ajustes.mention).toMatch(/AJUSTÉE/);
+    const total = (x: any) => BigInt(x.balance.totalDebit.replace('.', ''));
+    expect(total(ajustes) - total(importes)).toBe(120000n);
+    expect(ajustes.balance.lignes.some((l: any) => l.compteNum === '408')).toBe(true);
+    expect(ajustes.compteDeResultat.statut).toBe('projet');
   });
 
   it('exporter n’est pas intégrer : un fichier est remis, les écritures passent « exportées »', async () => {

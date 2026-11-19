@@ -32,7 +32,9 @@ export async function importerReleve(c: Contexte, t: TacheImportReleve): Promise
     if (lot.statut === 'annule') return null;
     const [fichier] = await tx.select().from(s.fichiers).where(eq(s.fichiers.id, lot.fichierId));
     if (!fichier) return null;
-    await tx.update(s.lotsImport).set({ statut: 'en_cours', progression: 0 }).where(eq(s.lotsImport.id, lot.id));
+    // Prise en charge atomique (voir l'import comptable) : une tâche en double ne retraite pas un lot déjà pris ou terminé.
+    const [pris] = await tx.update(s.lotsImport).set({ statut: 'en_cours', progression: 0 }).where(and(eq(s.lotsImport.id, lot.id), inArray(s.lotsImport.statut, ['en_attente', 'echec']))).returning({ id: s.lotsImport.id });
+    if (!pris) return null;
     return { lot, fichier };
   });
   if (!init) return;

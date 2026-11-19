@@ -1,5 +1,5 @@
 import { analyserFec, type LigneFec } from '@comtaple/core';
-import { and, eq, journaliser, ne, schema as s, sql } from '@comtaple/db';
+import { and, eq, inArray, journaliser, ne, schema as s, sql } from '@comtaple/db';
 import type { TacheImportFec } from '@comtaple/plateforme';
 import type { Contexte } from './contexte.js';
 
@@ -22,7 +22,9 @@ export async function importerFec(c: Contexte, t: TacheImportFec): Promise<void>
     const [fichier] = await tx.select().from(s.fichiers).where(eq(s.fichiers.id, lot.fichierId));
     const [exercice] = await tx.select().from(s.exercices).where(eq(s.exercices.id, lot.exerciceId));
     if (!fichier || !exercice) return null;
-    await tx.update(s.lotsImport).set({ statut: 'en_cours', progression: 0 }).where(eq(s.lotsImport.id, lot.id));
+    // Prise en charge ATOMIQUE : si une autre tâche traite déjà ce lot (tâche en double après un rattrapage), on s'efface.
+    const [pris] = await tx.update(s.lotsImport).set({ statut: 'en_cours', progression: 0 }).where(and(eq(s.lotsImport.id, lot.id), inArray(s.lotsImport.statut, ['en_attente', 'echec']))).returning({ id: s.lotsImport.id });
+    if (!pris) return null;
     return { lot, fichier, exercice };
   });
   if (!init) return;

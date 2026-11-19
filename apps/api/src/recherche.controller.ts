@@ -26,16 +26,23 @@ export class RechercheController {
       const niveau = await exigerNiveau(tx, entiteId, 'depot');
       const ts = sql`websearch_to_tsquery('french', ${requete})`;
       // Balises de surlignage neutres (« et ») : aucun HTML n'est produit à partir d'un contenu de pièce.
-      const options = sql`'StartSel=«, StopSel=», MaxWords=24, MinWords=8, MaxFragments=1'`;
+      const options = sql`'StartSel=\uE000, StopSel=\uE001, MaxWords=24, MinWords=8, MaxFragments=1'`;
       const pieces = (
         await tx.execute(sql`
           select p.document_id as "documentId", d.nom_origine as "nomOrigine", p.numero as page, d.statut,
-                 ts_headline('french', coalesce(p.texte, ''), ${ts}, ${options}) as extrait
+                 ts_headline('french', translate(coalesce(p.texte, ''), U&'\\E000\\E001', ''), ${ts}, ${options}) as extrait
           from pages_document p join documents d on d.id = p.document_id
           where p.entite_id = ${entiteId}::uuid and to_tsvector('french', coalesce(p.texte, '')) @@ ${ts}
             ${niveau === 'depot' ? sql`and exists (select 1 from receptions r where r.document_id = d.id and r.deposant_id = ${acces.utilisateurId}::uuid)` : sql``}
           order by ts_rank(to_tsvector('french', coalesce(p.texte, '')), ${ts}) desc, d.cree_le desc limit 30`)
       ).rows;
+      // Extrait structuré : les marqueurs « et » peuvent aussi figurer dans une pièce (guillemets français). Des
+      // sentinelles hors texte courant délimitent donc le terme trouvé, puis sont converties en segments.
+      for (const p of pieces as Array<Record<string, unknown>>) {
+        const brut = String(p.extrait ?? '');
+        p.segments = brut.split(/(\uE000[^\uE001]*\uE001)/).filter((x) => x !== '').map((x) => (x.startsWith('\uE000') ? { texte: x.slice(1, -1), trouve: true } : { texte: x, trouve: false }));
+        p.extrait = brut.replace(/\uE000/g, '«').replace(/\uE001/g, '»');
+      }
       // Un déposant n'a accès ni aux écritures ni aux constats : la base ne lui renverrait rien, on ne l'interroge pas.
       if (niveau === 'depot') return { requete, perimetre: 'Vos propres dépôts dans ce dossier', pieces, ecritures: [], constats: [] };
       const ecritures = (

@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Controller, Get, Inject, NotFoundException, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { calculerBalance, calculerIndicateurs, CATALOGUE_INDICATEURS, correspondancePour, type LigneEcriture, projeterBilan, projeterCompteDeResultat, schemaChaineDecimale } from '@comtaple/core';
-import { type AccesBd, and, desc, eq, lt, schema as s, type Tx } from '@comtaple/db';
+import { type AccesBd, and, desc, eq, inArray, lt, schema as s, type Tx } from '@comtaple/db';
 import { lignesDuLot } from '@comtaple/plateforme';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
 import { BD } from './jetons.js';
@@ -32,12 +32,32 @@ export class EtatsController {
     description:
       'Calcul déterministe sur le lot comptable actif. La table de correspondance comptes → rubriques est versionnée et en attente de validation professionnelle. Un compte non affecté rend l’état incomplet et le dit ; aucun ajustement ne force l’égalité actif/passif. Annexe et liasse fiscale : hors périmètre.',
   })
-  async etats(@AccesCourant() acces: Acces, @Param('id') id: string) {
+  @ApiQuery({ name: 'ajuste', required: false, description: '« 1 » : états projetés sur la balance AJUSTÉE (écritures importées + écritures d’inventaire approuvées et à jour)' })
+  async etats(@AccesCourant() acces: Acces, @Param('id') id: string, @Query('ajuste') ajuste?: string) {
     exigerUuid(id);
     return this.bd.avecContexte(acces, async (tx) => {
-      const { exercice, lot, lignes } = await this.donnees(tx, id);
+      const { exercice, lot, lignes: importees } = await this.donnees(tx, id);
+      let lignes = importees;
+      let inventaire: { ecritures: number; ecartees: number } | null = null;
+      if (ajuste === '1') {
+        const approuvees = await tx.select().from(s.ecrituresInventaire).where(and(eq(s.ecrituresInventaire.exerciceId, id), inArray(s.ecrituresInventaire.statut, ['approuvee', 'exportee'])));
+        const aJour = approuvees.filter((e) => e.versionDonnees === exercice.versionDonnees);
+        let n = 0;
+        // Les écritures d'inventaire s'ajoutent aux importées dans un journal « INV » ; les importées ne sont pas modifiées.
+        lignes = [
+          ...importees,
+          ...aJour.flatMap((e) =>
+            (e.lignes as Array<{ compteNum: string; compteLib: string; debit: string; credit: string }>).map((l) => ({
+              id: `${e.id}:${n}`, numeroLigne: 1_000_000_000 + n++, journalCode: 'INV', journalLib: 'Écritures d’inventaire proposées', ecritureNum: `INV-${e.id.slice(0, 8)}`,
+              ecritureDate: e.dateEcriture, compteNum: l.compteNum, compteLib: l.compteLib, compAuxNum: null, compAuxLib: null, pieceRef: `INV-${e.id.slice(0, 8)}`, pieceDate: e.dateEcriture,
+              ecritureLib: e.libelle, debit: l.debit, credit: l.credit, ecritureLet: null, dateLet: null, validDate: null, montantDevise: null, idevise: null,
+            })),
+          ),
+        ];
+        inventaire = { ecritures: aJour.length, ecartees: approuvees.length - aJour.length };
+      }
       const balance = calculerBalance(lignes);
-      const base = { mention: MENTION, exercice, donnees: { lotImportId: lot.id, version: lot.version, versionDonnees: exercice.versionDonnees, statutDonnees: lot.statutDonnees }, balance };
+      const base = { mention: inventaire ? `${MENTION} Version AJUSTÉE : elle intègre ${inventaire.ecritures} écriture(s) d’inventaire approuvée(s) en interne, non intégrées dans le logiciel comptable.` : MENTION, ajuste: Boolean(inventaire), inventaire, exercice, donnees: { lotImportId: lot.id, version: lot.version, versionDonnees: exercice.versionDonnees, statutDonnees: lot.statutDonnees }, balance };
       const correspondance = correspondancePour(exercice.debut);
       if (!correspondance) {
         return { ...base, correspondance: null, compteDeResultat: null, bilan: null, motif: 'Aucune table de correspondance vérifiée pour un exercice ouvert avant le 1er janvier 2025 : seuls la balance et certains indicateurs sont disponibles.' };

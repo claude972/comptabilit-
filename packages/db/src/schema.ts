@@ -233,6 +233,8 @@ export const lettresMission = pgTable('lettres_mission', {
   redigeePar: uuid('redigee_par').references(() => utilisateurs.id),
   valideePar: uuid('validee_par').references(() => utilisateurs.id),
   valideeLe: horodatage('validee_le'),
+  /** Projet d'avenant préparé par le logiciel : estimation de temps du moteur au moment de la préparation, avec sa base. */
+  estimation: jsonb('estimation'),
   creeLe: creeLe(),
 });
 
@@ -835,6 +837,8 @@ export const reglesCabinet = pgTable('regles_cabinet', {
   proposeePar: uuid('proposee_par').references(() => utilisateurs.id),
   approuveePar: uuid('approuvee_par').references(() => utilisateurs.id),
   decideeLe: horodatage('decidee_le'),
+  /** Motif de la décision (refus, retrait), lisible par le cabinet. */
+  motifDecision: text('motif_decision'),
   creeLe: creeLe(),
 });
 

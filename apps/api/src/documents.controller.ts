@@ -100,6 +100,7 @@ export class DocumentsController {
     return this.bd.avecContexte(acces, async (tx) => {
       const niveau = await exigerNiveau(tx, entiteId, 'depot');
       const conditions = [eq(s.documents.entiteId, entiteId)];
+      const indexStatut = statut ? conditions.length : -1;
       if (statut) conditions.push(eq(s.documents.statut, statut as (typeof s.statutDocument.enumValues)[number]));
       if (niveau === 'depot' || deposant === 'moi') {
         conditions.push(
@@ -125,7 +126,10 @@ export class DocumentsController {
         .orderBy(desc(s.documents.creeLe))
         .limit(TAILLE + 1)
         .offset((page - 1) * TAILLE);
-      return { niveau, page, taillePage: TAILLE, suite: lignes.length > TAILLE, documents: lignes.slice(0, TAILLE) };
+      // Total et décomptes par statut sur l'ensemble du filtre (pas seulement la page), pour les tableaux de bord.
+      const parStatut = await tx.select({ statut: s.documents.statut, n: sql<number>`count(*)::int` }).from(s.documents).where(and(...conditions.filter((_, i) => i !== indexStatut))).groupBy(s.documents.statut);
+      const total = parStatut.filter((x) => !statut || x.statut === statut).reduce((t, x) => t + x.n, 0);
+      return { niveau, page, taillePage: TAILLE, suite: lignes.length > TAILLE, total, parStatut: Object.fromEntries(parStatut.map((x) => [x.statut, x.n])), documents: lignes.slice(0, TAILLE) };
     });
   }
 

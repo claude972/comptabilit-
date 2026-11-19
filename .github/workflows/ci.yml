@@ -1,5 +1,6 @@
-# Intégration continue. ÉTAT : première exécution en échec le 2026-11-19 (run 44509674342, étape des services), cause
-# non établie faute d'accès aux journaux ; étapes séparées et diagnostic corrigés depuis, non réexécutée.
+# Intégration continue. ÉTAT au 2026-11-19 : deuxième exécution (run 44552442181, commit a4fd3c0) en échec à l'étape
+# « Service OCR » après 180 s, toutes les étapes précédentes réussies (services de base, ClamAV, migrations, tests de
+# base). Cause non établie : les journaux exigent un compte ; le diagnostic est désormais publié en annotations.
 # Voir docs/rapport-de-tests.md.
 name: ci
 on:
@@ -81,27 +82,9 @@ jobs:
           retention-days: 7
       - name: Journaux en cas d'échec
         if: failure()
-        # Aucune commande ne doit interrompre ce diagnostic : la première exécution (run 44509674342) s'est arrêtée sur
-        # « tail » parce que var/api.log n'existait pas encore, sans jamais afficher l'état des conteneurs.
-        run: |
-          set +e
-          echo "::group::État des conteneurs"
-          docker compose ps -a
-          docker compose ps -a --format '{{.Name}}' | while read -r nom; do
-            echo "--- $nom : $(docker inspect -f '{{.State.Status}} / santé {{if .State.Health}}{{.State.Health.Status}}{{else}}sans sonde{{end}} / code {{.State.ExitCode}} / redémarrages {{.RestartCount}}' "$nom")"
-            docker inspect -f '{{if .State.Health}}{{range .State.Health.Log}}{{.ExitCode}} {{.Output}}{{end}}{{end}}' "$nom" | tail -n 5
-          done
-          echo "::endgroup::"
-          echo "::group::Journaux des conteneurs"
-          docker compose logs --tail 80 --no-color
-          echo "::endgroup::"
-          echo "::group::Ressources de la machine"
-          df -h / | tail -n 1; free -m | head -n 2
-          echo "::endgroup::"
-          for f in var/api.log var/worker.log var/web.log; do
-            if [ -f "$f" ]; then echo "::group::$f"; tail -n 100 "$f"; echo "::endgroup::"; else echo "$f : absent (étape non atteinte)"; fi
-          done
-          exit 0
+        # Détail complet dans le journal de l'étape ; l'essentiel (conteneurs non sains, fin des journaux) est aussi
+        # publié en annotations de l'exécution, seules lisibles sans jeton. Le script n'échoue jamais.
+        run: sh scripts/ci-diagnostic.sh
       - name: Description d'infrastructure
         if: always()
         uses: opentofu/setup-opentofu@v1

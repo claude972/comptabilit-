@@ -22,6 +22,7 @@
     "@comtaple/mail": "workspace:*",
     "bullmq": "6.7.7",
     "ioredis": "6.0.0",
+    "prom-client": "15.1.3",
     "zod": "4.6.7"
   },
   "devDependencies": {

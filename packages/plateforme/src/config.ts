@@ -24,6 +24,10 @@ const schema = z.object({
   TAILLE_MAX_FEC: z.coerce.number().int().default(500 * 1024 * 1024),
   TAILLE_MORCEAU: z.coerce.number().int().default(4 * 1024 * 1024),
   API_PORT: z.coerce.number().int().default(4000),
+  /** Ports des points de collecte Prometheus (adresse locale uniquement) ; 0 = désactivé. */
+  METRIQUES_PORT_API: z.coerce.number().int().default(9464),
+  METRIQUES_PORT_WORKER: z.coerce.number().int().default(9465),
+  METRIQUES_HOTE: z.string().default('127.0.0.1'),
   WEB_URL: z.string().url().default('http://localhost:3000'),
   /** Préfixe des clés BullMQ dans Redis : permet à une pile de test de ne pas partager ses files avec la pile normale. */
   FILES_PREFIXE: z.string().regex(/^[a-z0-9-]{1,40}$/).default('bull'),

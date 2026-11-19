@@ -1,6 +1,6 @@
 import { and, creerAccesBd, eq, schema as s, urlBd } from '@comtaple/db';
 import { chargerEnvLocal } from '@comtaple/db/env';
-import { cles, connecteursMail, connexionRedis, FILES, Files, lireConfig, Stockage } from '@comtaple/plateforme';
+import { cles, connecteursMail, Metriques, connexionRedis, FILES, Files, lireConfig, Stockage } from '@comtaple/plateforme';
 import { Worker } from 'bullmq';
 import { analyserDocument } from './analyse-document.js';
 import { executerRapprochement, importerReleve } from './banque.js';
@@ -54,6 +54,15 @@ if (Object.keys(mail.fournisseurs).length > 0) {
 } else {
   await c.taches.mail.removeJobScheduler('mail-rattrapage');
   await c.taches.mail.removeJobScheduler('mail-surveillances');
+}
+const metriques = new Metriques('worker');
+metriques.servir(cfg.METRIQUES_PORT_WORKER, cfg.METRIQUES_HOTE);
+for (const w of workers) {
+  w.on('completed', (job) => {
+    metriques.taches.inc({ file: w.name, tache: job.name, issue: 'terminee' });
+    if (job.processedOn && job.finishedOn) metriques.dureeTaches.observe({ file: w.name, tache: job.name }, (job.finishedOn - job.processedOn) / 1000);
+  });
+  w.on('failed', (job) => metriques.taches.inc({ file: w.name, tache: job?.name ?? 'inconnue', issue: 'echec' }));
 }
 for (const w of workers) {
   // Les journaux ne contiennent que des identifiants techniques : ni contenu de pièce, ni donnée personnelle.

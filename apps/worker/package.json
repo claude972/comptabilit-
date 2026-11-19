@@ -1,0 +1,25 @@
+{
+  "name": "@comtaple/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/main.js",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@comtaple/core": "workspace:*",
+    "@comtaple/db": "workspace:*",
+    "@comtaple/plateforme": "workspace:*",
+    "bullmq": "6.7.7",
+    "pdfjs-dist": "6.5.438",
+    "playwright": "1.65.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "6.0.3",
+    "vitest": "5.1.1"
+  }
+}

@@ -508,6 +508,27 @@ export const constats = pgTable(
   (t) => [index('constats_exercice').on(t.exerciceId, t.statutRevue)],
 );
 
+/** Dossier de révision exportable (PDF + données structurées + inventaire des pièces), figé sur une exécution donnée. */
+export const exportsRevision = pgTable('exports_revision', {
+  id: id(),
+  cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+  entiteId: uuid('entite_id').notNull().references(() => entites.id),
+  exerciceId: uuid('exercice_id').notNull().references(() => exercices.id),
+  executionId: uuid('execution_id').notNull().references(() => executionsControles.id),
+  versionDonnees: integer('version_donnees').notNull(),
+  statut: statutLot('statut').notNull().default('en_attente'),
+  /** Toujours « projet » tant qu'aucune validation professionnelle n'a été enregistrée. */
+  mention: text('mention').notNull().default('projet'),
+  clePdf: text('cle_pdf'),
+  cleDonnees: text('cle_donnees'),
+  sha256Pdf: text('sha256_pdf'),
+  sha256Donnees: text('sha256_donnees'),
+  erreur: text('erreur'),
+  demandePar: uuid('demande_par').references(() => utilisateurs.id),
+  creeLe: creeLe(),
+  termineLe: horodatage('termine_le'),
+});
+
 /** Décisions et validations humaines : toujours rattachées à une version déterminée de la cible. */
 export const decisions = pgTable('decisions', {
   id: id(),

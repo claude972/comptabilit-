@@ -1,5 +1,5 @@
 {
-  "id": "6bbc731e-b161-44b0-ba81-2e93f8bba7fd",
+  "id": "8f949cc9-5439-457e-8862-4be814ef111e",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -1671,6 +1671,186 @@
           "tableTo": "entites",
           "columnsFrom": [
             "entite_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.exports_revision": {
+      "name": "exports_revision",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entite_id": {
+          "name": "entite_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "exercice_id": {
+          "name": "exercice_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "execution_id": {
+          "name": "execution_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version_donnees": {
+          "name": "version_donnees",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "statut": {
+          "name": "statut",
+          "type": "statut_lot",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'en_attente'"
+        },
+        "mention": {
+          "name": "mention",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'projet'"
+        },
+        "cle_pdf": {
+          "name": "cle_pdf",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cle_donnees": {
+          "name": "cle_donnees",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sha256_pdf": {
+          "name": "sha256_pdf",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sha256_donnees": {
+          "name": "sha256_donnees",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "erreur": {
+          "name": "erreur",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "demande_par": {
+          "name": "demande_par",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "termine_le": {
+          "name": "termine_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "exports_revision_cabinet_id_cabinets_id_fk": {
+          "name": "exports_revision_cabinet_id_cabinets_id_fk",
+          "tableFrom": "exports_revision",
+          "tableTo": "cabinets",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "exports_revision_entite_id_entites_id_fk": {
+          "name": "exports_revision_entite_id_entites_id_fk",
+          "tableFrom": "exports_revision",
+          "tableTo": "entites",
+          "columnsFrom": [
+            "entite_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "exports_revision_exercice_id_exercices_id_fk": {
+          "name": "exports_revision_exercice_id_exercices_id_fk",
+          "tableFrom": "exports_revision",
+          "tableTo": "exercices",
+          "columnsFrom": [
+            "exercice_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "exports_revision_execution_id_executions_controles_id_fk": {
+          "name": "exports_revision_execution_id_executions_controles_id_fk",
+          "tableFrom": "exports_revision",
+          "tableTo": "executions_controles",
+          "columnsFrom": [
+            "execution_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "exports_revision_demande_par_utilisateurs_id_fk": {
+          "name": "exports_revision_demande_par_utilisateurs_id_fk",
+          "tableFrom": "exports_revision",
+          "tableTo": "utilisateurs",
+          "columnsFrom": [
+            "demande_par"
           ],
           "columnsTo": [
             "id"

@@ -4,7 +4,18 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" }
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./env": {
+      "types": "./dist/env.d.ts",
+      "default": "./dist/env.js"
+    },
+    "./amorcer": {
+      "types": "./dist/amorcer.d.ts",
+      "default": "./dist/amorcer.js"
+    }
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

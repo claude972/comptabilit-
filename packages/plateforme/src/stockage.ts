@@ -1,0 +1,127 @@
+import { createHash } from 'node:crypto';
+import { Readable } from 'node:stream';
+import {
+  CreateBucketCommand,
+  DeleteObjectsCommand,
+  GetObjectCommand,
+  HeadBucketCommand,
+  HeadObjectCommand,
+  ListObjectsV2Command,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
+import { Upload } from '@aws-sdk/lib-storage';
+import type { Config } from './config.js';
+
+/** Stockage documentaire compatible S3. Les originaux sont adressés par empreinte et ne sont jamais réécrits. */
+export class Stockage {
+  private readonly s3: S3Client;
+  constructor(private readonly cfg: Pick<Config, 'S3_ENDPOINT' | 'S3_REGION' | 'S3_BUCKET' | 'S3_ACCESS_KEY' | 'S3_SECRET_KEY'>) {
+    this.s3 = new S3Client({
+      endpoint: cfg.S3_ENDPOINT,
+      region: cfg.S3_REGION,
+      forcePathStyle: true,
+      credentials: { accessKeyId: cfg.S3_ACCESS_KEY, secretAccessKey: cfg.S3_SECRET_KEY },
+    });
+  }
+
+  async assurerBucket(): Promise<void> {
+    try {
+      await this.s3.send(new HeadBucketCommand({ Bucket: this.cfg.S3_BUCKET }));
+    } catch {
+      await this.s3.send(new CreateBucketCommand({ Bucket: this.cfg.S3_BUCKET }));
+    }
+  }
+
+  async deposer(cle: string, corps: Buffer | Uint8Array, typeMime?: string): Promise<void> {
+    await this.s3.send(new PutObjectCommand({ Bucket: this.cfg.S3_BUCKET, Key: cle, Body: corps, ContentType: typeMime }));
+  }
+
+  async deposerFlux(cle: string, flux: Readable, typeMime?: string): Promise<void> {
+    await new Upload({ client: this.s3, params: { Bucket: this.cfg.S3_BUCKET, Key: cle, Body: flux, ContentType: typeMime } }).done();
+  }
+
+  async lireFlux(cle: string): Promise<Readable> {
+    const r = await this.s3.send(new GetObjectCommand({ Bucket: this.cfg.S3_BUCKET, Key: cle }));
+    if (!r.Body) throw new Error(`Objet vide : ${cle}`);
+    return r.Body as Readable;
+  }
+
+  async lire(cle: string, tailleMax: number): Promise<Buffer> {
+    const flux = await this.lireFlux(cle);
+    const morceaux: Buffer[] = [];
+    let total = 0;
+    for await (const m of flux) {
+      const b = Buffer.from(m as Uint8Array);
+      total += b.length;
+      if (total > tailleMax) {
+        flux.destroy();
+        throw new Error(`Objet plus volumineux que la limite autorisée (${tailleMax} octets)`);
+      }
+      morceaux.push(b);
+    }
+    return Buffer.concat(morceaux);
+  }
+
+  async existe(cle: string): Promise<boolean> {
+    try {
+      await this.s3.send(new HeadObjectCommand({ Bucket: this.cfg.S3_BUCKET, Key: cle }));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async lister(prefixe: string): Promise<string[]> {
+    const cles: string[] = [];
+    let suite: string | undefined;
+    do {
+      const r = await this.s3.send(new ListObjectsV2Command({ Bucket: this.cfg.S3_BUCKET, Prefix: prefixe, ContinuationToken: suite }));
+      for (const o of r.Contents ?? []) if (o.Key) cles.push(o.Key);
+      suite = r.IsTruncated ? r.NextContinuationToken : undefined;
+    } while (suite);
+    return cles.sort();
+  }
+
+  async supprimer(cles: string[]): Promise<void> {
+    for (let i = 0; i < cles.length; i += 500) {
+      const lot = cles.slice(i, i + 500);
+      if (lot.length) {
+        await this.s3.send(new DeleteObjectsCommand({ Bucket: this.cfg.S3_BUCKET, Delete: { Objects: lot.map((Key) => ({ Key })) } }));
+      }
+    }
+  }
+
+  /**
+   * Assemble des morceaux (dans l'ordre des clés) en un objet final, en calculant taille et SHA-256 au passage.
+   * L'appelant compare l'empreinte à celle annoncée avant de considérer le fichier comme reçu.
+   */
+  async assembler(clesMorceaux: string[], cleFinale: string, typeMime?: string): Promise<{ taille: number; sha256: string }> {
+    const hache = createHash('sha256');
+    let taille = 0;
+    const self = this;
+    async function* generer(): AsyncGenerator<Buffer> {
+      for (const cle of clesMorceaux) {
+        const flux = await self.lireFlux(cle);
+        for await (const m of flux) {
+          const b = Buffer.from(m as Uint8Array);
+          hache.update(b);
+          taille += b.length;
+          yield b;
+        }
+      }
+    }
+    await this.deposerFlux(cleFinale, Readable.from(generer()), typeMime);
+    return { taille, sha256: hache.digest('hex') };
+  }
+}
+
+export const cles = {
+  morceau: (cabinetId: string, televersementId: string, decalage: number) =>
+    `tmp/${cabinetId}/${televersementId}/${String(decalage).padStart(14, '0')}`,
+  prefixeMorceaux: (cabinetId: string, televersementId: string) => `tmp/${cabinetId}/${televersementId}/`,
+  assemblage: (cabinetId: string, televersementId: string) => `tmp/${cabinetId}/${televersementId}.assemble`,
+  original: (cabinetId: string, sha256: string) => `cabinets/${cabinetId}/originaux/${sha256.slice(0, 2)}/${sha256}`,
+  derive: (cabinetId: string, fichierId: string, nom: string) => `cabinets/${cabinetId}/derives/${fichierId}/${nom}`,
+  export: (cabinetId: string, nom: string) => `cabinets/${cabinetId}/exports/${nom}`,
+};

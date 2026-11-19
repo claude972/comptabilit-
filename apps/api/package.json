@@ -1,0 +1,34 @@
+{
+  "name": "@comtaple/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/main.js",
+    "openapi": "node dist/openapi.js",
+    "test": "vitest run --passWithNoTests",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
+  },
+  "dependencies": {
+    "@comtaple/core": "workspace:*",
+    "@comtaple/db": "workspace:*",
+    "@comtaple/plateforme": "workspace:*",
+    "@nestjs/common": "12.5.1",
+    "@nestjs/core": "12.5.1",
+    "@nestjs/platform-express": "12.5.1",
+    "@nestjs/swagger": "12.1.2",
+    "express": "5.3.0",
+    "jose": "6.2.18",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/express": "5.0.6",
+    "@types/node": "^24.0.0",
+    "typescript": "6.0.3",
+    "vitest": "5.1.1"
+  }
+}

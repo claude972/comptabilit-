@@ -46,7 +46,8 @@ $$
 $$;
 --> statement-breakpoint
 
-DO $$
+-- Idempotente : à rappeler dans toute migration qui ajoute une table portant cabinet_id.
+CREATE FUNCTION securite_appliquer_rls() RETURNS void LANGUAGE plpgsql AS $fn$
 DECLARE
   t record;
   -- Tables de collecte : accessibles dès le niveau « depot » (le filtrage « ses propres dépôts » est applicatif).
@@ -60,6 +61,7 @@ BEGIN
                    WHERE e.table_schema = 'public' AND e.table_name = c.table_name AND e.column_name = 'entite_id') AS a_entite
     FROM information_schema.columns c
     WHERE c.table_schema = 'public' AND c.column_name = 'cabinet_id' AND c.table_name <> 'appartenances'
+      AND NOT EXISTS (SELECT 1 FROM pg_policies p WHERE p.schemaname = 'public' AND p.tablename = c.table_name AND p.policyname = 'isolation_cabinet')
   LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t.table_name);
     EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t.table_name);
@@ -82,7 +84,9 @@ BEGIN
       END IF;
     END IF;
   END LOOP;
-END $$;
+END $fn$;
+--> statement-breakpoint
+SELECT securite_appliquer_rls();
 --> statement-breakpoint
 
 -- Liste des dossiers : visible si habilité, ou si gestionnaire du cabinet (pour attribuer les habilitations).
@@ -217,6 +221,11 @@ GRANT USAGE ON SCHEMA public TO comtaple_app, comtaple_worker;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO comtaple_app, comtaple_worker;
 --> statement-breakpoint
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO comtaple_app, comtaple_worker;
+--> statement-breakpoint
+-- Les tables et séquences créées par les migrations ultérieures reçoivent les mêmes privilèges.
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO comtaple_app, comtaple_worker;
+--> statement-breakpoint
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO comtaple_app, comtaple_worker;
 --> statement-breakpoint
 -- Journal d'audit : ajout et lecture seulement.
 REVOKE UPDATE, DELETE, TRUNCATE ON journal_audit FROM comtaple_app, comtaple_worker;

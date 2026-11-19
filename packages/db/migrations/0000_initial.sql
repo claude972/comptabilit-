@@ -194,6 +194,25 @@ CREATE TABLE "exercices" (
 	"cree_le" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "exports_revision" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"cabinet_id" uuid NOT NULL,
+	"entite_id" uuid NOT NULL,
+	"exercice_id" uuid NOT NULL,
+	"execution_id" uuid NOT NULL,
+	"version_donnees" integer NOT NULL,
+	"statut" "statut_lot" DEFAULT 'en_attente' NOT NULL,
+	"mention" text DEFAULT 'projet' NOT NULL,
+	"cle_pdf" text,
+	"cle_donnees" text,
+	"sha256_pdf" text,
+	"sha256_donnees" text,
+	"erreur" text,
+	"demande_par" uuid,
+	"cree_le" timestamp with time zone DEFAULT now() NOT NULL,
+	"termine_le" timestamp with time zone
+);
+--> statement-breakpoint
 CREATE TABLE "extractions" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"cabinet_id" uuid NOT NULL,
@@ -534,6 +553,11 @@ ALTER TABLE "executions_controles" ADD CONSTRAINT "executions_controles_lot_impo
 ALTER TABLE "executions_controles" ADD CONSTRAINT "executions_controles_lance_par_utilisateurs_id_fk" FOREIGN KEY ("lance_par") REFERENCES "public"."utilisateurs"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "exercices" ADD CONSTRAINT "exercices_cabinet_id_cabinets_id_fk" FOREIGN KEY ("cabinet_id") REFERENCES "public"."cabinets"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "exercices" ADD CONSTRAINT "exercices_entite_id_entites_id_fk" FOREIGN KEY ("entite_id") REFERENCES "public"."entites"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "exports_revision" ADD CONSTRAINT "exports_revision_cabinet_id_cabinets_id_fk" FOREIGN KEY ("cabinet_id") REFERENCES "public"."cabinets"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "exports_revision" ADD CONSTRAINT "exports_revision_entite_id_entites_id_fk" FOREIGN KEY ("entite_id") REFERENCES "public"."entites"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "exports_revision" ADD CONSTRAINT "exports_revision_exercice_id_exercices_id_fk" FOREIGN KEY ("exercice_id") REFERENCES "public"."exercices"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "exports_revision" ADD CONSTRAINT "exports_revision_execution_id_executions_controles_id_fk" FOREIGN KEY ("execution_id") REFERENCES "public"."executions_controles"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "exports_revision" ADD CONSTRAINT "exports_revision_demande_par_utilisateurs_id_fk" FOREIGN KEY ("demande_par") REFERENCES "public"."utilisateurs"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "extractions" ADD CONSTRAINT "extractions_cabinet_id_cabinets_id_fk" FOREIGN KEY ("cabinet_id") REFERENCES "public"."cabinets"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "extractions" ADD CONSTRAINT "extractions_entite_id_entites_id_fk" FOREIGN KEY ("entite_id") REFERENCES "public"."entites"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "extractions" ADD CONSTRAINT "extractions_document_id_documents_id_fk" FOREIGN KEY ("document_id") REFERENCES "public"."documents"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint

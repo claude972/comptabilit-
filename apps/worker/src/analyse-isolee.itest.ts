@@ -467,7 +467,9 @@ describe('chaîne complète analyserDocument — PostgreSQL réel', () => {
     const ids: Record<string, string> = {};
     for (const mode of Object.keys(attendus)) ids[mode] = await deposer(`hostile-${mode}.pdf`, Buffer.from(`%PDF-1.7\n%%HOSTILE:${mode}\n`));
     const saine = await deposer('apres.pdf', pdfTexte([lignesFacture]));
-    const limites = { ...hostile, dureeMaxMs: 1500, tasMaxMo: 64, sortieMaxOctets: 1024 * 1024 };
+    // Durée large devant le temps qu'il faut à l'enfant « tas » pour épuiser 64 Mo : sur une machine lente (CI, six enfants
+    // en parallèle), 1,5 s ne suffisait pas et la borne de durée tombait avant celle de mémoire (run 44633330327).
+    const limites = { ...hostile, dureeMaxMs: 6000, tasMaxMo: 64, sortieMaxOctets: 1024 * 1024 };
     // Comme la file du worker (deux tâches à la fois) : les pièces hostiles ne retardent ni n'empêchent les autres.
     const debut = Date.now();
     const issues = await Promise.allSettled([...Object.values(ids).map((id) => analyser(id, limites)), analyser(saine)]);

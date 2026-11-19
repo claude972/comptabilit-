@@ -71,6 +71,20 @@
       "when": 1795069078143,
       "tag": "0009_abonnements_securite",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795069417942,
+      "tag": "0010_regles_cabinet",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795069491918,
+      "tag": "0011_regles_obsolescence",
+      "breakpoints": true
     }
   ]
 }

@@ -16,7 +16,7 @@ import {
   TAILLE_MAX_RELEVE,
 } from '@comtaple/core';
 import { and, asc, eq, gte, journaliser, lte, schema as s, sql, type Tx } from '@comtaple/db';
-import type { TacheImportReleve, TacheRapprochement } from '@comtaple/plateforme';
+import { lignesDuLot, type TacheImportReleve, type TacheRapprochement } from '@comtaple/plateforme';
 import type { Contexte } from './contexte.js';
 
 /**
@@ -158,34 +158,7 @@ export async function importerReleve(c: Contexte, t: TacheImportReleve): Promise
   });
 }
 
-const versLigne = (l: typeof s.lignesEcriture.$inferSelect): LigneEcriture => ({
-  id: l.id,
-  numeroLigne: l.numeroLigne,
-  journalCode: l.journalCode,
-  journalLib: l.journalLib,
-  ecritureNum: l.ecritureNum,
-  ecritureDate: l.ecritureDate,
-  compteNum: l.compteNum,
-  compteLib: l.compteLib,
-  compAuxNum: l.compAuxNum,
-  compAuxLib: l.compAuxLib,
-  pieceRef: l.pieceRef,
-  pieceDate: l.pieceDate,
-  ecritureLib: l.ecritureLib,
-  debit: l.debit,
-  credit: l.credit,
-  ecritureLet: l.ecritureLet,
-  dateLet: l.dateLet,
-  validDate: l.validDate,
-  montantDevise: l.montantDevise,
-  idevise: l.idevise,
-});
-
-/** Lignes normalisées d'un lot comptable, dans l'ordre du fichier. */
-export async function lignesDuLot(tx: Tx, lotImportId: string): Promise<LigneEcriture[]> {
-  const brutes = await tx.select().from(s.lignesEcriture).where(eq(s.lignesEcriture.lotImportId, lotImportId)).orderBy(asc(s.lignesEcriture.numeroLigne));
-  return brutes.map(versLigne);
-}
+export { lignesDuLot } from '@comtaple/plateforme';
 
 /** Reconstitue, pour les contrôles, les relevés du dossier tels que lus par le moteur (relevés + leurs mouvements). */
 export async function relevesDuDossier(tx: Tx, entiteId: string): Promise<RapportReleve[]> {

@@ -4,3 +4,4 @@ export * from './files.js';
 export * from './passerelle-ia.js';
 export * from './reception.js';
 export * from './mail.js';
+export * from './regles.js';

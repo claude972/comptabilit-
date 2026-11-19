@@ -641,11 +641,17 @@ export const reglesCabinet = pgTable('regles_cabinet', {
   id: id(),
   cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
   controleId: text('controle_id').notNull(),
+  /** null = préférence de tout le cabinet ; sinon exception propre à un dossier. */
   entiteId: uuid('entite_id_cible'),
   parametres: jsonb('parametres').notNull(),
   version: integer('version').notNull().default(1),
-  statut: text('statut').notNull().default('proposee'), // proposee | approuvee | retiree
+  statut: text('statut').notNull().default('proposee'), // proposee | approuvee | retiree | refusee
+  motif: text('motif').notNull().default(''),
+  /** Mesure d'impact réalisée avant activation (avant / après sur un exercice donné). */
+  impact: jsonb('impact'),
+  proposeePar: uuid('proposee_par').references(() => utilisateurs.id),
   approuveePar: uuid('approuvee_par').references(() => utilisateurs.id),
+  decideeLe: horodatage('decidee_le'),
   creeLe: creeLe(),
 });
 

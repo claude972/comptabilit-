@@ -17,6 +17,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "3.1172.0",
     "@aws-sdk/lib-storage": "3.1172.0",
+    "@comtaple/core": "workspace:*",
     "@comtaple/db": "workspace:*",
     "@comtaple/mail": "workspace:*",
     "bullmq": "6.7.7",

@@ -1,6 +1,6 @@
 import { CATALOGUE_CONTROLES, executerControles, type LigneEcriture } from '@comtaple/core';
 import { and, desc, eq, journaliser, lt, ne, schema as s, sql } from '@comtaple/db';
-import type { TacheControles } from '@comtaple/plateforme';
+import { parametresApprouves, type TacheControles } from '@comtaple/plateforme';
 import { lignesDuLot, relevesDuDossier } from './banque.js';
 import type { Contexte } from './contexte.js';
 
@@ -39,9 +39,11 @@ export async function executerControlesExecution(c: Contexte, t: TacheControles)
     }
     const releves = await relevesDuDossier(tx, execution.entiteId);
 
+    // Paramètres propres au cabinet ou au dossier : uniquement des règles approuvées par une personne habilitée.
+    const regles = await parametresApprouves(tx, execution.entiteId);
     const [entite] = await tx.select().from(s.entites).where(eq(s.entites.id, execution.entiteId));
     const territoire = entite?.territoireFiscal ?? 'a_confirmer';
-    const resultats = executerControles({ lignes, exercice: { debut: exercice.debut, fin: exercice.fin }, exercicePrecedent, releves: releves.length ? releves : null }).map((r) => {
+    const resultats = executerControles({ lignes, exercice: { debut: exercice.debut, fin: exercice.fin }, exercicePrecedent, releves: releves.length ? releves : null }, { parametres: regles.parametres }).map((r) => {
       // Les règles fiscales implémentées sont celles de la France métropolitaine : hors de ce territoire (ou tant qu'il
       // n'est pas confirmé), le contrôle n'est PAS réalisé et le dit, au lieu d'appliquer une règle inadaptée.
       if (territoire === 'metropole' || !CONTROLES_FISCAUX_METROPOLE.has(r.controleId)) return r;
@@ -83,7 +85,7 @@ export async function executerControlesExecution(c: Contexte, t: TacheControles)
           motif: r.motif,
           parametres: r.parametresAppliques,
           mesures: r.mesures,
-          source: def ? { ...def.source, titre: def.titre, cycle: def.cycle } : {},
+          source: def ? { ...def.source, titre: def.titre, cycle: def.cycle, regleCabinet: regles.origines[r.controleId] ?? null } : {},
         })
         .returning();
       for (let i = 0; i < r.constats.length; i += 500) {

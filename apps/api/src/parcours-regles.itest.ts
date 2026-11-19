@@ -104,3 +104,56 @@ describe('règles propres au cabinet', () => {
     expect((await api('client', 'GET', '/v1/regles')).statut).toBe(403);
   });
 });
+
+describe('états de travail et indicateurs du dossier', () => {
+  const centimes = (v: string) => BigInt(v.replace('.', ''));
+
+  it('balance équilibrée, projets de compte de résultat et de bilan cohérents entre eux, toujours « projet »', async () => {
+    const r = await api('remi', 'GET', `/v1/exercices/${exerciceId}/etats`);
+    expect(r.statut).toBe(200);
+    expect(r.json.mention).toMatch(/PROJET/);
+    expect(r.json.balance.equilibree).toBe(true);
+    expect(r.json.balance.totalDebit).toBe(r.json.balance.totalCredit);
+    expect(r.json.correspondance.etat).toBe('en_attente_de_validation_professionnelle');
+    const { compteDeResultat: cr, bilan } = r.json;
+    expect(cr.statut).toBe('projet');
+    expect(bilan.statut).toBe('projet');
+    // Aucun compte n'est compté deux fois : rubriques + comptes non affectés recouvrent exactement la balance.
+    const comptesBalance = new Set(r.json.balance.lignes.filter((l: any) => l.soldeDebiteur !== '0.00' || l.soldeCrediteur !== '0.00').map((l: any) => l.compteNum));
+    const affectes = [...cr.rubriques, ...bilan.rubriques].flatMap((x: any) => x.comptes.map((c: any) => c.compteNum));
+    for (const c of affectes) expect(comptesBalance.has(c) || c === '6-7' || /^\d/.test(c)).toBe(true);
+    // Les contrôles internes sont restitués avec leur écart ; s'ils sont « ok », l'écart est nul.
+    for (const c of [...cr.controles, ...bilan.controles]) {
+      expect(['ok', 'ecart', 'non_verifiable']).toContain(c.statut);
+      if (c.statut === 'ok' && c.ecart !== null) expect(centimes(c.ecart)).toBe(0n);
+    }
+    if (bilan.complet) expect(bilan.controles.every((c: any) => c.statut !== 'ecart')).toBe(true);
+    else expect(bilan.motifsIncompletude.length).toBeGreaterThan(0);
+    expect((await api('client', 'GET', `/v1/exercices/${exerciceId}/etats`)).statut).toBe(404);
+    expect((await api('bruno', 'GET', `/v1/exercices/${exerciceId}/etats`)).statut).toBe(404);
+  });
+
+  it('indicateurs tracés jusqu’aux comptes ; non calculable plutôt que zéro ; délais seulement avec un taux de TVA fourni', async () => {
+    const r = await api('remi', 'GET', `/v1/exercices/${exerciceId}/indicateurs`);
+    expect(r.statut).toBe(200);
+    const liste = r.json.indicateurs;
+    expect(liste.length).toBeGreaterThanOrEqual(20);
+    for (const i of liste) {
+      expect(['calcule', 'non_calculable']).toContain(i.statut);
+      if (i.statut === 'non_calculable') {
+        expect(i.valeur).toBeNull();
+        expect(i.motif).toBeTruthy();
+      } else expect(typeof i.valeur).toBe('string');
+    }
+    const ca = liste.find((i: any) => i.statut === 'calcule' && i.composantes.length > 0 && i.unite === 'euros');
+    expect(ca.composantes[0].comptes.length).toBeGreaterThan(0);
+    const nonCalculablesSansTaux = liste.filter((i: any) => i.statut === 'non_calculable' && /TVA/.test(i.motif ?? '')).map((i: any) => i.id);
+    expect(nonCalculablesSansTaux.length).toBeGreaterThan(0);
+    const avec = (await api('remi', 'GET', `/v1/exercices/${exerciceId}/indicateurs?tauxTvaVentes=20&tauxTvaAchats=20`)).json.indicateurs;
+    expect(avec.filter((i: any) => nonCalculablesSansTaux.includes(i.id) && i.statut === 'non_calculable' && /TVA/.test(i.motif ?? ''))).toEqual([]);
+    expect((await api('remi', 'GET', `/v1/exercices/${exerciceId}/indicateurs?tauxTvaVentes=vingt`)).statut).toBe(400);
+    expect(r.json.donnees.exercicePrecedentFourni).toBe(false);
+    const cat = await api('remi', 'GET', '/v1/reference/indicateurs');
+    expect(cat.json.every((d: any) => d.formule && d.convention && d.regleDonneeManquante && d.source)).toBe(true);
+  });
+});

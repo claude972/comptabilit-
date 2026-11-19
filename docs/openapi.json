@@ -55,6 +55,76 @@
         "tags": [
           "Profil et dossiers"
         ]
+      },
+      "post": {
+        "description": "Le territoire fiscal est obligatoire et explicite (« a_confirmer » est admis : les contrôles fiscaux ne seront alors pas réalisés). Le créateur n’est PAS habilité automatiquement sur le dossier.",
+        "operationId": "AdministrationController_creerDossier",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "raisonSociale": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "siren": {
+                    "type": "string",
+                    "pattern": "^\\d{9}$"
+                  },
+                  "formeJuridique": {
+                    "type": "string",
+                    "maxLength": 50
+                  },
+                  "regimeFiscal": {
+                    "type": "string",
+                    "maxLength": 50
+                  },
+                  "territoireFiscal": {
+                    "type": "string",
+                    "enum": [
+                      "metropole",
+                      "guadeloupe",
+                      "martinique",
+                      "guyane",
+                      "reunion",
+                      "mayotte",
+                      "autre",
+                      "a_confirmer"
+                    ]
+                  },
+                  "codeNaf": {
+                    "type": "string",
+                    "maxLength": 10
+                  }
+                },
+                "required": [
+                  "raisonSociale",
+                  "territoireFiscal"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Créer un dossier client (gestionnaires)",
+        "tags": [
+          "Administration du cabinet"
+        ]
       }
     },
     "/v1/dossiers/{entiteId}/exercices": {
@@ -105,7 +175,8 @@
                   "nomFichier": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 255
+                    "maxLength": 255,
+                    "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
                   },
                   "taille": {
                     "type": "integer",
@@ -132,8 +203,16 @@
                     "type": "string",
                     "enum": [
                       "piece",
-                      "fec"
+                      "fec",
+                      "banque"
                     ]
+                  },
+                  "profilCsv": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
                   },
                   "nature": {
                     "default": "a_qualifier",
@@ -222,6 +301,33 @@
         "tags": [
           "Téléversements"
         ]
+      },
+      "delete": {
+        "operationId": "TeleversementsController_abandonner",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Abandonner un téléversement non terminé : les morceaux déjà reçus sont supprimés",
+        "tags": [
+          "Téléversements"
+        ]
       }
     },
     "/v1/televersements/{id}/morceaux": {
@@ -306,6 +412,23 @@
           },
           {
             "name": "statut",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "deposant",
+            "required": false,
+            "in": "query",
+            "description": "« moi » : seulement mes propres dépôts (toujours appliqué au niveau dépôt)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
             "required": false,
             "in": "query",
             "schema": {
@@ -755,6 +878,52 @@
           }
         ],
         "summary": "État et rapport d’un lot d’import (progression, lisible / conforme / suffisant, anomalies ligne par ligne)",
+        "tags": [
+          "Révision comptable"
+        ]
+      }
+    },
+    "/v1/imports/{id}/anomalies": {
+      "get": {
+        "description": "Le détail est plafonné par le moteur (voir « nbAnomaliesParCode » du rapport pour le décompte complet).",
+        "operationId": "ComptabiliteController_anomalies",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "code",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Anomalies ligne par ligne d’un import, paginées",
         "tags": [
           "Révision comptable"
         ]
@@ -1442,6 +1611,2353 @@
         "summary": "Notifications Microsoft Graph (public) : validation du point d’entrée, clientState vérifié, puis mise en file",
         "tags": [
           "Collecte par mail"
+        ]
+      }
+    },
+    "/v1/dossiers/{entiteId}/banque": {
+      "get": {
+        "description": "Le cadrage (« ok », « ecart », « non_verifiable ») compare solde d’ouverture + mouvements au solde de clôture ; « non vérifiable » n’est jamais un succès.",
+        "operationId": "BanqueController_banque",
+        "parameters": [
+          {
+            "name": "entiteId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Imports de relevés bancaires d’un dossier et relevés lus (soldes, cadrage)",
+        "tags": [
+          "Banque et rapprochements"
+        ]
+      }
+    },
+    "/v1/dossiers/{entiteId}/banque/mouvements": {
+      "get": {
+        "operationId": "BanqueController_mouvements",
+        "parameters": [
+          {
+            "name": "entiteId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "du",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "au",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mouvements bancaires importés (paginés), filtrables par période",
+        "tags": [
+          "Banque et rapprochements"
+        ]
+      }
+    },
+    "/v1/imports/{id}/relancer": {
+      "post": {
+        "description": "Quand les colonnes d’un CSV ne sont pas reconnues avec certitude, l’import s’abstient : un humain confirme le profil.",
+        "operationId": "BanqueController_relancer",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "profilCsv": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "profilCsv"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Relancer un import de relevé CSV en échec avec un profil de colonnes confirmé",
+        "tags": [
+          "Banque et rapprochements"
+        ]
+      }
+    },
+    "/v1/reference/rapprochement": {
+      "get": {
+        "operationId": "BanqueController_reference",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Règles de rapprochement du moteur et paramètres par défaut (tolérances, fenêtres, bornes)",
+        "tags": [
+          "Banque et rapprochements"
+        ]
+      }
+    },
+    "/v1/exercices/{id}/rapprochements": {
+      "post": {
+        "description": "Moteur déterministe : correspondances exactes puis règles explicites (paiements groupés, partiels, compensations, tolérance). Le résultat est une proposition à valider.",
+        "operationId": "BanqueController_lancer",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "parametres": {
+                    "type": "object",
+                    "properties": {
+                      "toleranceMontant": {
+                        "type": "string",
+                        "pattern": "^-?\\d{1,13}(\\.\\d{1,6})?$"
+                      },
+                      "fenetreJours": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 366
+                      },
+                      "fenetreJoursRegles": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 1830
+                      },
+                      "tailleMaxGroupe": {
+                        "type": "integer",
+                        "minimum": 2,
+                        "maximum": 12
+                      },
+                      "autoriserPartiels": {
+                        "type": "boolean"
+                      },
+                      "autoriserCompensations": {
+                        "type": "boolean"
+                      },
+                      "budgetCombinaisons": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 5000000
+                      },
+                      "fraisBancairesMax": {
+                        "type": "string",
+                        "pattern": "^-?\\d{1,13}(\\.\\d{1,6})?$"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Lancer le rapprochement banque ↔ comptabilité de l’exercice",
+        "tags": [
+          "Banque et rapprochements"
+        ]
+      },
+      "get": {
+        "description": "Une ambiguïté (plusieurs solutions équivalentes) n’est jamais tranchée par le moteur. Un abandon signale une recherche interrompue par la borne de combinaisons. « obsolete » indique que les données ont changé depuis le calcul.",
+        "operationId": "BanqueController_dernier",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Dernier rapprochement : propositions avec critères et explication, éléments non rapprochés, ambiguïtés, abandons",
+        "tags": [
+          "Banque et rapprochements"
+        ]
+      }
+    },
+    "/v1/rapprochements/{id}": {
+      "patch": {
+        "description": "Un rejet exige un motif. La décision est historisée avec la version des données ; elle ne modifie aucune écriture.",
+        "operationId": "BanqueController_decider",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "decision": {
+                    "type": "string",
+                    "enum": [
+                      "valider",
+                      "rejeter",
+                      "remettre_en_proposition"
+                    ]
+                  },
+                  "motif": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "decision"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Valider ou rejeter un rapprochement proposé (réviseur habilité)",
+        "tags": [
+          "Banque et rapprochements"
+        ]
+      }
+    },
+    "/v1/cabinets": {
+      "get": {
+        "operationId": "AdministrationController_cabinets",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Cabinets dont le compte est membre (utilisable avant le choix du cabinet, pour un compte multi-cabinets)",
+        "tags": [
+          "Administration du cabinet"
+        ]
+      }
+    },
+    "/v1/cabinet/membres": {
+      "get": {
+        "operationId": "AdministrationController_membresCabinet",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Membres du cabinet et leur rôle (gestionnaires)",
+        "tags": [
+          "Administration du cabinet"
+        ]
+      }
+    },
+    "/v1/cabinet/indicateurs": {
+      "get": {
+        "description": "Décomptes et durées agrégés par cabinet et par dossier : volumes de pièces, délai de traitement, devenir des extractions automatiques (acceptées, corrigées, rejetées, non examinées), imports, constats, rapprochements, temps observés. Aucun indicateur par personne. Ces chiffres mesurent l’activité enregistrée, pas la qualité des extractions (aucun corpus de référence).",
+        "operationId": "AdministrationController_indicateurs",
+        "parameters": [
+          {
+            "name": "du",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "au",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Indicateurs d’activité du cabinet et du logiciel sur une période (gestionnaires)",
+        "tags": [
+          "Administration du cabinet"
+        ]
+      }
+    },
+    "/v1/dossiers/{id}": {
+      "get": {
+        "operationId": "AdministrationController_dossier",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Un dossier et le niveau d’habilitation de l’appelant (null pour un gestionnaire non habilité)",
+        "tags": [
+          "Administration du cabinet"
+        ]
+      },
+      "patch": {
+        "operationId": "AdministrationController_modifierDossier",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "raisonSociale": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "siren": {
+                    "type": "string",
+                    "pattern": "^\\d{9}$"
+                  },
+                  "formeJuridique": {
+                    "type": "string",
+                    "maxLength": 50
+                  },
+                  "regimeFiscal": {
+                    "type": "string",
+                    "maxLength": 50
+                  },
+                  "territoireFiscal": {
+                    "type": "string",
+                    "enum": [
+                      "metropole",
+                      "guadeloupe",
+                      "martinique",
+                      "guyane",
+                      "reunion",
+                      "mayotte",
+                      "autre",
+                      "a_confirmer"
+                    ]
+                  },
+                  "codeNaf": {
+                    "type": "string",
+                    "maxLength": 10
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Modifier les caractéristiques d’un dossier, dont le territoire fiscal (gestionnaires)",
+        "tags": [
+          "Administration du cabinet"
+        ]
+      }
+    },
+    "/v1/dossiers/{id}/exercices": {
+      "post": {
+        "operationId": "AdministrationController_creerExercice",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "debut": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "fin": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  }
+                },
+                "required": [
+                  "debut",
+                  "fin"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Ouvrir un exercice sur un dossier (collaborateur habilité)",
+        "tags": [
+          "Administration du cabinet"
+        ]
+      }
+    },
+    "/v1/dossiers/{id}/membres": {
+      "get": {
+        "operationId": "AdministrationController_membres",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Personnes habilitées sur un dossier (visible dès l’habilitation de lecture, et par les gestionnaires)",
+        "tags": [
+          "Administration du cabinet"
+        ]
+      }
+    },
+    "/v1/dossiers/{id}/habilitations/{utilisateurId}": {
+      "put": {
+        "description": "Le niveau est plafonné par le rôle : un client ne peut recevoir ni révision ni validation. Toute attribution est journalisée, y compris celle qu’un gestionnaire s’accorde.",
+        "operationId": "AdministrationController_habiliter",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "utilisateurId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "niveau": {
+                    "type": "string",
+                    "enum": [
+                      "depot",
+                      "lecture",
+                      "collaboration",
+                      "revision",
+                      "validation"
+                    ]
+                  }
+                },
+                "required": [
+                  "niveau"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Accorder ou modifier l’habilitation d’un membre du cabinet sur un dossier (gestionnaires)",
+        "tags": [
+          "Administration du cabinet"
+        ]
+      },
+      "delete": {
+        "operationId": "AdministrationController_retirer",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "utilisateurId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Retirer une habilitation sur un dossier (gestionnaires)",
+        "tags": [
+          "Administration du cabinet"
+        ]
+      }
+    },
+    "/v1/abonnement/situation": {
+      "get": {
+        "operationId": "AbonnementController_situation",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Le service est-il ouvert pour ce cabinet ? (tout membre ; ni offre ni montant)",
+        "tags": [
+          "Abonnement"
+        ]
+      }
+    },
+    "/v1/abonnement": {
+      "get": {
+        "description": "Les montants sont calculés par le moteur à partir de la grille de l’éditeur. Une grille marquée « fictif » est une démonstration sans valeur commerciale.",
+        "operationId": "AbonnementController_detail",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Abonnement du cabinet : offre, situation, quotas consommés, estimation de la prochaine échéance (gestionnaires)",
+        "tags": [
+          "Abonnement"
+        ]
+      }
+    },
+    "/v1/abonnement/offres": {
+      "get": {
+        "operationId": "AbonnementController_offres",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Offres proposées par l’éditeur (gestionnaires)",
+        "tags": [
+          "Abonnement"
+        ]
+      }
+    },
+    "/v1/abonnement/changement": {
+      "post": {
+        "operationId": "AbonnementController_changer",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "offre": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  }
+                },
+                "required": [
+                  "offre"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Demander un changement d’offre, appliqué à la prochaine échéance (gestionnaires)",
+        "tags": [
+          "Abonnement"
+        ]
+      }
+    },
+    "/v1/abonnement/resiliation": {
+      "post": {
+        "description": "Le service reste ouvert jusqu’à la fin du mois en cours. Les données ne sont pas supprimées par la résiliation : leur devenir relève de la politique de restitution.",
+        "operationId": "AbonnementController_resilier",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "motif": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "motif"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Résilier l’abonnement (gestionnaires)",
+        "tags": [
+          "Abonnement"
+        ]
+      }
+    },
+    "/v1/abonnement/echeances": {
+      "get": {
+        "operationId": "AbonnementController_echeances",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Échéances émises et statut de paiement par virement (gestionnaires)",
+        "tags": [
+          "Abonnement"
+        ]
+      }
+    },
+    "/v1/abonnement/historique": {
+      "get": {
+        "operationId": "AbonnementController_historique",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Historique des éléments de facturation (gestionnaires)",
+        "tags": [
+          "Abonnement"
+        ]
+      }
+    },
+    "/v1/regles": {
+      "get": {
+        "operationId": "ReglesController_lister",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Règles et paramètres propres au cabinet : propositions, règles approuvées, règles retirées (versions conservées)",
+        "tags": [
+          "Règles du cabinet"
+        ]
+      },
+      "post": {
+        "description": "Une proposition n’a AUCUN effet tant qu’elle n’est pas approuvée par un administrateur ou un associé. Les paramètres sont validés par le schéma du contrôle. Les contrôles à fondement réglementaire ne sont pas paramétrables par ce parcours.",
+        "operationId": "ReglesController_proposer",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "controleId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20
+                  },
+                  "entiteId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                  },
+                  "parametres": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "motif": {
+                    "type": "string",
+                    "minLength": 5,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "controleId",
+                  "parametres",
+                  "motif"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Proposer un paramétrage de contrôle (préférence du cabinet ou exception d’un dossier)",
+        "tags": [
+          "Règles du cabinet"
+        ]
+      }
+    },
+    "/v1/regles/{id}/impact": {
+      "post": {
+        "description": "Exécute le contrôle concerné deux fois sur les données actives de l’exercice (paramètres en vigueur, puis paramètres proposés) et compare. Rien n’est enregistré dans la révision.",
+        "operationId": "ReglesController_impact",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "exerciceId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                  }
+                },
+                "required": [
+                  "exerciceId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mesurer l’impact d’une règle proposée sur un exercice, AVANT toute activation",
+        "tags": [
+          "Règles du cabinet"
+        ]
+      }
+    },
+    "/v1/regles/{id}/approuver": {
+      "post": {
+        "description": "Exige une mesure d’impact préalable. La règle précédemment en vigueur pour la même cible est retirée (conservée dans l’historique). Les contrôles déjà exécutés deviennent obsolètes.",
+        "operationId": "ReglesController_approuver",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Approuver une règle proposée (administrateur ou associé, autre que la personne qui l’a proposée)",
+        "tags": [
+          "Règles du cabinet"
+        ]
+      }
+    },
+    "/v1/regles/{id}/refuser": {
+      "post": {
+        "operationId": "ReglesController_refuser",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "motif": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "motif"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Refuser une règle proposée (administrateur ou associé)",
+        "tags": [
+          "Règles du cabinet"
+        ]
+      }
+    },
+    "/v1/regles/{id}/retirer": {
+      "post": {
+        "operationId": "ReglesController_retirer",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Retirer une règle approuvée : retour aux paramètres par défaut du contrôle (réversible, historisé)",
+        "tags": [
+          "Règles du cabinet"
+        ]
+      }
+    },
+    "/v1/dossiers/{id}/restitutions": {
+      "post": {
+        "description": "Archive ZIP : originaux non modifiés, données structurées, écritures normalisées, constats, décisions, rapprochements, règles du cabinet applicables, journal d’audit du dossier, et un manifeste d’empreintes SHA-256. Reste possible quand l’abonnement est suspendu ou résilié.",
+        "operationId": "RestitutionController_demander",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Demander l’export de restitution complet d’un dossier (habilitation de validation)",
+        "tags": [
+          "Restitution"
+        ]
+      },
+      "get": {
+        "operationId": "RestitutionController_lister",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Exports de restitution d’un dossier",
+        "tags": [
+          "Restitution"
+        ]
+      }
+    },
+    "/v1/restitutions/{id}/archive": {
+      "get": {
+        "operationId": "RestitutionController_telecharger",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Télécharger l’archive de restitution (journalisé)",
+        "tags": [
+          "Restitution"
+        ]
+      }
+    },
+    "/v1/reference/prestations": {
+      "get": {
+        "operationId": "MissionsController_prestations",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Référentiel des prestations utilisé pour décrire un périmètre de mission (convention interne)",
+        "tags": [
+          "Missions"
+        ]
+      }
+    },
+    "/v1/dossiers/{id}/missions": {
+      "post": {
+        "operationId": "MissionsController_creerMission",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "libelle": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "debut": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "fin": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  }
+                },
+                "required": [
+                  "libelle"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Créer une mission sur un dossier",
+        "tags": [
+          "Missions"
+        ]
+      },
+      "get": {
+        "operationId": "MissionsController_missions",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Missions d’un dossier avec leurs lettres et avenants (projets et validés)",
+        "tags": [
+          "Missions"
+        ]
+      }
+    },
+    "/v1/missions/{id}/lettres": {
+      "post": {
+        "description": "Le contenu est structuré : périmètre, durée, honoraires, obligations, livrables, mandats, limites. Un projet n’a aucun effet tant qu’il n’est pas validé.",
+        "operationId": "MissionsController_creerLettre",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "dateEffet": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "contenu": {
+                    "type": "object",
+                    "properties": {
+                      "perimetre": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "prestation": {
+                              "type": "string",
+                              "enum": [
+                                "tenue",
+                                "revision",
+                                "comptes_annuels",
+                                "fiscal_tva",
+                                "fiscal_is",
+                                "social_paie",
+                                "juridique_annuel",
+                                "conseil_ponctuel",
+                                "autre"
+                              ]
+                            },
+                            "precision": {
+                              "type": "string",
+                              "maxLength": 500
+                            }
+                          },
+                          "required": [
+                            "prestation"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "duree": {
+                        "type": "object",
+                        "properties": {
+                          "debut": {
+                            "type": "string",
+                            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                          },
+                          "fin": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "taciteReconduction": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "debut",
+                          "fin",
+                          "taciteReconduction"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "honoraires": {
+                        "type": "object",
+                        "properties": {
+                          "mode": {
+                            "type": "string",
+                            "enum": [
+                              "forfait",
+                              "temps_passe",
+                              "mixte"
+                            ]
+                          },
+                          "montantAnnuelHt": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "pattern": "^-?\\d{1,13}(\\.\\d{1,6})?$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "tauxHoraireHt": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "pattern": "^-?\\d{1,13}(\\.\\d{1,6})?$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "conditionsRevision": {
+                            "type": "string",
+                            "maxLength": 2000
+                          }
+                        },
+                        "required": [
+                          "mode",
+                          "montantAnnuelHt",
+                          "tauxHoraireHt",
+                          "conditionsRevision"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "obligationsCabinet": {
+                        "type": "string",
+                        "maxLength": 4000
+                      },
+                      "obligationsClient": {
+                        "type": "string",
+                        "maxLength": 4000
+                      },
+                      "livrables": {
+                        "maxItems": 50,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 300
+                        }
+                      },
+                      "mandats": {
+                        "maxItems": 50,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 300
+                        }
+                      },
+                      "limites": {
+                        "type": "string",
+                        "maxLength": 4000
+                      }
+                    },
+                    "required": [
+                      "perimetre",
+                      "duree",
+                      "honoraires",
+                      "obligationsCabinet",
+                      "obligationsClient",
+                      "livrables",
+                      "mandats",
+                      "limites"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "avenantDe": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                  },
+                  "documentId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                  }
+                },
+                "required": [
+                  "dateEffet",
+                  "contenu"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Enregistrer une lettre de mission ou un avenant (projet)",
+        "tags": [
+          "Missions"
+        ]
+      }
+    },
+    "/v1/lettres/{id}/validation": {
+      "post": {
+        "operationId": "MissionsController_validerLettre",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Valider une lettre ou un avenant (habilitation de validation) : elle devient applicable à compter de sa date d’effet",
+        "tags": [
+          "Missions"
+        ]
+      }
+    },
+    "/v1/dossiers/{id}/travaux": {
+      "post": {
+        "operationId": "MissionsController_creerTravail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "dateTravail": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "prestation": {
+                    "type": "string",
+                    "enum": [
+                      "tenue",
+                      "revision",
+                      "comptes_annuels",
+                      "fiscal_tva",
+                      "fiscal_is",
+                      "social_paie",
+                      "juridique_annuel",
+                      "conseil_ponctuel",
+                      "autre"
+                    ]
+                  },
+                  "description": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "tempsObserveMinutes": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 100000
+                  }
+                },
+                "required": [
+                  "dateTravail",
+                  "prestation",
+                  "description"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Enregistrer un travail ou une demande ; le temps saisi est un temps OBSERVÉ",
+        "tags": [
+          "Missions"
+        ]
+      },
+      "get": {
+        "description": "« potentiellement hors périmètre » est un signalement à examiner, pas une conclusion contractuelle.",
+        "operationId": "MissionsController_travaux",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Travaux d’un dossier, rattachés à la lettre applicable à leur date, avec signalement des travaux potentiellement hors périmètre",
+        "tags": [
+          "Missions"
+        ]
+      }
+    },
+    "/v1/travaux/{id}/proposition-avenant": {
+      "post": {
+        "description": "Reprend le contenu de la lettre applicable en y ajoutant la prestation. Le temps est estimé par le moteur à partir d’une base nommée (barème du cabinet ou temps observés) ; sans base, aucune estimation. Le résultat est un PROJET : il ne produit aucun effet sans validation.",
+        "operationId": "MissionsController_proposerAvenant",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Préparer un projet d’avenant pour un travail potentiellement hors périmètre",
+        "tags": [
+          "Missions"
+        ]
+      }
+    },
+    "/v1/cabinet/baremes": {
+      "get": {
+        "operationId": "MissionsController_baremes",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Barème de temps du cabinet par prestation",
+        "tags": [
+          "Missions"
+        ]
+      }
+    },
+    "/v1/cabinet/baremes/{prestation}": {
+      "put": {
+        "operationId": "MissionsController_definirBareme",
+        "parameters": [
+          {
+            "name": "prestation",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "minutesReference": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 100000
+                  }
+                },
+                "required": [
+                  "minutesReference"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Définir le temps de référence d’une prestation (gestionnaires)",
+        "tags": [
+          "Missions"
+        ]
+      }
+    },
+    "/v1/dossiers/{id}/conseils": {
+      "post": {
+        "description": "Le logiciel n’envoie rien : il trace la rédaction, la validation, l’autorisation d’envoi et les faits constatés ensuite.",
+        "operationId": "ConseilsController_creer",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "dateConseil": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "objet": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 300
+                  },
+                  "contenu": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
+                  },
+                  "destinataire": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 300
+                  },
+                  "missionId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                  },
+                  "pieces": {
+                    "default": [],
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                    }
+                  }
+                },
+                "required": [
+                  "dateConseil",
+                  "objet",
+                  "contenu",
+                  "destinataire",
+                  "pieces"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Rédiger un conseil (projet)",
+        "tags": [
+          "Registre des conseils"
+        ]
+      },
+      "get": {
+        "operationId": "ConseilsController_registre",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Registre des conseils d’un dossier : date, auteur, objet, destinataire, statut, événements constatés",
+        "tags": [
+          "Registre des conseils"
+        ]
+      }
+    },
+    "/v1/conseils/{id}": {
+      "put": {
+        "operationId": "ConseilsController_modifier",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "dateConseil": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "objet": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 300
+                  },
+                  "contenu": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
+                  },
+                  "destinataire": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 300
+                  },
+                  "missionId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                  },
+                  "pieces": {
+                    "default": [],
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                    }
+                  }
+                },
+                "required": [
+                  "dateConseil",
+                  "objet",
+                  "contenu",
+                  "destinataire",
+                  "pieces"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Modifier un conseil tant qu’il est un projet ; un conseil validé ne se modifie plus (nouvelle version)",
+        "tags": [
+          "Registre des conseils"
+        ]
+      }
+    },
+    "/v1/conseils/{id}/nouvelle-version": {
+      "post": {
+        "operationId": "ConseilsController_nouvelleVersion",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Créer une nouvelle version (projet) d’un conseil validé ; l’ancienne reste au registre",
+        "tags": [
+          "Registre des conseils"
+        ]
+      }
+    },
+    "/v1/conseils/{id}/validation": {
+      "post": {
+        "operationId": "ConseilsController_validerConseil",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Valider un conseil (habilitation de validation). La validation n’autorise pas encore l’envoi.",
+        "tags": [
+          "Registre des conseils"
+        ]
+      }
+    },
+    "/v1/conseils/{id}/autorisation-envoi": {
+      "post": {
+        "operationId": "ConseilsController_autoriser",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Autoriser l’envoi d’un conseil validé (habilitation de validation) — étape distincte de la validation",
+        "tags": [
+          "Registre des conseils"
+        ]
+      }
+    },
+    "/v1/conseils/{id}/evenements": {
+      "post": {
+        "description": "Un envoi n’est consignable qu’après autorisation. Remise, réception et lecture supposent un envoi consigné et ne se déduisent jamais l’une de l’autre. Les événements ne se modifient pas.",
+        "operationId": "ConseilsController_consigner",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "envoi",
+                      "remise",
+                      "reception",
+                      "lecture"
+                    ]
+                  },
+                  "dateEvenement": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                  },
+                  "canal": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "justificatif": {
+                    "type": "string",
+                    "minLength": 5,
+                    "maxLength": 1000
+                  },
+                  "justificatifDocumentId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                  }
+                },
+                "required": [
+                  "type",
+                  "dateEvenement",
+                  "canal",
+                  "justificatif"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Consigner un fait établi : envoi, remise, réception ou lecture, avec son justificatif",
+        "tags": [
+          "Registre des conseils"
+        ]
+      }
+    },
+    "/v1/veille/sources": {
+      "get": {
+        "description": "« veilleAssuree » est faux quand la dernière vérification réussie est absente ou trop ancienne : une source indisponible n’est jamais présentée comme « sans nouveauté ».",
+        "operationId": "VeilleController_sources",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Sources officielles surveillées et état de leur surveillance",
+        "tags": [
+          "Veille réglementaire"
+        ]
+      }
+    },
+    "/v1/dossiers/{id}/veille": {
+      "get": {
+        "description": "Seules les évolutions qualifiées par une personne (état « verifiee ») sont présentées. L’applicabilité vaut « a_confirmer » dès qu’une caractéristique du dossier manque. Aucune évolution ne modifie les règles des contrôles.",
+        "operationId": "VeilleController_veille",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Évolutions réglementaires vérifiées, avec leur applicabilité à ce dossier et son explication",
+        "tags": [
+          "Veille réglementaire"
+        ]
+      }
+    },
+    "/v1/dossiers/{id}/veille/{evolutionId}": {
+      "put": {
+        "operationId": "VeilleController_suivre",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "evolutionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "statut": {
+                    "type": "string",
+                    "enum": [
+                      "a_examiner",
+                      "pris_en_compte",
+                      "sans_objet"
+                    ]
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "statut"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Consigner le suivi d’une évolution pour ce dossier (à examiner, pris en compte, sans objet)",
+        "tags": [
+          "Veille réglementaire"
+        ]
+      }
+    },
+    "/v1/recherche": {
+      "get": {
+        "description": "Recherche déterministe (plein texte français), sans IA. Les habilitations sont appliquées par la base avant toute recherche. Chaque résultat cite sa source (pièce et page, écriture et lot, constat) ; les extraits sont des contenus de pièces, donc non fiables, renvoyés en texte brut.",
+        "operationId": "RechercheController_chercher",
+        "parameters": [
+          {
+            "name": "entiteId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Recherche textuelle dans un dossier : pièces (texte extrait), écritures importées, constats",
+        "tags": [
+          "Recherche"
+        ]
+      }
+    },
+    "/v1/exercices/{id}/etats": {
+      "get": {
+        "description": "Calcul déterministe sur le lot comptable actif. La table de correspondance comptes → rubriques est versionnée et en attente de validation professionnelle. Un compte non affecté rend l’état incomplet et le dit ; aucun ajustement ne force l’égalité actif/passif. Annexe et liasse fiscale : hors périmètre.",
+        "operationId": "EtatsController_etats",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Balance et PROJETS de compte de résultat et de bilan d’un exercice",
+        "tags": [
+          "États de travail et indicateurs"
+        ]
+      }
+    },
+    "/v1/exercices/{id}/indicateurs": {
+      "get": {
+        "description": "Chaque valeur vient du moteur, avec les comptes qui la composent. Un indicateur non calculable renvoie valeur null et son motif. Les délais clients et fournisseurs exigent un taux de TVA moyen (en pourcentage). Les « signaux » sont des points à examiner, jamais un diagnostic.",
+        "operationId": "EtatsController_indicateurs",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tauxTvaVentes",
+            "required": false,
+            "in": "query",
+            "description": "Taux moyen en pourcentage, ex. 20",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tauxTvaAchats",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Indicateurs de performance du dossier pour un exercice, avec formule, composantes et évolution N / N-1",
+        "tags": [
+          "États de travail et indicateurs"
+        ]
+      }
+    },
+    "/v1/reference/indicateurs": {
+      "get": {
+        "operationId": "EtatsController_catalogue",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Catalogue des indicateurs : formule, convention, unité, entrées, règle en cas de donnée manquante, source",
+        "tags": [
+          "États de travail et indicateurs"
         ]
       }
     }

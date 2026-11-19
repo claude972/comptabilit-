@@ -14,4 +14,10 @@ docker compose exec -T postgres pg_dump -U "$PG_ADMIN_USER" -d comtaple -Fc --no
 shasum -a 256 "$CIBLE" > "$CIBLE.sha256"
 node scripts/objets.mjs sauvegarder "${CIBLE%.dump}.objets.json"
 shasum -a 256 "${CIBLE%.dump}.objets.json" > "${CIBLE%.dump}.objets.json.sha256"
+# Chiffrement (préparation) : seulement si une clé PUBLIQUE est désignée. Les fichiers en clair restent en place.
+if [ -n "${SAUVEGARDE_CLE_PUBLIQUE:-}" ]; then
+  node scripts/chiffrer-sauvegardes.mjs chiffrer --cle-publique "$SAUVEGARDE_CLE_PUBLIQUE" "$CIBLE" "${CIBLE%.dump}.objets.json"
+else
+  echo "Sauvegarde EN CLAIR : aucune clé publique désignée (SAUVEGARDE_CLE_PUBLIQUE). Voir docs/deploiement.md."
+fi
 echo "$CIBLE"

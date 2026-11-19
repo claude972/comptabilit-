@@ -6,3 +6,4 @@ export * from './reception.js';
 export * from './mail.js';
 export * from './regles.js';
 export * from './metriques.js';
+export * from './chiffrement-fichiers.js';

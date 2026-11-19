@@ -89,7 +89,8 @@ Codes de sortie : 0 réussi ; 3 données restaurées fidèlement mais journal d'
 - Restauration à un instant donné (journaux de transactions).
 - Cohérence d'une sauvegarde prise pendant une forte activité d'écriture : la base et le stockage ne sont pas figés ensemble ; seul le sens « tout objet référencé est présent » est garanti par l'ordre des copies.
 - Objets du stockage non référencés par la base (dépôts interrompus, anciennes archives) : sauvegardés et rechargés, mais non contrôlés un par un.
-- Chiffrement des sauvegardes et conservation hors du poste : non faits (dossier local seulement).
+- Chiffrement des sauvegardes : un outil existe (`scripts/chiffrer-sauvegardes.mjs`, D-050) — clé publique pour chiffrer, clé privée à conserver hors du poste, rien n'est jamais supprimé — mais AUCUNE clé n'est configurée : les sauvegardes locales sont toujours en clair, et `scripts/sauvegarder.sh` le dit à chaque exécution. Pour l'activer : `node scripts/chiffrer-sauvegardes.mjs generer-cles <dossier extérieur au dépôt>`, mettre la clé privée en lieu sûr, puis `SAUVEGARDE_CLE_PUBLIQUE=<clé publique> scripts/sauvegarder.sh`. Les objets du stockage ne sont pas encore chiffrés, et l'essai de restauration ne lit pas de sauvegardes chiffrées.
+- Conservation hors du poste : non faite (dossier local seulement).
 - Restauration de Redis : les files sont reconstructibles ; le rattrapage du worker remet en file les traitements confirmés en base restés en attente (D-035). Aucun essai avec un arrêt réel de Redis.
 - Objectifs de perte de données admissible et de délai de reprise : non définis. Ils dépendent des mécanismes de l'hébergeur et sont à fixer avec lui.
 - Les jetons émis par l'instance Keycloak d'essai n'ont pas été présentés à l'API (émetteur différent) : l'essai compare les comptes et les secrets, il ne rejoue pas un parcours applicatif sur l'instance restaurée.

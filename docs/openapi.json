@@ -1,6 +1,114 @@
 {
   "openapi": "3.0.0",
   "paths": {
+    "/v1/notifications": {
+      "get": {
+        "description": "Notifications INTERNES uniquement : rien n’est envoyé par courriel, SMS ou notification poussée. Chacun ne voit que les siennes. Le texte est composé à la lecture ; une notification d’un dossier auquel l’appelant n’a plus accès n’en dit plus rien.",
+        "operationId": "NotificationsController_lister",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "nonLues",
+            "required": false,
+            "in": "query",
+            "description": "« 1 » : seulement les non lues",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mes notifications dans l’application",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/v1/notifications/decompte": {
+      "get": {
+        "operationId": "NotificationsController_decompte",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Nombre de mes notifications non lues",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/v1/notifications/lues": {
+      "post": {
+        "operationId": "NotificationsController_toutLire",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Marquer toutes mes notifications comme lues",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/v1/notifications/{id}/lue": {
+      "post": {
+        "operationId": "NotificationsController_lire",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Marquer une de mes notifications comme lue",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
     "/v1/sante": {
       "get": {
         "operationId": "ProfilController_sante",
@@ -1809,6 +1917,109 @@
           }
         ],
         "summary": "Relancer un import de relevé CSV en échec avec un profil de colonnes confirmé",
+        "tags": [
+          "Banque et rapprochements"
+        ]
+      }
+    },
+    "/v1/exercices/{id}/correspondance-banque": {
+      "get": {
+        "description": "État de l’association utilisée par le rapprochement bancaire (contrôle TRE-003) : comptes 512 mouvementés, comptes bancaires des relevés actifs, correspondance EN VIGUEUR (règle approuvée, ou association d’office quand il n’y a qu’un compte de chaque côté) et propositions en attente. Les comptes bancaires sont désignés par une référence opaque et un libellé masqué : l’IBAN complet n’est pas renvoyé.",
+        "operationId": "BanqueController_correspondance",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Correspondance entre comptes comptables de banque (512) et comptes bancaires des relevés",
+        "tags": [
+          "Banque et rapprochements"
+        ]
+      },
+      "post": {
+        "description": "Crée une PROPOSITION de règle du dossier pour le contrôle TRE-003 (paramètre `correspondances`), en conservant les autres paramètres déjà approuvés. Elle suit le circuit des règles du cabinet : mesure d’impact, puis approbation par une AUTRE personne, administrateur ou associé. Chaque compte 512 et chaque compte bancaire doit exister dans le dossier, et l’association doit être un pour un.",
+        "operationId": "BanqueController_proposerCorrespondance",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "correspondances": {
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "compteNum": {
+                          "type": "string",
+                          "pattern": "^\\d{3,12}$"
+                        },
+                        "compteBancaireRef": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{24}$"
+                        }
+                      },
+                      "required": [
+                        "compteNum",
+                        "compteBancaireRef"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "motif": {
+                    "type": "string",
+                    "minLength": 5,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "correspondances",
+                  "motif"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Proposer une correspondance comptes 512 / comptes bancaires pour ce dossier (habilitation de collaboration)",
         "tags": [
           "Banque et rapprochements"
         ]

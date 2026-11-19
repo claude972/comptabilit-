@@ -1,6 +1,6 @@
 # Rapport de tests
 
-Dernière exécution complète : 2026-11-19 (septième passe, après la restitution d'un cabinet, la pagination, les essais de restauration fiabilisés, les ancres du journal (vérification stricte comme référence), l'affectation des travaux et les lots versions de pièces, aperçu CSV, pièces jointes, annulation et campagnes d'import, rentabilité), poste de développement macOS (Apple Silicon), services locaux dans une machine virtuelle Docker (4 processeurs, 6 Go). La base locale contient les données accumulées par les exécutions successives des parcours.
+Dernière exécution complète : 2026-11-19 (huitième passe, après la restitution d'un dossier en flux, la correspondance des comptes de banque, les notifications internes, l'outil de chiffrement (vérification stricte comme référence), l'affectation des travaux et les lots versions de pièces, aperçu CSV, pièces jointes, annulation et campagnes d'import, rentabilité), poste de développement macOS (Apple Silicon), services locaux dans une machine virtuelle Docker (4 processeurs, 6 Go). La base locale contient les données accumulées par les exécutions successives des parcours.
 
 Tous les jeux de données sont SYNTHÉTIQUES. Aucun service externe réel (Google, Microsoft, OVHcloud), aucun appareil réel, aucune donnée de cabinet.
 
@@ -8,17 +8,18 @@ Tous les jeux de données sont SYNTHÉTIQUES. Aucun service externe réel (Googl
 
 | Suite | Commande | Résultat | Contre quoi |
 |---|---|---|---|
-| Moteur métier | `pnpm --filter @comtaple/core run test` | 458 réussis / 458 | Mémoire, jeux synthétiques |
+| Moteur métier | `pnpm --filter @comtaple/core run test` | 465 réussis / 465 | Mémoire, jeux synthétiques |
 | Connecteurs mail (bibliothèque) | `pnpm --filter @comtaple/mail run test` | 57 réussis / 57 | Simulateur local des API Gmail et Graph |
-| Application web (logique) | `pnpm --filter @comtaple/web run test` | 139 réussis / 139 | Mémoire |
-| Isolation et audit | `pnpm --filter @comtaple/db run test:integration` | 39 réussis / 39 (13 sur la base locale existante, 26 sur une base neuve isolée, dont 7 sur les ancres du journal) | PostgreSQL réel. La base neuve est créée, migrée depuis zéro, amorcée puis supprimée à chaque exécution |
+| Application web (logique) | `pnpm --filter @comtaple/web run test` | 141 réussis / 141 | Mémoire |
+| Isolation et audit | `pnpm --filter @comtaple/db run test:integration` | 43 réussis / 43 (13 sur la base locale existante, 30 sur une base neuve isolée, dont 7 sur les ancres du journal et 4 sur les notifications) | PostgreSQL réel. La base neuve est créée, migrée depuis zéro, amorcée puis supprimée à chaque exécution |
 | Surveillance des sources et rattrapage | `pnpm --filter @comtaple/worker run test:integration` | 8 réussis / 8 | PostgreSQL réel, lecture HTTP injectée |
-| Parcours de bout en bout | `pnpm --filter @comtaple/api run test:integration` | 131 réussis / 131 (13 fichiers) | Pile réelle : Keycloak, API, worker, PostgreSQL, Redis, S3, ClamAV, OCR. Les 20 parcours mail utilisent en plus le simulateur de messagerie |
+| Parcours de bout en bout | `pnpm --filter @comtaple/api run test:integration` | 143 réussis / 143 (15 fichiers) | Pile réelle : Keycloak, API, worker, PostgreSQL, Redis, S3, ClamAV, OCR. Les 20 parcours mail utilisent en plus le simulateur de messagerie |
 | Navigateur, API simulée | `pnpm --filter @comtaple/web run test:e2e` | 109 réussis / 109 | Vrai Keycloak ; API remplacée par un simulateur de test ; Chromium ordinateur et émulation Pixel 7 |
-| Navigateur, pile réelle | `pnpm --filter @comtaple/web exec playwright test -c playwright.reel.config.ts` | 29 réussis / 29 | Tout réel en local, Chromium ordinateur et émulation Pixel 7 |
+| Navigateur, pile réelle | `pnpm --filter @comtaple/web exec playwright test -c playwright.reel.config.ts` | 32 réussis / 32 | Tout réel en local, Chromium ordinateur et émulation Pixel 7 |
 | Service OCR | tests pytest dans l'image `comtaple-ocr:tests` | 48 réussis / 48 (exécution du développeur du service, non relancée lors des dernières passes) | Conteneur sans réseau |
-| Navigateur WebKit, pile réelle | `pnpm --filter @comtaple/web exec playwright test -c playwright.navigateurs.config.ts --project=webkit` | 29 réussis / 29 | Mêmes parcours que la ligne précédente, moteur WebKit 27.2 de Playwright (moteur de Safari, pas Safari), téléphone émulé en iPhone 15 |
+| Navigateur WebKit, pile réelle | `pnpm --filter @comtaple/web exec playwright test -c playwright.navigateurs.config.ts --project=webkit` | 32 réussis / 32 | Mêmes parcours que la ligne précédente, moteur WebKit 27.2 de Playwright (moteur de Safari, pas Safari), téléphone émulé en iPhone 15 |
 | Navigateur Firefox, pile réelle | idem `--project=firefox` | **Non exécuté** : Firefox 159 de Playwright ne se lance pas sur ce poste (« Could not find profile folder », refus du bac à sable macOS), y compris depuis le disque interne | — |
+| Chiffrement de fichiers de sauvegarde | `pnpm --filter @comtaple/plateforme run test` | 9 réussis / 9 (dont 8 sur le chiffrement) | Fichiers temporaires ; aucune sauvegarde réelle chiffrée, aucune clé configurée |
 | Sauvegarde et restauration : base et stockage objet | `scripts/sauvegarder.sh && scripts/essai-restauration.sh` | **Restauration fidèle, contrôle d'intégrité du journal EN ÉCHEC** (code de sortie 3). Base : restaurée en 10 s dans un PostgreSQL d'essai séparé, 460 344 lignes d'écriture, 114 politiques RLS, journal identique à l'origine. Stockage objet : 1 613 objets (4,4 Go) rechargés en 82 s dans une instance isolée, 1 514 objets référencés par la base restaurée tous relus et conformes. Aucun service de l'application n'a redémarré. La vérification stricte désigne la ligne 7603 du cabinet Alpha fictif (état historique dégradé, D-038) : l'essai ne sortira « réussi » que sur une base au journal intègre | Instances d'essai séparées (PostgreSQL et stockage), ressources plafonnées, détruites après l'essai |
 | Sauvegarde et restauration : Keycloak | `scripts/essai-restauration-keycloak.sh` | Réussi : 16 contrôles conformes (comptes, « sub », connexions, refus d'un mauvais mot de passe, clients, secret, rôles) ; Keycloak local figé 0,3 s pour la copie, sans arrêt ni redémarrage | Instance Keycloak d'essai séparée, détruite après l'essai |
 | Images de conteneurs | `docker build --target api\|worker\|web` puis démarrage | Trois images construites et démarrées | Réseau des services locaux ; lecture seule, sans capacités, utilisateur non privilégié |
@@ -28,7 +29,7 @@ Typage : réussi pour tous les paquets. Les 27 migrations sont rejouées depuis 
 
 Les images de conteneurs, la validation OpenTofu et les tests du service OCR n'ont PAS été relancés lors de cette passe : leurs résultats datent des passes précédentes.
 
-Non exécuté : l'intégration continue GitHub (fichier écrit, dépôt distant non alimenté, et non mise à jour pour les suites ajoutées depuis) ; aucune analyse statique de style ; aucun test de charge ; aucun test d'intrusion ; aucune analyse de vulnérabilités des dépendances ou des images.
+Intégration continue GitHub : une exécution, EN ÉCHEC (run 44509674342, commit 07db781) — build, typage et tests unitaires réussis, échec au démarrage des services, cause non établie faute d'accès aux journaux (D-051) ; corrections commitées en local, non réexécutées. Les suites navigateur ne font pas partie de la CI. Non exécuté ; aucune analyse statique de style ; aucun test de charge ; aucun test d'intrusion ; aucune analyse de vulnérabilités des dépendances ou des images.
 
 ## Ce que couvrent les parcours de bout en bout (pile réelle)
 
@@ -53,6 +54,10 @@ Non exécuté : l'intégration continue GitHub (fichier écrit, dépôt distant 
 **Restitution d'un cabinet (cabinet neuf créé pour le test)** — réservée aux gestionnaires ; périmètre annoncé puis figé selon les habilitations du demandeur ; dossier hors habilitation absent de toutes les tables, des écritures et des originaux ; manifeste complet et exact ; aucun secret ; téléchargement refusé à un autre gestionnaire, à un collaborateur et à un autre cabinet ; vérification hors application, archive altérée ou tronquée rejetée ; restitution complète après habilitation journalisée, avec un journal d'audit dont les lignes restituées s'enchaînent.
 
 **Pagination (cabinet neuf créé pour le test)** — 57 règles et plus de 200 propositions de rapprochement parcourues page par page sans doublon ni oubli, ordre stable, décomptes sur l'ensemble, filtres, page au-delà de la fin, paramètres invalides refusés, ancienne forme conservée, une décision ne déplace aucune proposition d'une page à l'autre, cloisonnement inchangé.
+
+**Correspondance des comptes de banque (cabinet neuf créé pour le test)** — deux comptes 512 et deux comptes bancaires : association indéterminée et TRE-003 « non réalisé » ; IBAN jamais renvoyé ; déposant, autre cabinet, référence inventée, compte non bancaire, doublons refusés ; proposition sans effet ; approbation refusée à l'auteure, au réviseur, et sans mesure d'impact ; impact mesuré sur les vrais relevés (non réalisé → réalisé) ; correspondance en vigueur après approbation, contrôle réalisé ; modification par nouvelle proposition, l'ancienne restant en vigueur.
+
+**Notifications internes (cabinet neuf créé pour le test)** — personne n'en a au départ ; règle proposée → gestionnaires seulement ; décision → auteure seulement ; complément demandé → déposant, sans recopie du message ; réponse → demandeuse ; archive prête → demandeur ; chacun ne marque que les siennes ; décompte, filtre, pagination ; habilitation retirée → plus rien du dossier. Au niveau de la base (base neuve) : écriture directe refusée, membre d'un autre cabinet ignoré, dossier étranger refusé, seule la date de lecture modifiable.
 
 **Comptabilité** — import FEC en flux et idempotent ; anomalies injectées détectées ; revue des constats ; dossier de révision ; nouvelle version rendant les travaux « à revoir » ; faux FEC rejeté ; contrôles fiscaux non réalisés hors métropole ; cohérence entre deux exercices importés.
 
@@ -96,6 +101,10 @@ Aucune mesure sur des pièces réelles. Sur les gabarits synthétiques, numéro,
 
 | Sujet | État |
 |---|---|
+| **CI en échec à sa première exécution** (démarrage des services) | Cause NON établie : journaux inaccessibles sans authentification. Étape de diagnostic corrigée (elle s'arrêtait sur `tail`), étapes séparées et bornées ; à rejouer (D-051) |
+| Mesure d'impact d'une règle sans les relevés bancaires : un contrôle bancaire était « non réalisé » avant comme après | Corrigé, vérifié par le parcours de correspondance |
+| Chiffrement : écriture dans un fichier de sortie déjà existant bloquait au lieu d'être refusée | Trouvé par les tests, corrigé |
+| Sauvegardes locales toujours en clair | Outil de chiffrement prêt ; activation suspendue à la décision sur la garde de la clé privée (D-050) |
 | Export du journal et lecture de son état triés sur le numéro lu comme du texte (100 rangé avant 99) | Trouvé par les tests des ancres et par un essai sur les journaux locaux, corrigé avant toute utilisation |
 | Simulateur d'API des tests navigateur : identifiants de contrôles écrits `TIE_001` au lieu de `TIE-001` | Corrigé : le simulateur utilise les identifiants du catalogue réel |
 | Restitution d'un cabinet : mémoire du worker montée à 486 Mo pour une archive de 359 Mo | À surveiller : la construction est en flux, mais ce pic n'a pas été décomposé (compression, envoi par morceaux, tranches de 5 000 lignes) ni mesuré sur un cabinet plus gros |
@@ -118,7 +127,7 @@ Aucune mesure sur des pièces réelles. Sur les gabarits synthétiques, numéro,
 | Jonction de pièces à un conseil, une écriture d'inventaire, une lettre | Corrigé (formulaires livrés ; conseil et écriture vérifiés au navigateur sur pile réelle, lettre contre simulateur et par l'API) |
 | Listes sans total | Corrigé : pièces, rapprochements et règles paginés avec total (D-044) |
 | Aperçu d'un CSV bancaire avant confirmation du profil | Corrigé. Limite : aucun profil n'est pré-proposé (`profilPropose` toujours vide), l'utilisateur choisit toutes les colonnes |
-| Correspondance comptes 512 ↔ comptes bancaires : possible par une règle de cabinet sur `TRE-003`, sans écran dédié | Ouvert |
+| Correspondance comptes 512 ↔ comptes bancaires sans écran dédié | Corrigé (D-048) |
 | Progression d'import sans total | Ouvert |
 | Points d'entrée publics de notification mail sans limitation de débit | Corrigé (l'écart était resté noté « ouvert » à tort) : limite globale par fournisseur, 300 par minute, testée unitairement. Limite : comptée par processus, donc non partagée entre plusieurs instances de l'API |
 | Rotation de la clé de chiffrement des jetons mail | Corrigé (anciennes clés acceptées en déchiffrement seulement ; testé en bibliothèque) |

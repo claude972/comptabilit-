@@ -20,5 +20,7 @@ Chaque ligne indique ce qui est attendu d'un humain, pourquoi, et ce qui en dép
 | 13 | Fixer la grille tarifaire réelle et le circuit de facturation (TVA, plateforme agréée) | Éditeur | Commercialisation | Grille de démonstration fictive |
 | 14 | Inscrire l'URI de redirection `<adresse du web>/connexions-mail/retour` chez Google et Microsoft | Éditeur | Retour OAuth des connexions mail | Page de retour en place, vérifiée contre simulateur |
 | 15 | Choisir une destination INDÉPENDANTE pour les ancres du journal d'audit (tiers de confiance, horodatage qualifié ou publication), en fixer la fréquence et le coût éventuel | Éditeur, avec avis juridique | Détection d'une réécriture complète de la fin du journal par un administrateur de la base | Format d'ancre, export et vérification hors base prêts et testés (D-046) ; aucun dépôt externe n'est fait, aucun service n'est appelé |
+| 16 | Décider où conserver la clé PRIVÉE des sauvegardes (hors du poste : coffre, support déconnecté), puis créer la paire de clés | Éditeur | Chiffrement des sauvegardes locales | Outil prêt et testé (D-050) ; aucune clé créée, sauvegardes toujours en clair |
+| 17 | Fournir le journal de la CI en échec (page du run, « Download log archive », à déposer dans `var/`) ou un jeton de lecture des journaux Actions | Utilisateur | Cause de l'échec de l'étape « Services » de la CI | Cause non établie ; CI rendue auto-explicative pour la prochaine exécution (D-051) |
 
 Aucune dépense n'a été engagée et aucun compte externe n'a été créé.

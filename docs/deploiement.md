@@ -87,6 +87,7 @@ Codes de sortie : 0 réussi ; 3 données restaurées fidèlement mais journal d'
 - Objets du stockage non référencés par la base (dépôts interrompus, anciennes archives) : sauvegardés et rechargés, mais non contrôlés un par un.
 - Chiffrement des sauvegardes et conservation hors du poste : non faits (dossier local seulement).
 - Restauration de Redis : les files sont reconstructibles ; le rattrapage du worker remet en file les traitements confirmés en base restés en attente (D-035). Aucun essai avec un arrêt réel de Redis.
+- Objectifs de perte de données admissible et de délai de reprise : non définis. Ils dépendent des mécanismes de l'hébergeur et sont à fixer avec lui.
 - Les jetons émis par l'instance Keycloak d'essai n'ont pas été présentés à l'API (émetteur différent) : l'essai compare les comptes et les secrets, il ne rejoue pas un parcours applicatif sur l'instance restaurée.
 
 ### Incident constaté pendant l'essai, et correction

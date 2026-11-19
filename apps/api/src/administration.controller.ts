@@ -1,4 +1,4 @@
-import { BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Put } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { validerSiren } from '@comtaple/core';
 import { type AccesBd, and, asc, eq, journaliser, schema as s, sql, type Tx } from '@comtaple/db';
@@ -67,6 +67,24 @@ export class AdministrationController {
         .innerJoin(s.utilisateurs, eq(s.utilisateurs.id, s.appartenances.utilisateurId))
         .where(eq(s.appartenances.cabinetId, acces.cabinetId))
         .orderBy(asc(s.utilisateurs.nom));
+    });
+  }
+
+  @Get('cabinet/indicateurs')
+  @ApiOperation({
+    summary: 'Indicateurs d’activité du cabinet et du logiciel sur une période (gestionnaires)',
+    description:
+      'Décomptes et durées agrégés par cabinet et par dossier : volumes de pièces, délai de traitement, devenir des extractions automatiques (acceptées, corrigées, rejetées, non examinées), imports, constats, rapprochements, temps observés. Aucun indicateur par personne. Ces chiffres mesurent l’activité enregistrée, pas la qualité des extractions (aucun corpus de référence).',
+  })
+  async indicateurs(@AccesCourant() acces: Acces, @Query('du') du?: string, @Query('au') au?: string) {
+    const iso = /^\d{4}-\d{2}-\d{2}$/;
+    const fin = au ?? new Date().toISOString().slice(0, 10);
+    const debut = du ?? `${fin.slice(0, 8)}01`;
+    if (!iso.test(debut) || !iso.test(fin) || debut > fin) throw new BadRequestException('Période invalide (du, au : AAAA-MM-JJ)');
+    return this.bd.avecContexte(acces, async (tx) => {
+      await exigerGestionnaire(tx);
+      const r = await tx.execute(sql`select cabinet_indicateurs(${debut}::date, ${fin}::date) as indicateurs`);
+      return { periode: { du: debut, au: fin }, ...(r.rows[0]!.indicateurs as Record<string, unknown>) };
     });
   }
 

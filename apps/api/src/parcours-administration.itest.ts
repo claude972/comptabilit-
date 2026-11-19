@@ -119,3 +119,27 @@ describe('listes paginées et téléversements abandonnés', () => {
     expect(jetons.client).toBeTruthy();
   });
 });
+
+describe('indicateurs du cabinet', () => {
+  it('donne des décomptes agrégés au gestionnaire, par dossier et jamais par personne ; refusé aux autres rôles', async () => {
+    const r = await api('alice', 'GET', '/v1/cabinet/indicateurs?du=2020-01-01');
+    expect(r.statut).toBe(200);
+    expect(r.json.pieces.recues).toBeGreaterThan(0);
+    expect(Object.keys(r.json.pieces.parStatut).length).toBeGreaterThan(0);
+    const e = r.json.extractions;
+    for (const k of ['accepteesSansCorrection', 'corrigeesPuisValidees', 'rejetees', 'nonExaminees']) expect(typeof e[k]).toBe('number');
+    expect(Object.keys(r.json.controles.parStatut)).toEqual(expect.arrayContaining(['sans_anomalie']));
+    // Un gestionnaire voit le décompte d'un dossier où il n'est pas habilité, mais toujours pas son contenu.
+    const martin = r.json.parDossier.find((d: any) => d.entiteId === DEMO.martin);
+    expect(martin).toMatchObject({ raisonSociale: expect.any(String), pieces: expect.any(Number) });
+    expect((await api('alice', 'GET', `/v1/documents?entiteId=${DEMO.martin}`)).statut).toBe(404);
+    // Aucun identifiant ni nom de personne dans la réponse.
+    const texte = JSON.stringify(r.json);
+    for (const personne of [DEMO.alice, DEMO.remi, DEMO.chloe, DEMO.client, 'Rémi', 'Chloé', 'Camille']) expect(texte).not.toContain(personne);
+    // Cloisonnement : rien du cabinet Bêta.
+    expect(r.json.parDossier.some((d: any) => d.entiteId === DEMO.leroy)).toBe(false);
+    expect((await api('remi', 'GET', '/v1/cabinet/indicateurs')).statut).toBe(403);
+    expect((await api('client', 'GET', '/v1/cabinet/indicateurs')).statut).toBe(403);
+    expect((await api('alice', 'GET', '/v1/cabinet/indicateurs?du=2026-13-45')).statut).toBe(400);
+  });
+});

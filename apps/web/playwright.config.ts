@@ -21,7 +21,7 @@ function chargerEnv(): void {
 }
 chargerEnv();
 
-const PORT_WEB = Number(process.env.E2E_PORT_WEB ?? 3100);
+const PORT_WEB = Number(process.env.E2E_PORT_WEB ?? 3200);
 const PORT_API = Number(process.env.E2E_PORT_API ?? 4100);
 const ORIGINE = 'http://localhost:3000';
 process.env.E2E_FAUX_API = `http://127.0.0.1:${PORT_API}`;

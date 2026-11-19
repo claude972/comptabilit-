@@ -18,7 +18,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { type AccesBd, and, desc, eq, journaliser, schema as s, sql } from '@comtaple/db';
-import { cles, type Config, type Files, type Stockage } from '@comtaple/plateforme';
+import { assurerFichierOriginal, cles, type Config, enregistrerReception, type Files, type Stockage } from '@comtaple/plateforme';
 import { z } from 'zod';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
 import { BD, CONFIG, STOCKAGE, TACHES } from './jetons.js';
@@ -202,16 +202,7 @@ export class TeleversementsController {
       }
       await this.stockage.supprimer([...morceaux, cleTemp]);
 
-      let [fichier] = await tx
-        .select()
-        .from(s.fichiers)
-        .where(and(eq(s.fichiers.sha256, sha256), eq(s.fichiers.nature, 'original')));
-      if (!fichier) {
-        [fichier] = await tx
-          .insert(s.fichiers)
-          .values({ cabinetId: acces.cabinetId, sha256, taille, typeMimeDeclare: t.typeMimeDeclare, cleStockage: cleFinale })
-          .returning();
-      }
+      const fichier = await assurerFichierOriginal(tx, { cabinetId: acces.cabinetId, sha256, taille, typeMimeDeclare: t.typeMimeDeclare, cleStockage: cleFinale });
 
       if (t.usage === 'fec') {
         const cle = `fec:${t.exerciceId}:${sha256}`;
@@ -229,7 +220,7 @@ export class TeleversementsController {
               exerciceId: t.exerciceId,
               type: 'fec',
               statutDonnees: t.statutDonnees,
-              fichierId: fichier!.id,
+              fichierId: fichier.id,
               cleIdempotence: cle,
               version: max + 1,
               actif: false,
@@ -252,46 +243,21 @@ export class TeleversementsController {
         return { t: maj!, nouveau: cree, lotImportId: lot!.id };
       }
 
-      // Pièce : doublon binaire dans le même dossier → nouvelle occurrence de réception, pas de nouveau document.
-      const [dejaLa] = await tx
-        .select()
-        .from(s.documents)
-        .where(and(eq(s.documents.entiteId, t.entiteId), eq(s.documents.fichierId, fichier!.id)));
-      let document = dejaLa;
-      if (!document) {
-        [document] = await tx
-          .insert(s.documents)
-          .values({
-            cabinetId: acces.cabinetId,
-            entiteId: t.entiteId,
-            fichierId: fichier!.id,
-            nature: t.nature,
-            statut: 'recu',
-            nomOrigine: t.nomFichier,
-            commentaire: t.commentaire,
-          })
-          .returning();
-      }
-      await tx.insert(s.receptions).values({
+      // Pièce : doublon binaire dans le même dossier → nouvelle occurrence de réception, pas de nouveau document
+      // (logique commune à tous les canaux, voir `enregistrerReception`).
+      const r = await enregistrerReception(tx, {
         cabinetId: acces.cabinetId,
         entiteId: t.entiteId,
-        documentId: document!.id,
+        fichier,
+        nomFichier: t.nomFichier,
+        nature: t.nature,
+        commentaire: t.commentaire,
         canal: t.canal,
         deposantId: acces.utilisateurId,
-        doublonBinaire: Boolean(dejaLa),
         provenance: { televersementId: t.id, nomFichier: t.nomFichier, sha256 },
       });
-      const [maj] = await tx.update(s.televersements).set({ statut: 'complet', documentId: document!.id }).where(eq(s.televersements.id, t.id)).returning();
-      await journaliser(tx, {
-        cabinetId: acces.cabinetId,
-        acteurId: acces.utilisateurId,
-        action: dejaLa ? 'document.doublon_binaire' : 'document.recu',
-        cibleType: 'document',
-        cibleId: document!.id,
-        entiteId: t.entiteId,
-        details: { sha256, taille, canal: t.canal },
-      });
-      return { t: maj!, nouveau: !dejaLa, documentId: document!.id, doublonBinaire: Boolean(dejaLa), statutDocument: document!.statut };
+      const [maj] = await tx.update(s.televersements).set({ statut: 'complet', documentId: r.documentId }).where(eq(s.televersements.id, t.id)).returning();
+      return { t: maj!, nouveau: r.nouveau, documentId: r.documentId, doublonBinaire: r.doublonBinaire, statutDocument: r.statutDocument };
     });
 
     if ('refuse' in resultat) {

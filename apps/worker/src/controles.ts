@@ -3,6 +3,9 @@ import { and, asc, desc, eq, journaliser, ne, schema as s, sql } from '@comtaple
 import type { TacheControles } from '@comtaple/plateforme';
 import type { Contexte } from './contexte.js';
 
+/** Contrôles dont la règle ou le seuil relève de la fiscalité métropolitaine (taux de TVA, tolérance des biens de faible valeur). */
+const CONTROLES_FISCAUX_METROPOLE = new Set(['TVA-001', 'TVA-002', 'IMM-002']);
+
 /**
  * Exécute le catalogue de contrôles déterministes sur le lot d'une exécution et enregistre résultats et constats,
  * rattachés à la version exacte des données et des règles. Aucun appel à l'IA.
@@ -45,7 +48,22 @@ export async function executerControlesExecution(c: Contexte, t: TacheControles)
       idevise: l.idevise,
     }));
 
-    const resultats = executerControles({ lignes, exercice: { debut: exercice.debut, fin: exercice.fin }, exercicePrecedent: null });
+    const [entite] = await tx.select().from(s.entites).where(eq(s.entites.id, execution.entiteId));
+    const territoire = entite?.territoireFiscal ?? 'a_confirmer';
+    const resultats = executerControles({ lignes, exercice: { debut: exercice.debut, fin: exercice.fin }, exercicePrecedent: null }).map((r) => {
+      // Les règles fiscales implémentées sont celles de la France métropolitaine : hors de ce territoire (ou tant qu'il
+      // n'est pas confirmé), le contrôle n'est PAS réalisé et le dit, au lieu d'appliquer une règle inadaptée.
+      if (territoire === 'metropole' || !CONTROLES_FISCAUX_METROPOLE.has(r.controleId)) return r;
+      return {
+        ...r,
+        statut: 'non_realise' as const,
+        motif:
+          territoire === 'a_confirmer'
+            ? 'Territoire fiscal du dossier à confirmer : les règles fiscales métropolitaines ne sont pas appliquées par défaut.'
+            : `Territoire fiscal « ${territoire} » : seules les règles fiscales de France métropolitaine sont implémentées.`,
+        constats: [],
+      };
+    });
 
     // Décisions de revue antérieures sur le même exercice : reportées par clé stable, mais marquées « à revoir ».
     const [precedente] = await tx

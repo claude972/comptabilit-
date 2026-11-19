@@ -9,33 +9,54 @@ Les numéros `G…` / `M…` renvoient à [sources.md](./sources.md) (pages offi
 > Les règles (scopes, durées, limites, obligations de vérification) sont tirées des pages officielles citées. En revanche, les **intitulés de menus**
 > des consoles Google Cloud et Microsoft Entra sont donnés de mémoire et n'ont pas été contrôlés à l'écran : ils peuvent avoir changé.
 
-## 1. Ce que l'intégrateur doit fournir
+## 1. Branchement dans Comtaple (API et worker)
 
-| Élément | Rôle |
-|---|---|
-| `MagasinConnexions` | Lire / enregistrer l'état d'une connexion (statut, jetons chiffrés, curseurs, surveillance). Prévoir un verrou par connexion entre processus. |
-| `RecepteurPieces` | `pieceDejaVue`, `deposer` (enregistre le triplet connexion / message / pièce de façon atomique avec le dépôt), `signaler`. |
-| `Journal` | Reçoit des événements techniques (aucun jeton, aucun contenu, adresses masquées). |
-| `MemoireEmpreintes` (facultatif) | Compte les messages distincts où une petite image a été vue (logo répété). |
-| Clé de chiffrement | 32 octets aléatoires + un identifiant de clé (`Trousseau`). |
-| Secret de `state` | 32 octets au moins, pour lier le `state` OAuth à la session. |
-| Trois points d'entrée HTTP | Retour OAuth ; push Pub/Sub (Gmail) ; notifications Graph (changements et cycle de vie). |
-| Deux tâches planifiées | `synchroniser` périodique pour chaque connexion active (rattrapage ; seul mécanisme pour les boîtes partagées) ; `entretenirSurveillance` une fois par jour. |
+Le paquet est branché par `packages/plateforme/src/mail.ts` (ports sur PostgreSQL, S3 et BullMQ), `apps/api/src/mail.controller.ts`
+et `apps/worker/src/mail.ts`.
 
-Variables de configuration attendues (noms proposés, à déclarer par l'intégrateur) :
+### Variables d'environnement (fichier `.env`, lues par `packages/plateforme/src/config.ts`)
 
 | Variable | Contenu |
 |---|---|
-| `MAIL_CLE_CHIFFREMENT_ID`, `MAIL_CLE_CHIFFREMENT` | Identifiant et clé AES-256 (32 octets, base64). Anciennes clés à conserver pendant une rotation. |
-| `MAIL_SECRET_ETAT` | Secret du `state` (≥ 32 octets). |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_URI_REDIRECTION` | Client OAuth « application Web ». |
-| `GOOGLE_SUJET_PUBSUB` | `projects/<projet>/topics/<sujet>`. Absent : pas de notifications, synchronisation périodique seule. |
-| `GOOGLE_PUSH_AUDIENCE`, `GOOGLE_PUSH_COMPTE_SERVICE` | Audience et compte de service du push authentifié, passés à `validerPushPubSub`. |
-| `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_URI_REDIRECTION` | Inscription d'application Entra. |
+| `JETONS_CLE_CHIFFREMENT` | Secret (32 caractères au moins) déjà généré par `scripts/generer-env.sh`. En sont dérivées par HKDF-SHA256 : la clé AES-256 des jetons, le secret de liaison du `state`, la clé des demandes d'autorisation en attente. Changer ce secret rend illisibles les jetons stockés : les boîtes doivent être reconnectées. |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Client OAuth Google « application Web ». **Vides = connecteur Gmail `non_connecte`** : `POST /v1/mail/connexions` répond 503 `connecteur_non_configure`. |
+| `GOOGLE_SUJET_PUBSUB` | `projects/<projet>/topics/<sujet>`. Vide : pas de `watch`, synchronisation périodique seule. |
+| `GOOGLE_PUSH_AUDIENCE`, `GOOGLE_PUSH_COMPTE_SERVICE` | Audience et compte de service de l'abonnement push authentifié. Vides : le point d'entrée Pub/Sub répond 404. |
+| `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` | Inscription d'application Entra. Vides = connecteur Microsoft `non_connecte`. |
 | `MICROSOFT_LOCATAIRE` | `common` (défaut), `organizations` ou identifiant de locataire. |
-| `MICROSOFT_URL_NOTIFICATION`, `MICROSOFT_URL_CYCLE_DE_VIE` | URL HTTPS publiques. Absentes : synchronisation périodique seule. |
+| `MAIL_URI_REDIRECTION` | URI de redirection inscrite chez les deux fournisseurs. Défaut : `<WEB_URL>/connexions-mail/retour`. |
+| `MAIL_URL_PUBLIQUE_API` | URL HTTPS publique de l'API. Vide (ou non HTTPS) : pas d'abonnement Graph, synchronisation périodique seule. |
+| `MAIL_PERIODE_RATTRAPAGE_S` | Période de la synchronisation de rattrapage (défaut 900 s). |
+| `FILES_PREFIXE` | Préfixe des files BullMQ (défaut `bull`) ; sert à isoler une pile de test. |
+| `MAIL_SIMULATEUR_URL` | **Tests uniquement** : origine du simulateur, qui remplace toutes les URL des fournisseurs. Refusée si `NODE_ENV=production` et si l'hôte n'est pas local. Une connexion établie ainsi ne donne jamais le statut d'intégration `connecte`. |
 
-Ne jamais passer d'autres URL que les URL officielles (valeurs par défaut des adaptateurs) hors des tests.
+Les URL des fournisseurs ne sont pas configurables autrement : ce sont les URL officielles codées dans le paquet.
+
+### URL de rappel à déclarer chez les fournisseurs
+
+| Usage | URL | Remarque |
+|---|---|---|
+| Redirection OAuth (Google et Microsoft) | `MAIL_URI_REDIRECTION`, par défaut `<WEB_URL>/connexions-mail/retour` | C'est une page de l'**application web**, pas de l'API : elle doit relayer `state`, `code` (ou `error`) à `POST /v1/mail/retour` avec la session de l'utilisateur. L'API refuse un retour présenté par un autre utilisateur ou un autre cabinet que celui qui a lancé la demande. **Cette page web reste à écrire.** |
+| Push Pub/Sub (Gmail) | `<MAIL_URL_PUBLIQUE_API>/v1/mail/notifications/gmail` | À saisir comme point de terminaison de l'abonnement push, avec authentification OIDC. |
+| Notifications Graph (changements et cycle de vie) | `<MAIL_URL_PUBLIQUE_API>/v1/mail/notifications/microsoft` | Déclarée automatiquement à la création de chaque abonnement ; rien à saisir dans Entra. |
+
+### Routes de l'API (`/v1/mail`, réservées aux gestionnaires du cabinet sauf les notifications)
+
+`POST connexions` (URL d'autorisation) · `POST retour` · `GET connexions` (permissions accordées et filtres fonctionnels séparés) ·
+`GET connexions/:id/suivi` · `PUT connexions/:id/configuration` · `POST connexions/:id/synchroniser` · `DELETE connexions/:id` ·
+`GET pieces-a-qualifier` · `POST pieces-a-qualifier/:id/affecter` · publics : `POST notifications/gmail`, `POST notifications/microsoft`.
+
+Les deux points d'entrée publics valident l'authenticité (jeton OIDC de Pub/Sub ; `clientState` de l'abonnement Graph) puis mettent en file une
+synchronisation par identifiant de connexion. Ils ne lisent rien d'autre dans la notification.
+
+### Worker
+
+File BullMQ `mail` : `synchroniser`, `entretenir`, `cycle-de-vie`, sérialisées par connexion entre processus (verrou consultatif PostgreSQL).
+Deux répétitions : rattrapage toutes les `MAIL_PERIODE_RATTRAPAGE_S` secondes, entretien des surveillances toutes les 24 heures. Elles ne sont
+planifiées que si au moins un connecteur est configuré.
+
+Les dossiers comptables des règles de rattachement sont des identifiants de dossiers (`entites.id`) du cabinet. Une pièce au rattachement ambigu
+va dans `pieces_a_qualifier` et n'appartient à aucun dossier tant qu'un gestionnaire ne l'a pas affectée.
 
 ## 2. Google — Gmail / Google Workspace
 
@@ -44,12 +65,12 @@ Ne jamais passer d'autres URL que les URL officielles (valeurs par défaut des a
 1. **Google Cloud Console** : créer un projet, activer **Gmail API** et **Cloud Pub/Sub API**.
 2. **Écran de consentement OAuth** (Google Auth Platform) : type d'utilisateur **External**, statut de publication **Testing**.
    Ajouter les comptes de test (100 au plus, G13). Déclarer le scope `https://www.googleapis.com/auth/gmail.readonly`.
-3. **Identifiants** : créer un ID client OAuth de type **Application Web** ; URI de redirection autorisée = `GOOGLE_URI_REDIRECTION`
-   (correspondance exacte).
+3. **Identifiants** : créer un ID client OAuth de type **Application Web** ; URI de redirection autorisée = `MAIL_URI_REDIRECTION`
+   (correspondance exacte), c'est-à-dire la valeur de `MAIL_URI_REDIRECTION`.
 4. **Pub/Sub** :
    - créer un sujet ; lui donner le droit de **publication** pour `gmail-api-push@system.gserviceaccount.com` (G16) ;
      une politique d'organisation de partage restreint au domaine peut l'empêcher et demander une exception ;
-   - créer un abonnement **push** vers le point d'entrée de Comtaple, avec **authentification** : choisir un compte de service
+   - créer un abonnement **push** vers `<MAIL_URL_PUBLIQUE_API>/v1/mail/notifications/gmail`, avec **authentification** : choisir un compte de service
      (`GOOGLE_PUSH_COMPTE_SERVICE`) et une audience (`GOOGLE_PUSH_AUDIENCE`). L'agent de service Pub/Sub doit pouvoir créer des jetons pour ce compte
      (`roles/iam.serviceAccountTokenCreator`, G25).
 5. Limites de ce mode : **le jeton de rafraîchissement expire au bout de 7 jours** (G12) — les connexions passeront en `revoque` chaque semaine,
@@ -85,7 +106,7 @@ Tant que la vérification n'est pas obtenue, l'application reste plafonnée (100
 
 1. **Centre d'administration Microsoft Entra → Inscriptions d'applications → Nouvelle inscription**. Types de comptes pris en charge :
    un seul locataire pour un test interne, ou « tout annuaire + comptes personnels » si `MICROSOFT_LOCATAIRE=common`.
-2. **Authentification** : plateforme **Web**, URI de redirection = `MICROSOFT_URI_REDIRECTION`. Ne pas activer le flux implicite.
+2. **Authentification** : plateforme **Web**, URI de redirection = `MAIL_URI_REDIRECTION`. Ne pas activer le flux implicite.
 3. **Certificats et secrets** : créer un secret client (noter sa date d'expiration) — Microsoft recommande plutôt un certificat ; le paquet ne gère que le secret.
 4. **Autorisations d'API → Microsoft Graph → déléguées** : `Mail.Read`, `offline_access`, `openid`, `profile`.
    Ajouter `Mail.Read.Shared` **seulement** si des boîtes partagées doivent être proposées. Aucune de ces permissions n'exige en elle-même
@@ -140,7 +161,7 @@ Ces seuils sont des choix de Comtaple (constante `REGLES_INTERNES_PIECES`), sans
 | Nom décoratif | `image001.png`, `Outlook-….png`, `logo…`, `signature…`, `banniere…`, noms de réseaux sociaux : écartée. |
 | Image de moins de 5 Ko | Écartée. |
 | Image de 150 Ko au plus | Lue en mémoire : écartée si sa largeur ou sa hauteur est inférieure à 200 px (PNG et JPEG seulement). |
-| Logo répété | Avec `MemoireEmpreintes` : une image de 150 Ko au plus vue dans 3 messages distincts est écartée à partir de la troisième fois (les deux premières ont été déposées). |
+| Logo répété | Avec `MemoireEmpreintes` : une image de 150 Ko au plus vue dans 3 messages distincts est écartée à partir de la troisième fois (les deux premières ont été déposées). **Ce port n'est pas branché dans l'API ni le worker : la règle est inactive.** |
 | Autres types (docx, ics…) | Ignorés sans signalement. |
 
 Limites connues : une photo de reçu de moins de 100 Ko insérée dans le corps du message est écartée ; les dimensions des TIFF et WebP ne sont pas lues ;

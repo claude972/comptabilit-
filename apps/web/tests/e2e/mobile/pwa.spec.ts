@@ -15,7 +15,7 @@ test.describe('PWA (Chromium en émulation mobile)', () => {
     await page.goto('/connexion');
     const href = await page.locator('link[rel="manifest"]').getAttribute('href');
     expect(href).toBe('/manifest.webmanifest');
-    const base = `http://127.0.0.1:${process.env.E2E_PORT_WEB ?? '3100'}`;
+    const base = `http://127.0.0.1:${process.env.E2E_PORT_WEB ?? '3200'}`;
     const manifeste = await (await request.get(`${base}/manifest.webmanifest`)).json();
     expect(manifeste).toMatchObject({ name: 'Comtaple', display: 'standalone', lang: 'fr', start_url: '/' });
     const icones = manifeste.icons as Array<{ src: string; sizes: string; purpose: string }>;

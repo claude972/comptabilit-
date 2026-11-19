@@ -21,9 +21,11 @@ export const DEMO = {
   dupain: 'aaaaaaaa-0000-4000-8000-0000000000e1',
   martin: 'aaaaaaaa-0000-4000-8000-0000000000e2',
   leroy: 'bbbbbbbb-0000-4000-8000-0000000000e1',
+  bellevue: 'aaaaaaaa-0000-4000-8000-0000000000e3',
   exDupain2025: 'aaaaaaaa-0000-4000-8000-0000000000f1',
   exMartin2025: 'aaaaaaaa-0000-4000-8000-0000000000f2',
   exLeroy2025: 'bbbbbbbb-0000-4000-8000-0000000000f1',
+  exBellevue2025: 'aaaaaaaa-0000-4000-8000-0000000000f3',
 } as const;
 
 export async function amorcer(): Promise<void> {
@@ -74,6 +76,8 @@ export async function amorcer(): Promise<void> {
           e(DEMO.dupain, DEMO.cabinetA, 'Boulangerie Dupain SAS (fictive)', 'SAS'),
           e(DEMO.martin, DEMO.cabinetA, 'Garage Martin SARL (fictif)', 'SARL'),
           e(DEMO.leroy, DEMO.cabinetB, 'Menuiserie Leroy SAS (fictive)', 'SAS'),
+          // Dossier d'outre-mer : sert à vérifier qu'aucune règle fiscale métropolitaine n'y est appliquée en silence.
+          { ...e(DEMO.bellevue, DEMO.cabinetA, 'Distillerie Bellevue SAS (fictive)', 'SAS'), territoireFiscal: 'martinique' as const },
         ])
         .onConflictDoNothing();
       const x = (id: string, cabinetId: string, entiteId: string) => ({ id, cabinetId, entiteId, debut: '2025-01-01', fin: '2025-12-31' });
@@ -83,6 +87,7 @@ export async function amorcer(): Promise<void> {
           x(DEMO.exDupain2025, DEMO.cabinetA, DEMO.dupain),
           x(DEMO.exMartin2025, DEMO.cabinetA, DEMO.martin),
           x(DEMO.exLeroy2025, DEMO.cabinetB, DEMO.leroy),
+          x(DEMO.exBellevue2025, DEMO.cabinetA, DEMO.bellevue),
         ])
         .onConflictDoNothing();
       // Alice est administratrice mais n'est PAS habilitée sur le dossier Martin : le rôle ne suffit pas.
@@ -101,6 +106,7 @@ export async function amorcer(): Promise<void> {
           h(DEMO.cabinetA, DEMO.dupain, DEMO.chloe, 'collaboration'),
           h(DEMO.cabinetA, DEMO.dupain, DEMO.client, 'depot'),
           h(DEMO.cabinetB, DEMO.leroy, DEMO.bruno, 'validation'),
+          h(DEMO.cabinetA, DEMO.bellevue, DEMO.remi, 'revision'),
         ])
         .onConflictDoNothing();
     });

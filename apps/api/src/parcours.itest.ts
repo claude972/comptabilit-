@@ -145,6 +145,25 @@ describe('authentification et cloisonnement', () => {
   });
 });
 
+describe('territoire fiscal', () => {
+  it('sur un dossier d’outre-mer, les contrôles fiscaux métropolitains ne sont pas réalisés et le disent', async () => {
+    const fec = genererFecSynthetique({ exercice: { debut: '2025-01-01', fin: '2025-12-31' }, nbEcritures: 200, graine: Number.parseInt(SEL.slice(0, 5), 16) + 7 });
+    const d = await deposer('remi', DEMO.bellevue, Buffer.from(fec.contenu), { usage: 'fec', exerciceId: DEMO.exBellevue2025, statutDonnees: 'fec', canal: 'ordinateur' }, fec.nomFichier);
+    const lot = d.fin.json.lotImportId;
+    const revue = await attendre(
+      () => api('remi', 'GET', `/v1/exercices/${DEMO.exBellevue2025}/revue`),
+      (r) => r.json?.execution?.lotImportId === lot && r.json.execution.statut === 'termine',
+    );
+    const par = Object.fromEntries(revue.json.resultats.map((r: any) => [r.controleId, r]));
+    for (const id of ['TVA-001', 'TVA-002', 'IMM-002']) {
+      expect(par[id].statut, id).toBe('non_realise');
+      expect(par[id].motif).toMatch(/martinique/);
+    }
+    expect(par['GEN-001'].statut).toBe('sans_anomalie'); // les contrôles non fiscaux restent exécutés
+    expect(revue.json.constats.filter((c: any) => ['TVA-001', 'TVA-002', 'IMM-002'].includes(c.controleId))).toEqual([]);
+  });
+});
+
 describe('journal d’audit', () => {
   it('est consultable par l’administratrice avec une chaîne intacte, et refusé aux autres rôles', async () => {
     const r = await api('alice', 'GET', '/v1/audit?limite=5');

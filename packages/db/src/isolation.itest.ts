@@ -76,7 +76,7 @@ describe('habilitation par dossier', () => {
       exercicesMartin: await tx.select().from(s.exercices).where(eq(s.exercices.entiteId, DEMO.martin)),
       exercicesDupain: await tx.select().from(s.exercices).where(eq(s.exercices.entiteId, DEMO.dupain)),
     }));
-    expect(r.entites.map((e) => e.id).sort()).toEqual([DEMO.dupain, DEMO.martin].sort());
+    expect(r.entites.map((e) => e.id).sort()).toEqual([DEMO.dupain, DEMO.martin, DEMO.bellevue].sort());
     expect(r.exercicesMartin).toHaveLength(0);
     expect(r.exercicesDupain).toHaveLength(1);
   });

@@ -1061,6 +1061,389 @@
           "Audit"
         ]
       }
+    },
+    "/v1/integrations": {
+      "get": {
+        "operationId": "IntegrationsController_etat",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "État RÉEL des intégrations et services (aucune intégration simulée n’est présentée comme connectée)",
+        "tags": [
+          "Référentiel"
+        ]
+      }
+    },
+    "/v1/mail/connexions": {
+      "post": {
+        "description": "OAuth 2.0 code d’autorisation + PKCE. Le paramètre state est lié à l’utilisateur et au cabinet qui lancent la demande. Répond 503 « connecteur non configuré » tant qu’aucune application OAuth n’est configurée.",
+        "operationId": "MailController_demarrer",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "fournisseur": {
+                    "type": "string",
+                    "enum": [
+                      "gmail",
+                      "microsoft"
+                    ]
+                  },
+                  "boitePartagee": {
+                    "type": "string",
+                    "maxLength": 320,
+                    "format": "email",
+                    "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  },
+                  "configuration": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "fournisseur"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Démarre la connexion d’une boîte (gestionnaires) : renvoie l’URL d’autorisation du fournisseur",
+        "tags": [
+          "Collecte par mail"
+        ]
+      },
+      "get": {
+        "operationId": "MailController_lister",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Connexions de messagerie du cabinet (gestionnaires), avec permissions accordées et filtres fonctionnels distincts",
+        "tags": [
+          "Collecte par mail"
+        ]
+      }
+    },
+    "/v1/mail/retour": {
+      "post": {
+        "description": "Le state doit correspondre à une demande lancée par CE même utilisateur dans CE cabinet ; sinon rien n’est échangé. Les jetons obtenus sont chiffrés au repos et ne sont jamais renvoyés.",
+        "operationId": "MailController_retourOAuth",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  },
+                  "code": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  },
+                  "error": {
+                    "type": "string",
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "state"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Retour OAuth (gestionnaires) : relayé par l’application web avec la session de l’utilisateur",
+        "tags": [
+          "Collecte par mail"
+        ]
+      }
+    },
+    "/v1/mail/connexions/{id}/suivi": {
+      "get": {
+        "operationId": "MailController_suivi",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Suivi d’une connexion : dernière synchronisation, imports, erreurs, signalements (facture derrière un lien…)",
+        "tags": [
+          "Collecte par mail"
+        ]
+      }
+    },
+    "/v1/mail/connexions/{id}/configuration": {
+      "put": {
+        "description": "Dossiers ou libellés surveillés, filtres d’expéditeur et d’objet, règles de rattachement, date de début. Ces réglages sont des filtres du logiciel : ils ne changent pas ce que l’autorisation accordée permet. La boîte ne peut pas être changée ici.",
+        "operationId": "MailController_configurer",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Modifie les filtres fonctionnels d’une connexion (gestionnaires)",
+        "tags": [
+          "Collecte par mail"
+        ]
+      }
+    },
+    "/v1/mail/connexions/{id}/synchroniser": {
+      "post": {
+        "operationId": "MailController_synchroniser",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Demande une synchronisation (gestionnaires) : mise en file, exécutée par le worker",
+        "tags": [
+          "Collecte par mail"
+        ]
+      }
+    },
+    "/v1/mail/connexions/{id}": {
+      "delete": {
+        "description": "La réponse indique ce qui reste à faire par l’utilisateur ou l’administrateur chez le fournisseur.",
+        "operationId": "MailController_deconnecter",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Déconnecte une boîte (gestionnaires) : arrêt de la surveillance, révocation si le fournisseur le permet, suppression des jetons",
+        "tags": [
+          "Collecte par mail"
+        ]
+      }
+    },
+    "/v1/mail/pieces-a-qualifier": {
+      "get": {
+        "operationId": "MailController_aQualifier",
+        "parameters": [
+          {
+            "name": "statut",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Pièces reçues par mail dont le rattachement est ambigu (gestionnaires) : rattachées à aucun dossier",
+        "tags": [
+          "Collecte par mail"
+        ]
+      }
+    },
+    "/v1/mail/pieces-a-qualifier/{id}/affecter": {
+      "post": {
+        "description": "Si le même binaire existe déjà dans le dossier, seule une nouvelle occurrence de réception est créée (doublon binaire).",
+        "operationId": "MailController_affecter",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "entiteId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                  }
+                },
+                "required": [
+                  "entiteId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Affecte une pièce à qualifier à un dossier (gestionnaire habilité sur ce dossier) : crée le document et sa réception",
+        "tags": [
+          "Collecte par mail"
+        ]
+      }
+    },
+    "/v1/mail/notifications/gmail": {
+      "post": {
+        "operationId": "MailController_pushGmail",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Push Pub/Sub de Gmail (public) : jeton OIDC validé, puis mise en file d’une synchronisation",
+        "tags": [
+          "Collecte par mail"
+        ]
+      }
+    },
+    "/v1/mail/notifications/microsoft": {
+      "post": {
+        "operationId": "MailController_notificationsGraph",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Notifications Microsoft Graph (public) : validation du point d’entrée, clientState vérifié, puis mise en file",
+        "tags": [
+          "Collecte par mail"
+        ]
+      }
     }
   },
   "info": {

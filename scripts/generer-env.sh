@@ -38,6 +38,19 @@ ANTIVIRUS_OBLIGATOIRE=true
 # Passerelle IA : laisser vide = statut « non connecté » (aucun appel sortant).
 IA_OVH_ENDPOINT=
 IA_OVH_JETON=
+# Collecte par mail (@comtaple/mail). Identifiants OAuth VIDES = connecteurs « non connectés », aucune connexion possible.
+# Voir packages/mail/docs/guide-connexion.md. Ne JAMAIS définir MAIL_SIMULATEUR_URL hors des tests (refusé en production).
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_SUJET_PUBSUB=
+GOOGLE_PUSH_AUDIENCE=
+GOOGLE_PUSH_COMPTE_SERVICE=
+MICROSOFT_CLIENT_ID=
+MICROSOFT_CLIENT_SECRET=
+MICROSOFT_LOCATAIRE=common
+MAIL_URI_REDIRECTION=
+MAIL_URL_PUBLIQUE_API=
+MAIL_PERIODE_RATTRAPAGE_S=900
 DEV_MDP_UTILISATEURS=$(alea 20)
 ENV
 chmod 600 .env

@@ -22,6 +22,20 @@
       "when": 1795063833432,
       "tag": "0002_rattrapage_worker",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795066205411,
+      "tag": "0003_mail_integration",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795066205638,
+      "tag": "0004_mail_securite",
+      "breakpoints": true
     }
   ]
 }

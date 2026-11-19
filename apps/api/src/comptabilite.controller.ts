@@ -13,7 +13,7 @@ import {
   Res,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { type AccesBd, and, asc, desc, eq, journaliser, schema as s, sql, type Tx } from '@comtaple/db';
+import { type AccesBd, and, asc, desc, eq, inArray, journaliser, schema as s, type Tx } from '@comtaple/db';
 import type { Files, Stockage } from '@comtaple/plateforme';
 import type { Response } from 'express';
 import { z } from 'zod';
@@ -151,9 +151,13 @@ export class ComptabiliteController {
     return this.bd.avecContexte(acces, async (tx) => {
       const [c] = await tx.select().from(s.constats).where(eq(s.constats.id, id));
       if (!c) throw new NotFoundException('Constat introuvable');
-      const ids = (c.lignesConcernees as string[]).slice(0, 200);
+      const ids = (c.lignesConcernees as string[]).slice(0, 200).filter((x) => /^[0-9a-f-]{36}$/i.test(x));
       const lignes = ids.length
-        ? (await tx.execute(sql`select * from lignes_ecriture where id = any(${sql.raw(`'{${ids.filter((x) => /^[0-9a-f-]{36}$/i.test(x)).join(',')}}'`)}::uuid[]) order by ecriture_date, ecriture_num, numero_ligne`)).rows
+        ? await tx
+            .select()
+            .from(s.lignesEcriture)
+            .where(inArray(s.lignesEcriture.id, ids))
+            .orderBy(asc(s.lignesEcriture.ecritureDate), asc(s.lignesEcriture.ecritureNum), asc(s.lignesEcriture.numeroLigne))
         : [];
       const decisions = await tx
         .select({ action: s.decisions.action, motif: s.decisions.motif, versionCible: s.decisions.versionCible, creeLe: s.decisions.creeLe, auteur: s.utilisateurs.nom })

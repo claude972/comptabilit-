@@ -1,0 +1,5233 @@
+{
+  "id": "73c66c93-c5f1-468e-8092-2983f9db7258",
+  "prevId": "3df5742a-745c-4c29-a573-376682afea8e",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.abonnements": {
+      "name": "abonnements",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "offre": {
+          "name": "offre",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "statut": {
+          "name": "statut",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "debut": {
+          "name": "debut",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fin_essai": {
+          "name": "fin_essai",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fin": {
+          "name": "fin",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quotas": {
+          "name": "quotas",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "abonnements_cabinet_id_cabinets_id_fk": {
+          "name": "abonnements_cabinet_id_cabinets_id_fk",
+          "tableFrom": "abonnements",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.appartenances": {
+      "name": "appartenances",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "utilisateur_id": {
+          "name": "utilisateur_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "role_cabinet",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actif": {
+          "name": "actif",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "expire_le": {
+          "name": "expire_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "appartenances_unique": {
+          "name": "appartenances_unique",
+          "columns": [
+            {
+              "expression": "cabinet_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "utilisateur_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "appartenances_cabinet_id_cabinets_id_fk": {
+          "name": "appartenances_cabinet_id_cabinets_id_fk",
+          "tableFrom": "appartenances",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "appartenances_utilisateur_id_utilisateurs_id_fk": {
+          "name": "appartenances_utilisateur_id_utilisateurs_id_fk",
+          "tableFrom": "appartenances",
+          "columnsFrom": [
+            "utilisateur_id"
+          ],
+          "tableTo": "utilisateurs",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.cabinets": {
+      "name": "cabinets",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "nom": {
+          "name": "nom",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "siren": {
+          "name": "siren",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.commentaires": {
+      "name": "commentaires",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entite_id": {
+          "name": "entite_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cible_type": {
+          "name": "cible_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cible_id": {
+          "name": "cible_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "texte": {
+          "name": "texte",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "auteur_id": {
+          "name": "auteur_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "commentaires_cabinet_id_cabinets_id_fk": {
+          "name": "commentaires_cabinet_id_cabinets_id_fk",
+          "tableFrom": "commentaires",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "commentaires_entite_id_entites_id_fk": {
+          "name": "commentaires_entite_id_entites_id_fk",
+          "tableFrom": "commentaires",
+          "columnsFrom": [
+            "entite_id"
+          ],
+          "tableTo": "entites",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "commentaires_auteur_id_utilisateurs_id_fk": {
+          "name": "commentaires_auteur_id_utilisateurs_id_fk",
+          "tableFrom": "commentaires",
+          "columnsFrom": [
+            "auteur_id"
+          ],
+          "tableTo": "utilisateurs",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.connexions_mail": {
+      "name": "connexions_mail",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fournisseur": {
+          "name": "fournisseur",
+          "type": "fournisseur_mail",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "adresse": {
+          "name": "adresse",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "statut": {
+          "name": "statut",
+          "type": "statut_connexion",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'non_connecte'"
+        },
+        "scopes_accordes": {
+          "name": "scopes_accordes",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "jetons_chiffres": {
+          "name": "jetons_chiffres",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "filtres": {
+          "name": "filtres",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "date_debut_recuperation": {
+          "name": "date_debut_recuperation",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "curseur": {
+          "name": "curseur",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "derniere_synchro": {
+          "name": "derniere_synchro",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "derniere_erreur": {
+          "name": "derniere_erreur",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cree_par": {
+          "name": "cree_par",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "etat": {
+          "name": "etat",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "surveillance_echeance": {
+          "name": "surveillance_echeance",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "derniere_issue": {
+          "name": "derniere_issue",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "preuve": {
+          "name": "preuve",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "connexions_mail_cabinet_id_cabinets_id_fk": {
+          "name": "connexions_mail_cabinet_id_cabinets_id_fk",
+          "tableFrom": "connexions_mail",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "connexions_mail_cree_par_utilisateurs_id_fk": {
+          "name": "connexions_mail_cree_par_utilisateurs_id_fk",
+          "tableFrom": "connexions_mail",
+          "columnsFrom": [
+            "cree_par"
+          ],
+          "tableTo": "utilisateurs",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.constats": {
+      "name": "constats",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entite_id": {
+          "name": "entite_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "exercice_id": {
+          "name": "exercice_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "execution_id": {
+          "name": "execution_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "resultat_id": {
+          "name": "resultat_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "controle_id": {
+          "name": "controle_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cle": {
+          "name": "cle",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "gravite": {
+          "name": "gravite",
+          "type": "gravite_constat",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "titre": {
+          "name": "titre",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "explication": {
+          "name": "explication",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "action_proposee": {
+          "name": "action_proposee",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "montant": {
+          "name": "montant",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lignes_concernees": {
+          "name": "lignes_concernees",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "preuves": {
+          "name": "preuves",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "statut_revue": {
+          "name": "statut_revue",
+          "type": "statut_revue",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'a_examiner'"
+        },
+        "affecte_a": {
+          "name": "affecte_a",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "a_revoir": {
+          "name": "a_revoir",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "constats_exercice": {
+          "name": "constats_exercice",
+          "columns": [
+            {
+              "expression": "exercice_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "statut_revue",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "constats_cabinet_id_cabinets_id_fk": {
+          "name": "constats_cabinet_id_cabinets_id_fk",
+          "tableFrom": "constats",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "constats_entite_id_entites_id_fk": {
+          "name": "constats_entite_id_entites_id_fk",
+          "tableFrom": "constats",
+          "columnsFrom": [
+            "entite_id"
+          ],
+          "tableTo": "entites",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "constats_exercice_id_exercices_id_fk": {
+          "name": "constats_exercice_id_exercices_id_fk",
+          "tableFrom": "constats",
+          "columnsFrom": [
+            "exercice_id"
+          ],
+          "tableTo": "exercices",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "constats_execution_id_executions_controles_id_fk": {
+          "name": "constats_execution_id_executions_controles_id_fk",
+          "tableFrom": "constats",
+          "columnsFrom": [
+            "execution_id"
+          ],
+          "tableTo": "executions_controles",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "constats_resultat_id_resultats_controles_id_fk": {
+          "name": "constats_resultat_id_resultats_controles_id_fk",
+          "tableFrom": "constats",
+          "columnsFrom": [
+            "resultat_id"
+          ],
+          "tableTo": "resultats_controles",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "constats_affecte_a_utilisateurs_id_fk": {
+          "name": "constats_affecte_a_utilisateurs_id_fk",
+          "tableFrom": "constats",
+          "columnsFrom": [
+            "affecte_a"
+          ],
+          "tableTo": "utilisateurs",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.decisions": {
+      "name": "decisions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entite_id": {
+          "name": "entite_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cible_type": {
+          "name": "cible_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cible_id": {
+          "name": "cible_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version_cible": {
+          "name": "version_cible",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "motif": {
+          "name": "motif",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "auteur_id": {
+          "name": "auteur_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "decisions_cabinet_id_cabinets_id_fk": {
+          "name": "decisions_cabinet_id_cabinets_id_fk",
+          "tableFrom": "decisions",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "decisions_entite_id_entites_id_fk": {
+          "name": "decisions_entite_id_entites_id_fk",
+          "tableFrom": "decisions",
+          "columnsFrom": [
+            "entite_id"
+          ],
+          "tableTo": "entites",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "decisions_auteur_id_utilisateurs_id_fk": {
+          "name": "decisions_auteur_id_utilisateurs_id_fk",
+          "tableFrom": "decisions",
+          "columnsFrom": [
+            "auteur_id"
+          ],
+          "tableTo": "utilisateurs",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.demandes_connexion_mail": {
+      "name": "demandes_connexion_mail",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "utilisateur_id": {
+          "name": "utilisateur_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "empreinte_state": {
+          "name": "empreinte_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "donnees_chiffrees": {
+          "name": "donnees_chiffrees",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expire_le": {
+          "name": "expire_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "demandes_connexion_mail_cabinet_id_cabinets_id_fk": {
+          "name": "demandes_connexion_mail_cabinet_id_cabinets_id_fk",
+          "tableFrom": "demandes_connexion_mail",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "demandes_connexion_mail_utilisateur_id_utilisateurs_id_fk": {
+          "name": "demandes_connexion_mail_utilisateur_id_utilisateurs_id_fk",
+          "tableFrom": "demandes_connexion_mail",
+          "columnsFrom": [
+            "utilisateur_id"
+          ],
+          "tableTo": "utilisateurs",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "demandes_connexion_mail_empreinte_state_unique": {
+          "name": "demandes_connexion_mail_empreinte_state_unique",
+          "columns": [
+            "empreinte_state"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.documents": {
+      "name": "documents",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entite_id": {
+          "name": "entite_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "exercice_id": {
+          "name": "exercice_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fichier_id": {
+          "name": "fichier_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nature": {
+          "name": "nature",
+          "type": "nature_document",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'a_qualifier'"
+        },
+        "statut": {
+          "name": "statut",
+          "type": "statut_document",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'recu'"
+        },
+        "nom_origine": {
+          "name": "nom_origine",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "commentaire": {
+          "name": "commentaire",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "remplace_document_id": {
+          "name": "remplace_document_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "nb_pages": {
+          "name": "nb_pages",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "motif_statut": {
+          "name": "motif_statut",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "maj_le": {
+          "name": "maj_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "documents_entite": {
+          "name": "documents_entite",
+          "columns": [
+            {
+              "expression": "cabinet_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "entite_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "statut",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "documents_cabinet_id_cabinets_id_fk": {
+          "name": "documents_cabinet_id_cabinets_id_fk",
+          "tableFrom": "documents",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "documents_entite_id_entites_id_fk": {
+          "name": "documents_entite_id_entites_id_fk",
+          "tableFrom": "documents",
+          "columnsFrom": [
+            "entite_id"
+          ],
+          "tableTo": "entites",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "documents_exercice_id_exercices_id_fk": {
+          "name": "documents_exercice_id_exercices_id_fk",
+          "tableFrom": "documents",
+          "columnsFrom": [
+            "exercice_id"
+          ],
+          "tableTo": "exercices",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "documents_fichier_id_fichiers_id_fk": {
+          "name": "documents_fichier_id_fichiers_id_fk",
+          "tableFrom": "documents",
+          "columnsFrom": [
+            "fichier_id"
+          ],
+          "tableTo": "fichiers",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.echanges_document": {
+      "name": "echanges_document",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entite_id": {
+          "name": "entite_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "document_id": {
+          "name": "document_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "message": {
+          "name": "message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "auteur_id": {
+          "name": "auteur_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "resolu": {
+          "name": "resolu",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "echanges_document_cabinet_id_cabinets_id_fk": {
+          "name": "echanges_document_cabinet_id_cabinets_id_fk",
+          "tableFrom": "echanges_document",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "echanges_document_entite_id_entites_id_fk": {
+          "name": "echanges_document_entite_id_entites_id_fk",
+          "tableFrom": "echanges_document",
+          "columnsFrom": [
+            "entite_id"
+          ],
+          "tableTo": "entites",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "echanges_document_document_id_documents_id_fk": {
+          "name": "echanges_document_document_id_documents_id_fk",
+          "tableFrom": "echanges_document",
+          "columnsFrom": [
+            "document_id"
+          ],
+          "tableTo": "documents",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "echanges_document_auteur_id_utilisateurs_id_fk": {
+          "name": "echanges_document_auteur_id_utilisateurs_id_fk",
+          "tableFrom": "echanges_document",
+          "columnsFrom": [
+            "auteur_id"
+          ],
+          "tableTo": "utilisateurs",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.entites": {
+      "name": "entites",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "raison_sociale": {
+          "name": "raison_sociale",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "siren": {
+          "name": "siren",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "forme_juridique": {
+          "name": "forme_juridique",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "regime_fiscal": {
+          "name": "regime_fiscal",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "referentiel_comptable": {
+          "name": "referentiel_comptable",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'PCG'"
+        },
+        "territoire_fiscal": {
+          "name": "territoire_fiscal",
+          "type": "territoire_fiscal",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'a_confirmer'"
+        },
+        "code_naf": {
+          "name": "code_naf",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "devise": {
+          "name": "devise",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'EUR'"
+        },
+        "actif": {
+          "name": "actif",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "entites_cabinet": {
+          "name": "entites_cabinet",
+          "columns": [
+            {
+              "expression": "cabinet_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "entites_cabinet_id_cabinets_id_fk": {
+          "name": "entites_cabinet_id_cabinets_id_fk",
+          "tableFrom": "entites",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.etablissements": {
+      "name": "etablissements",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entite_id": {
+          "name": "entite_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "siret": {
+          "name": "siret",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "libelle": {
+          "name": "libelle",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "territoire_fiscal": {
+          "name": "territoire_fiscal",
+          "type": "territoire_fiscal",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'a_confirmer'"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "etablissements_cabinet_id_cabinets_id_fk": {
+          "name": "etablissements_cabinet_id_cabinets_id_fk",
+          "tableFrom": "etablissements",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "etablissements_entite_id_entites_id_fk": {
+          "name": "etablissements_entite_id_entites_id_fk",
+          "tableFrom": "etablissements",
+          "columnsFrom": [
+            "entite_id"
+          ],
+          "tableTo": "entites",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.evenements_facturation": {
+      "name": "evenements_facturation",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "abonnement_id": {
+          "name": "abonnement_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "montant": {
+          "name": "montant",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "detail": {
+          "name": "detail",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "evenements_facturation_cabinet_id_cabinets_id_fk": {
+          "name": "evenements_facturation_cabinet_id_cabinets_id_fk",
+          "tableFrom": "evenements_facturation",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "evenements_facturation_abonnement_id_abonnements_id_fk": {
+          "name": "evenements_facturation_abonnement_id_abonnements_id_fk",
+          "tableFrom": "evenements_facturation",
+          "columnsFrom": [
+            "abonnement_id"
+          ],
+          "tableTo": "abonnements",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.executions_controles": {
+      "name": "executions_controles",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entite_id": {
+          "name": "entite_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "exercice_id": {
+          "name": "exercice_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lot_import_id": {
+          "name": "lot_import_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version_donnees": {
+          "name": "version_donnees",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "statut": {
+          "name": "statut",
+          "type": "statut_lot",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'en_attente'"
+        },
+        "obsolete": {
+          "name": "obsolete",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "lance_par": {
+          "name": "lance_par",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "termine_le": {
+          "name": "termine_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "executions_controles_cabinet_id_cabinets_id_fk": {
+          "name": "executions_controles_cabinet_id_cabinets_id_fk",
+          "tableFrom": "executions_controles",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "executions_controles_entite_id_entites_id_fk": {
+          "name": "executions_controles_entite_id_entites_id_fk",
+          "tableFrom": "executions_controles",
+          "columnsFrom": [
+            "entite_id"
+          ],
+          "tableTo": "entites",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "executions_controles_exercice_id_exercices_id_fk": {
+          "name": "executions_controles_exercice_id_exercices_id_fk",
+          "tableFrom": "executions_controles",
+          "columnsFrom": [
+            "exercice_id"
+          ],
+          "tableTo": "exercices",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "executions_controles_lot_import_id_lots_import_id_fk": {
+          "name": "executions_controles_lot_import_id_lots_import_id_fk",
+          "tableFrom": "executions_controles",
+          "columnsFrom": [
+            "lot_import_id"
+          ],
+          "tableTo": "lots_import",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "executions_controles_lance_par_utilisateurs_id_fk": {
+          "name": "executions_controles_lance_par_utilisateurs_id_fk",
+          "tableFrom": "executions_controles",
+          "columnsFrom": [
+            "lance_par"
+          ],
+          "tableTo": "utilisateurs",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.exercices": {
+      "name": "exercices",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entite_id": {
+          "name": "entite_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "debut": {
+          "name": "debut",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fin": {
+          "name": "fin",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "statut": {
+          "name": "statut",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ouvert'"
+        },
+        "version_donnees": {
+          "name": "version_donnees",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "exercices_unique": {
+          "name": "exercices_unique",
+          "columns": [
+            {
+              "expression": "entite_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "debut",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "fin",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "exercices_cabinet_id_cabinets_id_fk": {
+          "name": "exercices_cabinet_id_cabinets_id_fk",
+          "tableFrom": "exercices",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "exercices_entite_id_entites_id_fk": {
+          "name": "exercices_entite_id_entites_id_fk",
+          "tableFrom": "exercices",
+          "columnsFrom": [
+            "entite_id"
+          ],
+          "tableTo": "entites",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.exports_revision": {
+      "name": "exports_revision",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entite_id": {
+          "name": "entite_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "exercice_id": {
+          "name": "exercice_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "execution_id": {
+          "name": "execution_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version_donnees": {
+          "name": "version_donnees",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "statut": {
+          "name": "statut",
+          "type": "statut_lot",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'en_attente'"
+        },
+        "mention": {
+          "name": "mention",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'projet'"
+        },
+        "cle_pdf": {
+          "name": "cle_pdf",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cle_donnees": {
+          "name": "cle_donnees",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sha256_pdf": {
+          "name": "sha256_pdf",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sha256_donnees": {
+          "name": "sha256_donnees",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "erreur": {
+          "name": "erreur",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "demande_par": {
+          "name": "demande_par",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "termine_le": {
+          "name": "termine_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "exports_revision_cabinet_id_cabinets_id_fk": {
+          "name": "exports_revision_cabinet_id_cabinets_id_fk",
+          "tableFrom": "exports_revision",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "exports_revision_entite_id_entites_id_fk": {
+          "name": "exports_revision_entite_id_entites_id_fk",
+          "tableFrom": "exports_revision",
+          "columnsFrom": [
+            "entite_id"
+          ],
+          "tableTo": "entites",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "exports_revision_exercice_id_exercices_id_fk": {
+          "name": "exports_revision_exercice_id_exercices_id_fk",
+          "tableFrom": "exports_revision",
+          "columnsFrom": [
+            "exercice_id"
+          ],
+          "tableTo": "exercices",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "exports_revision_execution_id_executions_controles_id_fk": {
+          "name": "exports_revision_execution_id_executions_controles_id_fk",
+          "tableFrom": "exports_revision",
+          "columnsFrom": [
+            "execution_id"
+          ],
+          "tableTo": "executions_controles",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "exports_revision_demande_par_utilisateurs_id_fk": {
+          "name": "exports_revision_demande_par_utilisateurs_id_fk",
+          "tableFrom": "exports_revision",
+          "columnsFrom": [
+            "demande_par"
+          ],
+          "tableTo": "utilisateurs",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.extractions": {
+      "name": "extractions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entite_id": {
+          "name": "entite_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "document_id": {
+          "name": "document_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "methode": {
+          "name": "methode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "moteur": {
+          "name": "moteur",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "champs": {
+          "name": "champs",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verifications": {
+          "name": "verifications",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "statut": {
+          "name": "statut",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'projet'"
+        },
+        "actuelle": {
+          "name": "actuelle",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "extractions_cabinet_id_cabinets_id_fk": {
+          "name": "extractions_cabinet_id_cabinets_id_fk",
+          "tableFrom": "extractions",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "extractions_entite_id_entites_id_fk": {
+          "name": "extractions_entite_id_entites_id_fk",
+          "tableFrom": "extractions",
+          "columnsFrom": [
+            "entite_id"
+          ],
+          "tableTo": "entites",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "extractions_document_id_documents_id_fk": {
+          "name": "extractions_document_id_documents_id_fk",
+          "tableFrom": "extractions",
+          "columnsFrom": [
+            "document_id"
+          ],
+          "tableTo": "documents",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.factures": {
+      "name": "factures",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entite_id": {
+          "name": "entite_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "document_id": {
+          "name": "document_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sens": {
+          "name": "sens",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "est_avoir": {
+          "name": "est_avoir",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "numero": {
+          "name": "numero",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tiers_nom": {
+          "name": "tiers_nom",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tiers_siren": {
+          "name": "tiers_siren",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "date_emission": {
+          "name": "date_emission",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "date_echeance": {
+          "name": "date_echeance",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "total_ht": {
+          "name": "total_ht",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "total_tva": {
+          "name": "total_tva",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "total_ttc": {
+          "name": "total_ttc",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "devise": {
+          "name": "devise",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'EUR'"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "factures_cabinet_id_cabinets_id_fk": {
+          "name": "factures_cabinet_id_cabinets_id_fk",
+          "tableFrom": "factures",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "factures_entite_id_entites_id_fk": {
+          "name": "factures_entite_id_entites_id_fk",
+          "tableFrom": "factures",
+          "columnsFrom": [
+            "entite_id"
+          ],
+          "tableTo": "entites",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "factures_document_id_documents_id_fk": {
+          "name": "factures_document_id_documents_id_fk",
+          "tableFrom": "factures",
+          "columnsFrom": [
+            "document_id"
+          ],
+          "tableTo": "documents",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.fichiers": {
+      "name": "fichiers",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sha256": {
+          "name": "sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "taille": {
+          "name": "taille",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type_mime_declare": {
+          "name": "type_mime_declare",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "type_mime_detecte": {
+          "name": "type_mime_detecte",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cle_stockage": {
+          "name": "cle_stockage",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nature": {
+          "name": "nature",
+          "type": "nature_fichier",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'original'"
+        },
+        "derive_de": {
+          "name": "derive_de",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "transformation": {
+          "name": "transformation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "analyse_antivirus": {
+          "name": "analyse_antivirus",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'non_analyse'"
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "fichiers_empreinte": {
+          "name": "fichiers_empreinte",
+          "columns": [
+            {
+              "expression": "cabinet_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sha256",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "fichiers_cabinet_id_cabinets_id_fk": {
+          "name": "fichiers_cabinet_id_cabinets_id_fk",
+          "tableFrom": "fichiers",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.habilitations_dossier": {
+      "name": "habilitations_dossier",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entite_id": {
+          "name": "entite_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "utilisateur_id": {
+          "name": "utilisateur_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "niveau": {
+          "name": "niveau",
+          "type": "niveau_habilitation",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "accordee_par": {
+          "name": "accordee_par",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "habilitations_unique": {
+          "name": "habilitations_unique",
+          "columns": [
+            {
+              "expression": "entite_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "utilisateur_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "habilitations_dossier_cabinet_id_cabinets_id_fk": {
+          "name": "habilitations_dossier_cabinet_id_cabinets_id_fk",
+          "tableFrom": "habilitations_dossier",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "habilitations_dossier_entite_id_entites_id_fk": {
+          "name": "habilitations_dossier_entite_id_entites_id_fk",
+          "tableFrom": "habilitations_dossier",
+          "columnsFrom": [
+            "entite_id"
+          ],
+          "tableTo": "entites",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "habilitations_dossier_utilisateur_id_utilisateurs_id_fk": {
+          "name": "habilitations_dossier_utilisateur_id_utilisateurs_id_fk",
+          "tableFrom": "habilitations_dossier",
+          "columnsFrom": [
+            "utilisateur_id"
+          ],
+          "tableTo": "utilisateurs",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "habilitations_dossier_accordee_par_utilisateurs_id_fk": {
+          "name": "habilitations_dossier_accordee_par_utilisateurs_id_fk",
+          "tableFrom": "habilitations_dossier",
+          "columnsFrom": [
+            "accordee_par"
+          ],
+          "tableTo": "utilisateurs",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.journal_audit": {
+      "name": "journal_audit",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigserial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "acteur_id": {
+          "name": "acteur_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "acteur_type": {
+          "name": "acteur_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'utilisateur'"
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cible_type": {
+          "name": "cible_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cible_id": {
+          "name": "cible_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "entite_id_cible": {
+          "name": "entite_id_cible",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "details": {
+          "name": "details",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "horodatage": {
+          "name": "horodatage",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "empreinte_precedente": {
+          "name": "empreinte_precedente",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "empreinte": {
+          "name": "empreinte",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "journal_audit_cabinet": {
+          "name": "journal_audit_cabinet",
+          "columns": [
+            {
+              "expression": "cabinet_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.lettres_mission": {
+      "name": "lettres_mission",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entite_id": {
+          "name": "entite_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mission_id": {
+          "name": "mission_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "avenant_de": {
+          "name": "avenant_de",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "document_id": {
+          "name": "document_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "date_effet": {
+          "name": "date_effet",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "analyse": {
+          "name": "analyse",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "statut": {
+          "name": "statut",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'projet'"
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "lettres_mission_cabinet_id_cabinets_id_fk": {
+          "name": "lettres_mission_cabinet_id_cabinets_id_fk",
+          "tableFrom": "lettres_mission",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "lettres_mission_entite_id_entites_id_fk": {
+          "name": "lettres_mission_entite_id_entites_id_fk",
+          "tableFrom": "lettres_mission",
+          "columnsFrom": [
+            "entite_id"
+          ],
+          "tableTo": "entites",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "lettres_mission_mission_id_missions_id_fk": {
+          "name": "lettres_mission_mission_id_missions_id_fk",
+          "tableFrom": "lettres_mission",
+          "columnsFrom": [
+            "mission_id"
+          ],
+          "tableTo": "missions",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.lignes_ecriture": {
+      "name": "lignes_ecriture",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entite_id": {
+          "name": "entite_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "exercice_id": {
+          "name": "exercice_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lot_import_id": {
+          "name": "lot_import_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "numero_ligne": {
+          "name": "numero_ligne",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "journal_code": {
+          "name": "journal_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "journal_lib": {
+          "name": "journal_lib",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ecriture_num": {
+          "name": "ecriture_num",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ecriture_date": {
+          "name": "ecriture_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "compte_num": {
+          "name": "compte_num",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "compte_lib": {
+          "name": "compte_lib",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "comp_aux_num": {
+          "name": "comp_aux_num",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "comp_aux_lib": {
+          "name": "comp_aux_lib",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "piece_ref": {
+          "name": "piece_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "piece_date": {
+          "name": "piece_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ecriture_lib": {
+          "name": "ecriture_lib",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "debit": {
+          "name": "debit",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "credit": {
+          "name": "credit",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ecriture_let": {
+          "name": "ecriture_let",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "date_let": {
+          "name": "date_let",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "valid_date": {
+          "name": "valid_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "montant_devise": {
+          "name": "montant_devise",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "idevise": {
+          "name": "idevise",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "lignes_lot": {
+          "name": "lignes_lot",
+          "columns": [
+            {
+              "expression": "lot_import_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "numero_ligne",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "lignes_exercice_compte": {
+          "name": "lignes_exercice_compte",
+          "columns": [
+            {
+              "expression": "exercice_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "compte_num",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "lignes_ecriture_cabinet_id_cabinets_id_fk": {
+          "name": "lignes_ecriture_cabinet_id_cabinets_id_fk",
+          "tableFrom": "lignes_ecriture",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "lignes_ecriture_entite_id_entites_id_fk": {
+          "name": "lignes_ecriture_entite_id_entites_id_fk",
+          "tableFrom": "lignes_ecriture",
+          "columnsFrom": [
+            "entite_id"
+          ],
+          "tableTo": "entites",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "lignes_ecriture_exercice_id_exercices_id_fk": {
+          "name": "lignes_ecriture_exercice_id_exercices_id_fk",
+          "tableFrom": "lignes_ecriture",
+          "columnsFrom": [
+            "exercice_id"
+          ],
+          "tableTo": "exercices",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "lignes_ecriture_lot_import_id_lots_import_id_fk": {
+          "name": "lignes_ecriture_lot_import_id_lots_import_id_fk",
+          "tableFrom": "lignes_ecriture",
+          "columnsFrom": [
+            "lot_import_id"
+          ],
+          "tableTo": "lots_import",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.lots_import": {
+      "name": "lots_import",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entite_id": {
+          "name": "entite_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "exercice_id": {
+          "name": "exercice_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "statut_donnees": {
+          "name": "statut_donnees",
+          "type": "statut_donnees",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fichier_id": {
+          "name": "fichier_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cle_idempotence": {
+          "name": "cle_idempotence",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "remplace_lot_id": {
+          "name": "remplace_lot_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "actif": {
+          "name": "actif",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "statut": {
+          "name": "statut",
+          "type": "statut_lot",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'en_attente'"
+        },
+        "progression": {
+          "name": "progression",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "rapport": {
+          "name": "rapport",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lance_par": {
+          "name": "lance_par",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "termine_le": {
+          "name": "termine_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "lots_idempotence": {
+          "name": "lots_idempotence",
+          "columns": [
+            {
+              "expression": "cabinet_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "cle_idempotence",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "lots_import_cabinet_id_cabinets_id_fk": {
+          "name": "lots_import_cabinet_id_cabinets_id_fk",
+          "tableFrom": "lots_import",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "lots_import_entite_id_entites_id_fk": {
+          "name": "lots_import_entite_id_entites_id_fk",
+          "tableFrom": "lots_import",
+          "columnsFrom": [
+            "entite_id"
+          ],
+          "tableTo": "entites",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "lots_import_exercice_id_exercices_id_fk": {
+          "name": "lots_import_exercice_id_exercices_id_fk",
+          "tableFrom": "lots_import",
+          "columnsFrom": [
+            "exercice_id"
+          ],
+          "tableTo": "exercices",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "lots_import_fichier_id_fichiers_id_fk": {
+          "name": "lots_import_fichier_id_fichiers_id_fk",
+          "tableFrom": "lots_import",
+          "columnsFrom": [
+            "fichier_id"
+          ],
+          "tableTo": "fichiers",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "lots_import_lance_par_utilisateurs_id_fk": {
+          "name": "lots_import_lance_par_utilisateurs_id_fk",
+          "tableFrom": "lots_import",
+          "columnsFrom": [
+            "lance_par"
+          ],
+          "tableTo": "utilisateurs",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.messages_mail": {
+      "name": "messages_mail",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "connexion_id": {
+          "name": "connexion_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id_fournisseur": {
+          "name": "id_fournisseur",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recu_le": {
+          "name": "recu_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expediteur": {
+          "name": "expediteur",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "statut": {
+          "name": "statut",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "detail": {
+          "name": "detail",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "messages_mail_unique": {
+          "name": "messages_mail_unique",
+          "columns": [
+            {
+              "expression": "connexion_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id_fournisseur",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "messages_mail_cabinet_id_cabinets_id_fk": {
+          "name": "messages_mail_cabinet_id_cabinets_id_fk",
+          "tableFrom": "messages_mail",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "messages_mail_connexion_id_connexions_mail_id_fk": {
+          "name": "messages_mail_connexion_id_connexions_mail_id_fk",
+          "tableFrom": "messages_mail",
+          "columnsFrom": [
+            "connexion_id"
+          ],
+          "tableTo": "connexions_mail",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.missions": {
+      "name": "missions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entite_id": {
+          "name": "entite_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "libelle": {
+          "name": "libelle",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "debut": {
+          "name": "debut",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fin": {
+          "name": "fin",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "missions_cabinet_id_cabinets_id_fk": {
+          "name": "missions_cabinet_id_cabinets_id_fk",
+          "tableFrom": "missions",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "missions_entite_id_entites_id_fk": {
+          "name": "missions_entite_id_entites_id_fk",
+          "tableFrom": "missions",
+          "columnsFrom": [
+            "entite_id"
+          ],
+          "tableTo": "entites",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.mouvements_bancaires": {
+      "name": "mouvements_bancaires",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entite_id": {
+          "name": "entite_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lot_import_id": {
+          "name": "lot_import_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "iban": {
+          "name": "iban",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "date_operation": {
+          "name": "date_operation",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "date_valeur": {
+          "name": "date_valeur",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "montant": {
+          "name": "montant",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "libelle": {
+          "name": "libelle",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reference_banque": {
+          "name": "reference_banque",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "mouvements_bancaires_cabinet_id_cabinets_id_fk": {
+          "name": "mouvements_bancaires_cabinet_id_cabinets_id_fk",
+          "tableFrom": "mouvements_bancaires",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "mouvements_bancaires_entite_id_entites_id_fk": {
+          "name": "mouvements_bancaires_entite_id_entites_id_fk",
+          "tableFrom": "mouvements_bancaires",
+          "columnsFrom": [
+            "entite_id"
+          ],
+          "tableTo": "entites",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "mouvements_bancaires_lot_import_id_lots_import_id_fk": {
+          "name": "mouvements_bancaires_lot_import_id_lots_import_id_fk",
+          "tableFrom": "mouvements_bancaires",
+          "columnsFrom": [
+            "lot_import_id"
+          ],
+          "tableTo": "lots_import",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.pages_document": {
+      "name": "pages_document",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entite_id": {
+          "name": "entite_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "document_id": {
+          "name": "document_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "numero": {
+          "name": "numero",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "texte": {
+          "name": "texte",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lignes": {
+          "name": "lignes",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "methode": {
+          "name": "methode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "pages_document_cabinet_id_cabinets_id_fk": {
+          "name": "pages_document_cabinet_id_cabinets_id_fk",
+          "tableFrom": "pages_document",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "pages_document_entite_id_entites_id_fk": {
+          "name": "pages_document_entite_id_entites_id_fk",
+          "tableFrom": "pages_document",
+          "columnsFrom": [
+            "entite_id"
+          ],
+          "tableTo": "entites",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "pages_document_document_id_documents_id_fk": {
+          "name": "pages_document_document_id_documents_id_fk",
+          "tableFrom": "pages_document",
+          "columnsFrom": [
+            "document_id"
+          ],
+          "tableTo": "documents",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.pieces_a_qualifier": {
+      "name": "pieces_a_qualifier",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "connexion_id": {
+          "name": "connexion_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fichier_id": {
+          "name": "fichier_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nom_fichier": {
+          "name": "nom_fichier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provenance": {
+          "name": "provenance",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "raisons": {
+          "name": "raisons",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "candidats": {
+          "name": "candidats",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "extrait": {
+          "name": "extrait",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "statut": {
+          "name": "statut",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'en_attente'"
+        },
+        "dossier_affecte_id": {
+          "name": "dossier_affecte_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "document_id": {
+          "name": "document_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "affectee_par": {
+          "name": "affectee_par",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "affectee_le": {
+          "name": "affectee_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "pieces_a_qualifier_cabinet_id_cabinets_id_fk": {
+          "name": "pieces_a_qualifier_cabinet_id_cabinets_id_fk",
+          "tableFrom": "pieces_a_qualifier",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "pieces_a_qualifier_connexion_id_connexions_mail_id_fk": {
+          "name": "pieces_a_qualifier_connexion_id_connexions_mail_id_fk",
+          "tableFrom": "pieces_a_qualifier",
+          "columnsFrom": [
+            "connexion_id"
+          ],
+          "tableTo": "connexions_mail",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "pieces_a_qualifier_fichier_id_fichiers_id_fk": {
+          "name": "pieces_a_qualifier_fichier_id_fichiers_id_fk",
+          "tableFrom": "pieces_a_qualifier",
+          "columnsFrom": [
+            "fichier_id"
+          ],
+          "tableTo": "fichiers",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "pieces_a_qualifier_dossier_affecte_id_entites_id_fk": {
+          "name": "pieces_a_qualifier_dossier_affecte_id_entites_id_fk",
+          "tableFrom": "pieces_a_qualifier",
+          "columnsFrom": [
+            "dossier_affecte_id"
+          ],
+          "tableTo": "entites",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "pieces_a_qualifier_document_id_documents_id_fk": {
+          "name": "pieces_a_qualifier_document_id_documents_id_fk",
+          "tableFrom": "pieces_a_qualifier",
+          "columnsFrom": [
+            "document_id"
+          ],
+          "tableTo": "documents",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "pieces_a_qualifier_affectee_par_utilisateurs_id_fk": {
+          "name": "pieces_a_qualifier_affectee_par_utilisateurs_id_fk",
+          "tableFrom": "pieces_a_qualifier",
+          "columnsFrom": [
+            "affectee_par"
+          ],
+          "tableTo": "utilisateurs",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.pieces_mail_vues": {
+      "name": "pieces_mail_vues",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "connexion_id": {
+          "name": "connexion_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id_message": {
+          "name": "id_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id_piece_jointe": {
+          "name": "id_piece_jointe",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "issue": {
+          "name": "issue",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "document_id": {
+          "name": "document_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "nom_fichier": {
+          "name": "nom_fichier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "pieces_mail_vues_unique": {
+          "name": "pieces_mail_vues_unique",
+          "columns": [
+            {
+              "expression": "connexion_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id_message",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id_piece_jointe",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "pieces_mail_vues_cabinet_id_cabinets_id_fk": {
+          "name": "pieces_mail_vues_cabinet_id_cabinets_id_fk",
+          "tableFrom": "pieces_mail_vues",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "pieces_mail_vues_connexion_id_connexions_mail_id_fk": {
+          "name": "pieces_mail_vues_connexion_id_connexions_mail_id_fk",
+          "tableFrom": "pieces_mail_vues",
+          "columnsFrom": [
+            "connexion_id"
+          ],
+          "tableTo": "connexions_mail",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.politiques_conservation": {
+      "name": "politiques_conservation",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "categorie": {
+          "name": "categorie",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "duree_jours": {
+          "name": "duree_jours",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fondement": {
+          "name": "fondement",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "immuable": {
+          "name": "immuable",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "validee_par": {
+          "name": "validee_par",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "politiques_conservation_cabinet_id_cabinets_id_fk": {
+          "name": "politiques_conservation_cabinet_id_cabinets_id_fk",
+          "tableFrom": "politiques_conservation",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "politiques_conservation_validee_par_utilisateurs_id_fk": {
+          "name": "politiques_conservation_validee_par_utilisateurs_id_fk",
+          "tableFrom": "politiques_conservation",
+          "columnsFrom": [
+            "validee_par"
+          ],
+          "tableTo": "utilisateurs",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.propositions_ia": {
+      "name": "propositions_ia",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entite_id": {
+          "name": "entite_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tache": {
+          "name": "tache",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "modele": {
+          "name": "modele",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version_prompt": {
+          "name": "version_prompt",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cible_type": {
+          "name": "cible_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cible_id": {
+          "name": "cible_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "contenu": {
+          "name": "contenu",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "preuves": {
+          "name": "preuves",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "confiance": {
+          "name": "confiance",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'non_evaluee'"
+        },
+        "statut": {
+          "name": "statut",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'non_examinee'"
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "propositions_ia_cabinet_id_cabinets_id_fk": {
+          "name": "propositions_ia_cabinet_id_cabinets_id_fk",
+          "tableFrom": "propositions_ia",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "propositions_ia_entite_id_entites_id_fk": {
+          "name": "propositions_ia_entite_id_entites_id_fk",
+          "tableFrom": "propositions_ia",
+          "columnsFrom": [
+            "entite_id"
+          ],
+          "tableTo": "entites",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.rapprochements": {
+      "name": "rapprochements",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entite_id": {
+          "name": "entite_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "niveau": {
+          "name": "niveau",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "elements": {
+          "name": "elements",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "criteres": {
+          "name": "criteres",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ecart": {
+          "name": "ecart",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "statut": {
+          "name": "statut",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'propose'"
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "rapprochements_cabinet_id_cabinets_id_fk": {
+          "name": "rapprochements_cabinet_id_cabinets_id_fk",
+          "tableFrom": "rapprochements",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "rapprochements_entite_id_entites_id_fk": {
+          "name": "rapprochements_entite_id_entites_id_fk",
+          "tableFrom": "rapprochements",
+          "columnsFrom": [
+            "entite_id"
+          ],
+          "tableTo": "entites",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.receptions": {
+      "name": "receptions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entite_id": {
+          "name": "entite_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "document_id": {
+          "name": "document_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "canal": {
+          "name": "canal",
+          "type": "canal_reception",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "deposant_id": {
+          "name": "deposant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "doublon_binaire": {
+          "name": "doublon_binaire",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "provenance": {
+          "name": "provenance",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recu_le": {
+          "name": "recu_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "receptions_cabinet_id_cabinets_id_fk": {
+          "name": "receptions_cabinet_id_cabinets_id_fk",
+          "tableFrom": "receptions",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "receptions_entite_id_entites_id_fk": {
+          "name": "receptions_entite_id_entites_id_fk",
+          "tableFrom": "receptions",
+          "columnsFrom": [
+            "entite_id"
+          ],
+          "tableTo": "entites",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "receptions_document_id_documents_id_fk": {
+          "name": "receptions_document_id_documents_id_fk",
+          "tableFrom": "receptions",
+          "columnsFrom": [
+            "document_id"
+          ],
+          "tableTo": "documents",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "receptions_deposant_id_utilisateurs_id_fk": {
+          "name": "receptions_deposant_id_utilisateurs_id_fk",
+          "tableFrom": "receptions",
+          "columnsFrom": [
+            "deposant_id"
+          ],
+          "tableTo": "utilisateurs",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.regles_cabinet": {
+      "name": "regles_cabinet",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "controle_id": {
+          "name": "controle_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entite_id_cible": {
+          "name": "entite_id_cible",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "parametres": {
+          "name": "parametres",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "statut": {
+          "name": "statut",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'proposee'"
+        },
+        "approuvee_par": {
+          "name": "approuvee_par",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "regles_cabinet_cabinet_id_cabinets_id_fk": {
+          "name": "regles_cabinet_cabinet_id_cabinets_id_fk",
+          "tableFrom": "regles_cabinet",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "regles_cabinet_approuvee_par_utilisateurs_id_fk": {
+          "name": "regles_cabinet_approuvee_par_utilisateurs_id_fk",
+          "tableFrom": "regles_cabinet",
+          "columnsFrom": [
+            "approuvee_par"
+          ],
+          "tableTo": "utilisateurs",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.resultats_controles": {
+      "name": "resultats_controles",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entite_id": {
+          "name": "entite_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "execution_id": {
+          "name": "execution_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "controle_id": {
+          "name": "controle_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version_controle": {
+          "name": "version_controle",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "statut": {
+          "name": "statut",
+          "type": "statut_controle",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "motif": {
+          "name": "motif",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "parametres": {
+          "name": "parametres",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mesures": {
+          "name": "mesures",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "resultats_controles_cabinet_id_cabinets_id_fk": {
+          "name": "resultats_controles_cabinet_id_cabinets_id_fk",
+          "tableFrom": "resultats_controles",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "resultats_controles_entite_id_entites_id_fk": {
+          "name": "resultats_controles_entite_id_entites_id_fk",
+          "tableFrom": "resultats_controles",
+          "columnsFrom": [
+            "entite_id"
+          ],
+          "tableTo": "entites",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "resultats_controles_execution_id_executions_controles_id_fk": {
+          "name": "resultats_controles_execution_id_executions_controles_id_fk",
+          "tableFrom": "resultats_controles",
+          "columnsFrom": [
+            "execution_id"
+          ],
+          "tableTo": "executions_controles",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.signalements_mail": {
+      "name": "signalements_mail",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "connexion_id": {
+          "name": "connexion_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id_message": {
+          "name": "id_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id_piece_jointe": {
+          "name": "id_piece_jointe",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "detail": {
+          "name": "detail",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "signalements_mail_unique": {
+          "name": "signalements_mail_unique",
+          "columns": [
+            {
+              "expression": "connexion_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id_message",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id_piece_jointe",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "signalements_mail_cabinet_id_cabinets_id_fk": {
+          "name": "signalements_mail_cabinet_id_cabinets_id_fk",
+          "tableFrom": "signalements_mail",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "signalements_mail_connexion_id_connexions_mail_id_fk": {
+          "name": "signalements_mail_connexion_id_connexions_mail_id_fk",
+          "tableFrom": "signalements_mail",
+          "columnsFrom": [
+            "connexion_id"
+          ],
+          "tableTo": "connexions_mail",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.sources_reglementaires": {
+      "name": "sources_reglementaires",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "reference": {
+          "name": "reference",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "emetteur": {
+          "name": "emetteur",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "url": {
+          "name": "url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "version": {
+          "name": "version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "date_publication": {
+          "name": "date_publication",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "date_effet": {
+          "name": "date_effet",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "periode_application": {
+          "name": "periode_application",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "passage": {
+          "name": "passage",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resume": {
+          "name": "resume",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "etat_verification": {
+          "name": "etat_verification",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'non_verifiee'"
+        },
+        "date_verification": {
+          "name": "date_verification",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.televersements": {
+      "name": "televersements",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cabinet_id": {
+          "name": "cabinet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entite_id": {
+          "name": "entite_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "utilisateur_id": {
+          "name": "utilisateur_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "canal": {
+          "name": "canal",
+          "type": "canal_reception",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nom_fichier": {
+          "name": "nom_fichier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type_mime_declare": {
+          "name": "type_mime_declare",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "taille_attendue": {
+          "name": "taille_attendue",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sha256_attendu": {
+          "name": "sha256_attendu",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "octets_recus": {
+          "name": "octets_recus",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "nature": {
+          "name": "nature",
+          "type": "nature_document",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'a_qualifier'"
+        },
+        "commentaire": {
+          "name": "commentaire",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "usage": {
+          "name": "usage",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'piece'"
+        },
+        "exercice_id": {
+          "name": "exercice_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "statut_donnees": {
+          "name": "statut_donnees",
+          "type": "statut_donnees",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lot_import_id": {
+          "name": "lot_import_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "statut": {
+          "name": "statut",
+          "type": "statut_televersement",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ouvert'"
+        },
+        "document_id": {
+          "name": "document_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "expire_le": {
+          "name": "expire_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "televersements_cabinet_id_cabinets_id_fk": {
+          "name": "televersements_cabinet_id_cabinets_id_fk",
+          "tableFrom": "televersements",
+          "columnsFrom": [
+            "cabinet_id"
+          ],
+          "tableTo": "cabinets",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "televersements_entite_id_entites_id_fk": {
+          "name": "televersements_entite_id_entites_id_fk",
+          "tableFrom": "televersements",
+          "columnsFrom": [
+            "entite_id"
+          ],
+          "tableTo": "entites",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "televersements_utilisateur_id_utilisateurs_id_fk": {
+          "name": "televersements_utilisateur_id_utilisateurs_id_fk",
+          "tableFrom": "televersements",
+          "columnsFrom": [
+            "utilisateur_id"
+          ],
+          "tableTo": "utilisateurs",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "televersements_exercice_id_exercices_id_fk": {
+          "name": "televersements_exercice_id_exercices_id_fk",
+          "tableFrom": "televersements",
+          "columnsFrom": [
+            "exercice_id"
+          ],
+          "tableTo": "exercices",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.utilisateurs": {
+      "name": "utilisateurs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "sujet_oidc": {
+          "name": "sujet_oidc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nom": {
+          "name": "nom",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "utilisateurs_sujet_oidc_unique": {
+          "name": "utilisateurs_sujet_oidc_unique",
+          "columns": [
+            "sujet_oidc"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.canal_reception": {
+      "name": "canal_reception",
+      "schema": "public",
+      "values": [
+        "telephone",
+        "ordinateur",
+        "mail",
+        "import_lot"
+      ]
+    },
+    "public.fournisseur_mail": {
+      "name": "fournisseur_mail",
+      "schema": "public",
+      "values": [
+        "microsoft365",
+        "gmail"
+      ]
+    },
+    "public.gravite_constat": {
+      "name": "gravite_constat",
+      "schema": "public",
+      "values": [
+        "critique",
+        "elevee",
+        "moyenne",
+        "faible"
+      ]
+    },
+    "public.nature_document": {
+      "name": "nature_document",
+      "schema": "public",
+      "values": [
+        "facture_achat",
+        "facture_vente",
+        "avoir",
+        "releve_bancaire",
+        "lettre_mission",
+        "contrat",
+        "autre",
+        "a_qualifier"
+      ]
+    },
+    "public.nature_fichier": {
+      "name": "nature_fichier",
+      "schema": "public",
+      "values": [
+        "original",
+        "derive"
+      ]
+    },
+    "public.niveau_habilitation": {
+      "name": "niveau_habilitation",
+      "schema": "public",
+      "values": [
+        "depot",
+        "lecture",
+        "collaboration",
+        "revision",
+        "validation"
+      ]
+    },
+    "public.role_cabinet": {
+      "name": "role_cabinet",
+      "schema": "public",
+      "values": [
+        "administrateur",
+        "associe",
+        "reviseur",
+        "collaborateur",
+        "client_deposant",
+        "client_lecture",
+        "support"
+      ]
+    },
+    "public.statut_connexion": {
+      "name": "statut_connexion",
+      "schema": "public",
+      "values": [
+        "non_connecte",
+        "connecte",
+        "expire",
+        "revoque",
+        "erreur",
+        "active",
+        "supprimee"
+      ]
+    },
+    "public.statut_controle": {
+      "name": "statut_controle",
+      "schema": "public",
+      "values": [
+        "sans_anomalie",
+        "constat",
+        "non_applicable",
+        "non_realise",
+        "erreur"
+      ]
+    },
+    "public.statut_document": {
+      "name": "statut_document",
+      "schema": "public",
+      "values": [
+        "recu",
+        "en_analyse",
+        "a_completer",
+        "a_controler",
+        "traite",
+        "quarantaine",
+        "rejete"
+      ]
+    },
+    "public.statut_donnees": {
+      "name": "statut_donnees",
+      "schema": "public",
+      "values": [
+        "travail_avant_cloture",
+        "fec"
+      ]
+    },
+    "public.statut_lot": {
+      "name": "statut_lot",
+      "schema": "public",
+      "values": [
+        "en_attente",
+        "en_cours",
+        "termine",
+        "termine_avec_erreurs",
+        "echec",
+        "annule"
+      ]
+    },
+    "public.statut_revue": {
+      "name": "statut_revue",
+      "schema": "public",
+      "values": [
+        "a_examiner",
+        "en_cours",
+        "piece_demandee",
+        "accepte",
+        "corrige",
+        "rejete",
+        "anomalie_confirmee",
+        "cloture"
+      ]
+    },
+    "public.statut_televersement": {
+      "name": "statut_televersement",
+      "schema": "public",
+      "values": [
+        "ouvert",
+        "complet",
+        "abandonne",
+        "refuse"
+      ]
+    },
+    "public.territoire_fiscal": {
+      "name": "territoire_fiscal",
+      "schema": "public",
+      "values": [
+        "metropole",
+        "guadeloupe",
+        "martinique",
+        "guyane",
+        "reunion",
+        "mayotte",
+        "autre",
+        "a_confirmer"
+      ]
+    }
+  },
+  "schemas": {},
+  "views": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

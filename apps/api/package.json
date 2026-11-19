@@ -14,6 +14,7 @@
   "dependencies": {
     "@comtaple/core": "workspace:*",
     "@comtaple/db": "workspace:*",
+    "@comtaple/mail": "workspace:*",
     "@comtaple/plateforme": "workspace:*",
     "@nestjs/common": "12.5.1",
     "@nestjs/core": "12.5.1",

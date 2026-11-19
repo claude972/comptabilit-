@@ -101,7 +101,8 @@ export const statutRevue = pgEnum('statut_revue', [
   'cloture',
 ]);
 export const fournisseurMail = pgEnum('fournisseur_mail', ['microsoft365', 'gmail']);
-export const statutConnexion = pgEnum('statut_connexion', ['non_connecte', 'connecte', 'expire', 'revoque', 'erreur']);
+/** `active`, `expire`, `revoque`, `supprimee` sont les statuts du moteur @comtaple/mail (les autres valeurs sont historiques). */
+export const statutConnexion = pgEnum('statut_connexion', ['non_connecte', 'connecte', 'expire', 'revoque', 'erreur', 'active', 'supprimee']);
 
 // ───────────────────────────── Cabinets et identités ─────────────────────────────
 
@@ -621,7 +622,85 @@ export const connexionsMail = pgTable('connexions_mail', {
   derniereErreur: text('derniere_erreur'),
   creePar: uuid('cree_par').references(() => utilisateurs.id),
   creeLe: creeLe(),
+  /** État du moteur @comtaple/mail (configuration, curseurs, surveillance) ; ne contient aucun jeton. */
+  etat: jsonb('etat'),
+  /** Échéance de la surveillance (watch Gmail, abonnements Graph), pour l'entretien planifié. */
+  surveillanceEcheance: horodatage('surveillance_echeance'),
+  /** Issue de la dernière synchronisation (terminee, interrompue, arretee…). */
+  derniereIssue: text('derniere_issue'),
+  /** Trace du dernier appel de lecture réussi, évaluée par `evaluerStatutIntegration`. */
+  preuve: jsonb('preuve'),
 });
+
+/** Demande d'autorisation OAuth en attente, liée à l'utilisateur et au cabinet qui l'ont lancée. */
+export const demandesConnexionMail = pgTable('demandes_connexion_mail', {
+  id: id(),
+  cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+  utilisateurId: uuid('utilisateur_id').notNull().references(() => utilisateurs.id),
+  /** SHA-256 du paramètre `state` (le state lui-même n'est pas conservé en clair). */
+  empreinteState: text('empreinte_state').notNull().unique(),
+  /** Demande (vérifieur PKCE compris) et configuration choisie, chiffrées (AES-256-GCM). */
+  donneesChiffrees: text('donnees_chiffrees').notNull(),
+  expireLe: horodatage('expire_le').notNull(),
+  creeLe: creeLe(),
+});
+
+/** Idempotence de la collecte : une pièce jointe (connexion, message, pièce) n'est reçue qu'une fois. */
+export const piecesMailVues = pgTable(
+  'pieces_mail_vues',
+  {
+    id: id(),
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    connexionId: uuid('connexion_id').notNull().references(() => connexionsMail.id),
+    idMessage: text('id_message').notNull(),
+    idPieceJointe: text('id_piece_jointe').notNull(),
+    /** document | doublon_binaire | a_qualifier */
+    issue: text('issue').notNull(),
+    documentId: uuid('document_id'),
+    nomFichier: text('nom_fichier'),
+    creeLe: creeLe(),
+  },
+  (t) => [uniqueIndex('pieces_mail_vues_unique').on(t.connexionId, t.idMessage, t.idPieceJointe)],
+);
+
+/** Pièces reçues par mail dont le rattachement est ambigu : rattachées à AUCUN dossier tant qu'un gestionnaire ne les a pas affectées. */
+export const piecesAQualifier = pgTable('pieces_a_qualifier', {
+  id: id(),
+  cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+  connexionId: uuid('connexion_id').notNull().references(() => connexionsMail.id),
+  fichierId: uuid('fichier_id').notNull().references(() => fichiers.id),
+  nomFichier: text('nom_fichier').notNull(),
+  provenance: jsonb('provenance').notNull(),
+  raisons: jsonb('raisons').notNull(),
+  candidats: jsonb('candidats').notNull(),
+  /** Expéditeur, objet et court extrait du message : contenu NON FIABLE, pour la qualification humaine. */
+  extrait: jsonb('extrait'),
+  /** en_attente | affectee */
+  statut: text('statut').notNull().default('en_attente'),
+  /** Dossier choisi par le gestionnaire (volontairement pas nommé entite_id : la pièce n'appartient à aucun dossier avant). */
+  dossierAffecteId: uuid('dossier_affecte_id').references(() => entites.id),
+  documentId: uuid('document_id').references(() => documents.id),
+  affecteePar: uuid('affectee_par').references(() => utilisateurs.id),
+  affecteeLe: horodatage('affectee_le'),
+  creeLe: creeLe(),
+});
+
+/** Signalements de la collecte mail à traiter par un humain (facture derrière un lien, pièce ignorée). */
+export const signalementsMail = pgTable(
+  'signalements_mail',
+  {
+    id: id(),
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    connexionId: uuid('connexion_id').notNull().references(() => connexionsMail.id),
+    idMessage: text('id_message').notNull(),
+    type: text('type').notNull(),
+    idPieceJointe: text('id_piece_jointe').notNull().default(''),
+    /** Domaines des liens (jamais l'URL complète), ou nom et motif de la pièce ignorée. */
+    detail: jsonb('detail').notNull(),
+    creeLe: creeLe(),
+  },
+  (t) => [uniqueIndex('signalements_mail_unique').on(t.connexionId, t.idMessage, t.type, t.idPieceJointe)],
+);
 
 export const messagesMail = pgTable(
   'messages_mail',

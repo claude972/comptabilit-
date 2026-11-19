@@ -32,13 +32,14 @@ Le service OCR se construit et se lance à part : voir `services/ocr/README.md`.
 ## Lancement
 
 ```bash
-scripts/applis.sh demarrer       # API (http://127.0.0.1:4000, documentation /docs) + worker
-pnpm --filter @comtaple/web dev  # application web et PWA (http://localhost:3000)
+scripts/applis.sh demarrer       # API (http://127.0.0.1:4000, documentation /docs) + worker + web (http://localhost:3100)
+# l'application web construite est servie sur http://localhost:3100 par le même script
+pnpm --filter @comtaple/web dev  # ou en mode développement (même port : arrêter d'abord la version construite)
 scripts/applis.sh etat
 scripts/applis.sh arreter
 ```
 
-Journaux : `var/api.log`, `var/worker.log`.
+Journaux : `var/api.log`, `var/worker.log`, `var/web.log`.
 
 ### Comptes de démonstration (royaume Keycloak local uniquement)
 
@@ -58,6 +59,8 @@ Le mot de passe commun est la valeur `DEV_MDP_UTILISATEURS` du fichier `.env`.
 pnpm run test                                         # tests unitaires de tous les paquets
 pnpm --filter @comtaple/db run test:integration       # isolation RLS et journal d'audit sur PostgreSQL réel
 pnpm --filter @comtaple/api run test:integration      # parcours de bout en bout (services, API et worker démarrés)
+pnpm --filter @comtaple/web run test:e2e              # navigateur, API simulée
+pnpm --filter @comtaple/web exec playwright test -c playwright.reel.config.ts   # navigateur, pile réelle
 scripts/sauvegarder.sh && scripts/essai-restauration.sh   # sauvegarde puis restauration vérifiée dans une base neuve
 ```
 

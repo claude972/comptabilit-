@@ -9,6 +9,7 @@ export const FILES = {
   documents: 'documents',
   comptabilite: 'comptabilite',
   exports: 'exports',
+  mail: 'mail',
 } as const;
 
 export interface TacheAnalyseDocument {
@@ -28,6 +29,17 @@ export interface TacheDossierRevision {
   exportId: string;
 }
 
+/** Tâches de la collecte par mail : identifiants seulement (jamais de contenu de message ni de notification). */
+export interface TacheMail {
+  cabinetId: string;
+  connexionId: string;
+  declencheur?: 'notification' | 'periodique' | 'manuel';
+  /** Renouveler la surveillance même si son échéance est lointaine (périmètre modifié). */
+  forcer?: boolean;
+  /** Pour une notification de cycle de vie Graph déjà validée. */
+  cycleDeVie?: { idAbonnement: string; evenement: 'reauthorizationRequired' | 'subscriptionRemoved' | 'missed' };
+}
+
 export function connexionRedis(url: string): ConnectionOptions {
   return new Redis(url, { maxRetriesPerRequest: null }) as unknown as ConnectionOptions;
 }
@@ -43,10 +55,13 @@ export class Files {
   readonly documents: Queue;
   readonly comptabilite: Queue;
   readonly exports: Queue;
-  constructor(connexion: ConnectionOptions) {
-    this.documents = new Queue(FILES.documents, { connection: connexion, defaultJobOptions: OPTIONS });
-    this.comptabilite = new Queue(FILES.comptabilite, { connection: connexion, defaultJobOptions: OPTIONS });
-    this.exports = new Queue(FILES.exports, { connection: connexion, defaultJobOptions: OPTIONS });
+  readonly mail: Queue;
+  constructor(connexion: ConnectionOptions, prefixe = 'bull') {
+    const options = { connection: connexion, defaultJobOptions: OPTIONS, prefix: prefixe };
+    this.documents = new Queue(FILES.documents, options);
+    this.comptabilite = new Queue(FILES.comptabilite, options);
+    this.exports = new Queue(FILES.exports, options);
+    this.mail = new Queue(FILES.mail, options);
   }
   // L'identifiant de tâche rend la mise en file idempotente (une relance ne crée pas de doublon en attente).
   analyserDocument(t: TacheAnalyseDocument) {
@@ -61,7 +76,17 @@ export class Files {
   genererDossier(t: TacheDossierRevision) {
     return this.exports.add('dossier-revision', t, { jobId: `exp-${t.exportId}` });
   }
+  // Pas d'identifiant de tâche : chaque notification déclenche une synchronisation (sérialisée par connexion, sans effet si rien n'a changé).
+  synchroniserMail(t: TacheMail) {
+    return this.mail.add('synchroniser', t);
+  }
+  entretenirMail(t: TacheMail) {
+    return this.mail.add('entretenir', t);
+  }
+  cycleDeVieMail(t: TacheMail) {
+    return this.mail.add('cycle-de-vie', t);
+  }
   async fermer() {
-    await Promise.all([this.documents.close(), this.comptabilite.close(), this.exports.close()]);
+    await Promise.all([this.documents.close(), this.comptabilite.close(), this.exports.close(), this.mail.close()]);
   }
 }

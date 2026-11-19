@@ -12,6 +12,7 @@
   "dependencies": {
     "@comtaple/core": "workspace:*",
     "@comtaple/db": "workspace:*",
+    "@comtaple/mail": "workspace:*",
     "@comtaple/plateforme": "workspace:*",
     "bullmq": "6.7.7",
     "pdfjs-dist": "6.5.438",

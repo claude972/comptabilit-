@@ -25,6 +25,35 @@ const schema = z.object({
   TAILLE_MORCEAU: z.coerce.number().int().default(4 * 1024 * 1024),
   API_PORT: z.coerce.number().int().default(4000),
   WEB_URL: z.string().url().default('http://localhost:3000'),
+  /** Préfixe des clés BullMQ dans Redis : permet à une pile de test de ne pas partager ses files avec la pile normale. */
+  FILES_PREFIXE: z.string().regex(/^[a-z0-9-]{1,40}$/).default('bull'),
+  NODE_ENV: z.string().optional().default(''),
+
+  // ── Collecte par mail (@comtaple/mail) ──
+  /** Secret dont sont dérivées la clé de chiffrement des jetons OAuth et la clé de liaison du `state`. */
+  JETONS_CLE_CHIFFREMENT: z.string().optional().default(''),
+  /** Identifiants des clients OAuth : VIDES = connecteur « non connecté », aucune connexion possible. */
+  GOOGLE_CLIENT_ID: z.string().optional().default(''),
+  GOOGLE_CLIENT_SECRET: z.string().optional().default(''),
+  /** Sujet Pub/Sub (`projects/<projet>/topics/<sujet>`) ; vide = synchronisation périodique seule. */
+  GOOGLE_SUJET_PUBSUB: z.string().optional().default(''),
+  /** Audience et compte de service du push Pub/Sub authentifié. */
+  GOOGLE_PUSH_AUDIENCE: z.string().optional().default(''),
+  GOOGLE_PUSH_COMPTE_SERVICE: z.string().optional().default(''),
+  MICROSOFT_CLIENT_ID: z.string().optional().default(''),
+  MICROSOFT_CLIENT_SECRET: z.string().optional().default(''),
+  MICROSOFT_LOCATAIRE: z.string().regex(/^[A-Za-z0-9.-]{1,64}$/).default('common'),
+  /** URI de redirection OAuth inscrite chez les fournisseurs ; par défaut la page de retour de l'application web. */
+  MAIL_URI_REDIRECTION: z.string().optional().default(''),
+  /** URL HTTPS publique de l'API pour les notifications Graph ; vide = synchronisation périodique seule. */
+  MAIL_URL_PUBLIQUE_API: z.string().optional().default(''),
+  /** Période de la synchronisation de rattrapage, en secondes. */
+  MAIL_PERIODE_RATTRAPAGE_S: z.coerce.number().int().min(2).default(900),
+  /**
+   * TESTS UNIQUEMENT : origine du simulateur `@comtaple/mail/simulateur` qui remplace les URL de Google et de Microsoft.
+   * Refusée si NODE_ENV=production. Une connexion établie ainsi ne donne jamais le statut d'intégration « connecte ».
+   */
+  MAIL_SIMULATEUR_URL: z.string().optional().default(''),
 });
 
 export type Config = z.infer<typeof schema>;
@@ -35,6 +64,15 @@ export function lireConfig(env: NodeJS.ProcessEnv = process.env): Config {
     // Les valeurs ne sont jamais affichées : seulement le nom des variables fautives.
     const champs = r.error.issues.map((i) => i.path.join('.')).join(', ');
     throw new Error(`Configuration invalide ou incomplète : ${champs}`);
+  }
+  if (r.data.MAIL_SIMULATEUR_URL !== '') {
+    if (r.data.NODE_ENV === 'production') {
+      throw new Error('Configuration refusée : MAIL_SIMULATEUR_URL (simulateur de test) est défini alors que NODE_ENV=production.');
+    }
+    const u = new URL(r.data.MAIL_SIMULATEUR_URL);
+    if (u.hostname !== '127.0.0.1' && u.hostname !== 'localhost') {
+      throw new Error('Configuration refusée : MAIL_SIMULATEUR_URL doit désigner un simulateur local (127.0.0.1).');
+    }
   }
   return r.data;
 }

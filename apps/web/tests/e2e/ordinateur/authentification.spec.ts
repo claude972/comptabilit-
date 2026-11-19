@@ -92,7 +92,7 @@ test.describe('authentification et BFF', () => {
   });
 
   test('BFF : 401 sans session, chemins limités à v1/, CSRF strict sur les méthodes non-GET, jeton ajouté côté serveur', async ({ page, request }) => {
-    expect((await request.get('http://127.0.0.1:' + (process.env.E2E_PORT_WEB ?? '3100') + '/api/bff/v1/moi')).status()).toBe(401);
+    expect((await request.get('http://127.0.0.1:' + (process.env.E2E_PORT_WEB ?? '3200') + '/api/bff/v1/moi')).status()).toBe(401);
     await seConnecter(page, 'chloe', '/depots');
     await simulateur('reinitialiser');
     const appeler = (chemin: string, init: RequestInit = {}) =>
@@ -125,7 +125,7 @@ test.describe('authentification et BFF', () => {
 
     // Origine étrangère (requête forgée hors navigateur avec les cookies de la session) : refusée.
     const cookies = (await page.context().cookies('http://localhost:3000')).map((c) => `${c.name}=${c.value}`).join('; ');
-    const base = `http://127.0.0.1:${process.env.E2E_PORT_WEB ?? '3100'}`;
+    const base = `http://127.0.0.1:${process.env.E2E_PORT_WEB ?? '3200'}`;
     const forge = (entetes: Record<string, string>) => fetch(`${base}${cible}`, { method: 'POST', headers: { cookie: cookies, 'content-type': 'application/json', 'x-comtaple-csrf': '1', ...entetes }, body: corps });
     expect((await forge({ origin: 'https://attaquant.invalid' })).status).toBe(403);
     expect((await forge({})).status).toBe(403); // Origin absent

@@ -3,3 +3,5 @@ export const BD = Symbol('BD');
 export const STOCKAGE = Symbol('STOCKAGE');
 export const TACHES = Symbol('TACHES');
 export const CONFIG = Symbol('CONFIG');
+/** Connecteurs de messagerie (@comtaple/mail) construits à partir de la configuration. */
+export const MAIL = Symbol('MAIL');

@@ -34,7 +34,7 @@ services:
   # Stockage objet compatible S3 pour le développement local (la cible de production est OVHcloud Object Storage).
   s3:
     image: chrislusf/seaweedfs:4.54
-    command: ["server", "-dir=/data", "-ip.bind=0.0.0.0", "-volume.max=20", "-master.volumeSizeLimitMB=256", "-s3", "-s3.port=8333", "-s3.config=/etc/seaweedfs/s3.json"]
+    command: ["server", "-dir=/data", "-ip.bind=0.0.0.0", "-volume.max=120", "-master.volumeSizeLimitMB=256", "-s3", "-s3.port=8333", "-s3.config=/etc/seaweedfs/s3.json"]
     ports: ["127.0.0.1:${S3_PORT:-8333}:8333"]
     volumes: ["s3data:/data"]
     configs:

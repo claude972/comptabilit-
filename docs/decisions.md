@@ -132,6 +132,9 @@ Toutes les cinq minutes, le worker remet en file les traitements confirmés en b
 ### D-036 — Accès temporaire du support (2026-11-19)
 Ouvert par l'éditeur seulement (outil en ligne de commande), pour 1 à 72 heures, avec motif, inscrit au journal du cabinet. Il ne donne accès à aucun dossier : un gestionnaire du cabinet habilite ensuite ce compte, en lecture au plus. L'application refuse toute écriture à ce rôle et trace chaque consultation (gabarit de route). L'accès expire seul ; sa fermeture retire les habilitations. Une personne déjà membre du cabinet ne peut pas recevoir en plus un accès support.
 
+### D-037 — Capacité du stockage objet local et volume des jeux de test (2026-11-19)
+Le stockage S3 local de développement était plafonné à 20 volumes de 256 Mo. Les parcours de test l'ont rempli (notamment une archive de restitution de 173 Mo produite à chaque exécution), ce qui s'est manifesté par des erreurs internes du stockage au dépôt d'un fichier. Le plafond est porté à 120 volumes, sans suppression de données, et le parcours de restitution travaille désormais sur un petit dossier neuf. Seul du cache de construction Docker (régénérable) a été libéré. Enseignement pour la production : la saturation du stockage doit être supervisée et produire une alerte avant d'atteindre l'application ; aujourd'hui elle se traduit par un échec de dépôt explicite (aucun « reçu » n'est affiché), sans alerte préalable.
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

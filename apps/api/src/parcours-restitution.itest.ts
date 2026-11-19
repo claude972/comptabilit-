@@ -1,9 +1,13 @@
-/** Export de restitution complet d'un dossier — pile réelle locale. L'archive est rouverte et vérifiée fichier par fichier. */
-import { createHash } from 'node:crypto';
+/**
+ * Export de restitution complet d'un dossier — pile réelle locale. L'archive est rouverte et vérifiée fichier par fichier.
+ * Dossier neuf et petit à chaque exécution : une archive du dossier de démonstration pèserait plus de 150 Mo par passage.
+ */
+import { createHash, randomBytes } from 'node:crypto';
+import { genererFecSynthetique, genererTexteFactureSynthetique } from '@comtaple/core';
 import { DEMO } from '@comtaple/db/amorcer';
 import { beforeAll, describe, expect, it } from 'vitest';
 import yauzl from 'yauzl';
-import { api, attendre, ouvrirSessions, sha } from './essais/outils.js';
+import { api, attendre, attendreLot, deposer, ouvrirSessions, pdfTexte, sha } from './essais/outils.js';
 
 function ouvrirZip(contenu: Buffer): Promise<Map<string, Buffer>> {
   return new Promise((ok, ko) => {
@@ -28,30 +32,52 @@ function ouvrirZip(contenu: Buffer): Promise<Map<string, Buffer>> {
   });
 }
 
-beforeAll(ouvrirSessions);
+const SEL = randomBytes(4).toString('hex');
+let entiteId = '';
+
+beforeAll(async () => {
+  await ouvrirSessions();
+  entiteId = (await api('alice', 'POST', '/v1/dossiers', { raisonSociale: `Essai restitution ${SEL} (fictif)`, territoireFiscal: 'metropole' })).json.id;
+  for (const [u, niveau] of [[DEMO.alice, 'validation'], [DEMO.remi, 'revision'], [DEMO.chloe, 'collaboration']] as const) {
+    await api('alice', 'PUT', `/v1/dossiers/${entiteId}/habilitations/${u}`, { niveau });
+  }
+  const exerciceId = (await api('chloe', 'POST', `/v1/dossiers/${entiteId}/exercices`, { debut: '2025-01-01', fin: '2025-12-31' })).json.id;
+  // Une facture analysée, un fichier de test antivirus (EICAR), des écritures avec un constat décidé.
+  const facture = genererTexteFactureSynthetique({ graine: 5 });
+  const piece = await deposer('chloe', entiteId, pdfTexte(facture.pages[0]!.texte.split('\n'), SEL), {}, 'facture.pdf');
+  const eicar = await deposer('chloe', entiteId, Buffer.from(`X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*`, 'latin1'), {}, 'eicar.com');
+  for (const id of [piece.fin.json.documentId, eicar.fin.json.documentId]) {
+    await attendre(() => api('chloe', 'GET', `/v1/documents/${id}`), (r) => r.statut === 200 && !['recu', 'en_analyse'].includes(r.json.document.statut));
+  }
+  const fec = genererFecSynthetique({ exercice: { debut: '2025-01-01', fin: '2025-12-31' }, nbEcritures: 120, graine: Number.parseInt(SEL.slice(0, 6), 16), anomalies: ['caisse_crediteur'] });
+  const lot = await deposer('chloe', entiteId, Buffer.from(fec.contenu), { usage: 'fec', exerciceId, statutDonnees: 'fec' }, fec.nomFichier);
+  await attendreLot('chloe', lot.fin.json.lotImportId);
+  const revue = await attendre(() => api('remi', 'GET', `/v1/exercices/${exerciceId}/revue`), (r) => r.json?.execution?.statut === 'termine');
+  await api('remi', 'PATCH', `/v1/constats/${revue.json.constats[0].id}`, { action: 'confirmer_anomalie', motif: 'Anomalie avérée' });
+});
 
 describe('restitution d’un dossier', () => {
   it('est réservée au niveau de validation sur le dossier', async () => {
-    expect((await api('remi', 'POST', `/v1/dossiers/${DEMO.dupain}/restitutions`)).statut).toBe(403); // révision ≠ validation
-    expect((await api('client', 'POST', `/v1/dossiers/${DEMO.dupain}/restitutions`)).statut).toBe(403);
-    expect((await api('bruno', 'POST', `/v1/dossiers/${DEMO.dupain}/restitutions`)).statut).toBe(404);
+    expect((await api('remi', 'POST', `/v1/dossiers/${entiteId}/restitutions`)).statut).toBe(403); // révision ≠ validation
+    expect((await api('client', 'POST', `/v1/dossiers/${entiteId}/restitutions`)).statut).toBe(404); // le déposant n'est pas habilité sur ce dossier
+    expect((await api('bruno', 'POST', `/v1/dossiers/${entiteId}/restitutions`)).statut).toBe(404);
     expect((await api('alice', 'POST', `/v1/dossiers/${DEMO.martin}/restitutions`)).statut).toBe(404); // gestionnaire non habilitée
   });
 
   it('produit une archive complète dont chaque fichier correspond au manifeste d’empreintes', async () => {
     // Une pièce au nom hostile, pour vérifier que les noms d'origine ne dictent pas les chemins de l'archive.
     const hostile = Buffer.from(`%PDF-1.4 restitution ${Date.now()}`);
-    const depot = (nomFichier: string) => api('chloe', 'POST', '/v1/televersements', { entiteId: DEMO.dupain, nomFichier, taille: hostile.length, sha256: sha(hostile), canal: 'ordinateur' });
+    const depot = (nomFichier: string) => api('chloe', 'POST', '/v1/televersements', { entiteId, nomFichier, taille: hostile.length, sha256: sha(hostile), canal: 'ordinateur' });
     expect((await depot('facture\u0000.pdf')).statut).toBe(400); // caractère nul refusé proprement
     const o = await depot('../../etc/passwd:*?.pdf');
     expect(o.statut).toBe(201);
     await api('chloe', 'PUT', `/v1/televersements/${o.json.id}/morceaux?decalage=0`, hostile);
     await api('chloe', 'POST', `/v1/televersements/${o.json.id}/terminer`);
 
-    const demande = await api('alice', 'POST', `/v1/dossiers/${DEMO.dupain}/restitutions`);
+    const demande = await api('alice', 'POST', `/v1/dossiers/${entiteId}/restitutions`);
     expect(demande.statut).toBe(202);
     const liste = await attendre(
-      () => api('alice', 'GET', `/v1/dossiers/${DEMO.dupain}/restitutions`),
+      () => api('alice', 'GET', `/v1/dossiers/${entiteId}/restitutions`),
       (r) => ['termine', 'echec'].includes(r.json?.find((x: any) => x.id === demande.json.id)?.statut),
       180_000,
     );
@@ -92,13 +118,13 @@ describe('restitution d’un dossier', () => {
 
     // Contenu : uniquement ce dossier, avec pièces, révision, décisions et écritures.
     const dossier = JSON.parse(fichiers.get('donnees/dossier.json')!.toString('utf8'));
-    expect(dossier.dossier.id).toBe(DEMO.dupain);
+    expect(dossier.dossier.id).toBe(entiteId);
     const pieces = JSON.parse(fichiers.get('donnees/pieces.json')!.toString('utf8'));
     expect(pieces.documents.length).toBe(manifeste.pieces);
-    expect(pieces.documents.every((d: any) => d.entiteId === DEMO.dupain && d.cabinetId === DEMO.cabinetA)).toBe(true);
+    expect(pieces.documents.every((d: any) => d.entiteId === entiteId && d.cabinetId === DEMO.cabinetA)).toBe(true);
     expect(pieces.documents.some((d: any) => d.extractions.length > 0 && d.receptions.length > 0)).toBe(true);
     const revision = JSON.parse(fichiers.get('donnees/revision.json')!.toString('utf8'));
-    expect(revision.constats.every((c: any) => c.entiteId === DEMO.dupain)).toBe(true);
+    expect(revision.constats.every((c: any) => c.entiteId === entiteId)).toBe(true);
     expect(JSON.parse(fichiers.get('donnees/decisions.json')!.toString('utf8')).length).toBe(manifeste.decisions);
     const ecritures = [...fichiers.keys()].filter((n) => n.startsWith('donnees/ecritures/'));
     expect(ecritures.length).toBeGreaterThan(0);

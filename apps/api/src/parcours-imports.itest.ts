@@ -114,6 +114,45 @@ describe('annulation réversible d’un import comptable', () => {
   });
 });
 
+describe('annulation d’un import en cours de traitement', () => {
+  it('l’import est interrompu sans laisser de données partielles, et les données actives ne changent pas', async () => {
+    // Un fichier volumineux, pour que l'annulation arrive pendant le traitement (plusieurs points de contrôle).
+    const gros = genererFecSynthetique({ exercice: EX, nbEcritures: 110_000, graine: g + 77 });
+    const actifAvant = (await lots('A')).filter((l) => l.actif).map((l) => l.id);
+    const versionAvant = (await api('remi', 'GET', `/v1/dossiers/${d.A.entite}/exercices`)).json[0].versionDonnees;
+    const id = (await fec('chloe', 'A', gros)).fin.json.lotImportId;
+    // Détection rapide du passage « en cours » (sondage toutes les 40 ms), pour annuler pendant le traitement.
+    for (let i = 0; i < 1500; i++) {
+      const etat = (await api('remi', 'GET', `/v1/imports/${id}`)).json.statut as string;
+      if (etat !== 'en_attente') break;
+      await new Promise((r) => setTimeout(r, 40));
+    }
+    const annulation = await api('remi', 'POST', `/v1/imports/${id}/annulation`, { motif: 'Mauvais fichier, annulé pendant l’import' });
+    expect(annulation.statut).toBe(200);
+    // Laisse au worker le temps d'atteindre un point de contrôle ou la fin de sa transaction.
+    await new Promise((r) => setTimeout(r, 6000));
+    const lot = (await api('remi', 'GET', `/v1/imports/${id}`)).json;
+    expect(lot).toMatchObject({ statut: 'annule', actif: false });
+    if (annulation.json.statutAvantAnnulation === null) {
+      // Annulé AVANT la fin : aucune ligne conservée, lot actif et version des données inchangés.
+      expect((await lots('A')).filter((l) => l.actif).map((l) => l.id)).toEqual(actifAvant);
+      expect((await api('remi', 'GET', `/v1/dossiers/${d.A.entite}/exercices`)).json[0].versionDonnees).toBe(versionAvant);
+      expect((await api('remi', 'POST', `/v1/imports/${id}/retablissement`, { motif: 'tentative de rétablissement' })).statut).toBe(409); // jamais abouti
+      // Aucune ligne du lot interrompu n'a été conservée.
+      expect(lot.progression).toBeLessThan(gros.nbLignes);
+      const etats = await api('remi', 'GET', `/v1/exercices/${d.A.exercice}/etats`);
+      if (actifAvant.length) expect(etats.json.donnees.lotImportId).toBe(actifAvant[0]);
+      else expect(etats.statut).toBe(409); // toujours aucune donnée active
+    } else {
+      // La machine a été plus rapide que l'annulation : l'import avait abouti, il a été annulé comme un import terminé.
+      expect((await lots('A')).filter((l) => l.actif).map((l) => l.id)).toEqual(actifAvant);
+    }
+    // Le fichier est assez volumineux pour que l'annulation arrive pendant le traitement : c'est ce cas qui doit être exercé.
+    expect(annulation.json.statutAvantAnnulation, 'l’import devait être interrompu en cours de traitement').toBeNull();
+    console.log(`import en cours : ${annulation.json.statutAvantAnnulation === null ? 'interrompu pendant le traitement' : 'terminé avant l’annulation'} (${gros.nbLignes} lignes)`);
+  }, 300_000);
+});
+
 describe('annulation réversible d’un relevé bancaire', () => {
   it('un mouvement présent dans deux relevés reste pris en compte tant que l’un des deux est actif', async () => {
     const lignes: LigneFec[] = [];

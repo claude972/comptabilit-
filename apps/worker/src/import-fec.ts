@@ -68,7 +68,7 @@ export async function importerFec(c: Contexte, t: TacheImportFec): Promise<void>
         );
         total += tampon.length;
         tampon = [];
-        if (total % 10_000 === 0) {
+        if (total % 5_000 === 0) {
           // Progression visible hors transaction (connexion distincte, même contexte cabinet).
           // Progression visible hors transaction, et prise en compte d'une ANNULATION demandée pendant l'import :
           // la transaction en cours est alors abandonnée, aucune ligne n'est conservée, les données actives restent intactes.
@@ -114,7 +114,9 @@ export async function importerFec(c: Contexte, t: TacheImportFec): Promise<void>
           .update(s.constats)
           .set({ aRevoir: true })
           .where(and(eq(s.constats.exerciceId, exercice.id), ne(s.constats.statutRevue, 'a_examiner')));
-        await tx
+        // Le lot ne devient actif que s'il est toujours « en cours » : une annulation arrivée entre le dernier point de
+        // contrôle et la fin de l'import l'emporte, et toute la transaction (lignes, bascule du lot actif) est abandonnée.
+        const [active] = await tx
           .update(s.lotsImport)
           .set({
             actif: true,
@@ -124,7 +126,9 @@ export async function importerFec(c: Contexte, t: TacheImportFec): Promise<void>
             rapport: { ...rapport, nomFichier },
             termineLe: sql`now()`,
           })
-          .where(eq(s.lotsImport.id, lot.id));
+          .where(and(eq(s.lotsImport.id, lot.id), eq(s.lotsImport.statut, 'en_cours')))
+          .returning({ id: s.lotsImport.id });
+        if (!active) throw new ImportAnnule();
         if (rapport.suffisantPourTravaux) {
           const [e] = await tx
             .insert(s.executionsControles)

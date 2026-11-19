@@ -109,7 +109,7 @@ Aucune mesure sur des pièces réelles. Sur les gabarits synthétiques, numéro,
 | Aperçu d'un CSV bancaire avant confirmation du profil | Corrigé. Limite : aucun profil n'est pré-proposé (`profilPropose` toujours vide), l'utilisateur choisit toutes les colonnes |
 | Correspondance comptes 512 ↔ comptes bancaires : possible par une règle de cabinet sur `TRE-003`, sans écran dédié | Ouvert |
 | Progression d'import sans total | Ouvert |
-| Points d'entrée publics de notification mail sans limitation de débit | Ouvert |
+| Points d'entrée publics de notification mail sans limitation de débit | Corrigé (l'écart était resté noté « ouvert » à tort) : limite globale par fournisseur, 300 par minute, testée unitairement. Limite : comptée par processus, donc non partagée entre plusieurs instances de l'API |
 | Rotation de la clé de chiffrement des jetons mail | Corrigé (anciennes clés acceptées en déchiffrement seulement ; testé en bibliothèque) |
 | Reprise après redémarrage de Redis pour les traitements en attente | Rattrapage au démarrage du worker, testé sur base réelle ; aucun essai avec un arrêt réel de Redis |
 | Travaux non affectés comptés dans chaque mission d'un même dossier | Voulu et signalé avec leur nombre ; l'affectation explicite les départage |

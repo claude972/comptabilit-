@@ -1,12 +1,14 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { FormulaireDossier } from '@/components/administration';
+import { CoutHoraireInterne } from '@/components/administration-cout';
 import { GestionMembre } from '@/components/administration-membres';
 import { ErreurAcces } from '@/components/erreurs';
 import { Alerte, Carte, Etiquette, SousTitre, Tableau, Titre } from '@/components/ui/base';
 import { type JournalAudit, type MembreCabinet, detailsSimples, libelleTerritoire } from '@/lib/administration';
 import { LIBELLE_NIVEAU, LIBELLE_ROLE } from '@/lib/libelles';
 import { formaterHorodatage } from '@/lib/montants';
+import type { CoutHoraire } from '@/lib/rentabilite';
 import { tenter } from '@/lib/serveur/api';
 import { lireDossiers } from '@/lib/serveur/donnees';
 import { accesMessagerie } from '@/lib/serveur/messagerie';
@@ -17,7 +19,7 @@ export default async function PageAdministration() {
   // Même règle que la messagerie : gestionnaires du cabinet (administrateur, associé) uniquement.
   const acces = await accesMessagerie();
   if (!acces.ok) return <ErreurAcces statut={acces.statut} message={acces.statut === 403 ? 'L’administration du cabinet est réservée aux administrateurs et associés.' : acces.message} />;
-  const [membres, dossiers, audit] = await Promise.all([tenter<MembreCabinet[]>('v1/cabinet/membres'), lireDossiers(), tenter<JournalAudit>('v1/audit?limite=100')]);
+  const [membres, dossiers, audit, cout] = await Promise.all([tenter<MembreCabinet[]>('v1/cabinet/membres'), lireDossiers(), tenter<JournalAudit>('v1/audit?limite=100'), tenter<CoutHoraire>('v1/cabinet/cout-horaire')]);
   if (!membres.ok) return <ErreurAcces statut={membres.statut} message={membres.message} />;
   const nomDe = new Map(membres.donnees.map((m) => [m.utilisateurId, m.nom]));
   const nomDossier = new Map((dossiers.ok ? dossiers.donnees : []).map((d) => [d.id, d.raisonSociale]));
@@ -39,6 +41,19 @@ export default async function PageAdministration() {
           </li>
         </ul>
       </nav>
+
+      <section aria-labelledby="titre-cout" className="space-y-2">
+        <SousTitre id="titre-cout">Coût horaire interne du cabinet</SousTitre>
+        <Carte>
+          {cout.ok ? (
+            <CoutHoraireInterne actuel={cout.donnees} />
+          ) : (
+            <Alerte ton="attention" role="alert">
+              Le coût horaire interne n’a pas pu être chargé. {cout.message}
+            </Alerte>
+          )}
+        </Carte>
+      </section>
 
       <section aria-labelledby="titre-membres" className="space-y-2">
         <SousTitre id="titre-membres">Membres du cabinet ({membres.donnees.length})</SousTitre>

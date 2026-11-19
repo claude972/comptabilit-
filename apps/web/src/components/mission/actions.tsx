@@ -9,6 +9,8 @@ import {
   type Lettre, LIBELLE_MODE_HONORAIRES, type ModeHonoraires, type Prestation, type PropositionAvenant, type SaisieLettre, formaterMinutes, lettreDepuis, lettreInitiale, phraseEstimation,
 } from '@/lib/missions';
 import { formaterDate } from '@/lib/montants';
+import { SelecteurPieces } from '@/components/document/selecteur-pieces';
+import type { PieceChoisie } from '@/lib/pieces-jointes';
 
 function Erreurs({ erreurs }: { erreurs: string[] }) {
   if (!erreurs.length) return null;
@@ -68,8 +70,9 @@ export function CreerMission({ dossierId }: { dossierId: string }) {
 }
 
 /** Lettre de mission ou avenant (`POST v1/missions/:id/lettres`) : contenu structuré, enregistré comme PROJET. */
-export function RedigerLettre({ missionId, prestations, lettres }: { missionId: string; prestations: Prestation[]; lettres: Lettre[] }) {
+export function RedigerLettre({ missionId, dossierId, prestations, lettres }: { missionId: string; dossierId: string; prestations: Prestation[]; lettres: Lettre[] }) {
   const [ouvert, setOuvert] = useState(false);
+  const [signee, setSignee] = useState<PieceChoisie[]>([]);
   const [f, setF] = useState<SaisieLettre>(() => lettreInitiale(prestations));
   const [erreurs, setErreurs] = useState<string[]>([]);
   const appel = useAppel();
@@ -93,8 +96,9 @@ export function RedigerLettre({ missionId, prestations, lettres }: { missionId: 
     const r = lettreDepuis(f);
     if (!r.ok) return setErreurs(r.erreurs);
     setErreurs([]);
-    if (await appel.executer(`v1/missions/${missionId}/lettres`, { method: 'POST', json: r.corps }, 'Projet enregistré. Il n’a aucun effet tant qu’il n’est pas validé.')) {
+    if (await appel.executer(`v1/missions/${missionId}/lettres`, { method: 'POST', json: { ...r.corps, ...(signee[0] ? { documentId: signee[0].id } : {}) } }, 'Projet enregistré. Il n’a aucun effet tant qu’il n’est pas validé.')) {
       setF(lettreInitiale(prestations));
+      setSignee([]);
       setOuvert(false);
     }
   }
@@ -191,6 +195,7 @@ export function RedigerLettre({ missionId, prestations, lettres }: { missionId: 
         {texte('mandats', 'Mandats (un par ligne)', 4000)}
       </div>
       {texte('limites', 'Limites de la mission', 4000)}
+      <SelecteurPieces entiteId={dossierId} selection={signee} surChangement={setSignee} multiple={false} libelle="Lettre signée (facultatif)" aide="Pièce du dossier contenant la lettre ou l’avenant signé. La joindre ne vaut pas validation : le projet reste à valider." />
       <Erreurs erreurs={erreurs} />
       <div className="flex flex-wrap gap-2">
         <Bouton type="submit" disabled={appel.occupe}>

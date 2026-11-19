@@ -14,7 +14,7 @@ import { type Ouverture, televerser } from '@/lib/televersement/moteur';
 import { sha256Hex, transportBff } from '@/lib/televersement/transport-bff';
 import type { NatureDocument, StatutDonnees, VueTerminee } from '@/lib/types-api';
 
-interface Envoi {
+export interface Envoi {
   id: string;
   fichier: File;
   ouverture: Omit<Ouverture, 'sha256' | 'taille'>;
@@ -30,7 +30,7 @@ interface Envoi {
  * un envoi interrompu se reprend tant que la page est ouverte (ou en resélectionnant le même fichier, le serveur
  * renvoyant alors les octets déjà reçus).
  */
-function useEnvois(surRecu?: (v: VueTerminee) => void) {
+export function useEnvois(surRecu?: (v: VueTerminee) => void) {
   const [envois, setEnvois] = useState<Envoi[]>([]);
   const liste = useRef<Envoi[]>([]);
   const boucle = useRef(false);
@@ -87,7 +87,7 @@ function useEnvois(surRecu?: (v: VueTerminee) => void) {
   return { envois, ajouter, reprendre };
 }
 
-function ListeEnvois({ envois, surReprise, recu }: { envois: Envoi[]; surReprise: (id: string) => void; recu: (e: Envoi) => string }) {
+export function ListeEnvois({ envois, surReprise, recu }: { envois: Envoi[]; surReprise: (id: string) => void; recu: (e: Envoi) => string }) {
   if (!envois.length) return null;
   return (
     <ul className="space-y-2" data-testid="liste-envois">

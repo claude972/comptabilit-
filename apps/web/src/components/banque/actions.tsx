@@ -1,11 +1,15 @@
 'use client';
 
-import { type FormEvent, useId, useState } from 'react';
-import { useAppel } from '@/components/appel';
+import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
+import { messageErreur, useAppel } from '@/components/appel';
 import { Retours } from '@/components/retours';
-import { Alerte, Libelle, Liste, Saisie, SousTitre, ZoneTexte } from '@/components/ui/base';
+import { Alerte, Libelle, Liste, Saisie, SousTitre, Tableau, ZoneTexte } from '@/components/ui/base';
 import { Bouton } from '@/components/ui/bouton';
-import { FORMATS_DATE, type FormulaireParametres, type FormulaireProfil, type ParametresRapprochement, parametresDepuis, parametresInitiaux, profilDepuis, profilInitial } from '@/lib/banque';
+import {
+  type ApercuReleve, FORMATS_DATE, type FormulaireParametres, type FormulaireProfil, LIBELLE_SEPARATEUR, type ParametresRapprochement, decoupageSelon, entetesNumerotes, parametresDepuis, parametresInitiaux,
+  profilDepuis, profilDepuisProposition, profilInitial, separateursProposes,
+} from '@/lib/banque';
+import { appelBff } from '@/lib/televersement/transport-bff';
 
 function Erreurs({ erreurs }: { erreurs: string[] }) {
   if (!erreurs.length) return null;
@@ -21,12 +25,100 @@ function Erreurs({ erreurs }: { erreurs: string[] }) {
 }
 
 /** Confirmation du profil de colonnes d'un CSV (`POST v1/imports/:id/relancer`) : c'est l'utilisateur qui confirme, pas le logiciel. */
+type EtatApercu = { phase: 'chargement' } | { phase: 'pret'; apercu: ApercuReleve } | { phase: 'erreur'; message: string };
+
+/** Premières lignes du fichier : texte brut à chasse fixe, puis découpage selon le séparateur choisi, colonnes numérotées. */
+function ApercuCsv({ etat, separateur, lignesEntete }: { etat: EtatApercu; separateur: FormulaireProfil['separateur']; lignesEntete: string }) {
+  if (etat.phase === 'chargement') return <p role="status">Chargement de l’aperçu du fichier…</p>;
+  if (etat.phase === 'erreur') {
+    return (
+      <Alerte ton="neutre" role="status" data-testid="apercu-csv-indisponible">
+        L’aperçu des premières lignes n’a pas pu être chargé ({etat.message}). Vous pouvez tout de même confirmer le profil en ouvrant le fichier pour vérifier ses en-têtes.
+      </Alerte>
+    );
+  }
+  const { apercu } = etat;
+  const decoupage = decoupageSelon(apercu, separateur);
+  const nbEntete = /^\d{1,3}$/.test(lignesEntete.trim()) ? Number(lignesEntete.trim()) : 0;
+  const entetes = decoupage ? entetesNumerotes(decoupage, nbEntete) : [];
+  return (
+    <div className="space-y-2" data-testid="apercu-csv">
+      <p className="font-medium">Aperçu du fichier ({apercu.lignes.length} première{apercu.lignes.length > 1 ? 's' : ''} ligne{apercu.lignes.length > 1 ? 's' : ''}, contenu affiché tel quel)</p>
+      {apercu.tronque ? (
+        <p className="text-sm" data-testid="apercu-tronque">
+          <strong>Fichier tronqué pour l’aperçu</strong> : seul le début du fichier a été lu ; l’import, lui, portera sur le fichier entier.
+        </p>
+      ) : null}
+      <pre className="max-h-64 overflow-auto rounded-lg border border-bordure bg-surface-2 p-2 font-mono text-sm whitespace-pre" tabIndex={0} aria-label="Premières lignes brutes du fichier" data-testid="apercu-lignes-brutes">
+        {apercu.lignes.join('\n')}
+      </pre>
+      {decoupage ? (
+        <Tableau legende={`Premières lignes découpées selon le séparateur ${LIBELLE_SEPARATEUR[separateur]}`}>
+          <thead>
+            <tr>
+              {entetes.map((e) => (
+                <th key={e.position} scope="col" data-colonne={e.position}>
+                  <span className="block text-texte-doux">Colonne {e.position}</span>
+                  {e.nom ? <span className="block break-words">{e.nom}</span> : <span className="block font-normal text-texte-doux">sans en-tête</span>}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {decoupage.cellules.map((ligne, i) => (
+              <tr key={i} className={i < nbEntete ? 'text-texte-doux' : undefined}>
+                {entetes.map((e) => (
+                  <td key={e.position} className="font-mono break-words">
+                    {ligne[e.position - 1] ?? ''}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </Tableau>
+      ) : (
+        <p className="text-sm" data-testid="apercu-sans-decoupage">
+          Ce séparateur ne donne pas un nombre de colonnes constant sur les premières lignes : aucun découpage n’est proposé pour lui.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function FormulaireProfilCsv({ lotId, raisons }: { lotId: string; raisons: string[] }) {
   const [f, setF] = useState<FormulaireProfil>(() => profilInitial(raisons));
   const [erreurs, setErreurs] = useState<string[]>([]);
+  const [apercu, setApercu] = useState<EtatApercu>({ phase: 'chargement' });
+  const [modifie, setModifie] = useState(false);
   const appel = useAppel();
   const id = useId();
-  const maj = (m: Partial<FormulaireProfil>) => setF((v) => ({ ...v, ...m }));
+  const dejaSaisi = useRef(false);
+  const maj = (m: Partial<FormulaireProfil>) => {
+    dejaSaisi.current = true;
+    setModifie(true);
+    setF((v) => ({ ...v, ...m }));
+  };
+  useEffect(() => {
+    const controleur = new AbortController();
+    appelBff<ApercuReleve>(`v1/imports/${lotId}/apercu`, { signal: controleur.signal })
+      .then((a) => {
+        setApercu({ phase: 'pret', apercu: a });
+        // Pré-remplissage : uniquement si l'utilisateur n'a encore rien saisi, et toujours comme une proposition à confirmer.
+        setF((v) => {
+          if (dejaSaisi.current) return v;
+          const depart = a.profilPropose ? profilDepuisProposition(a.profilPropose, v) : v;
+          const choix = separateursProposes(a);
+          return choix.includes(depart.separateur) ? depart : { ...depart, separateur: choix[0]! };
+        });
+      })
+      .catch((e: unknown) => {
+        if (!(e instanceof DOMException && e.name === 'AbortError')) setApercu({ phase: 'erreur', message: messageErreur(e) });
+      });
+    return () => controleur.abort();
+  }, [lotId]);
+  const charge = apercu.phase === 'pret' ? apercu.apercu : null;
+  const choixSeparateurs = separateursProposes(charge);
+  const constats = charge?.raisons.length ? charge.raisons : raisons;
   const champ = (nom: keyof FormulaireProfil, libelle: string) => (
     <div>
       <Libelle htmlFor={`${id}-${nom}`}>{libelle}</Libelle>
@@ -45,13 +137,13 @@ export function FormulaireProfilCsv({ lotId, raisons }: { lotId: string; raisons
       <SousTitre className="text-base">Confirmer les colonnes de ce fichier CSV</SousTitre>
       <p className="text-sm">
         Les colonnes n’ont pas été reconnues avec certitude : Comtaple s’est abstenu plutôt que de deviner. <strong>C’est vous qui confirmez le profil
-        de colonnes, pas le logiciel</strong> ; ouvrez le fichier pour vérifier ses en-têtes.
+        de colonnes, pas le logiciel</strong>, d’après l’aperçu ci-dessous.
       </p>
-      {raisons.length ? (
+      {constats.length ? (
         <div className="text-sm" data-testid="raisons-profil">
           <p className="font-medium">Ce que la lecture automatique a constaté</p>
           <ul className="list-disc pl-5">
-            {raisons.map((r, i) => (
+            {constats.map((r, i) => (
               <li key={i} className="break-words">
                 {r}
               </li>
@@ -59,14 +151,22 @@ export function FormulaireProfilCsv({ lotId, raisons }: { lotId: string; raisons
           </ul>
         </div>
       ) : null}
-      <p className="text-sm text-texte-doux">L’aperçu des premières lignes n’est pas disponible ici : le contenu du fichier importé n’est pas exposé par le serveur.</p>
+      <ApercuCsv etat={apercu} separateur={f.separateur} lignesEntete={f.lignesEntete} />
+      {charge?.profilPropose ? (
+        <Alerte ton="attention" data-testid="profil-propose">
+          <strong>Proposition du logiciel, à vérifier.</strong> Le formulaire ci-dessous a été pré-rempli d’après le début du fichier{modifie ? ' (vous l’avez modifié depuis)' : ''}. Rien n’est
+          appliqué tant que vous ne l’avez pas confirmé : comparez-le à l’aperçu, corrigez-le au besoin.
+        </Alerte>
+      ) : null}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <Libelle htmlFor={`${id}-sep`}>Séparateur</Libelle>
           <Liste id={`${id}-sep`} value={f.separateur} onChange={(e) => maj({ separateur: e.target.value as FormulaireProfil['separateur'] })}>
-            <option value=";">Point-virgule ( ; )</option>
-            <option value=",">Virgule ( , )</option>
-            <option value="tab">Tabulation</option>
+            {choixSeparateurs.map((x) => (
+              <option key={x} value={x}>
+                {LIBELLE_SEPARATEUR[x]}
+              </option>
+            ))}
           </Liste>
         </div>
         {champ('lignesEntete', 'Lignes avant les données (en-tête compris)')}
@@ -88,7 +188,7 @@ export function FormulaireProfilCsv({ lotId, raisons }: { lotId: string; raisons
           </Liste>
         </div>
       </div>
-      <p className="text-sm text-texte-doux">Désignez chaque colonne par son en-tête exact, ou par sa position (1 = première colonne).</p>
+      <p className="text-sm text-texte-doux">Désignez chaque colonne par son en-tête exact, ou par sa position (1 = première colonne), tels que numérotés dans l’aperçu.</p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {champ('date', 'Colonne de la date')}
         {champ('libelle', 'Colonne du libellé')}

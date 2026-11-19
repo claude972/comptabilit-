@@ -18,7 +18,7 @@ import http from 'node:http';
 import {
   CATALOGUE_INDICATEURS, type LigneEcriture, type LigneFec, type MouvementBancaire, type Offre, PARAMETRES_RAPPROCHEMENT_PAR_DEFAUT, calculerBalance, calculerEcheance, calculerIndicateurs, correspondancePour, etatQuota, projeterBilan, projeterCompteDeResultat, serviceOuvert, situationAbonnement, REGLES_RAPPROCHEMENT, type RapportReleve, analyserFec, decoderTexteReleve, detecterFormatReleve, elementDepuisMouvement,
   elementsBanqueDepuisEcritures, enBlocs, lireCamt053, lireCsvBanque, lireOfx, proposerProfilCsv, rapprocher, schemaParametresRapprochement, schemaProfilCsvBanque,
-  type ContenuLettre, type LettreDatee, PRESTATIONS, dec, estimerTemps, evaluerApplicabilite, schemaContenuLettre, schemaCriteresEvolution, situerTravail, somme, versChaine,
+  type ContenuLettre, type LettreDatee, PRESTATIONS, calculerRentabiliteMission, schemaChaineDecimale, dec, estimerTemps, evaluerApplicabilite, schemaContenuLettre, schemaCriteresEvolution, situerTravail, somme, versChaine,
 } from '@comtaple/core';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
@@ -159,6 +159,9 @@ interface Suite {
   archives: Map<string, Buffer>;
   /** Modifications d'appartenance (rôle, actif) par utilisateur : les comptes de démonstration eux-mêmes sont constants. */
   membres: Map<string, { role?: string; actif?: boolean }>;
+  /** Campagnes d'import (imports.controller.ts) et coût horaire interne par cabinet (missions.controller.ts). */
+  campagnes: Enr[];
+  coutsHoraires: Map<string, { coutHoraireInterneHt: string | null; majLe: string }>;
 }
 const ID_EVOLUTIONS = { metropole: 'eeeeeeee-0000-4000-8000-000000000001', naf: 'eeeeeeee-0000-4000-8000-000000000002', martinique: 'eeeeeeee-0000-4000-8000-000000000003', brute: 'eeeeeeee-0000-4000-8000-000000000004' } as const;
 function suiteInitiale(): Suite {
@@ -173,7 +176,7 @@ function suiteInitiale(): Suite {
     conditions: etatVerification === 'verifiee' ? 'Exercices ouverts à compter du 1er janvier 2025.' : null, resume: etatVerification === 'verifiee' ? `Évolution fictive de test : ${reference}.` : null, criteres, etatVerification, verifieeLe: etatVerification === 'verifiee' ? '2026-11-18' : null,
   });
   return {
-    regles: [], ecritures: [], missions: [], lettres: [], travaux: [], baremes: [], conseils: [], evenements: [], suivis: [], restitutions: [], archives: new Map(), membres: new Map(),
+    regles: [], ecritures: [], missions: [], lettres: [], travaux: [], baremes: [], conseils: [], evenements: [], suivis: [], restitutions: [], archives: new Map(), membres: new Map(), campagnes: [], coutsHoraires: new Map(),
     sources: [
       source('BOFiP', 'BOI-BIC-CHG-20-30-10 (biens de faible valeur)', 'https://bofip.impots.gouv.fr/bofip/2109-PGP.html', true),
       source('BOFiP', 'BOI-CF-IOR-60-40-20 (format du FEC)', 'https://bofip.impots.gouv.fr/bofip/9028-PGP.html', true),
@@ -380,7 +383,7 @@ function etatInitial(): Etat {
     e.fichiers.push(fichier);
     e.contenus.set(fichier.id, contenu);
     const creeLe = instant();
-    const doc = { id: randomUUID(), cabinetId: DEMO.cabinetA, entiteId: DEMO.dupain, exerciceId: null, fichierId: fichier.id, nature, statut, nomOrigine: nom, commentaire: null as string | null, version: 1, remplaceDocumentId: null, nbPages: type === 'application/pdf' ? 1 : null, motifStatut, creeLe, majLe: creeLe };
+    const doc = { id: randomUUID(), cabinetId: DEMO.cabinetA, entiteId: DEMO.dupain, exerciceId: null, fichierId: fichier.id, nature, statut, nomOrigine: nom, commentaire: null as string | null, version: 1, remplaceDocumentId: null, remplacePar: null as string | null, nbPages: type === 'application/pdf' ? 1 : null, motifStatut, creeLe, majLe: creeLe };
     e.documents.push(doc);
     e.receptions.push({ id: randomUUID(), cabinetId: DEMO.cabinetA, entiteId: DEMO.dupain, documentId: doc.id, canal, deposantId: deposant, doublonBinaire: false, provenance: {}, recuLe: creeLe });
     return doc;
@@ -488,6 +491,17 @@ const visibleEnLecture = (a: Acces, entiteId: string) => {
   return !!n && auMoins(n, 'lecture');
 };
 const nomDe = (id: string) => UTILISATEURS.find((u) => u.id === id)?.nom ?? '?';
+/** Pièce jointe telle que l'API la restitue en lecture (champs nuls si la pièce est introuvable). */
+const pieceJointe = (id: string) => {
+  const d = etat.documents.find((x) => x.id === id);
+  return d ? { id: d.id, nomOrigine: d.nomOrigine, statut: d.statut, version: d.version } : { id, nomOrigine: null, statut: null, version: null };
+};
+const piecesDuDossier = (entiteId: string, pieces: unknown): string[] => {
+  if (pieces === undefined) return [];
+  if (!Array.isArray(pieces) || pieces.length > 50 || pieces.some((x) => typeof x !== 'string' || !UUID.test(x))) throw invalide('pieces', 'identifiants invalides');
+  if (new Set(pieces).size !== pieces.length || pieces.some((x) => !etat.documents.some((doc) => doc.id === x && doc.entiteId === entiteId))) throw new ErreurHttp(400, 'Une pièce jointe n’appartient pas à ce dossier');
+  return pieces as string[];
+};
 
 function chargerDocument(a: Acces, id: string): { doc: Enr; niveau: Niveau } {
   const doc = etat.documents.find((d) => d.id === id && d.cabinetId === a.cabinetId && niveauSur(a, d.entiteId));
@@ -495,6 +509,14 @@ function chargerDocument(a: Acces, id: string): { doc: Enr; niveau: Niveau } {
   const niveau = exigerNiveau(a, doc.entiteId, 'depot');
   if (niveau === 'depot' && !etat.receptions.some((r) => r.documentId === id && r.deposantId === a.utilisateurId)) throw new ErreurHttp(404, 'Document introuvable');
   return { doc, niveau };
+}
+/** Chaîne des versions d'une pièce, de la plus ancienne à la plus récente (comme la requête récursive de l'API). */
+function chaineVersions(doc: Enr): Enr[] {
+  let premier = doc;
+  for (let p = premier; p?.remplaceDocumentId; p = etat.documents.find((x) => x.id === p.remplaceDocumentId)!) premier = etat.documents.find((x) => x.id === p.remplaceDocumentId) ?? premier;
+  const chaine: Enr[] = [];
+  for (let c: Enr | undefined = premier; c; c = c.remplacePar ? etat.documents.find((x) => x.id === c!.remplacePar) : undefined) chaine.push(c);
+  return chaine.map((x) => ({ id: x.id, version: x.version, statut: x.statut, creeLe: x.creeLe }));
 }
 function chargerTeleversement(a: Acces, id: string): Enr {
   const t = etat.televersements.find((x) => x.id === id && x.cabinetId === a.cabinetId);
@@ -580,6 +602,8 @@ async function routerV1(r: Requete): Promise<unknown> {
     if (abonnement !== undefined) return abonnement;
     const etats = routerEtats(r, a);
     if (etats !== undefined) return etats;
+    const imports = routerImports(r, a);
+    if (imports !== undefined) return imports;
     const ajouts = routerSuite(r, a);
     if (ajouts !== undefined || r.res.writableEnded) return ajouts;
   }
@@ -630,14 +654,34 @@ async function routerV1(r: Requete): Promise<unknown> {
       if (d.statutDonnees !== undefined && !['travail_avant_cloture', 'fec'].includes(d.statutDonnees)) throw invalide('statutDonnees', 'valeur inconnue');
       if (d.taille > TAILLE_MAX_PIECE * (usage === 'fec' ? 10 : 1)) throw new ErreurHttp(413, 'Fichier trop volumineux');
       if (usage === 'fec' && (!d.exerciceId || !d.statutDonnees)) throw new ErreurHttp(400, 'exerciceId et statutDonnees sont requis pour un import comptable');
+      if (d.remplaceDocumentId !== undefined && (typeof d.remplaceDocumentId !== 'string' || !UUID.test(d.remplaceDocumentId))) throw invalide('remplaceDocumentId', 'identifiant invalide');
+      if (d.campagneId !== undefined && (typeof d.campagneId !== 'string' || !UUID.test(d.campagneId))) throw invalide('campagneId', 'identifiant invalide');
       exigerNiveau(a, d.entiteId, usage === 'piece' ? 'depot' : 'collaboration');
       exigerServiceOuvert(a);
+      if (d.campagneId) {
+        const campagne = suite.campagnes.find((c) => c.id === d.campagneId && c.cabinetId === a.cabinetId);
+        if (!campagne) throw new ErreurHttp(404, 'Campagne d’import introuvable');
+        if (campagne.statut !== 'ouverte') throw new ErreurHttp(409, 'Cette campagne n’accepte plus de fichiers');
+        if (campagne.type !== (usage === 'fec' ? 'fec' : usage === 'banque' ? 'releve_bancaire' : '')) throw new ErreurHttp(400, 'Ce fichier ne correspond pas au type de la campagne');
+      }
+      if (d.remplaceDocumentId) {
+        // Calqué sur televersements.controller.ts : nouvelle version d'une pièce (≠ doublon binaire).
+        if (usage !== 'piece') throw new ErreurHttp(400, 'Seule une pièce peut recevoir une nouvelle version');
+        const ancien = etat.documents.find((x) => x.id === d.remplaceDocumentId && x.cabinetId === a.cabinetId);
+        if (!ancien || ancien.entiteId !== d.entiteId) throw new ErreurHttp(404, 'Document à remplacer introuvable dans ce dossier');
+        if (ancien.remplacePar) throw new ErreurHttp(409, 'Ce document a déjà été remplacé : la nouvelle version se dépose sur sa version la plus récente');
+        if (ancien.statut === 'quarantaine') throw new ErreurHttp(409, 'Un document en quarantaine ne se remplace pas');
+        if (!auMoins(exigerNiveau(a, d.entiteId, 'depot'), 'collaboration')) {
+          if (!etat.receptions.some((x) => x.documentId === ancien.id && x.deposantId === a.utilisateurId)) throw new ErreurHttp(404, 'Document à remplacer introuvable dans ce dossier');
+          if (ancien.statut === 'traite') throw new ErreurHttp(403, 'Cette pièce a été validée par le cabinet : seul un collaborateur habilité peut en déposer une nouvelle version');
+        }
+      }
       if (d.exerciceId && !etat.exercices.some((x) => x.id === d.exerciceId && x.entiteId === d.entiteId)) throw new ErreurHttp(404, 'Exercice introuvable pour ce dossier');
       const existant = etat.televersements.findLast((t) => t.entiteId === d.entiteId && t.utilisateurId === a.utilisateurId && t.sha256Attendu === d.sha256 && t.usage === usage && t.statut === 'ouvert');
-      if (existant && existant.tailleAttendue === d.taille) return vueT(existant);
+      if (existant && existant.tailleAttendue === d.taille && (existant.remplaceDocumentId ?? null) === (d.remplaceDocumentId ?? null)) return vueT(existant);
       const t = {
         id: randomUUID(), cabinetId: a.cabinetId, entiteId: d.entiteId, utilisateurId: a.utilisateurId, canal: d.canal, nomFichier: d.nomFichier, typeMimeDeclare: d.typeMime ?? null, tailleAttendue: d.taille,
-        sha256Attendu: d.sha256, octetsRecus: 0, nature, commentaire: d.commentaire ?? null, usage, exerciceId: d.exerciceId ?? null, statutDonnees: d.statutDonnees ?? null, parametres: d.profilCsv ? { profilCsv: d.profilCsv } : null, lotImportId: null, statut: 'ouvert', documentId: null,
+        sha256Attendu: d.sha256, octetsRecus: 0, nature, commentaire: d.commentaire ?? null, usage, exerciceId: d.exerciceId ?? null, statutDonnees: d.statutDonnees ?? null, parametres: d.profilCsv ? { profilCsv: d.profilCsv } : null, remplaceDocumentId: d.remplaceDocumentId ?? null, campagneId: d.campagneId ?? null, lotImportId: null, statut: 'ouvert', documentId: null,
         creeLe: instant(), expireLe: new Date(Date.now() + 7 * 86400_000).toISOString(),
       };
       etat.televersements.push(t);
@@ -686,6 +730,7 @@ async function routerV1(r: Requete): Promise<unknown> {
       }
       let doublonBinaire = false;
       let dejaImporte = false;
+      let nouvelleVersion: { version: number; validationInvalidee: boolean } | null = null;
       if (t.statut === 'complet') {
         doublonBinaire = Boolean(t.doublonBinaire);
         dejaImporte = Boolean(t.dejaImporte);
@@ -713,7 +758,7 @@ async function routerV1(r: Requete): Promise<unknown> {
           dejaImporte = Boolean(lot);
           if (!lot) {
             const max = Math.max(0, ...etat.lots.filter((l) => l.exerciceId === t.exerciceId).map((l) => l.version));
-            lot = { id: randomUUID(), cabinetId: a.cabinetId, entiteId: t.entiteId, exerciceId: t.exerciceId, type: 'fec', statutDonnees: t.statutDonnees, fichierId: fichier.id, cleIdempotence: cle, version: max + 1, remplaceLotId: null, actif: false, statut: 'en_attente', progression: 0, rapport: { nomFichier: t.nomFichier }, lancePar: a.utilisateurId, creeLe: instant(), termineLe: null };
+            lot = { id: randomUUID(), cabinetId: a.cabinetId, entiteId: t.entiteId, exerciceId: t.exerciceId, type: 'fec', statutDonnees: t.statutDonnees, fichierId: fichier.id, cleIdempotence: cle, version: max + 1, remplaceLotId: null, actif: false, statut: 'en_attente', progression: 0, rapport: { nomFichier: t.nomFichier }, lancePar: a.utilisateurId, campagneId: t.campagneId ?? null, creeLe: instant(), termineLe: null };
             etat.lots.push(lot);
             imiterImport(lot.id);
           }
@@ -723,7 +768,7 @@ async function routerV1(r: Requete): Promise<unknown> {
           let lot = etat.lots.find((l) => l.cleIdempotence === cle);
           dejaImporte = Boolean(lot);
           if (!lot) {
-            lot = { id: randomUUID(), cabinetId: a.cabinetId, entiteId: t.entiteId, exerciceId: null, type: 'releve_bancaire', statutDonnees: null, fichierId: fichier.id, cleIdempotence: cle, version: 1, remplaceLotId: null, actif: false, statut: 'en_attente', progression: 0, rapport: { nomFichier: t.nomFichier, ...(t.parametres ?? {}) }, lancePar: a.utilisateurId, creeLe: instant(), termineLe: null };
+            lot = { id: randomUUID(), cabinetId: a.cabinetId, entiteId: t.entiteId, exerciceId: null, type: 'releve_bancaire', statutDonnees: null, fichierId: fichier.id, cleIdempotence: cle, version: 1, remplaceLotId: null, actif: false, statut: 'en_attente', progression: 0, rapport: { nomFichier: t.nomFichier, ...(t.parametres ?? {}) }, lancePar: a.utilisateurId, campagneId: t.campagneId ?? null, creeLe: instant(), termineLe: null };
             etat.lots.push(lot);
             imiterReleve(lot.id);
           }
@@ -733,15 +778,29 @@ async function routerV1(r: Requete): Promise<unknown> {
           doublonBinaire = Boolean(doc);
           if (!doc) {
             const creeLe = instant();
-            doc = { id: randomUUID(), cabinetId: a.cabinetId, entiteId: t.entiteId, exerciceId: null, fichierId: fichier.id, nature: t.nature, statut: 'recu', nomOrigine: t.nomFichier, commentaire: t.commentaire, version: 1, remplaceDocumentId: null, nbPages: null, motifStatut: null, creeLe, majLe: creeLe };
+            doc = { id: randomUUID(), cabinetId: a.cabinetId, entiteId: t.entiteId, exerciceId: null, fichierId: fichier.id, nature: t.nature, statut: 'recu', nomOrigine: t.nomFichier, commentaire: t.commentaire, version: 1, remplaceDocumentId: null, remplacePar: null, nbPages: null, motifStatut: null, creeLe, majLe: creeLe };
             etat.documents.push(doc);
+            // Nouvelle version (calqué sur `remplacerDocument`) : seulement si le fichier diffère réellement.
+            const ancien = t.remplaceDocumentId ? etat.documents.find((x) => x.id === t.remplaceDocumentId) : null;
+            if (ancien) {
+              const version = ancien.version + 1;
+              Object.assign(doc, { version, remplaceDocumentId: ancien.id, nature: ancien.nature, exerciceId: ancien.exerciceId });
+              Object.assign(ancien, { statut: 'remplace', remplacePar: doc.id, motifStatut: `Remplacé par la version ${version}`, majLe: instant() });
+              const extraction = etat.extractions.find((x) => x.documentId === ancien.id && x.actuelle);
+              const validationInvalidee = extraction?.statut === 'valide';
+              if (extraction && validationInvalidee) {
+                extraction.statut = 'validation_invalidee';
+                etat.decisions.push({ cibleType: 'extraction', cibleId: extraction.id, action: 'validation_invalidee', motif: `Nouvelle version de la pièce reçue (version ${version}) : la validation de la version ${ancien.version} ne vaut pas pour elle.`, versionCible: extraction.version, creeLe: instant(), auteurId: a.utilisateurId });
+              }
+              nouvelleVersion = { version, validationInvalidee };
+            }
           }
           etat.receptions.push({ id: randomUUID(), cabinetId: a.cabinetId, entiteId: t.entiteId, documentId: doc.id, canal: t.canal, deposantId: a.utilisateurId, doublonBinaire, provenance: { televersementId: t.id }, recuLe: instant() });
           t.documentId = doc.id;
         }
         Object.assign(t, { statut: 'complet', doublonBinaire, dejaImporte });
       }
-      return { ...vueT(t), recu: true, doublonBinaire, dejaImporte };
+      return { ...vueT(t), recu: true, doublonBinaire, dejaImporte, nouvelleVersion };
     }
   }
 
@@ -750,13 +809,13 @@ async function routerV1(r: Requete): Promise<unknown> {
     if (m === 'GET' && s.length === 1) {
       const entiteId = exigerUuid(r.query.get('entiteId') ?? undefined, 'entiteId');
       const statut = r.query.get('statut');
-      if (statut && !['recu', 'en_analyse', 'a_completer', 'a_controler', 'traite', 'quarantaine', 'rejete'].includes(statut)) throw new ErreurHttp(400, 'statut inconnu');
+      if (statut && !['recu', 'en_analyse', 'a_completer', 'a_controler', 'traite', 'quarantaine', 'rejete', 'remplace'].includes(statut)) throw new ErreurHttp(400, 'statut inconnu');
       const niveau = exigerNiveau(a, entiteId, 'depot');
       const documents = etat.documents
         .filter((d) => d.entiteId === entiteId && (!statut || d.statut === statut) && ((niveau !== 'depot' && r.query.get('deposant') !== 'moi') || etat.receptions.some((x) => x.documentId === d.id && x.deposantId === a.utilisateurId)))
         .sort((x, y) => y.creeLe.localeCompare(x.creeLe))
         .map((d) => ({
-          id: d.id, nomOrigine: d.nomOrigine, nature: d.nature, statut: d.statut, motifStatut: d.motifStatut, creeLe: d.creeLe, majLe: d.majLe,
+          id: d.id, nomOrigine: d.nomOrigine, nature: d.nature, statut: d.statut, version: d.version, remplacePar: d.remplacePar ?? null, motifStatut: d.motifStatut, creeLe: d.creeLe, majLe: d.majLe,
           nbReceptions: etat.receptions.filter((x) => x.documentId === d.id).length,
           demandesOuvertes: etat.echanges.filter((x) => x.documentId === d.id && x.type === 'demande_complement' && !x.resolu).length,
         }));
@@ -774,6 +833,8 @@ async function routerV1(r: Requete): Promise<unknown> {
         fichier: f && { sha256: f.sha256, taille: f.taille, typeMimeDetecte: f.typeMimeDetecte, analyseAntivirus: f.analyseAntivirus },
         receptions: etat.receptions.filter((x) => x.documentId === id).map((x) => ({ id: x.id, canal: x.canal, recuLe: x.recuLe, doublonBinaire: x.doublonBinaire, parMoi: x.deposantId === a.utilisateurId })),
         extraction: etat.extractions.find((x) => x.documentId === id && x.actuelle) ?? null,
+        versions: chaineVersions(doc),
+        estVersionCourante: (doc.remplacePar ?? null) === null,
         echanges: etat.echanges.filter((x) => x.documentId === id).map((x) => ({ id: x.id, type: x.type, message: x.message, resolu: x.resolu, creeLe: x.creeLe, auteur: nomDe(x.auteurId) })),
       };
     }
@@ -834,6 +895,7 @@ async function routerV1(r: Requete): Promise<unknown> {
       }
       const { doc } = chargerDocument(a, id);
       exigerNiveau(a, doc.entiteId, 'collaboration');
+      if (doc.remplacePar) throw new ErreurHttp(409, 'Cette version a été remplacée : le travail se poursuit sur la version la plus récente');
       const actuelle = etat.extractions.find((x) => x.documentId === id && x.actuelle);
       const nouveaux: Enr = { ...(actuelle?.champs ?? { ventilationTva: [] }) };
       for (const [nom, valeur] of Object.entries(champs)) nouveaux[nom] = { valeur, page: null, extrait: null, boite: null, methode: 'saisie_humaine', confiance: 'non_evaluee', corrigePar: a.utilisateurId };
@@ -849,6 +911,7 @@ async function routerV1(r: Requete): Promise<unknown> {
       if (d.decision === 'rejeter' && !d.motif) throw new ErreurHttp(400, 'Un motif est requis pour rejeter');
       const { doc } = chargerDocument(a, id);
       exigerNiveau(a, doc.entiteId, 'revision');
+      if (doc.remplacePar) throw new ErreurHttp(409, 'Cette version a été remplacée : le travail se poursuit sur la version la plus récente');
       const actuelle = etat.extractions.find((x) => x.documentId === id && x.actuelle);
       if (!actuelle) throw new ErreurHttp(409, 'Aucune extraction à valider : le document est encore en analyse');
       actuelle.statut = d.decision === 'valider' ? 'valide' : 'rejete';
@@ -1452,7 +1515,7 @@ function imiterReleve(lotId: string): void {
   const reference = etat;
   setTimeout(() => {
     const lot = reference.lots.find((l) => l.id === lotId);
-    if (etat !== reference || !lot) return;
+    if (etat !== reference || !lot || lot.statut === 'annule') return;
     const demande = (lot.rapport ?? {}) as Enr;
     const echec = (motif: string, extra: Enr = {}) => Object.assign(lot, { statut: 'echec', actif: false, rapport: { ...demande, lisible: false, motif, ...extra }, termineLe: instant() });
     const contenu = reference.contenus.get(lot.fichierId) ?? Buffer.alloc(0);
@@ -1531,6 +1594,156 @@ function imiterRapprochement(executionId: string): void {
   }, DELAI_WORKER_MS);
 }
 
+/**
+ * Import annulé : ses relevés et mouvements ne sont plus pris en compte (ils ne sont pas supprimés).
+ * LIMITE DU SIMULATEUR : un mouvement n'y est rattaché qu'au premier relevé qui l'a apporté ; l'API réelle, elle, le garde
+ * tant qu'un autre relevé actif le contient.
+ */
+const lotEcarte = (lotImportId: string) => etat.lots.find((l) => l.id === lotImportId)?.statut === 'annule';
+
+// ───────────── Imports : annulation, rétablissement, reprise, campagnes (calqué sur imports.controller.ts) ─────────────
+const LOTS_ABOUTIS = ['termine', 'termine_avec_erreurs'];
+function routerImports(r: Requete, a: Acces): unknown {
+  const { methode: m, segments: s } = r;
+  const motifRequis = (): string => {
+    const d = r.json();
+    if (typeof d.motif !== 'string' || d.motif.length < 5 || d.motif.length > 2000) throw invalide('motif', 'chaîne de 5 à 2000 caractères attendue');
+    return d.motif;
+  };
+  const charger = (id: string, minimum: Niveau): Enr => {
+    const lot = etat.lots.find((l) => l.id === id && l.cabinetId === a.cabinetId && visibleEnLecture(a, l.entiteId));
+    if (!lot) throw new ErreurHttp(404, 'Import introuvable');
+    exigerNiveau(a, lot.entiteId, minimum);
+    return lot;
+  };
+  /** Les données comptables actives de l'exercice changent : tout ce qui en dépendait est marqué, rien n'est supprimé. */
+  const donneesComptablesChangees = (lotActif: Enr | null, exerciceId: string, entiteId: string) => {
+    const ex = etat.exercices.find((x) => x.id === exerciceId)!;
+    ex.versionDonnees += 1;
+    for (const e of etat.executions) if (e.exerciceId === exerciceId) e.obsolete = true;
+    for (const e of etat.rapprochementsExec) if (e.exerciceId === exerciceId) e.obsolete = true;
+    for (const c of etat.constats) if (c.exerciceId === exerciceId && c.statutRevue !== 'a_examiner') c.aRevoir = true;
+    if (!lotActif || !lotActif.rapport?.suffisantPourTravaux) return;
+    imiterControles(creerExecution(etat, exerciceId, entiteId, lotActif.id, ex.versionDonnees, 'en_attente').id);
+  };
+  const annulerLot = (lot: Enr, motif: string) => {
+    if (lot.statut === 'annule') throw new ErreurHttp(409, 'Cet import est déjà annulé');
+    const abouti = LOTS_ABOUTIS.includes(lot.statut);
+    const avant = { statut: lot.statut, actif: lot.actif };
+    Object.assign(lot, { statut: 'annule', actif: false, statutAvantAnnulation: abouti ? avant.statut : null, annulePar: a.utilisateurId, annuleLe: horodatagePg(), motifAnnulation: motif });
+    if (lot.type === 'fec' && abouti && avant.actif && lot.exerciceId) {
+      const precedent = etat.lots.filter((l) => l.exerciceId === lot.exerciceId && l.type === 'fec' && LOTS_ABOUTIS.includes(l.statut) && l.id !== lot.id).sort((x, y) => y.version - x.version)[0];
+      if (precedent) precedent.actif = true;
+      donneesComptablesChangees(precedent ?? null, lot.exerciceId, lot.entiteId);
+    }
+    if (lot.type === 'releve_bancaire' && abouti) {
+      for (const e of etat.rapprochementsExec) if (e.entiteId === lot.entiteId) e.obsolete = true;
+      for (const e of etat.executions) if (e.entiteId === lot.entiteId) e.obsolete = true;
+    }
+    etat.decisions.push({ cibleType: 'lot_import', cibleId: lot.id, action: 'annuler', motif, versionCible: lot.version, creeLe: instant(), auteurId: a.utilisateurId });
+    tracerAudit(a, 'import.annule', 'lot_import', lot.id, lot.entiteId, { type: lot.type, statutAvant: avant.statut, etaitActif: avant.actif });
+  };
+  const reprendre = (lot: Enr) => {
+    if (!(lot.statut === 'echec' || (lot.statut === 'annule' && !lot.statutAvantAnnulation))) throw new ErreurHttp(409, 'Seul un import en échec, ou annulé avant d’aboutir, peut être repris');
+    Object.assign(lot, { statut: 'en_attente', progression: 0, termineLe: null, annulePar: null, annuleLe: null, motifAnnulation: null });
+    tracerAudit(a, 'import.repris', 'lot_import', lot.id, lot.entiteId);
+    if (lot.type === 'fec') imiterImport(lot.id);
+    else imiterReleve(lot.id);
+  };
+
+  if (m === 'POST' && s[0] === 'imports' && s.length === 3 && ['annulation', 'retablissement', 'reprise'].includes(s[2]!)) {
+    const id = exigerUuid(s[1]);
+    if (s[2] === 'annulation') {
+      const motif = motifRequis();
+      const lot = charger(id, 'revision');
+      annulerLot(lot, motif);
+      return lot;
+    }
+    if (s[2] === 'retablissement') {
+      const motif = motifRequis();
+      const lot = charger(id, 'revision');
+      if (lot.statut !== 'annule') throw new ErreurHttp(409, 'Cet import n’est pas annulé');
+      if (!lot.statutAvantAnnulation) throw new ErreurHttp(409, 'Cet import avait été annulé avant d’aboutir : utilisez la reprise pour le relancer');
+      if (lot.type === 'fec' && lot.exerciceId) for (const l of etat.lots) if (l.exerciceId === lot.exerciceId && l.type === 'fec' && l.id !== lot.id) l.actif = false;
+      Object.assign(lot, { statut: lot.statutAvantAnnulation, actif: true, statutAvantAnnulation: null, annulePar: null, annuleLe: null, motifAnnulation: null });
+      if (lot.type === 'fec' && lot.exerciceId) donneesComptablesChangees(lot, lot.exerciceId, lot.entiteId);
+      if (lot.type === 'releve_bancaire') {
+        for (const e of etat.rapprochementsExec) if (e.entiteId === lot.entiteId) e.obsolete = true;
+        for (const e of etat.executions) if (e.entiteId === lot.entiteId) e.obsolete = true;
+      }
+      etat.decisions.push({ cibleType: 'lot_import', cibleId: lot.id, action: 'retablir', motif, versionCible: lot.version, creeLe: instant(), auteurId: a.utilisateurId });
+      tracerAudit(a, 'import.retabli', 'lot_import', lot.id, lot.entiteId, { type: lot.type });
+      return lot;
+    }
+    reprendre(charger(id, 'collaboration'));
+    r.res.statusCode = 202;
+    return { accepte: true };
+  }
+
+  if (s[0] !== 'campagnes') return undefined;
+  const client = a.role === 'client_deposant' || a.role === 'client_lecture';
+  if (m === 'POST' && s.length === 1) {
+    const d = r.json();
+    if (typeof d.libelle !== 'string' || d.libelle.length < 1 || d.libelle.length > 200) throw invalide('libelle', 'chaîne de 1 à 200 caractères attendue');
+    if (d.type !== 'fec' && d.type !== 'releve_bancaire') throw invalide('type', 'valeur inconnue');
+    if (client || a.role === 'support') throw new ErreurHttp(403, 'Réservé aux collaborateurs du cabinet');
+    const c = { id: randomUUID(), cabinetId: a.cabinetId, libelle: d.libelle, type: d.type, statut: 'ouverte', creePar: a.utilisateurId, creeLe: horodatagePg() };
+    suite.campagnes.push(c);
+    tracerAudit(a, 'campagne.ouverte', 'campagne_import', c.id, null, { type: d.type });
+    r.res.statusCode = 201;
+    return c;
+  }
+  if (client) throw new ErreurHttp(403, 'Réservé aux membres du cabinet');
+  if (m === 'GET' && s.length === 1) return suite.campagnes.filter((c) => c.cabinetId === a.cabinetId).sort((x, y) => y.creeLe.localeCompare(x.creeLe)).slice(0, 200);
+  const id = exigerUuid(s[1]);
+  const campagne = suite.campagnes.find((c) => c.id === id && c.cabinetId === a.cabinetId);
+  if (!campagne) throw new ErreurHttp(404, 'Campagne introuvable');
+  const tous = etat.lots.filter((l) => l.campagneId === id);
+  if (m === 'GET' && s.length === 2) {
+    const raison = (entiteId: string) => String(ENTITES.find((e) => e.id === entiteId)?.raisonSociale ?? '');
+    const lots = tous.filter((l) => visibleEnLecture(a, l.entiteId)).sort((x, y) => raison(x.entiteId).localeCompare(raison(y.entiteId)) || x.creeLe.localeCompare(y.creeLe));
+    const parStatut: Record<string, number> = {};
+    for (const l of lots) parStatut[l.statut] = (parStatut[l.statut] ?? 0) + 1;
+    return {
+      campagne,
+      dossiersHorsHabilitation: Math.max(0, tous.length - lots.length),
+      synthese: { lots: lots.length, parStatut, enCours: (parStatut.en_attente ?? 0) + (parStatut.en_cours ?? 0) },
+      elements: lots.map((l) => {
+        const x = (l.rapport ?? {}) as Enr;
+        return {
+          lotImportId: l.id, entiteId: l.entiteId, raisonSociale: raison(l.entiteId), exerciceId: l.exerciceId, statut: l.statut, actif: l.actif, progression: l.progression,
+          rapport: { nomFichier: x.nomFichier ?? null, lisible: x.lisible ?? null, conforme: x.conforme ?? null, suffisantPourTravaux: x.suffisantPourTravaux ?? null, motif: x.motif ?? x.erreurTechnique ?? null, nbAnomaliesParCode: x.nbAnomaliesParCode ?? null, nbMouvements: x.nbMouvements ?? null },
+        };
+      }),
+    };
+  }
+  if (m === 'POST' && s[2] === 'cloture' && s.length === 3) {
+    if (campagne.statut !== 'ouverte') throw new ErreurHttp(409, `Campagne au statut « ${campagne.statut} »`);
+    campagne.statut = 'close';
+    return campagne;
+  }
+  if (m === 'POST' && s[2] === 'reprise-echecs' && s.length === 3) {
+    const repris = tous.filter((l) => l.statut === 'echec' && niveauSur(a, l.entiteId) && auMoins(niveauSur(a, l.entiteId)!, 'collaboration'));
+    for (const lot of repris) reprendre(lot);
+    r.res.statusCode = 202;
+    return { repris: repris.length };
+  }
+  if (m === 'POST' && s[2] === 'annulation' && s.length === 3) {
+    const motif = motifRequis();
+    if (campagne.statut === 'annulee') throw new ErreurHttp(409, 'Campagne déjà annulée');
+    const visibles = tous.filter((l) => l.statut !== 'annule' && visibleEnLecture(a, l.entiteId));
+    const dejaAnnules = tous.filter((l) => l.statut === 'annule').length;
+    const habilites = visibles.filter((l) => auMoins(niveauSur(a, l.entiteId)!, 'revision'));
+    const laisses = visibles.length - habilites.length;
+    if (habilites.length === 0) throw new ErreurHttp(400, { message: 'Aucun import annulé : habilitation de révision requise sur les dossiers concernés', laisses });
+    for (const lot of habilites) annulerLot(lot, motif);
+    campagne.statut = 'annulee';
+    tracerAudit(a, 'campagne.annulee', 'campagne_import', id, null, { annules: habilites.length, laisses });
+    return { annules: habilites.length, laissesFauteHabilitation: laisses + Math.max(0, tous.length - visibles.length - dejaAnnules) };
+  }
+  return undefined;
+}
+
 function routerBanque(r: Requete, a: Acces): unknown {
   const { methode: m, segments: s } = r;
   if (m === 'GET' && s.join('/') === 'reference/rapprochement') return { regles: REGLES_RAPPROCHEMENT, parametresParDefaut: PARAMETRES_RAPPROCHEMENT_PAR_DEFAUT };
@@ -1540,8 +1753,8 @@ function routerBanque(r: Requete, a: Acces): unknown {
       exigerNiveau(a, entiteId, 'lecture');
       return {
         imports: etat.lots.filter((l) => l.entiteId === entiteId && l.type === 'releve_bancaire').sort((x, y) => y.creeLe.localeCompare(x.creeLe)),
-        releves: etat.releves.filter((x) => x.entiteId === entiteId).sort((x, y) => String(y.dateCloture).localeCompare(String(x.dateCloture))),
-        nbMouvements: etat.mouvements.filter((x) => x.entiteId === entiteId).length,
+        releves: etat.releves.filter((x) => x.entiteId === entiteId && !lotEcarte(x.lotImportId)).sort((x, y) => String(y.dateCloture).localeCompare(String(x.dateCloture))),
+        nbMouvements: etat.mouvements.filter((x) => x.entiteId === entiteId && !lotEcarte(x.lotImportId)).length,
       };
     }
     if (s[3] === 'mouvements' && s.length === 4) {
@@ -1550,10 +1763,37 @@ function routerBanque(r: Requete, a: Acces): unknown {
       if ((du && !/^\d{4}-\d{2}-\d{2}$/.test(du)) || (au && !/^\d{4}-\d{2}-\d{2}$/.test(au))) throw new ErreurHttp(400, 'dates AAAA-MM-JJ attendues');
       const page = Math.max(Number(r.query.get('page')) || 1, 1);
       exigerNiveau(a, entiteId, 'lecture');
-      const tous = etat.mouvements.filter((x) => x.entiteId === entiteId && (!du || x.dateOperation >= du) && (!au || x.dateOperation <= au)).sort((x, y) => x.dateOperation.localeCompare(y.dateOperation) || x.rang - y.rang);
+      const tous = etat.mouvements.filter((x) => x.entiteId === entiteId && !lotEcarte(x.lotImportId) && (!du || x.dateOperation >= du) && (!au || x.dateOperation <= au)).sort((x, y) => x.dateOperation.localeCompare(y.dateOperation) || x.rang - y.rang);
       const TAILLE = 100;
       return { page, taillePage: TAILLE, suite: tous.length > page * TAILLE, mouvements: tous.slice((page - 1) * TAILLE, page * TAILLE).map(({ brut: _b, ...x }) => x) };
     }
+  }
+  if (m === 'GET' && s[0] === 'imports' && s[2] === 'apercu' && s.length === 3) {
+    // Calqué sur banque.controller.ts : début du fichier seulement, texte brut tronqué, proposition jamais forcée.
+    const id = exigerUuid(s[1]);
+    const lot = etat.lots.find((l) => l.id === id && l.cabinetId === a.cabinetId && niveauSur(a, l.entiteId) && auMoins(niveauSur(a, l.entiteId)!, 'lecture'));
+    if (!lot || lot.type !== 'releve_bancaire' || !lot.fichierId) throw new ErreurHttp(404, 'Import de relevé introuvable');
+    exigerNiveau(a, lot.entiteId, 'collaboration');
+    const contenu = etat.contenus.get(lot.fichierId);
+    if (!contenu) throw new ErreurHttp(404, 'Fichier introuvable');
+    const TAILLE = 32 * 1024;
+    const { texte, encodage } = decoderTexteReleve(new Uint8Array(contenu.subarray(0, TAILLE)));
+    const format = detecterFormatReleve(texte.slice(0, 8192));
+    const tronque = contenu.length > TAILLE;
+    const brutes = texte.split(/\r\n|\n|\r/);
+    if (tronque) brutes.pop();
+    const lignes = brutes.filter((l) => l.trim() !== '').slice(0, 15).map((l) => (l.length > 400 ? `${l.slice(0, 400)}…` : l));
+    if (format !== 'csv') return { format, encodage, tronque, lignes, separateurs: [], profilPropose: null, raisons: ['Ce fichier n’est pas un CSV : aucun profil de colonnes n’est nécessaire.'] };
+    const separateurs = [';', ',', '\t']
+      .map((sep) => ({ separateur: sep, colonnes: lignes.slice(0, 5).map((l) => l.split(sep).length) }))
+      .filter((x) => x.colonnes.length > 0 && x.colonnes[0]! > 1 && x.colonnes.every((n) => n === x.colonnes[0]));
+    const proposition = proposerProfilCsv(texte);
+    return {
+      format, encodage, tronque, lignes,
+      separateurs: separateurs.map((x) => ({ separateur: x.separateur, nbColonnes: x.colonnes[0], cellules: lignes.slice(0, 6).map((l) => l.split(x.separateur).map((c) => c.slice(0, 80))) })),
+      profilPropose: proposition.profil,
+      raisons: proposition.raisons,
+    };
   }
   if (m === 'POST' && s[0] === 'imports' && s[2] === 'relancer' && s.length === 3) {
     const id = exigerUuid(s[1]);
@@ -1782,6 +2022,41 @@ function routerSuite(r: Requete, a: Acces): unknown {
   const chemin = s.join('/');
   const gestionnaire = estGestionnaire(a);
 
+  // ── Coût horaire interne et rentabilité d'une mission (calqué sur missions.controller.ts ; calcul par le vrai moteur) ──
+  if (chemin === 'cabinet/cout-horaire' && (m === 'GET' || m === 'PUT')) {
+    if (m === 'PUT') {
+      const d = r.json();
+      const valeur = d.coutHoraireInterneHt;
+      if (valeur !== null && !schemaChaineDecimale.safeParse(valeur).success) throw invalide('coutHoraireInterneHt', 'Montant invalide : attendu une chaîne décimale du type "1234.56"');
+      if (valeur !== null && !(Number(valeur) > 0)) throw new ErreurHttp(400, 'Le coût horaire doit être strictement positif');
+      if (!gestionnaire) throw new ErreurHttp(403, 'Réservé aux administrateurs et associés du cabinet');
+      suite.coutsHoraires.set(a.cabinetId, { coutHoraireInterneHt: valeur, majLe: horodatagePg() });
+      tracerAudit(a, 'cabinet.cout_horaire_defini', 'cabinet', a.cabinetId, null, { renseigne: valeur !== null });
+    } else if (!gestionnaire) throw new ErreurHttp(403, 'Réservé aux administrateurs et associés du cabinet');
+    const p = suite.coutsHoraires.get(a.cabinetId);
+    return { coutHoraireInterneHt: p?.coutHoraireInterneHt ?? null, majLe: p?.majLe ?? null };
+  }
+  if (m === 'GET' && s[0] === 'missions' && s[2] === 'rentabilite' && s.length === 3) {
+    const id = exigerUuid(s[1]);
+    const du = r.query.get('du') ?? '';
+    const au = r.query.get('au') ?? '';
+    const iso = /^\d{4}-\d{2}-\d{2}$/;
+    if (!iso.test(du) || !iso.test(au) || du > au) throw new ErreurHttp(400, 'Période invalide (du, au : AAAA-MM-JJ)');
+    const mission = suite.missions.find((x) => x.id === id && x.cabinetId === a.cabinetId && visibleEnLecture(a, x.entiteId));
+    if (!mission) throw new ErreurHttp(404, 'Mission introuvable');
+    exigerNiveau(a, mission.entiteId, 'revision');
+    const resultat = calculerRentabiliteMission({
+      periode: { debut: du, fin: au },
+      lettres: suite.lettres.filter((l) => l.missionId === id).map((l) => ({ id: l.id, dateEffet: l.dateEffet, statut: l.statut, version: l.version, contenu: l.contenu as ContenuLettre })),
+      travaux: suite.travaux.filter((t) => t.entiteId === mission.entiteId && t.dateTravail >= du && t.dateTravail <= au).map((t) => ({ date: t.dateTravail, prestation: t.prestation, minutes: t.tempsObserveMinutes })),
+      coutHoraire: gestionnaire ? (suite.coutsHoraires.get(a.cabinetId)?.coutHoraireInterneHt ?? null) : null,
+    });
+    if (!gestionnaire) resultat.marge = { ...resultat.marge, motif: 'Le coût et la marge sont réservés aux administrateurs et associés du cabinet.' };
+    const autres = suite.missions.filter((x) => x.entiteId === mission.entiteId && x.id !== id).length;
+    if (autres > 0) resultat.mentions.push(`Ce dossier a ${autres} autre(s) mission(s) : les travaux ne sont pas affectés à une mission, ceux hors du périmètre de celle-ci peuvent relever d’une autre.`);
+    return { mission, mention: 'Aide à la gestion, calculée sur les saisies du cabinet ; ni une facturation, ni une comptabilité analytique.', ...resultat };
+  }
+
   // ── Règles du cabinet ──
   if (s[0] === 'regles') {
     const duCabinet = suite.regles.filter((x) => x.cabinetId === a.cabinetId);
@@ -1902,8 +2177,9 @@ function routerSuite(r: Requete, a: Acces): unknown {
       if (!totalDebit.equals(totalCredit)) throw new ErreurHttp(400, { message: 'Écriture déséquilibrée', totalDebit: versChaine(totalDebit), totalCredit: versChaine(totalCredit), ecart: versChaine(totalDebit.minus(totalCredit)) });
       const ex = chargerExercice(a, id, 'collaboration');
       if (dateEcriture < ex.debut || dateEcriture > ex.fin) throw new ErreurHttp(400, 'La date de l’écriture doit être dans l’exercice');
+      const pieces = piecesDuDossier(ex.entiteId, d.pieces);
       const e = {
-        id: randomUUID(), cabinetId: a.cabinetId, entiteId: ex.entiteId, exerciceId: id, dateEcriture, libelle, origine: 'saisie_humaine', justification, calcul, pieces: [],
+        id: randomUUID(), cabinetId: a.cabinetId, entiteId: ex.entiteId, exerciceId: id, dateEcriture, libelle, origine: 'saisie_humaine', justification, calcul, pieces,
         lignes: (d.lignes as Enr[]).map((l) => ({ compteNum: l.compteNum, compteLib: l.compteLib, debit: versChaine(dec(l.debit)), credit: versChaine(dec(l.credit)) })), totalDebit: versChaine(totalDebit), statut: 'proposee', versionDonnees: ex.versionDonnees,
         proposeePar: a.utilisateurId, decideePar: null, decideeLe: null, motifDecision: null, exporteeLe: null, creeLe: instant(),
       };
@@ -1913,7 +2189,7 @@ function routerSuite(r: Requete, a: Acces): unknown {
     }
     if (m === 'GET' && s.length === 3) {
       const ex = chargerExercice(a, id, 'lecture');
-      return suite.ecritures.filter((e) => e.exerciceId === id).map((e) => ({ ...e, aRevoir: e.versionDonnees !== ex.versionDonnees }));
+      return suite.ecritures.filter((e) => e.exerciceId === id).map((e) => ({ ...e, aRevoir: e.versionDonnees !== ex.versionDonnees, proposeeParNom: nomDe(e.proposeePar), decideeParNom: e.decideePar ? nomDe(e.decideePar) : null, piecesJointes: (e.pieces as string[]).map(pieceJointe) }));
     }
     if (m === 'POST' && s.length === 4) {
       const ex = chargerExercice(a, id, 'revision');
@@ -1983,7 +2259,7 @@ function routerSuite(r: Requete, a: Acces): unknown {
     if (m === 'GET') {
       exigerNiveau(a, id, 'lecture');
       const lettres = suite.lettres.filter((l) => l.entiteId === id).sort((x, y) => x.dateEffet.localeCompare(y.dateEffet) || x.version - y.version);
-      return suite.missions.filter((x) => x.entiteId === id).map((x) => ({ ...x, lettres: lettres.filter((l) => l.missionId === x.id) }));
+      return suite.missions.filter((x) => x.entiteId === id).map((x) => ({ ...x, lettres: lettres.filter((l) => l.missionId === x.id).map((l) => ({ ...l, document: l.documentId ? pieceJointe(l.documentId) : null })) }));
     }
   }
   if (m === 'POST' && s[0] === 'missions' && s[2] === 'lettres' && s.length === 3) {
@@ -1997,8 +2273,10 @@ function routerSuite(r: Requete, a: Acces): unknown {
     if (!mission) throw new ErreurHttp(404, 'Mission introuvable');
     exigerNiveau(a, mission.entiteId, 'collaboration');
     if (avenantDe && !suite.lettres.some((l) => l.id === avenantDe && l.missionId === id)) throw new ErreurHttp(400, 'La lettre modifiée par cet avenant est introuvable dans cette mission');
+    const documentId = uuidOptionnel(d, 'documentId');
+    if (documentId && !etat.documents.some((doc) => doc.id === documentId && doc.entiteId === mission.entiteId)) throw new ErreurHttp(400, 'Le document joint n’appartient pas à ce dossier');
     const version = Math.max(0, ...suite.lettres.filter((l) => l.missionId === id).map((l) => l.version)) + 1;
-    const lettre = { id: randomUUID(), cabinetId: a.cabinetId, entiteId: mission.entiteId, missionId: id, avenantDe, documentId: null, dateEffet, contenu: contenu.data, origine: 'saisie_humaine', version, statut: 'projet', redigeePar: a.utilisateurId, valideePar: null, valideeLe: null, creeLe: instant() };
+    const lettre = { id: randomUUID(), cabinetId: a.cabinetId, entiteId: mission.entiteId, missionId: id, avenantDe, documentId, dateEffet, contenu: contenu.data, origine: 'saisie_humaine', version, statut: 'projet', redigeePar: a.utilisateurId, valideePar: null, valideeLe: null, creeLe: instant() };
     suite.lettres.push(lettre);
     tracerAudit(a, avenantDe ? 'avenant.redige' : 'lettre_mission.redigee', 'lettre_mission', lettre.id, mission.entiteId, { version });
     return lettre;
@@ -2094,7 +2372,7 @@ function routerSuite(r: Requete, a: Acces): unknown {
         .map((c) => {
           const siens = suite.evenements.filter((e) => e.conseilId === c.id).sort((x, y) => x.dateEvenement.localeCompare(y.dateEvenement));
           const fait = (type: string) => siens.find((e) => e.type === type)?.dateEvenement ?? null;
-          return { ...c, auteur: nomDe(c.auteurId), faits: { envoi: fait('envoi'), remise: fait('remise'), reception: fait('reception'), lecture: fait('lecture') }, evenements: siens };
+          return { ...c, auteur: nomDe(c.auteurId), piecesJointes: (c.pieces as string[]).map(pieceJointe), faits: { envoi: fait('envoi'), remise: fait('remise'), reception: fait('reception'), lecture: fait('lecture') }, evenements: siens.map((e) => ({ ...e, justificatifDocument: e.justificatifDocumentId ? pieceJointe(e.justificatifDocumentId) : null })) };
         });
     }
   }
@@ -2157,7 +2435,9 @@ function routerSuite(r: Requete, a: Acces): unknown {
         if (!envoi) throw new ErreurHttp(409, 'Consignez d’abord l’envoi');
         if (Date.parse(d.dateEvenement) < Date.parse(envoi.dateEvenement)) throw new ErreurHttp(400, 'Cet événement ne peut pas précéder l’envoi');
       }
-      const e = { id: randomUUID(), cabinetId: a.cabinetId, entiteId: c.entiteId, conseilId: id, type: d.type, dateEvenement: new Date(d.dateEvenement).toISOString(), canal: d.canal, justificatif: d.justificatif, justificatifDocumentId: null, saisiPar: a.utilisateurId, creeLe: instant() };
+      const justificatifDocumentId = uuidOptionnel(d, 'justificatifDocumentId');
+      if (justificatifDocumentId) verifierPieces(c.entiteId, [justificatifDocumentId]);
+      const e = { id: randomUUID(), cabinetId: a.cabinetId, entiteId: c.entiteId, conseilId: id, type: d.type, dateEvenement: new Date(d.dateEvenement).toISOString(), canal: d.canal, justificatif: d.justificatif, justificatifDocumentId, saisiPar: a.utilisateurId, creeLe: instant() };
       suite.evenements.push(e);
       tracerAudit(a, `conseil.${d.type}_consigne`, 'conseil', id, c.entiteId, { canal: d.canal });
       return e;
@@ -2280,11 +2560,17 @@ function imiterImport(lotId: string): void {
   const reference = etat;
   setTimeout(() => {
     const lot = reference.lots.find((l) => l.id === lotId);
-    if (etat !== reference || !lot) return;
+    if (etat !== reference || !lot || lot.statut === 'annule') return;
     Object.assign(lot, { statut: 'en_cours', progression: 600 });
     setTimeout(async () => {
-      if (etat !== reference) return;
+      if (etat !== reference || lot.statut === 'annule') return;
       const ex = reference.exercices.find((x) => x.id === lot.exerciceId)!;
+      // CONVENTION DU SIMULATEUR : un fichier dont le nom contient « illisible » échoue, comme un fichier que le vrai worker ne sait pas lire.
+      // Un import en échec ne touche jamais aux données actives de l'exercice.
+      if (/illisible/i.test(String(lot.rapport?.nomFichier ?? ''))) {
+        Object.assign(lot, { statut: 'echec', actif: false, progression: 0, rapport: { nomFichier: lot.rapport.nomFichier, lisible: false, conforme: false, suffisantPourTravaux: false, motif: 'Fichier illisible : aucune ligne d’écriture reconnue (simulateur de test).' }, termineLe: instant() });
+        return;
+      }
       // Un fichier réellement lisible est analysé par le vrai moteur (lignes et rapport réels) ; sinon, rapport fictif ci-dessous.
       const lues: LigneFec[] = [];
       const reel = await analyserFec(enBlocs(new Uint8Array(reference.contenus.get(lot.fichierId) ?? Buffer.alloc(0))), { exerciceDebut: ex.debut, exerciceFin: ex.fin, nomFichier: lot.rapport.nomFichier, surLigne: (l) => void lues.push(l) }).catch(() => null);
@@ -2400,7 +2686,7 @@ const serveur = http.createServer(async (req, res) => {
         resultat = pannes;
       } else if (methode === 'GET' && segments[1] === 'suite') {
         // Lecture de l'état des écrans ajoutés (règles, inventaire, missions, conseils, veille, restitutions, membres).
-        resultat = { regles: suite.regles, ecritures: suite.ecritures, missions: suite.missions, lettres: suite.lettres, travaux: suite.travaux, baremes: suite.baremes, conseils: suite.conseils, evenements: suite.evenements, suivis: suite.suivis, restitutions: suite.restitutions, membres: [...suite.membres.entries()], habilitations: HABILITATIONS };
+        resultat = { regles: suite.regles, ecritures: suite.ecritures, missions: suite.missions, lettres: suite.lettres, travaux: suite.travaux, baremes: suite.baremes, conseils: suite.conseils, evenements: suite.evenements, suivis: suite.suivis, restitutions: suite.restitutions, membres: [...suite.membres.entries()], habilitations: HABILITATIONS, campagnes: suite.campagnes, lots: etat.lots.map((l) => ({ id: l.id, entiteId: l.entiteId, type: l.type, statut: l.statut, actif: l.actif, campagneId: l.campagneId ?? null, motifAnnulation: l.motifAnnulation ?? null, statutAvantAnnulation: l.statutAvantAnnulation ?? null })), coutHoraire: suite.coutsHoraires.get(DEMO.cabinetA)?.coutHoraireInterneHt ?? null };
       } else if (methode === 'GET' && segments[1] === 'journal') resultat = journal;
       else if (methode === 'GET' && segments[1] === 'etat') {
         resultat = {

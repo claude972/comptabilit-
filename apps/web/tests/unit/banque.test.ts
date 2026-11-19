@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { detailsSimples, niveauxPermis, sirenPlausible } from '@/lib/administration';
-import { type ParametresRapprochement, estNul, masquerCompte, parametresDepuis, parametresInitiaux, profilDepuis, profilInitial, sensMouvement, synthesePropositions } from '@/lib/banque';
+import { type ParametresRapprochement, decoupageSelon, entetesNumerotes, estNul, masquerCompte, parametresDepuis, parametresInitiaux, profilDepuis, profilDepuisProposition, profilInitial, sensMouvement, separateursProposes, synthesePropositions } from '@/lib/banque';
 
 const DEFAUTS: ParametresRapprochement = { toleranceMontant: '0.00', fenetreJours: 5, fenetreJoursRegles: 45, tailleMaxGroupe: 6, autoriserPartiels: true, autoriserCompensations: true, budgetCombinaisons: 20000, fraisBancairesMax: '0.00' };
 
@@ -97,5 +97,42 @@ describe('administration', () => {
     expect(detailsSimples({ niveau: 'revision', pourSoiMeme: true, n: 3, objet: { a: 1 }, liste: [1], long: 'x'.repeat(61) })).toEqual([{ cle: 'niveau', valeur: 'revision' }, { cle: 'pourSoiMeme', valeur: 'true' }, { cle: 'n', valeur: '3' }]);
     expect(detailsSimples(null)).toEqual([]);
     expect(detailsSimples(['a'])).toEqual([]);
+  });
+});
+
+describe('aperçu d’un CSV bancaire', () => {
+  const apercu = {
+    separateurs: [
+      { separateur: ';', nbColonnes: 3, cellules: [['Quand', 'Quoi', 'Combien'], ['05/02/2024', 'Abonnement <b>x</b>', '-12,50']] },
+      { separateur: '\t', nbColonnes: 2, cellules: [['a', 'b']] },
+    ],
+  };
+  it('ne propose que les séparateurs jugés plausibles par l’API, à défaut les trois connus', () => {
+    expect(separateursProposes(apercu)).toEqual([';', 'tab']);
+    expect(separateursProposes({ separateurs: [] })).toEqual([';', ',', 'tab']);
+    expect(separateursProposes(null)).toEqual([';', ',', 'tab']);
+    expect(separateursProposes({ separateurs: [{ separateur: '|', nbColonnes: 2, cellules: [] }] })).toEqual([';', ',', 'tab']);
+  });
+  it('rend le découpage du séparateur choisi, sans rien recalculer', () => {
+    expect(decoupageSelon(apercu, ';')?.cellules[1]?.[2]).toBe('-12,50');
+    expect(decoupageSelon(apercu, 'tab')?.nbColonnes).toBe(2);
+    expect(decoupageSelon(apercu, ',')).toBeNull();
+  });
+  it('numérote les colonnes à partir de 1 et nomme celles qui ont un en-tête', () => {
+    const d = decoupageSelon(apercu, ';')!;
+    expect(entetesNumerotes(d, 1)).toEqual([{ position: 1, nom: 'Quand' }, { position: 2, nom: 'Quoi' }, { position: 3, nom: 'Combien' }]);
+    expect(entetesNumerotes(d, 0).map((e) => e.nom)).toEqual([null, null, null]);
+    expect(entetesNumerotes(d, 2)[1]).toEqual({ position: 2, nom: 'Abonnement <b>x</b>' }); // texte brut, jamais interprété
+    expect(entetesNumerotes(d, 9).map((e) => e.nom)).toEqual([null, null, null]);
+  });
+  it('pré-remplit depuis la proposition de l’API : indices à partir de 0 → positions à partir de 1', () => {
+    const depart = profilInitial();
+    const f = profilDepuisProposition({ separateur: '\t', lignesEntete: 2, colonnes: { date: 0, libelle: 'Libellé', debit: 3, credit: 4, reference: 'Réf' }, formatDate: 'AAAA-MM-JJ', decimale: '.' }, depart);
+    expect(f).toMatchObject({ separateur: 'tab', lignesEntete: '2', date: '1', libelle: 'Libellé', mode: 'debit_credit', montant: '', debit: '4', credit: '5', reference: 'Réf', formatDate: 'AAAA-MM-JJ', decimale: '.' });
+    // Aller-retour : ce que l'utilisateur confirme sans rien changer est exactement ce que l'API proposait.
+    const r = profilDepuis(f);
+    expect(r.ok && r.profilCsv).toEqual({ separateur: '\t', lignesEntete: 2, colonnes: { date: 0, libelle: 'Libellé', debit: 3, credit: 4, reference: 'Réf' }, formatDate: 'AAAA-MM-JJ', decimale: '.' });
+    expect(profilDepuisProposition(null, depart)).toBe(depart);
+    expect(profilDepuisProposition({ colonnes: 'n’importe quoi', formatDate: 'inconnu', separateur: '|' }, depart)).toMatchObject({ separateur: ';', date: '', formatDate: 'JJ/MM/AAAA', mode: 'montant' });
   });
 });

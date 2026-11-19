@@ -5,6 +5,8 @@ import { DecisionRapprochement, FormulaireProfilCsv, LancerRapprochement } from 
 import { ChoixExercice } from '@/components/dossier';
 import { ImportReleve } from '@/components/envoi-ordinateur';
 import { ErreurAcces } from '@/components/erreurs';
+import { ActionsImport } from '@/components/imports/actions';
+import { TraceAnnulation } from '@/components/imports/affichage';
 import { ActualisationPeriodique, SuiviImport } from '@/components/revision-actions';
 import { Alerte, Carte, Etiquette, Libelle, MentionProjet, Saisie, SousTitre, Tableau, type Ton } from '@/components/ui/base';
 import { Bouton } from '@/components/ui/bouton';
@@ -12,6 +14,8 @@ import {
   type Cadrage, type DernierRapprochement, type EcritureRapprochee, type EtatBanque, LIBELLE_CADRAGE, LIBELLE_FORMAT_RELEVE, LIBELLE_STATUT_PROPOSITION, type MouvementRapproche, type PageMouvements,
   type ReferenceRapprochement, estNul, masquerCompte, sensMouvement, synthesePropositions,
 } from '@/lib/banque';
+import type { MembreDossier } from '@/lib/administration';
+import { actionsImport } from '@/lib/imports';
 import { LIBELLE_STATUT_LOT } from '@/lib/libelles';
 import { formaterDate, formaterHorodatage, formaterMontant } from '@/lib/montants';
 import { tenter } from '@/lib/serveur/api';
@@ -83,12 +87,14 @@ export default async function PageBanque({ params, searchParams }: { params: Pro
   const au = DATE.test(parametre(sp.au) ?? '') ? parametre(sp.au)! : '';
   const page = Math.max(1, Number.parseInt(parametre(sp.page) ?? '1', 10) || 1);
   const filtre = `${du ? `&du=${du}` : ''}${au ? `&au=${au}` : ''}`;
-  const [etat, mouvements, ex, reference] = await Promise.all([
+  const [etat, mouvements, ex, reference, membres] = await Promise.all([
     tenter<EtatBanque>(`v1/dossiers/${id}/banque`),
     tenter<PageMouvements>(`v1/dossiers/${id}/banque/mouvements?page=${page}${filtre}`),
     contexteExercice(id, sp.exercice),
     tenter<ReferenceRapprochement>('v1/reference/rapprochement'),
+    tenter<MembreDossier[]>(`v1/dossiers/${id}/membres`),
   ]);
+  const nomDe = (utilisateurId: string | null | undefined) => (membres.ok && utilisateurId ? (membres.donnees.find((m) => m.utilisateurId === utilisateurId)?.nom ?? null) : null);
   if (!etat.ok) return <ErreurAcces statut={etat.statut} message={etat.message} retour={`/dossiers/${id}`} />;
   const situation = await lireSituation();
   const ferme = situation && !situation.serviceOuvert ? situation.situation : null;
@@ -122,11 +128,17 @@ export default async function PageBanque({ params, searchParams }: { params: Pro
             return (
               <li key={lot.id} className="space-y-2 rounded-lg border border-bordure bg-surface p-3" data-import={lot.id} data-statut={lot.statut}>
                 <p className="flex flex-wrap items-center gap-2">
-                  <Etiquette ton={lot.statut === 'echec' ? 'danger' : lot.statut === 'termine' ? 'neutre' : enCours(lot.statut) ? 'info' : 'attention'}>{LIBELLE_STATUT_LOT[lot.statut] ?? lot.statut}</Etiquette>
+                  <Etiquette ton={lot.statut === 'echec' ? 'danger' : lot.statut === 'termine' ? 'neutre' : lot.statut === 'annule' ? 'vide' : enCours(lot.statut) ? 'info' : 'attention'}>{LIBELLE_STATUT_LOT[lot.statut] ?? lot.statut}</Etiquette>
                   <span className="font-medium break-all">{r.nomFichier ?? 'Fichier sans nom'}</span>
                   {r.format ? <Etiquette>{LIBELLE_FORMAT_RELEVE[r.format] ?? r.format}</Etiquette> : null}
                   <span className="text-sm text-texte-doux">{formaterHorodatage(lot.creeLe)}</span>
                 </p>
+                {lot.statut === 'annule' ? (
+                  <p>
+                    <TraceAnnulation lot={lot} nomAuteur={nomDe(lot.annulePar)} />
+                    <span className="block text-sm">Les mouvements de ce relevé ne sont plus pris en compte, sauf ceux présents dans un autre relevé actif.</span>
+                  </p>
+                ) : null}
                 {enCours(lot.statut) ? <SuiviImport lotId={lot.id} initial={{ statut: lot.statut, progression: lot.progression }} unite="mouvements lus" /> : null}
                 {typeof r.nbMouvements === 'number' ? (
                   <p className="text-sm">
@@ -158,6 +170,8 @@ export default async function PageBanque({ params, searchParams }: { params: Pro
                   </details>
                 ) : null}
                 {lot.statut === 'echec' && r.profilAConfirmer && collaboration ? <FormulaireProfilCsv lotId={lot.id} raisons={r.raisons ?? []} /> : null}
+                {/* Un CSV en attente de profil se relance par la confirmation du profil, pas par une reprise à l'identique. */}
+                <ActionsImport lot={{ id: lot.id, type: 'releve_bancaire', actif: lot.actif ?? false, statut: lot.statut }} actions={actionsImport(lot, ctx.niveau).filter((x) => x !== 'reprendre' || !r.profilAConfirmer)} />
               </li>
             );
           })}

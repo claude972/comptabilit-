@@ -10,17 +10,20 @@ import { PHRASE_EXPORT, type SaisieEcriture, ligneVide, propositionDepuis, totau
 import { formaterMontant } from '@/lib/montants';
 import { ErreurHttp, ErreurReseau } from '@/lib/televersement/moteur';
 import { ENTETE_CSRF, appelBff } from '@/lib/televersement/transport-bff';
+import { SelecteurPieces } from '@/components/document/selecteur-pieces';
+import type { PieceChoisie } from '@/lib/pieces-jointes';
 
 const initiale = (): SaisieEcriture => ({ dateEcriture: '', libelle: '', justification: '', calcul: '', lignes: [ligneVide(), ligneVide()] });
 
 /** Proposition d'une écriture d'inventaire (`POST v1/exercices/:id/ecritures-inventaire`). Les totaux affichés sont additionnés en centimes entiers. */
-export function ProposerEcriture({ exerciceId, debut, fin }: { exerciceId: string; debut: string; fin: string }) {
+export function ProposerEcriture({ exerciceId, dossierId, debut, fin }: { exerciceId: string; dossierId: string; debut: string; fin: string }) {
   const routeur = useRouter();
   const [f, setF] = useState<SaisieEcriture>(initiale);
   const [erreurs, setErreurs] = useState<string[]>([]);
   const [refus, setRefus] = useState<{ message: string; totalDebit?: string; totalCredit?: string; ecart?: string } | null>(null);
   const [succes, setSucces] = useState<string | null>(null);
   const [occupe, setOccupe] = useState(false);
+  const [pieces, setPieces] = useState<PieceChoisie[]>([]);
   const id = useId();
   const totaux = totauxSaisie(f.lignes);
   const majLigne = (i: number, m: Partial<SaisieEcriture['lignes'][number]>) => setF((v) => ({ ...v, lignes: v.lignes.map((l, j) => (j === i ? { ...l, ...m } : l)) }));
@@ -34,7 +37,8 @@ export function ProposerEcriture({ exerciceId, debut, fin }: { exerciceId: strin
     setErreurs([]);
     setOccupe(true);
     try {
-      await appelBff(`v1/exercices/${exerciceId}/ecritures-inventaire`, { method: 'POST', json: p.corps });
+      await appelBff(`v1/exercices/${exerciceId}/ecritures-inventaire`, { method: 'POST', json: { ...p.corps, pieces: pieces.map((x) => x.id) } });
+      setPieces([]);
       setSucces('Écriture proposée. Elle n’a aucun effet tant qu’elle n’est pas approuvée par une autre personne habilitée.');
       setF(initiale());
       routeur.refresh();
@@ -131,6 +135,7 @@ export function ProposerEcriture({ exerciceId, debut, fin }: { exerciceId: strin
           ) : null}
         </Alerte>
       ) : null}
+      <SelecteurPieces entiteId={dossierId} selection={pieces} surChangement={setPieces} libelle="Pièces justificatives (facultatif)" aide="Pièces du dossier qui justifient l’écriture proposée." />
       <Bouton type="submit" disabled={occupe}>
         Proposer l’écriture (projet)
       </Bouton>

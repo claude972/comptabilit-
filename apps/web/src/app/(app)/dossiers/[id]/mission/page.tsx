@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { PieceJointeAffichee } from '@/components/document/pieces-jointes';
 import { ErreurAcces } from '@/components/erreurs';
 import { ActionConfirmee, CreerMission, DefinirBareme, EnregistrerTravail, PreparerAvenant, RedigerLettre } from '@/components/mission/actions';
 import { SousNavigationMission } from '@/components/mission/sous-navigation';
@@ -80,7 +81,7 @@ export default async function PageMission({ params }: { params: Promise<{ id: st
 
   return (
     <div className="space-y-6">
-      <SousNavigationMission dossierId={id} courant="missions" />
+      <SousNavigationMission dossierId={id} courant="missions" avecRentabilite={auMoins(ctx.niveau, 'revision')} />
 
       <section aria-labelledby="titre-missions" className="space-y-3">
         <SousTitre id="titre-missions">Missions ({missions.donnees.length})</SousTitre>
@@ -108,6 +109,13 @@ export default async function PageMission({ params }: { params: Promise<{ id: st
                     <span className="text-sm text-texte-doux">effet au {formaterDate(l.dateEffet)}</span>
                   </p>
                   <ContenuDeLettre l={l} libelle={libelle} />
+                  {l.document ? (
+                    <p className="text-sm" data-testid="lettre-signee">
+                      Lettre signée jointe : <PieceJointeAffichee piece={l.document} dossierId={id} />
+                    </p>
+                  ) : l.documentId ? (
+                    <p className="text-sm text-texte-doux">Lettre signée jointe, non consultable.</p>
+                  ) : null}
                   {l.valideeLe ? <p className="text-sm text-texte-doux">Validée le {formaterHorodatage(l.valideeLe)}.</p> : null}
                   {l.statut === 'projet' ? (
                     validation ? (
@@ -125,7 +133,7 @@ export default async function PageMission({ params }: { params: Promise<{ id: st
                 </li>
               ))}
             </ul>
-            {collaboration ? prestations.ok ? <RedigerLettre missionId={m.id} prestations={refPrestations} lettres={m.lettres} /> : <Alerte ton="attention">Le référentiel des prestations est indisponible.</Alerte> : null}
+            {collaboration ? prestations.ok ? <RedigerLettre missionId={m.id} dossierId={id} prestations={refPrestations} lettres={m.lettres} /> : <Alerte ton="attention">Le référentiel des prestations est indisponible.</Alerte> : null}
           </Carte>
         ))}
         {collaboration ? (

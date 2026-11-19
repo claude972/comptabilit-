@@ -3,13 +3,16 @@ import Link from 'next/link';
 import { FormulaireEchange } from '@/components/document/actions';
 import { ChampsExtraits, Echanges, EtiquetteStatutDocument, MotifStatut, Receptions, Verifications } from '@/components/document/affichage';
 import { ApercuPiece } from '@/components/document/apercu';
+import { NouvelleVersion } from '@/components/document/nouvelle-version';
+import { BandeauRemplacee, BlocVersions } from '@/components/document/versions';
 import { ErreurAcces } from '@/components/erreurs';
-import { Alerte, Carte, SousTitre, Titre } from '@/components/ui/base';
+import { Alerte, Carte, Etiquette, SousTitre, Titre } from '@/components/ui/base';
 import { LIBELLE_NATURE } from '@/lib/libelles';
 import { formaterHorodatage } from '@/lib/montants';
 import { tenter } from '@/lib/serveur/api';
 import { estUuid } from '@/lib/serveur/donnees';
 import type { DetailDocument } from '@/lib/types-api';
+import { droitNouvelleVersion } from '@/lib/versions';
 
 export const metadata: Metadata = { title: 'Suivi d’une pièce' };
 
@@ -18,8 +21,12 @@ export default async function PageDepot({ params }: { params: Promise<{ id: stri
   if (!estUuid(id)) return <ErreurAcces statut={404} retour="/depots" />;
   const r = await tenter<DetailDocument>(`v1/documents/${id}`);
   if (!r.ok) return <ErreurAcces statut={r.statut} message={r.message} retour="/depots" />;
-  const { document: doc, fichier, extraction, echanges, receptions } = r.donnees;
-  const demandeOuverte = echanges.some((e) => e.type === 'demande_complement' && !e.resolu);
+  const { document: doc, fichier, extraction, echanges, receptions, niveau } = r.donnees;
+  const versions = r.donnees.versions ?? [];
+  const courante = r.donnees.estVersionCourante !== false && !doc.remplacePar;
+  const lienVersion = (v: string) => `/depots/${v}`;
+  const droit = droitNouvelleVersion({ niveau, estVersionCourante: courante, statut: doc.statut, deposeeParMoi: receptions.some((x) => x.parMoi) });
+  const demandeOuverte = courante && echanges.some((e) => e.type === 'demande_complement' && !e.resolu);
   const apercuDisponible = fichier?.analyseAntivirus === 'sain';
 
   return (
@@ -30,9 +37,11 @@ export default async function PageDepot({ params }: { params: Promise<{ id: stri
         </Link>
       </p>
       <Titre className="break-all">{doc.nomOrigine}</Titre>
+      {!courante ? <BandeauRemplacee versions={versions} remplacePar={doc.remplacePar} lien={lienVersion} /> : null}
       <Carte className="space-y-3">
         <p className="flex flex-wrap items-center gap-2">
           <span className="font-medium">Statut :</span> <EtiquetteStatutDocument statut={doc.statut} />
+          {doc.version > 1 || versions.length > 1 ? <Etiquette>Version {doc.version}</Etiquette> : null}
           <span className="text-sm text-texte-doux">
             {LIBELLE_NATURE[doc.nature] ?? doc.nature} · mis à jour le {formaterHorodatage(doc.majLe)}
           </span>
@@ -44,6 +53,11 @@ export default async function PageDepot({ params }: { params: Promise<{ id: stri
           </p>
         ) : null}
         <Receptions receptions={receptions} />
+      </Carte>
+
+      <Carte className="space-y-4">
+        {versions.length ? <BlocVersions versions={versions} courantId={doc.id} lien={lienVersion} /> : null}
+        <NouvelleVersion documentId={doc.id} entiteId={doc.entiteId} canal="telephone" lienVersion="/depots/" droit={droit} />
       </Carte>
 
       {demandeOuverte ? (
@@ -70,7 +84,7 @@ export default async function PageDepot({ params }: { params: Promise<{ id: stri
         ) : (
           <p className="text-texte-doux">Aucune information n’a encore été extraite de cette pièce.</p>
         )}
-        <FormulaireEchange documentId={doc.id} type="signalement_erreur" />
+        {courante ? <FormulaireEchange documentId={doc.id} type="signalement_erreur" /> : null}
       </Carte>
 
       <Carte className="space-y-2">

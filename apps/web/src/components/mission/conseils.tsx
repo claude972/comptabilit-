@@ -2,10 +2,12 @@
 
 import { type FormEvent, useId, useState } from 'react';
 import { useAppel } from '@/components/appel';
+import { SelecteurPieces } from '@/components/document/selecteur-pieces';
 import { Retours } from '@/components/retours';
 import { Libelle, Liste, Saisie, ZoneTexte } from '@/components/ui/base';
 import { Bouton } from '@/components/ui/bouton';
 import { LIBELLE_FAIT, type TypeFait } from '@/lib/missions';
+import type { PieceChoisie } from '@/lib/pieces-jointes';
 
 interface ConseilModifiable {
   id: string;
@@ -14,7 +16,8 @@ interface ConseilModifiable {
   contenu: string;
   destinataire: string;
   missionId: string | null;
-  pieces: string[];
+  /** Pièces déjà jointes au projet, telles que le registre les renvoie. */
+  piecesJointes: PieceChoisie[];
 }
 
 /** Rédaction (`POST v1/dossiers/:id/conseils`) ou modification d'un projet (`PUT v1/conseils/:id`). */
@@ -25,6 +28,7 @@ export function RedigerConseil({ dossierId, missions, conseil }: { dossierId: st
   const [contenu, setContenu] = useState(conseil?.contenu ?? '');
   const [destinataire, setDestinataire] = useState(conseil?.destinataire ?? '');
   const [missionId, setMissionId] = useState(conseil?.missionId ?? '');
+  const [pieces, setPieces] = useState<PieceChoisie[]>(conseil?.piecesJointes ?? []);
   const appel = useAppel();
   const id = useId();
   if (!ouvert) {
@@ -41,7 +45,7 @@ export function RedigerConseil({ dossierId, missions, conseil }: { dossierId: st
     e.preventDefault();
     if (!date) return appel.setErreur('Indiquez la date du conseil.');
     if (!objet.trim() || !contenu.trim() || !destinataire.trim()) return appel.setErreur('L’objet, le contenu et le destinataire sont obligatoires.');
-    const corps = { dateConseil: date, objet: objet.trim(), contenu: contenu.trim(), destinataire: destinataire.trim(), ...(missionId ? { missionId } : {}), ...(conseil ? { pieces: conseil.pieces } : {}) };
+    const corps = { dateConseil: date, objet: objet.trim(), contenu: contenu.trim(), destinataire: destinataire.trim(), ...(missionId ? { missionId } : {}), pieces: pieces.map((p) => p.id) };
     const ok = conseil
       ? await appel.executer(`v1/conseils/${conseil.id}`, { method: 'PUT', json: corps }, 'Projet modifié.')
       : await appel.executer(`v1/dossiers/${dossierId}/conseils`, { method: 'POST', json: corps }, 'Conseil enregistré comme projet. Rien n’a été envoyé.');
@@ -50,6 +54,7 @@ export function RedigerConseil({ dossierId, missions, conseil }: { dossierId: st
         setObjet('');
         setContenu('');
         setDestinataire('');
+        setPieces([]);
       }
       setOuvert(false);
     }
@@ -85,6 +90,7 @@ export function RedigerConseil({ dossierId, missions, conseil }: { dossierId: st
         <Libelle htmlFor={`${id}-contenu`}>Contenu</Libelle>
         <ZoneTexte id={`${id}-contenu`} value={contenu} maxLength={20000} onChange={(e) => setContenu(e.target.value)} className="min-h-40" />
       </div>
+      <SelecteurPieces entiteId={dossierId} selection={pieces} surChangement={setPieces} libelle="Pièces jointes au conseil (facultatif)" aide="Pièces du dossier auxquelles le conseil se réfère. Les joindre ne les envoie à personne." />
       <div className="flex flex-wrap gap-2">
         <Bouton type="submit" disabled={appel.occupe}>
           {conseil ? 'Enregistrer les modifications' : 'Enregistrer le projet'}
@@ -99,11 +105,12 @@ export function RedigerConseil({ dossierId, missions, conseil }: { dossierId: st
 }
 
 /** Consignation d'un fait établi (`POST v1/conseils/:id/evenements`) : le justificatif est obligatoire, rien ne se déduit. */
-export function ConsignerFait({ conseilId, possibles }: { conseilId: string; possibles: TypeFait[] }) {
+export function ConsignerFait({ conseilId, dossierId, possibles }: { conseilId: string; dossierId: string; possibles: TypeFait[] }) {
   const [type, setType] = useState<TypeFait>(possibles[0] ?? 'envoi');
   const [date, setDate] = useState('');
   const [canal, setCanal] = useState('');
   const [justificatif, setJustificatif] = useState('');
+  const [piece, setPiece] = useState<PieceChoisie[]>([]);
   const appel = useAppel();
   const id = useId();
   const choisi = possibles.includes(type) ? type : (possibles[0] ?? 'envoi');
@@ -119,9 +126,10 @@ export function ConsignerFait({ conseilId, possibles }: { conseilId: string; pos
         if (instant.getTime() > Date.now()) return appel.setErreur('Un fait constaté ne peut pas être daté dans le futur.');
         if (!canal.trim()) return appel.setErreur('Indiquez le canal (courriel, courrier recommandé, remise en main propre…).');
         if (justificatif.trim().length < 5) return appel.setErreur('Le justificatif est obligatoire : indiquez ce qui établit ce fait (5 caractères au moins).');
-        if (await appel.executer(`v1/conseils/${conseilId}/evenements`, { method: 'POST', json: { type: choisi, dateEvenement: instant.toISOString(), canal: canal.trim(), justificatif: justificatif.trim() } }, `Fait consigné : ${LIBELLE_FAIT[choisi].toLowerCase()}.`)) {
+        if (await appel.executer(`v1/conseils/${conseilId}/evenements`, { method: 'POST', json: { type: choisi, dateEvenement: instant.toISOString(), canal: canal.trim(), justificatif: justificatif.trim(), ...(piece[0] ? { justificatifDocumentId: piece[0].id } : {}) } }, `Fait consigné : ${LIBELLE_FAIT[choisi].toLowerCase()}.`)) {
           setJustificatif('');
           setDate('');
+          setPiece([]);
         }
       }}
     >
@@ -155,6 +163,7 @@ export function ConsignerFait({ conseilId, possibles }: { conseilId: string; pos
         <Libelle htmlFor={`${id}-justificatif`}>Justificatif (obligatoire : ce qui établit le fait)</Libelle>
         <ZoneTexte id={`${id}-justificatif`} value={justificatif} maxLength={1000} onChange={(e) => setJustificatif(e.target.value)} className="min-h-16" />
       </div>
+      <SelecteurPieces entiteId={dossierId} selection={piece} surChangement={setPiece} multiple={false} libelle="Pièce justificative (facultatif)" aide="Pièce du dossier qui établit ce fait (accusé de réception, bordereau signé…). Elle complète le justificatif écrit, sans le remplacer." />
       <Bouton type="submit" variante="secondaire" disabled={appel.occupe}>
         Consigner ce fait
       </Bouton>

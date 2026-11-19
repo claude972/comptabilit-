@@ -4,10 +4,14 @@ import Link from 'next/link';
 import { ChoixExercice } from '@/components/dossier';
 import { ImportComptable } from '@/components/envoi-ordinateur';
 import { ErreurAcces } from '@/components/erreurs';
+import { ActionsImport } from '@/components/imports/actions';
+import { TraceAnnulation } from '@/components/imports/affichage';
 import { SuiviImport } from '@/components/revision-actions';
 import { LienSource } from '@/components/revision-affichage';
 import { Alerte, Carte, Etiquette, MentionProjet, SousTitre, Tableau } from '@/components/ui/base';
+import type { MembreDossier } from '@/lib/administration';
 import { cn } from '@/lib/cn';
+import { actionsImport, sansDonneesActives } from '@/lib/imports';
 import { LIBELLE_STATUT_DONNEES, LIBELLE_STATUT_LOT } from '@/lib/libelles';
 import { formaterDate, formaterHorodatage, formaterMontant } from '@/lib/montants';
 import { tenter } from '@/lib/serveur/api';
@@ -58,7 +62,7 @@ function Rapport({ lot, base, detail, code }: { lot: LotImport; base: string; de
     <Carte className="space-y-4" data-testid="rapport-import">
       <div className="flex flex-wrap items-center gap-2">
         <SousTitre>Rapport d’import — version {lot.version}</SousTitre>
-        <Etiquette ton={lot.statut === 'echec' ? 'danger' : lot.statut === 'termine' ? 'neutre' : 'attention'}>{LIBELLE_STATUT_LOT[lot.statut] ?? lot.statut}</Etiquette>
+        <Etiquette ton={lot.statut === 'echec' ? 'danger' : lot.statut === 'termine' ? 'neutre' : lot.statut === 'annule' ? 'vide' : 'attention'}>{LIBELLE_STATUT_LOT[lot.statut] ?? lot.statut}</Etiquette>
         {lot.actif ? <Etiquette ton="info">Lot actif</Etiquette> : null}
         <MentionProjet />
       </div>
@@ -226,11 +230,13 @@ export default async function PageComptabilite({ params, searchParams }: { param
   if (!ex.ok) return <ErreurAcces statut={ex.statut} message={ex.message} retour={`/dossiers/${id}`} />;
   if (!ex.exercice) return <Alerte ton="attention">Aucun exercice n’est défini pour ce dossier : l’import comptable n’est pas possible.</Alerte>;
   const exercice = ex.exercice;
-  const lots = await tenter<LotImport[]>(`v1/exercices/${exercice.id}/imports`);
+  const [lots, membres] = await Promise.all([tenter<LotImport[]>(`v1/exercices/${exercice.id}/imports`), tenter<MembreDossier[]>(`v1/dossiers/${id}/membres`)]);
   if (!lots.ok) return <ErreurAcces statut={lots.statut} message={lots.message} retour={`/dossiers/${id}`} />;
   const situation = await lireSituation();
   const ferme = situation && !situation.serviceOuvert ? situation.situation : null;
   const base = `/dossiers/${id}/comptabilite?exercice=${exercice.id}`;
+  // L'API ne renvoie que l'identifiant de l'auteur d'une annulation : son nom vient de la liste des membres du dossier, s'il y figure.
+  const nomDe = (utilisateurId: string | null | undefined) => (membres.ok && utilisateurId ? (membres.donnees.find((m) => m.utilisateurId === utilisateurId)?.nom ?? null) : null);
   const voulu = parametre(sp.lot);
   const choisi = lots.donnees.find((l) => l.id === voulu) ?? lots.donnees.find((l) => l.actif) ?? lots.donnees[0];
   const page = Math.max(1, Number.parseInt(parametre(sp.page) ?? '1', 10) || 1);
@@ -250,6 +256,12 @@ export default async function PageComptabilite({ params, searchParams }: { param
         <Alerte ton="neutre">Votre habilitation (lecture) ne permet pas d’importer des écritures.</Alerte>
       )}
 
+      {sansDonneesActives(lots.donnees) ? (
+        <Alerte ton="attention" role="status" titre="Cet exercice n’a plus de données comptables actives" data-testid="sans-donnees-actives">
+          Tous les imports aboutis ont été annulés : les contrôles de révision, les états et le rapprochement ne peuvent pas être réalisés tant qu’un import n’est pas rétabli ou
+          qu’un nouveau fichier n’est pas importé. Rien n’a été supprimé.
+        </Alerte>
+      ) : null}
       <section aria-labelledby="titre-versions" className="space-y-2">
         <SousTitre id="titre-versions">Historique des versions importées</SousTitre>
         {lots.donnees.length ? (
@@ -263,15 +275,19 @@ export default async function PageComptabilite({ params, searchParams }: { param
                 <th scope="col">Importé le</th>
                 <th scope="col">Lignes</th>
                 <th scope="col">Rapport</th>
+                <th scope="col">Actions</th>
               </tr>
             </thead>
             <tbody>
               {lots.donnees.map((l) => (
-                <tr key={l.id} className={cn(l.actif && 'bg-info-fond text-info-texte')} data-lot={l.id} data-actif={l.actif}>
+                <tr key={l.id} className={cn(l.actif && 'bg-info-fond text-info-texte', l.statut === 'annule' && 'text-texte-doux')} data-lot={l.id} data-actif={l.actif} data-statut={l.statut}>
                   <th scope="row" className="!bg-transparent font-semibold">
                     v{l.version} {l.actif ? <Etiquette ton="info" className="ml-1 border-info-texte">Lot actif</Etiquette> : null}
                   </th>
-                  <td>{LIBELLE_STATUT_LOT[l.statut] ?? l.statut}</td>
+                  <td>
+                    {l.statut === 'annule' ? <Etiquette ton="vide">Annulé</Etiquette> : (LIBELLE_STATUT_LOT[l.statut] ?? l.statut)}
+                    {l.statut === 'annule' ? <TraceAnnulation lot={l} nomAuteur={nomDe(l.annulePar)} /> : null}
+                  </td>
                   <td>{l.statutDonnees ? LIBELLE_STATUT_DONNEES[l.statutDonnees] : '—'}</td>
                   <td className="break-all">{l.rapport?.nomFichier ?? '—'}</td>
                   <td className="whitespace-nowrap">{formaterHorodatage(l.creeLe)}</td>
@@ -281,6 +297,9 @@ export default async function PageComptabilite({ params, searchParams }: { param
                       {choisi?.id === l.id ? 'Affiché ci-dessous' : 'Voir le rapport'}
                     </Link>
                   </td>
+                  <td>
+                    <ActionsImport lot={{ id: l.id, type: 'fec', actif: l.actif, statut: l.statut }} actions={actionsImport(l, ctx.niveau)} />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -288,7 +307,7 @@ export default async function PageComptabilite({ params, searchParams }: { param
         ) : (
           <p className="text-texte-doux">Aucune donnée comptable importée pour cet exercice.</p>
         )}
-        <p className="text-sm text-texte-doux">Le lot actif est celui sur lequel portent les contrôles de révision. Les versions précédentes sont conservées.</p>
+        <p className="text-sm text-texte-doux">Le lot actif est celui sur lequel portent les contrôles de révision. Les versions précédentes sont conservées ; un import annulé n’est pas supprimé et peut être rétabli.</p>
       </section>
 
       {choisi ? <Rapport lot={choisi} base={base} detail={detail?.ok ? detail.donnees : null} code={code} /> : null}

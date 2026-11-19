@@ -1,11 +1,12 @@
 import Link from 'next/link';
 
-/** Sous-navigation de l'onglet « Mission » : deux pages, deux URL. */
-export function SousNavigationMission({ dossierId, courant }: { dossierId: string; courant: 'missions' | 'conseils' }) {
+/** Sous-navigation de l'onglet « Mission » : une URL par page. « Rentabilité » n'est proposée qu'au niveau révision (l'API vérifie). */
+export function SousNavigationMission({ dossierId, courant, avecRentabilite }: { dossierId: string; courant: 'missions' | 'conseils' | 'rentabilite'; avecRentabilite: boolean }) {
   const liens = [
     { cle: 'missions', href: `/dossiers/${dossierId}/mission`, libelle: 'Missions, lettres et travaux' },
     { cle: 'conseils', href: `/dossiers/${dossierId}/mission/conseils`, libelle: 'Registre des conseils' },
-  ] as const;
+    ...(avecRentabilite ? [{ cle: 'rentabilite', href: `/dossiers/${dossierId}/mission/rentabilite`, libelle: 'Rentabilité' }] : []),
+  ];
   return (
     <nav aria-label="Pages de l’onglet Mission">
       <ul className="flex flex-wrap gap-2">

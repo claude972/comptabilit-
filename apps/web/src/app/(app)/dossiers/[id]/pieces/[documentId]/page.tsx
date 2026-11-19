@@ -3,14 +3,17 @@ import Link from 'next/link';
 import { BoutonReanalyse, FormulaireCorrection, FormulaireEchange, FormulaireQualification, FormulaireValidation } from '@/components/document/actions';
 import { ChampsExtraits, Echanges, EtiquetteStatutDocument, MotifStatut, Receptions, Verifications, estValidee } from '@/components/document/affichage';
 import { ApercuPiece } from '@/components/document/apercu';
+import { NouvelleVersion } from '@/components/document/nouvelle-version';
+import { BandeauRemplacee, BlocVersions } from '@/components/document/versions';
 import { ErreurAcces } from '@/components/erreurs';
-import { Alerte, Carte, MentionProjet, SousTitre } from '@/components/ui/base';
+import { Alerte, Carte, Etiquette, MentionProjet, SousTitre } from '@/components/ui/base';
 import { LIBELLE_NATURE } from '@/lib/libelles';
 import { formaterDate, formaterTaille } from '@/lib/montants';
 import { tenter } from '@/lib/serveur/api';
 import { estUuid, lireExercices } from '@/lib/serveur/donnees';
 import { contexteDossier } from '@/lib/serveur/dossier';
 import { type DetailDocument, auMoins } from '@/lib/types-api';
+import { LIBELLE_VALIDATION_INVALIDEE, droitNouvelleVersion, statutValidation } from '@/lib/versions';
 
 export const metadata: Metadata = { title: 'Revue d’une pièce' };
 
@@ -23,11 +26,17 @@ export default async function PageRevuePiece({ params }: { params: Promise<{ id:
   const [r, exercices] = await Promise.all([tenter<DetailDocument>(`v1/documents/${documentId}`), lireExercices(id)]);
   if (!r.ok) return <ErreurAcces statut={r.statut} message={r.message} retour={base} />;
   const { document: doc, fichier, extraction, echanges, receptions, niveau } = r.donnees;
+  const versions = r.donnees.versions ?? [];
+  // Une version remplacée est conservée pour mémoire : aucune correction ni validation n'y est proposée (l'API les refuse).
+  const courante = r.donnees.estVersionCourante !== false && !doc.remplacePar;
   // Une pièce d'un autre dossier n'est pas affichée sous ce dossier.
   if (doc.entiteId !== id) return <ErreurAcces statut={404} retour={base} />;
   const collaboration = auMoins(niveau, 'collaboration');
   const revision = auMoins(niveau, 'revision');
   const exercice = exercices.ok ? exercices.donnees.find((x) => x.id === doc.exerciceId) : undefined;
+  const lienVersion = (v: string) => `${base}/pieces/${v}`;
+  const validation = statutValidation(extraction?.statut);
+  const droit = droitNouvelleVersion({ niveau, estVersionCourante: courante, statut: doc.statut, deposeeParMoi: receptions.some((x) => x.parMoi) });
 
   return (
     <div className="space-y-4">
@@ -39,8 +48,16 @@ export default async function PageRevuePiece({ params }: { params: Promise<{ id:
       <div className="flex flex-wrap items-center gap-2" data-testid="entete-piece">
         <h2 className="text-xl font-semibold break-all">{doc.nomOrigine}</h2>
         <EtiquetteStatutDocument statut={doc.statut} />
-        {extraction && !estValidee(extraction) ? <MentionProjet /> : null}
+        {doc.version > 1 || versions.length > 1 ? <Etiquette>Version {doc.version}</Etiquette> : null}
+        {validation === 'validation_invalidee' ? (
+          <Etiquette ton="attention" className="whitespace-normal">
+            {LIBELLE_VALIDATION_INVALIDEE}
+          </Etiquette>
+        ) : extraction && !estValidee(extraction) ? (
+          <MentionProjet />
+        ) : null}
       </div>
+      {!courante ? <BandeauRemplacee versions={versions} remplacePar={doc.remplacePar} lien={lienVersion} /> : null}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <Carte className="space-y-3 self-start xl:sticky xl:top-4">
           <SousTitre>Pièce</SousTitre>
@@ -75,6 +92,8 @@ export default async function PageRevuePiece({ params }: { params: Promise<{ id:
             </p>
           ) : null}
           <Receptions receptions={receptions} />
+          {versions.length ? <BlocVersions versions={versions} courantId={doc.id} lien={lienVersion} /> : null}
+          <NouvelleVersion documentId={doc.id} entiteId={id} canal="ordinateur" lienVersion={`${base}/pieces/`} droit={droit} />
         </Carte>
 
         <div className="space-y-4">
@@ -89,7 +108,11 @@ export default async function PageRevuePiece({ params }: { params: Promise<{ id:
               <Alerte ton="neutre">Aucune extraction disponible : la pièce est en cours d’analyse, ou sa lecture automatique n’a rien donné.</Alerte>
             )}
           </Carte>
-          {collaboration ? (
+          {!courante ? (
+            <Alerte ton="neutre" data-testid="actions-indisponibles">
+              Version conservée pour mémoire : la correction, la qualification et la validation se font sur la version la plus récente.
+            </Alerte>
+          ) : collaboration ? (
             <>
               <Carte>
                 <FormulaireCorrection documentId={doc.id} extraction={extraction} />
@@ -111,7 +134,7 @@ export default async function PageRevuePiece({ params }: { params: Promise<{ id:
             </Carte>
           ) : null}
           {/* Valider / Rejeter : uniquement au niveau « révision » ou plus ; l'API le vérifie de son côté. */}
-          {revision && extraction ? (
+          {revision && extraction && courante ? (
             <Carte data-testid="decision-reviseur">
               <FormulaireValidation documentId={doc.id} version={extraction.version} />
             </Carte>

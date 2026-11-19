@@ -5,7 +5,8 @@
 export type Role = 'administrateur' | 'associe' | 'reviseur' | 'collaborateur' | 'client_deposant' | 'client_lecture' | 'support';
 export type Niveau = 'depot' | 'lecture' | 'collaboration' | 'revision' | 'validation';
 export type NatureDocument = 'facture_achat' | 'facture_vente' | 'avoir' | 'releve_bancaire' | 'lettre_mission' | 'contrat' | 'autre' | 'a_qualifier';
-export type StatutDocument = 'recu' | 'en_analyse' | 'a_completer' | 'a_controler' | 'traite' | 'quarantaine' | 'rejete';
+/** « remplace » : une version plus récente de la pièce a été déposée ; l'ancienne et son fichier sont conservés. */
+export type StatutDocument = 'recu' | 'en_analyse' | 'a_completer' | 'a_controler' | 'traite' | 'quarantaine' | 'rejete' | 'remplace';
 export type StatutLot = 'en_attente' | 'en_cours' | 'termine' | 'termine_avec_erreurs' | 'echec' | 'annule';
 export type StatutDonnees = 'travail_avant_cloture' | 'fec';
 export type StatutControle = 'sans_anomalie' | 'constat' | 'non_applicable' | 'non_realise' | 'erreur';
@@ -54,6 +55,8 @@ export interface VueTerminee extends VueTeleversement {
   recu: true;
   doublonBinaire: boolean;
   dejaImporte: boolean;
+  /** Renseigné quand le dépôt a réellement créé une nouvelle version d'une pièce (jamais pour un doublon binaire). */
+  nouvelleVersion?: { version: number; validationInvalidee: boolean } | null;
 }
 
 export interface DocumentListe {
@@ -61,6 +64,10 @@ export interface DocumentListe {
   nomOrigine: string;
   nature: NatureDocument;
   statut: StatutDocument;
+  /** Numéro de version de la pièce (1 pour un premier dépôt). */
+  version: number;
+  /** Identifiant de la version qui remplace celle-ci, le cas échéant. */
+  remplacePar: string | null;
   motifStatut: string | null;
   creeLe: string;
   majLe: string;
@@ -128,6 +135,8 @@ export interface DetailDocument {
     nomOrigine: string;
     commentaire: string | null;
     version: number;
+    remplacePar: string | null;
+    remplaceDocumentId: string | null;
     nbPages: number | null;
     motifStatut: string | null;
     creeLe: string;
@@ -136,7 +145,23 @@ export interface DetailDocument {
   fichier: { sha256: string; taille: number; typeMimeDetecte: string | null; analyseAntivirus: string } | null;
   receptions: Array<{ id: string; canal: Canal; recuLe: string; doublonBinaire: boolean; parMoi: boolean }>;
   extraction: Extraction | null;
+  /** Chaîne des versions de la pièce, de la plus ancienne à la plus récente (toutes conservées). */
+  versions: VersionDocument[];
+  estVersionCourante: boolean;
   echanges: Echange[];
+}
+export interface VersionDocument {
+  id: string;
+  version: number;
+  statut: StatutDocument;
+  creeLe: string;
+}
+/** Pièce jointe à un conseil, un fait, une lettre ou une écriture : champs nuls si la pièce n'est plus lisible. */
+export interface PieceJointe {
+  id: string;
+  nomOrigine: string | null;
+  statut: StatutDocument | null;
+  version: number | null;
 }
 
 export interface SourceRegle {
@@ -194,6 +219,12 @@ export interface LotImport {
   rapport: RapportFec | null;
   creeLe: string;
   termineLe: string | null;
+  /** Annulation réversible (imports.controller.ts) : rien n'est supprimé, l'import est seulement écarté. */
+  statutAvantAnnulation?: string | null;
+  annulePar?: string | null;
+  annuleLe?: string | null;
+  motifAnnulation?: string | null;
+  campagneId?: string | null;
 }
 
 export interface Execution {

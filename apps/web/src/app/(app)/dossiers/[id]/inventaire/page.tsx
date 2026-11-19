@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { ChoixExercice } from '@/components/dossier';
+import { PiecesJointes } from '@/components/document/pieces-jointes';
 import { ErreurAcces } from '@/components/erreurs';
 import { DeciderEcriture, ExporterEcritures, ProposerEcriture } from '@/components/inventaire/actions';
 import { Alerte, Carte, Etiquette, MentionProjet, SousTitre, Tableau, type Ton } from '@/components/ui/base';
@@ -93,14 +94,14 @@ export default async function PageInventaire({ params, searchParams }: { params:
                 <dt className="text-texte-doux">Proposée</dt>
                 <dd>
                   le {formaterHorodatage(e.creeLe)}
-                  {e.proposeePar === moiId ? ' par vous' : ''} · version des données {e.versionDonnees}
+                  {e.proposeePar === moiId ? ' par vous' : e.proposeeParNom ? ` par ${e.proposeeParNom}` : ''} · version des données {e.versionDonnees}
                 </dd>
                 {e.decideeLe ? (
                   <>
                     <dt className="text-texte-doux">Décision</dt>
                     <dd className="break-words">
                       le {formaterHorodatage(e.decideeLe)}
-                      {e.decideePar === moiId ? ' par vous' : ''}
+                      {e.decideePar === moiId ? ' par vous' : e.decideeParNom ? ` par ${e.decideeParNom}` : ''}
                       {e.motifDecision ? ` — motif : ${e.motifDecision}` : ''}
                     </dd>
                   </>
@@ -112,6 +113,7 @@ export default async function PageInventaire({ params, searchParams }: { params:
                   </>
                 ) : null}
               </dl>
+              <PiecesJointes pieces={e.piecesJointes} dossierId={id} titre="Pièces justificatives" />
               {e.statut === 'proposee' ? (
                 !revision ? (
                   <p className="text-sm text-texte-doux">La décision est réservée au niveau « Révision » sur ce dossier.</p>
@@ -129,7 +131,7 @@ export default async function PageInventaire({ params, searchParams }: { params:
         {collaboration ? (
           <Carte className="space-y-3">
             <SousTitre className="text-base">Proposer une écriture d’inventaire</SousTitre>
-            <ProposerEcriture exerciceId={exercice.id} debut={exercice.debut} fin={exercice.fin} />
+            <ProposerEcriture exerciceId={exercice.id} dossierId={id} debut={exercice.debut} fin={exercice.fin} />
           </Carte>
         ) : null}
       </section>

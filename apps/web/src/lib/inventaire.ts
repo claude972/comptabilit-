@@ -2,6 +2,7 @@
 import type { Balance, LigneBalance } from './analyse';
 import { difference, normaliserMontantSaisi, totaliserSaisies } from './centimes';
 import type { Exercice } from './types-api';
+import type { PieceJointe } from './types-api';
 
 export type StatutEcriture = 'proposee' | 'approuvee' | 'rejetee' | 'exportee';
 export interface LigneInventaire {
@@ -24,6 +25,10 @@ export interface EcritureInventaire {
   statut: StatutEcriture;
   versionDonnees: number;
   proposeePar: string;
+  /** Nom de l'auteur de la proposition, et de la personne qui a décidé (null si inconnu). */
+  proposeeParNom?: string | null;
+  decideeParNom?: string | null;
+  piecesJointes?: PieceJointe[];
   decideePar: string | null;
   decideeLe: string | null;
   motifDecision: string | null;

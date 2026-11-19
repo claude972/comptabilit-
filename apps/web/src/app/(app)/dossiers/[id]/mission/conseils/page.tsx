@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { PieceJointeAffichee, PiecesJointes } from '@/components/document/pieces-jointes';
 import { ErreurAcces } from '@/components/erreurs';
 import { ActionConfirmee } from '@/components/mission/actions';
 import { ConsignerFait, RedigerConseil } from '@/components/mission/conseils';
@@ -30,7 +31,7 @@ export default async function PageConseils({ params }: { params: Promise<{ id: s
 
   return (
     <div className="space-y-6">
-      <SousNavigationMission dossierId={id} courant="conseils" />
+      <SousNavigationMission dossierId={id} courant="conseils" avecRentabilite={auMoins(ctx.niveau, 'revision')} />
       <Alerte ton="attention" data-testid="mention-registre">
         <strong>{MENTION_REGISTRE}</strong> Valider un conseil et autoriser son envoi sont deux étapes distinctes, toutes deux réservées au niveau « Validation ». L’envoi est fait par
         vous, hors de Comtaple ; vous consignez ensuite les faits établis (envoi, remise, réception, lecture), chacun avec son justificatif.
@@ -93,6 +94,7 @@ export default async function PageConseils({ params }: { params: Promise<{ id: s
               {c.envoiAutoriseLe ? ` · envoi autorisé le ${formaterHorodatage(c.envoiAutoriseLe)}` : ''}
             </p>
             <p className="rounded-lg bg-surface-2 p-3 break-words whitespace-pre-wrap" data-testid="contenu-conseil">{c.contenu}</p>
+            <PiecesJointes pieces={c.piecesJointes} dossierId={id} />
             {c.evenements?.length ? (
               <div>
                 <p className="font-medium">Faits consignés</p>
@@ -100,6 +102,13 @@ export default async function PageConseils({ params }: { params: Promise<{ id: s
                   {c.evenements.map((e) => (
                     <li key={e.id} className="break-words">
                       {LIBELLE_FAIT[e.type] ?? e.type} le {formaterHorodatage(e.dateEvenement)} — canal : {e.canal} — justificatif : {e.justificatif}
+                      {e.justificatifDocument ? (
+                        <span className="block" data-testid="justificatif-piece">
+                          Pièce justificative : <PieceJointeAffichee piece={e.justificatifDocument} dossierId={id} />
+                        </span>
+                      ) : e.justificatifDocumentId ? (
+                        <span className="block text-texte-doux">Pièce justificative jointe, non consultable.</span>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
@@ -107,7 +116,7 @@ export default async function PageConseils({ params }: { params: Promise<{ id: s
             ) : null}
             {c.statut === 'projet' ? (
               <>
-                {collaboration ? <RedigerConseil dossierId={id} missions={listeMissions} conseil={{ id: c.id, dateConseil: c.dateConseil, objet: c.objet, contenu: c.contenu, destinataire: c.destinataire, missionId: c.missionId, pieces: c.pieces ?? [] }} /> : null}
+                {collaboration ? <RedigerConseil dossierId={id} missions={listeMissions} conseil={{ id: c.id, dateConseil: c.dateConseil, objet: c.objet, contenu: c.contenu, destinataire: c.destinataire, missionId: c.missionId, piecesJointes: c.piecesJointes ?? (c.pieces ?? []).map((p) => ({ id: p, nomOrigine: null, statut: null, version: null })) }} /> : null}
                 {validation ? (
                   <ActionConfirmee chemin={`v1/conseils/${c.id}/validation`} libelle="Valider ce conseil" confirmation="Confirmer la validation" explication="Étape 1 sur 2. Un conseil validé ne se modifie plus (nouvelle version). La validation n’autorise pas encore l’envoi." succes="Conseil validé. L’envoi n’est pas encore autorisé." />
                 ) : (
@@ -124,7 +133,7 @@ export default async function PageConseils({ params }: { params: Promise<{ id: s
             ) : null}
             {c.statut === 'envoi_autorise' && collaboration ? (
               possibles.length ? (
-                <ConsignerFait key={possibles.join('|')} conseilId={c.id} possibles={possibles} />
+                <ConsignerFait key={possibles.join('|')} conseilId={c.id} dossierId={id} possibles={possibles} />
               ) : (
                 <p className="text-sm text-texte-doux">Les quatre faits sont consignés pour ce conseil.</p>
               )

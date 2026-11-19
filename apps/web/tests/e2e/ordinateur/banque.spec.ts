@@ -107,7 +107,17 @@ test.describe('banque — collaboratrice (collaboration)', () => {
     const profil = csv.locator('form[data-formulaire="profil-csv"]');
     await expect(profil).toContainText('C’est vous qui confirmez le profil de colonnes, pas le logiciel');
     await expect(profil.getByTestId('raisons-profil')).toContainText('Séparateur « ; »');
-    await expect(profil).toContainText('L’aperçu des premières lignes n’est pas disponible');
+    // Aperçu : lignes brutes en texte (jamais interprétées), découpage selon le séparateur plausible, colonnes numérotées.
+    const apercu = profil.getByTestId('apercu-csv');
+    await expect(apercu.getByTestId('apercu-lignes-brutes')).toContainText('Quand;Quoi;Combien');
+    await expect(apercu.getByTestId('apercu-lignes-brutes')).toContainText('Abonnement <b>logiciel</b>;-12,50');
+    await expect(apercu.locator('b')).toHaveCount(0);
+    await expect(apercu.getByRole('columnheader')).toHaveText(['Colonne 1Quand', 'Colonne 2Quoi', 'Colonne 3Combien']);
+    await expect(apercu.getByRole('cell', { name: '-12,50' })).toBeVisible();
+    await expect(apercu.getByTestId('apercu-tronque')).toHaveCount(0);
+    await expect(profil.getByTestId('profil-propose')).toHaveCount(0); // aucune proposition : rien n'est pré-rempli
+    await expect(profil.getByLabel('Colonne de la date')).toHaveValue('');
+    await expect(profil.getByLabel('Séparateur', { exact: true }).getByRole('option')).toHaveText(['Point-virgule ( ; )']); // seul séparateur plausible d'après l'API
     await expect(profil.getByLabel('Séparateur', { exact: true })).toHaveValue(';');
     await profil.getByRole('button', { name: 'Je confirme ce profil et relance la lecture' }).click();
     await expect(profil.getByRole('alert')).toContainText('Indiquez la colonne « date »');
@@ -263,5 +273,52 @@ test.describe('banque — non habilité', () => {
     await expect(p.getByTestId('erreur-403')).toBeVisible();
     expect(await p.evaluate(async (id) => (await fetch(`/api/bff/v1/dossiers/${id}/banque`)).status, ID.dupain)).toBe(403);
     await client.close();
+  });
+});
+
+test.describe('aperçu d’un CSV bancaire — proposition de profil et aperçu indisponible', () => {
+  test.use({ storageState: etatDe('chloe') });
+  const csv = 'Quand;Quoi;Combien\n05/02/2024;Abonnement;-12,50\n06/02/2024;Remise;100,00\n';
+  const deposer = async (page: Page) => {
+    await page.goto(banque);
+    await page.getByTestId('entree-releve').setInputFiles(pieceJointe('export.csv', csv, 'text/csv'));
+    await expect(page.getByTestId('imports-releves').getByRole('listitem').first()).toContainText('Import en attente de votre confirmation', { timeout: 20_000 });
+  };
+
+  test('un profil proposé pré-remplit le formulaire comme une proposition à confirmer ; un fichier tronqué est signalé', async ({ page }) => {
+    // Réponse d'aperçu fournie par le test (même forme que l'API) : le simulateur, lui, ne propose rien pour ce fichier.
+    // (`route.fetch` n'est pas utilisable ici : il ignore la règle de résolution qui envoie localhost:3000 vers le serveur de test.)
+    await page.route('**/api/bff/v1/imports/*/apercu', (route) =>
+      route.fulfill({
+        json: {
+          format: 'csv', encodage: 'utf-8', tronque: true, lignes: csv.trim().split('\n'),
+          separateurs: [{ separateur: ';', nbColonnes: 3, cellules: csv.trim().split('\n').map((l) => l.split(';')) }],
+          profilPropose: { separateur: ';', lignesEntete: 1, colonnes: { date: 'Quand', libelle: 1, montant: 'Combien' }, formatDate: 'JJ/MM/AAAA', decimale: ',' },
+          raisons: ['Séparateur « ; » retenu.'],
+        },
+      }),
+    );
+    await deposer(page);
+    const profil = page.locator('form[data-formulaire="profil-csv"]');
+    await expect(profil.getByTestId('profil-propose')).toContainText('Proposition du logiciel, à vérifier');
+    await expect(profil.getByTestId('profil-propose')).toContainText('Rien n’est appliqué tant que vous ne l’avez pas confirmé');
+    await expect(profil.getByTestId('apercu-tronque')).toContainText('Fichier tronqué pour l’aperçu');
+    await expect(profil.getByLabel('Colonne de la date')).toHaveValue('Quand');
+    await expect(profil.getByLabel('Colonne du libellé')).toHaveValue('2'); // indice 1 de l'API → position 2
+    await expect(profil.getByLabel('Colonne du montant')).toHaveValue('Combien');
+    expect((await journal()).some((e) => e.chemin.endsWith('/relancer'))).toBe(false); // rien n'est envoyé sans confirmation
+    await profil.getByLabel('Colonne du libellé').fill('Quoi');
+    await expect(profil.getByTestId('profil-propose')).toContainText('vous l’avez modifié depuis');
+    await profil.getByRole('button', { name: 'Je confirme ce profil et relance la lecture' }).click();
+    await expect(page.getByTestId('imports-releves').getByRole('listitem').first()).toContainText('2 mouvements lus', { timeout: 20_000 });
+  });
+
+  test('aperçu refusé par le serveur : message clair, le formulaire reste utilisable', async ({ page }) => {
+    await page.route('**/api/bff/v1/imports/*/apercu', (route) => route.fulfill({ status: 404, json: { message: 'Import de relevé introuvable' } }));
+    await deposer(page);
+    const profil = page.locator('form[data-formulaire="profil-csv"]');
+    await expect(profil.getByTestId('apercu-csv-indisponible')).toContainText('Import de relevé introuvable');
+    await expect(profil.getByLabel('Séparateur', { exact: true }).getByRole('option')).toHaveCount(3);
+    await expect(profil.getByRole('button', { name: 'Je confirme ce profil et relance la lecture' })).toBeEnabled();
   });
 });

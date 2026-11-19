@@ -44,8 +44,10 @@ export const LIBELLE_STATUT_DOCUMENT: Record<StatutDocument, string> = {
   traite: 'Traité',
   quarantaine: 'En quarantaine',
   rejete: 'Rejeté',
+  remplace: 'Remplacée',
 };
-export const ORDRE_STATUTS_DOCUMENT: readonly StatutDocument[] = ['a_completer', 'a_controler', 'en_analyse', 'recu', 'quarantaine', 'rejete', 'traite'];
+/** Ordre d'urgence dans la file. Les versions remplacées, conservées pour mémoire, viennent en dernier. */
+export const ORDRE_STATUTS_DOCUMENT: readonly StatutDocument[] = ['a_completer', 'a_controler', 'en_analyse', 'recu', 'quarantaine', 'rejete', 'traite', 'remplace'];
 export const LIBELLE_CANAL: Record<Canal, string> = { telephone: 'Téléphone', ordinateur: 'Ordinateur', mail: 'Courriel', import_lot: 'Import par lot' };
 export const LIBELLE_METHODE: Record<MethodeChamp, string> = {
   structure: 'Donnée structurée',

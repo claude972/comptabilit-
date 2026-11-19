@@ -18,6 +18,10 @@ export interface Ouverture {
   commentaire?: string;
   exerciceId?: string;
   statutDonnees?: StatutDonnees;
+  /** Pièce : ce dépôt est une nouvelle version du document indiqué. */
+  remplaceDocumentId?: string;
+  /** Import comptable ou bancaire : campagne d'import à laquelle rattacher le lot. */
+  campagneId?: string;
 }
 
 /** Erreur HTTP renvoyée par l'API (le corps JSON est conservé : il porte `octetsRecus` en cas de 409). */

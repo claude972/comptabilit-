@@ -27,6 +27,11 @@ export interface RapportReleve {
 }
 export interface LotReleve {
   id: string;
+  actif?: boolean;
+  statutAvantAnnulation?: string | null;
+  annulePar?: string | null;
+  annuleLe?: string | null;
+  motifAnnulation?: string | null;
   statut: StatutLot;
   progression: number;
   rapport: RapportReleve | null;
@@ -288,4 +293,72 @@ export function synthesePropositions(propositions: readonly Pick<Proposition, 'r
   const statuts = { propose: 0, valide: 0, rejete: 0 };
   for (const p of propositions) if (p.statut in statuts) statuts[p.statut]++;
   return { parRegle: ordre.map((id) => ({ id, niveau: regles.find((r) => r.id === id)?.niveau ?? null, nombre: parRegle.get(id)! })), statuts, total: propositions.length };
+}
+
+// ───────────── Aperçu d'un relevé importé (`GET v1/imports/:id/apercu`) ─────────────
+/** Début du fichier original. Lignes et cellules sont un contenu NON FIABLE : texte brut uniquement. */
+export interface ApercuReleve {
+  format: string;
+  encodage: string | null;
+  /** Seul le début du fichier a été lu. */
+  tronque: boolean;
+  lignes: string[];
+  /** Séparateurs plausibles (même nombre de colonnes sur les premières lignes), avec le découpage correspondant. */
+  separateurs: Array<{ separateur: string; nbColonnes: number; cellules: string[][] }>;
+  /** Proposition du moteur, jamais appliquée d'office : c'est l'utilisateur qui confirme. */
+  profilPropose: Record<string, unknown> | null;
+  raisons: string[];
+}
+
+const versChoix = (sep: unknown): FormulaireProfil['separateur'] | null => (sep === '\t' ? 'tab' : sep === ';' || sep === ',' ? sep : null);
+export const LIBELLE_SEPARATEUR: Record<FormulaireProfil['separateur'], string> = { ';': 'Point-virgule ( ; )', ',': 'Virgule ( , )', tab: 'Tabulation' };
+
+/** Séparateurs à proposer dans le formulaire : ceux que l'API juge plausibles ; à défaut, les trois connus. */
+export function separateursProposes(apercu: Pick<ApercuReleve, 'separateurs'> | null): FormulaireProfil['separateur'][] {
+  const plausibles = (apercu?.separateurs ?? []).map((x) => versChoix(x.separateur)).filter((x): x is FormulaireProfil['separateur'] => x !== null);
+  return plausibles.length ? [...new Set(plausibles)] : [';', ',', 'tab'];
+}
+
+/** Découpage des premières lignes selon le séparateur choisi, tel que l'API l'a calculé ; null si elle ne le propose pas. */
+export function decoupageSelon(apercu: Pick<ApercuReleve, 'separateurs'>, choix: FormulaireProfil['separateur']): { nbColonnes: number; cellules: string[][] } | null {
+  const x = apercu.separateurs.find((y) => versChoix(y.separateur) === choix);
+  return x ? { nbColonnes: x.nbColonnes, cellules: x.cellules } : null;
+}
+
+/** En-têtes numérotés à partir de 1 ; le nom vient de la dernière ligne d'en-tête, s'il y en a une dans l'aperçu. */
+export function entetesNumerotes(decoupage: { nbColonnes: number; cellules: string[][] }, lignesEntete: number): Array<{ position: number; nom: string | null }> {
+  const ligne = lignesEntete >= 1 ? decoupage.cellules[lignesEntete - 1] : undefined;
+  return Array.from({ length: decoupage.nbColonnes }, (_, i) => ({ position: i + 1, nom: ligne?.[i]?.trim() || null }));
+}
+
+/** Colonne renvoyée par l'API (en-tête, ou indice à partir de 0) → saisie du formulaire (en-tête, ou position à partir de 1). */
+function saisieColonne(v: unknown): string {
+  if (typeof v === 'number' && Number.isInteger(v) && v >= 0) return String(v + 1);
+  return typeof v === 'string' ? v : '';
+}
+
+/**
+ * Pré-remplissage à partir de `profilPropose`. Ce n'est qu'une proposition : rien n'est envoyé tant que l'utilisateur
+ * n'a pas confirmé. Une valeur absente ou inattendue laisse la valeur de départ du formulaire.
+ */
+export function profilDepuisProposition(propose: Record<string, unknown> | null, depart: FormulaireProfil): FormulaireProfil {
+  if (!propose) return depart;
+  const colonnes = (typeof propose.colonnes === 'object' && propose.colonnes !== null ? propose.colonnes : {}) as Record<string, unknown>;
+  const deuxColonnes = colonnes.montant === undefined && colonnes.debit !== undefined && colonnes.credit !== undefined;
+  const formatDate = FORMATS_DATE.find((x) => x === propose.formatDate);
+  return {
+    ...depart,
+    separateur: versChoix(propose.separateur) ?? depart.separateur,
+    lignesEntete: typeof propose.lignesEntete === 'number' && Number.isInteger(propose.lignesEntete) && propose.lignesEntete >= 0 ? String(propose.lignesEntete) : depart.lignesEntete,
+    date: saisieColonne(colonnes.date),
+    libelle: saisieColonne(colonnes.libelle),
+    mode: deuxColonnes ? 'debit_credit' : 'montant',
+    montant: deuxColonnes ? '' : saisieColonne(colonnes.montant),
+    debit: deuxColonnes ? saisieColonne(colonnes.debit) : '',
+    credit: deuxColonnes ? saisieColonne(colonnes.credit) : '',
+    reference: saisieColonne(colonnes.reference),
+    formatDate: formatDate ?? depart.formatDate,
+    decimale: propose.decimale === '.' || propose.decimale === ',' ? propose.decimale : depart.decimale,
+    iban: typeof propose.iban === 'string' ? propose.iban : depart.iban,
+  };
 }

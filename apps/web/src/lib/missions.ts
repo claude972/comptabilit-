@@ -1,5 +1,6 @@
 /** Missions, lettres, travaux et registre des conseils : formes de `missions.controller.ts` et `conseils.controller.ts`, logique pure. */
 import { normaliserMontantSaisi } from './centimes';
+import type { PieceJointe } from './types-api';
 
 export interface Prestation {
   code: string;
@@ -30,6 +31,8 @@ export interface Lettre {
   valideePar: string | null;
   valideeLe: string | null;
   creeLe: string;
+  /** Lettre signée jointe (pièce du dossier) ; null si aucune, ou si la pièce n'est plus lisible. */
+  document?: PieceJointe | null;
 }
 export interface Mission {
   id: string;
@@ -141,7 +144,7 @@ export function lettreInitiale(prestations: readonly Prestation[], modele?: Lett
 const lignes = (v: string) => v.split('\n').map((x) => x.trim()).filter(Boolean);
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** Corps de `POST v1/missions/:id/lettres`. Les honoraires restent des chaînes décimales ; un montant vide vaut « non renseigné » (null). */
-export function lettreDepuis(f: SaisieLettre): { ok: true; corps: { dateEffet: string; contenu: ContenuLettre; avenantDe?: string } } | { ok: false; erreurs: string[] } {
+export function lettreDepuis(f: SaisieLettre): { ok: true; corps: { dateEffet: string; contenu: ContenuLettre; avenantDe?: string; documentId?: string } } | { ok: false; erreurs: string[] } {
   const erreurs: string[] = [];
   if (!DATE.test(f.dateEffet)) erreurs.push('Indiquez la date d’effet.');
   const perimetre = Object.entries(f.prestations).filter(([, v]) => v.cochee).map(([prestation, v]) => ({ prestation, ...(v.precision.trim() ? { precision: v.precision.trim() } : {}) }));
@@ -188,6 +191,8 @@ export interface EvenementConseil {
   canal: string;
   justificatif: string;
   justificatifDocumentId: string | null;
+  /** Pièce du dossier qui établit le fait, le cas échéant. */
+  justificatifDocument?: PieceJointe | null;
   creeLe: string;
 }
 export interface Conseil {
@@ -201,6 +206,7 @@ export interface Conseil {
   contenu: string;
   destinataire: string;
   pieces: string[];
+  piecesJointes?: PieceJointe[];
   version: number;
   remplaceConseilId: string | null;
   statut: StatutConseil;

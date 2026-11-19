@@ -46,6 +46,8 @@ export default async function MiseEnPage({ children }: { children: ReactNode }) 
         { href: '/reference/controles', libelle: 'Catalogue des contrôles' },
         // Règles du cabinet et état de la veille : membres du cabinet hors clients (l'API refuse les autres rôles).
         ...(role !== 'client_lecture' ? [{ href: '/regles', libelle: 'Règles du cabinet' }, { href: '/veille/sources', libelle: 'Veille' }] : []),
+        // Campagnes d'import (plusieurs dossiers) : membres du cabinet hors clients (l'API refuse les autres rôles).
+        ...(role !== 'client_lecture' ? [{ href: '/campagnes', libelle: 'Campagnes d’import' }] : []),
         ...(estGestionnaire(role) ? [{ href: '/administration', libelle: 'Administration' }] : []),
         // Connexions de messagerie : gestionnaires du cabinet uniquement (l'API refuse les autres rôles).
         ...(estGestionnaire(role) ? [{ href: '/messagerie', libelle: 'Messagerie' }] : []),

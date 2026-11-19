@@ -4,11 +4,13 @@ import { EtiquetteStatutDocument } from '@/components/document/affichage';
 import { ErreurAcces } from '@/components/erreurs';
 import { Alerte, Carte, Etiquette, SousTitre, Titre } from '@/components/ui/base';
 import { styleBouton } from '@/components/ui/bouton';
+import { cn } from '@/lib/cn';
 import { LIBELLE_NATURE } from '@/lib/libelles';
 import { formaterHorodatage } from '@/lib/montants';
 import { tenter } from '@/lib/serveur/api';
 import { estDeposant, lireDossiers, lireMoi, parametre } from '@/lib/serveur/donnees';
 import type { DocumentListe, ListeDocuments } from '@/lib/types-api';
+import { estRemplacee, sansRemplacees } from '@/lib/versions';
 
 export const metadata: Metadata = { title: 'Mes dépôts' };
 
@@ -16,12 +18,13 @@ type Ligne = DocumentListe & { dossier: string };
 
 function Piece({ d }: { d: Ligne }) {
   return (
-    <li className="rounded-lg border border-bordure bg-surface">
+    <li className={cn('rounded-lg border border-bordure bg-surface', estRemplacee(d) && 'border-dashed bg-surface-2')} data-version={d.version} data-remplacee={estRemplacee(d) ? 'oui' : undefined}>
       <Link href={`/depots/${d.id}`} prefetch={false} className="block min-h-11 space-y-1 p-3 text-texte no-underline hover:bg-surface-2">
         <span className="flex flex-wrap items-center gap-2">
           <EtiquetteStatutDocument statut={d.statut} />
           {d.demandesOuvertes > 0 ? <Etiquette ton="attention">Complément demandé</Etiquette> : null}
-          <span className="font-medium break-all">{d.nomOrigine}</span>
+          <span className={cn('font-medium break-all', estRemplacee(d) && 'text-texte-doux line-through')}>{d.nomOrigine}</span>
+          {d.version > 1 ? <Etiquette>Version {d.version}</Etiquette> : null}
         </span>
         <span className="block text-sm text-texte-doux">
           {d.dossier} · {LIBELLE_NATURE[d.nature] ?? d.nature} · déposé le {formaterHorodatage(d.creeLe)}
@@ -44,13 +47,15 @@ export default async function PageDepots({ searchParams }: { searchParams: Promi
   const mesDepots = !deposant && parametre(sp.deposant) === 'moi';
   const listes = await Promise.all(autorises.map(async (d) => ({ dossier: d, liste: await tenter<ListeDocuments>(`v1/documents?entiteId=${d.id}&page=${page}${mesDepots ? '&deposant=moi' : ''}`) })));
   const suite = listes.some((l) => l.liste.ok && l.liste.donnees.suite);
-  const lien = (p: number, moi = mesDepots) => `/depots?page=${p}${moi ? '&deposant=moi' : ''}`;
+  // Les versions remplacées sont masquées par défaut (elles restent accessibles depuis la version qui les remplace).
+  const masquer = parametre(sp.remplacees) !== 'afficher';
+  const lien = (p: number, moi = mesDepots, masque = masquer) => `/depots?page=${p}${moi ? '&deposant=moi' : ''}${masque ? '' : '&remplacees=afficher'}`;
   const indisponibles = listes.filter((l) => !l.liste.ok).map((l) => l.dossier.raisonSociale);
   const pieces: Ligne[] = listes
-    .flatMap((l) => (l.liste.ok ? l.liste.donnees.documents.map((doc) => ({ ...doc, dossier: l.dossier.raisonSociale })) : []))
+    .flatMap((l) => (l.liste.ok ? sansRemplacees(l.liste.donnees.documents, masquer).map((doc) => ({ ...doc, dossier: l.dossier.raisonSociale })) : []))
     .sort((a, b) => b.creeLe.localeCompare(a.creeLe));
   // Les demandes de complément passent en premier : elles attendent une action du déposant.
-  const aCompleter = pieces.filter((p) => p.demandesOuvertes > 0 || p.statut === 'a_completer');
+  const aCompleter = pieces.filter((p) => !estRemplacee(p) && (p.demandesOuvertes > 0 || p.statut === 'a_completer'));
   const autres = pieces.filter((p) => !aCompleter.includes(p));
 
   return (
@@ -72,6 +77,12 @@ export default async function PageDepots({ searchParams }: { searchParams: Promi
           <span className="text-sm text-texte-doux">Pièces des dossiers sur lesquels vous êtes habilité.</span>
         </nav>
       ) : null}
+      <p className="flex flex-wrap items-center gap-2 text-sm" data-testid="filtre-remplacees">
+        <Link href={lien(1, mesDepots, !masquer)} prefetch={false} aria-current={masquer ? 'true' : undefined} className={styleBouton({ variante: masquer ? 'secondaire' : 'contour' })}>
+          Masquer les versions remplacées
+        </Link>
+        <span className="text-texte-doux">{masquer ? 'Filtre actif : seules les versions courantes sont listées.' : 'Les versions remplacées sont affichées, pour mémoire.'}</span>
+      </p>
       {indisponibles.length ? (
         <Alerte ton="attention" role="alert">
           Les pièces de certains dossiers n’ont pas pu être chargées : {indisponibles.join(', ')}.

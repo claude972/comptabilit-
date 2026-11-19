@@ -2,6 +2,7 @@ import { CircleAlert, CircleCheck, CircleHelp } from 'lucide-react';
 import { Alerte, Etiquette, MentionProjet, SousTitre, Tableau, type Ton } from '@/components/ui/base';
 import { CHAMPS_DATE, CHAMPS_MONTANT, LIBELLE_CANAL, LIBELLE_CHAMP, LIBELLE_METHODE, LIBELLE_STATUT_DOCUMENT } from '@/lib/libelles';
 import { formaterDate, formaterHorodatage, formaterMontant } from '@/lib/montants';
+import { LIBELLE_VALIDATION_INVALIDEE, statutValidation } from '@/lib/versions';
 import { CHAMPS_FACTURE, type DetailDocument, type Echange, type Extraction, type NomChamp, type StatutDocument, type Verification } from '@/lib/types-api';
 
 const TON_STATUT: Record<StatutDocument, Ton> = {
@@ -12,6 +13,7 @@ const TON_STATUT: Record<StatutDocument, Ton> = {
   traite: 'succes',
   quarantaine: 'danger',
   rejete: 'danger',
+  remplace: 'vide',
 };
 
 export function EtiquetteStatutDocument({ statut }: { statut: StatutDocument }) {
@@ -33,15 +35,28 @@ function valeurAffichee(nom: NomChamp, valeur: string): string {
 /** Champs extraits, avec pour chacun la méthode, la confiance et (si demandé) la preuve : page et extrait de texte. */
 export function ChampsExtraits({ extraction, avecPreuves }: { extraction: Extraction; avecPreuves: boolean }) {
   const valide = estValidee(extraction);
+  const invalidee = statutValidation(extraction.statut) === 'validation_invalidee';
   const tva = extraction.champs.ventilationTva ?? [];
   return (
     <section className="space-y-2" aria-labelledby="titre-champs">
       <div className="flex flex-wrap items-center gap-2">
         <SousTitre id="titre-champs">Champs extraits</SousTitre>
-        {valide ? <Etiquette ton="succes">Validé par un réviseur (version {extraction.version})</Etiquette> : <MentionProjet>Extraction automatique — projet</MentionProjet>}
+        {valide ? (
+          <Etiquette ton="succes">Validé par un réviseur (version {extraction.version})</Etiquette>
+        ) : invalidee ? (
+          <Etiquette ton="attention" className="whitespace-normal" data-testid="validation-invalidee">
+            {LIBELLE_VALIDATION_INVALIDEE}
+          </Etiquette>
+        ) : (
+          <MentionProjet>Extraction automatique — projet</MentionProjet>
+        )}
         <span className="text-sm text-texte-doux">Version {extraction.version}</span>
       </div>
-      {!valide ? (
+      {invalidee ? (
+        <p className="text-sm">
+          Ces valeurs avaient été validées pour cette version. Une nouvelle version de la pièce est arrivée depuis : cette validation ne vaut pas pour elle.
+        </p>
+      ) : !valide ? (
         <p className="text-sm text-texte-doux">
           Ces valeurs sont une proposition {extraction.methode === 'saisie_humaine' ? 'issue d’une saisie' : 'issue d’une lecture automatique'} de la pièce. Elles ne sont pas validées.
         </p>

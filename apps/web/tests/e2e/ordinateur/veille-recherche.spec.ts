@@ -131,7 +131,7 @@ test.describe('recherche dans un dossier', () => {
     // Constats : lien vers le constat.
     await page.goto(`/dossiers/${ID.dupain}/recherche?q=caisse`);
     const constat = page.locator('[data-groupe="constats"] [data-resultat-constat]');
-    await expect(constat).toContainText('TRE_001');
+    await expect(constat).toContainText('TRE-001');
     await constat.getByRole('link', { name: /Caisse créditrice/ }).click();
     await expect(page).toHaveURL(/\/revision\/constats\/[0-9a-f-]{36}$/);
     await expect(page.getByRole('heading', { name: 'Explication' })).toBeVisible();

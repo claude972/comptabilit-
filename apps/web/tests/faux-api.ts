@@ -194,10 +194,10 @@ function suiteInitiale(): Suite {
 let suite: Suite = suiteInitiale();
 /** Paramètres par défaut fictifs des contrôles du simulateur (le catalogue réel est dans @comtaple/core). */
 const PARAMETRES_DEFAUT: Record<string, Enr> = {
-  GEN_005: { seuil: '10000.00' },
-  TIE_001: { prefixesComptes: ['411'], seuil: '0.00', maxConstats: 200, inclureComptesSoldes: false },
-  TIE_002: { prefixesComptes: ['401'], seuil: '0.00', maxConstats: 200 },
-  TRE_001: { prefixesComptes: ['53'], seuil: '0.00', maxConstats: 200 },
+  'GEN-005': { seuil: '10000.00' },
+  'TIE-001': { prefixesComptes: ['411'], seuil: '0.00', maxConstats: 200, inclureComptesSoldes: false },
+  'TIE-002': { prefixesComptes: ['401'], seuil: '0.00', maxConstats: 200 },
+  'TRE-001': { prefixesComptes: ['53'], seuil: '0.00', maxConstats: 200 },
 };
 /** Règle approuvée applicable à un contrôle pour un dossier : préférence du cabinet, surchargée par l'exception du dossier. */
 function regleApplicable(entiteId: string, controleId: string): { regle: Enr; portee: 'cabinet' | 'dossier' } | null {
@@ -252,32 +252,32 @@ const SOURCE_CAISSE = {
   periodeApplication: 'Règlement ANC n° 2014-03, version consolidée au 1er janvier 2026.',
 };
 const CATALOGUE = [
-  ['GEN_001', 'general', 'Équilibre des écritures', SOURCE_INTERNE],
-  ['GEN_002', 'general', 'Comptes d’attente non soldés', SOURCE_INTERNE],
-  ['GEN_003', 'general', 'Écritures hors exercice', SOURCE_INTERNE],
-  ['GEN_004', 'general', 'Doublons d’écritures', SOURCE_INTERNE],
-  ['GEN_005', 'general', 'Écritures à montant rond élevé', SOURCE_INTERNE],
-  ['TRE_001', 'tresorerie', 'Caisse créditrice', SOURCE_CAISSE],
-  ['TRE_002', 'tresorerie', 'Banques créditrices non reclassées', SOURCE_INTERNE],
-  ['TIE_001', 'clients', 'Clients créditeurs', SOURCE_INTERNE],
-  ['TIE_002', 'fournisseurs', 'Fournisseurs débiteurs', SOURCE_INTERNE],
-  ['TIE_003', 'clients', 'Créances anciennes non lettrées', SOURCE_INTERNE],
-  ['CAP_001', 'capitaux_propres', 'Comptes courants d’associés débiteurs', SOURCE_INTERNE],
-  ['TVA_001', 'tva', 'Cohérence TVA collectée / chiffre d’affaires', SOURCE_INTERNE],
+  ['GEN-001', 'general', 'Équilibre des écritures', SOURCE_INTERNE],
+  ['GEN-002', 'general', 'Comptes d’attente non soldés', SOURCE_INTERNE],
+  ['GEN-003', 'general', 'Écritures hors exercice', SOURCE_INTERNE],
+  ['GEN-004', 'general', 'Doublons d’écritures', SOURCE_INTERNE],
+  ['GEN-005', 'general', 'Écritures à montant rond élevé', SOURCE_INTERNE],
+  ['TRE-001', 'tresorerie', 'Caisse créditrice', SOURCE_CAISSE],
+  ['TRE-002', 'tresorerie', 'Banques créditrices non reclassées', SOURCE_INTERNE],
+  ['TIE-001', 'clients', 'Clients créditeurs', SOURCE_INTERNE],
+  ['TIE-002', 'fournisseurs', 'Fournisseurs débiteurs', SOURCE_INTERNE],
+  ['TIE-003', 'clients', 'Créances anciennes non lettrées', SOURCE_INTERNE],
+  ['CAP-001', 'capitaux_propres', 'Comptes courants d’associés débiteurs', SOURCE_INTERNE],
+  ['TVA-001', 'tva', 'Cohérence TVA collectée / chiffre d’affaires', SOURCE_INTERNE],
 ] as const;
 const STATUTS_FIXES: Record<string, [string, string | null]> = {
-  GEN_001: ['sans_anomalie', null],
-  GEN_002: ['constat', null],
-  GEN_003: ['sans_anomalie', null],
-  GEN_004: ['non_applicable', 'Aucune écriture candidate dans le périmètre du contrôle.'],
-  GEN_005: ['sans_anomalie', null],
-  TRE_001: ['constat', null],
-  TRE_002: ['sans_anomalie', null],
-  TIE_001: ['constat', null],
-  TIE_002: ['sans_anomalie', null],
-  TIE_003: ['non_realise', 'Dates de lettrage absentes du fichier importé : contrôle non réalisable.'],
-  CAP_001: ['erreur', 'Erreur pendant l’exécution du contrôle : paramètre invalide.'],
-  TVA_001: ['non_realise', 'Aucune écriture de TVA collectée dans les données importées.'],
+  'GEN-001': ['sans_anomalie', null],
+  'GEN-002': ['constat', null],
+  'GEN-003': ['sans_anomalie', null],
+  'GEN-004': ['non_applicable', 'Aucune écriture candidate dans le périmètre du contrôle.'],
+  'GEN-005': ['sans_anomalie', null],
+  'TRE-001': ['constat', null],
+  'TRE-002': ['sans_anomalie', null],
+  'TIE-001': ['constat', null],
+  'TIE-002': ['sans_anomalie', null],
+  'TIE-003': ['non_realise', 'Dates de lettrage absentes du fichier importé : contrôle non réalisable.'],
+  'CAP-001': ['erreur', 'Erreur pendant l’exécution du contrôle : paramètre invalide.'],
+  'TVA-001': ['non_realise', 'Aucune écriture de TVA collectée dans les données importées.'],
 };
 
 function rapportFec(nomFichier: string, nbAnomalies: number) {
@@ -333,16 +333,16 @@ function produireResultats(e: Etat, execution: Enr): void {
     // Règle approuvée du cabinet ou du dossier : paramètres appliqués et origine tracée ; un seuil qui couvre le montant fictif éteint le constat.
     const applicable = regleApplicable(execution.entiteId, controleId);
     const parametres = { ...(PARAMETRES_DEFAUT[controleId] ?? {}), ...(applicable?.regle.parametres ?? {}) };
-    const montantFictif = ({ GEN_002: '1520.00', TRE_001: '320.50', TIE_001: '89.90' } as Record<string, string>)[controleId];
+    const montantFictif = ({ 'GEN-002': '1520.00', 'TRE-001': '320.50', 'TIE-001': '89.90' } as Record<string, string>)[controleId];
     if (statut === 'constat' && applicable && typeof parametres.seuil === 'string' && montantFictif && centimes(parametres.seuil) >= centimes(montantFictif)) [statut, motif] = ['sans_anomalie', null];
     const resultat = { id: randomUUID(), cabinetId: execution.cabinetId, entiteId: execution.entiteId, executionId: execution.id, controleId, versionControle: '1.0.0', statut, motif, parametres, mesures: {}, source: { ...source, titre, cycle, regleCabinet: applicable ? { regleId: applicable.regle.id, version: applicable.regle.version, portee: applicable.portee } : null } };
     e.resultats.push(resultat);
     if (statut !== 'constat') continue;
     const modele = {
-      GEN_002: { cle: '471000', gravite: 'moyenne', titre: 'Compte d’attente 471000 non soldé en fin d’exercice', montant: '1520.00', explication: 'Le compte 471000 présente un solde débiteur à la clôture.', actionProposee: 'Reclasser les opérations dans les comptes définitifs.' },
-      TRE_001: { cle: '530000', gravite: 'critique', titre: 'Caisse créditrice au 14/03/2025', montant: '-320.50', explication: 'Le solde du compte 530000 devient créditeur, ce qui est impossible pour une caisse.', actionProposee: 'Rechercher une recette non enregistrée ou une erreur de date.' },
-      TIE_001: { cle: '411DUPONT', gravite: 'faible', titre: 'Client 411DUPONT créditeur', montant: '89.90', explication: 'Le compte auxiliaire présente un solde créditeur.', actionProposee: 'Vérifier un avoir ou un double règlement.' },
-    }[controleId as 'GEN_002' | 'TRE_001' | 'TIE_001'];
+      'GEN-002': { cle: '471000', gravite: 'moyenne', titre: 'Compte d’attente 471000 non soldé en fin d’exercice', montant: '1520.00', explication: 'Le compte 471000 présente un solde débiteur à la clôture.', actionProposee: 'Reclasser les opérations dans les comptes définitifs.' },
+      'TRE-001': { cle: '530000', gravite: 'critique', titre: 'Caisse créditrice au 14/03/2025', montant: '-320.50', explication: 'Le solde du compte 530000 devient créditeur, ce qui est impossible pour une caisse.', actionProposee: 'Rechercher une recette non enregistrée ou une erreur de date.' },
+      'TIE-001': { cle: '411DUPONT', gravite: 'faible', titre: 'Client 411DUPONT créditeur', montant: '89.90', explication: 'Le compte auxiliaire présente un solde créditeur.', actionProposee: 'Vérifier un avoir ou un double règlement.' },
+    }[controleId as 'GEN-002' | 'TRE-001' | 'TIE-001'];
     const ancien = precedents.filter((c) => c.controleId === controleId && c.cle === modele.cle).at(-1);
     const reporte = ancien && ancien.statutRevue !== 'a_examiner';
     e.constats.push({
@@ -354,7 +354,7 @@ function produireResultats(e: Etat, execution: Enr): void {
       resultatId: resultat.id,
       controleId,
       ...modele,
-      lignesConcernees: controleId === 'TRE_001' ? lignes.slice(0, 3).map((l) => l.id) : [],
+      lignesConcernees: controleId === 'TRE-001' ? lignes.slice(0, 3).map((l) => l.id) : [],
       preuves: [
         { libelle: 'Compte', valeur: modele.cle },
         { libelle: 'Solde constaté', valeur: modele.montant },
@@ -433,7 +433,7 @@ function etatInitial(): Etat {
   e.lignes.push(ligne(11, '530000', 'Caisse', '0.00', '500.00'), ligne(12, '580000', 'Virements internes', '500.00', '0.00'), ligne(13, '530000', 'Caisse', '179.50', '0.00'));
   const execution = creerExecution(e, DEMO.exDupain2025, DEMO.dupain, actif.id, 2, 'termine');
   produireResultats(e, execution);
-  const tie = e.constats.find((c) => c.controleId === 'TIE_001')!;
+  const tie = e.constats.find((c) => c.controleId === 'TIE-001')!;
   tie.statutRevue = 'accepte';
   tie.aRevoir = true;
   e.decisions.push({ cibleType: 'constat', cibleId: tie.id, action: 'accepter', motif: 'Avoir à établir en janvier, montant non significatif.', versionCible: 1, creeLe: instant(), auteurId: DEMO.remi });
@@ -1985,7 +1985,7 @@ function routerEtats(r: Requete, a: Acces): unknown {
 // moteur (@comtaple/core). L'impact d'une règle, la recherche plein texte et l'archive de restitution sont FICTIFS.
 const estClient = (a: Acces) => a.role === 'client_deposant' || a.role === 'client_lecture';
 const DATE_ISO = /^\d{4}-\d{2}-\d{2}$/;
-const MONTANTS_FICTIFS: Record<string, string> = { GEN_002: '1520.00', TRE_001: '320.50', TIE_001: '89.90' };
+const MONTANTS_FICTIFS: Record<string, string> = { 'GEN-002': '1520.00', 'TRE-001': '320.50', 'TIE-001': '89.90' };
 function chaine(d: Enr, nom: string, min: number, max: number): string {
   if (typeof d[nom] !== 'string' || d[nom].length < min || d[nom].length > max) throw invalide(nom, `chaîne de ${min} à ${max} caractères attendue`);
   return d[nom];

@@ -97,7 +97,7 @@ Aucune mesure sur des pièces réelles. Sur les gabarits synthétiques, numéro,
 | Sujet | État |
 |---|---|
 | Export du journal et lecture de son état triés sur le numéro lu comme du texte (100 rangé avant 99) | Trouvé par les tests des ancres et par un essai sur les journaux locaux, corrigé avant toute utilisation |
-| Simulateur d'API des tests navigateur : identifiants de contrôles écrits `TIE_001` au lieu de `TIE-001` | Ouvert (sans effet sur l'API réelle ; les parcours réels utilisent les vrais identifiants) |
+| Simulateur d'API des tests navigateur : identifiants de contrôles écrits `TIE_001` au lieu de `TIE-001` | Corrigé : le simulateur utilise les identifiants du catalogue réel |
 | Restitution d'un cabinet : mémoire du worker montée à 486 Mo pour une archive de 359 Mo | À surveiller : la construction est en flux, mais ce pic n'a pas été décomposé (compression, envoi par morceaux, tranches de 5 000 lignes) ni mesuré sur un cabinet plus gros |
 | Deux archives de restitution du cabinet de démonstration (718 Mo) ajoutées au stockage local par la mesure, dont une par erreur de manipulation | Laissées en place (aucune suppression de données) ; elles alourdissent d'autant les sauvegardes locales |
 | **PostgreSQL redémarré pendant un essai de restauration** (sonde de santé expirée sous charge disque, processus orphelin recueilli par le serveur) | Corrigé dans `compose.yaml` (processus d'init, sonde sans shell). Aucune donnée perdue ; essai rejoué sans redémarrage. Détail : `deploiement.md` |

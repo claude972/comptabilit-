@@ -207,13 +207,13 @@ test.describe('espace cabinet — collaboratrice (niveau collaboration)', () => 
   test('catalogue des contrôles', async ({ page }) => {
     await page.goto('/reference/controles');
     await expect(page.locator('[data-controle]')).toHaveCount(12);
-    const caisse = page.locator('[data-controle="TRE_001"]');
+    const caisse = page.locator('[data-controle="TRE-001"]');
     await expect(caisse).toContainText('Caisse créditrice');
     await expect(caisse).toContainText('Règle réglementaire');
     await expect(caisse).toContainText('Source vérifiée');
     await expect(caisse).toContainText('le 19/11/2026');
-    await expect(page.locator('[data-controle="GEN_005"]')).toContainText('seuil');
-    await expect(page.locator('[data-controle="GEN_001"]')).toContainText('Règle interne');
+    await expect(page.locator('[data-controle="GEN-005"]')).toContainText('seuil');
+    await expect(page.locator('[data-controle="GEN-001"]')).toContainText('Règle interne');
   });
 });
 
@@ -262,12 +262,12 @@ test.describe('espace cabinet — réviseur (niveau révision)', () => {
     expect(nonRealise!.fond).not.toBe(succes!.fond);
     expect(nonRealise!.texte).not.toBe(succes!.texte);
     expect(nonRealise!.bordure).toBe('dashed');
-    const ligne = page.locator('tr[data-controle="TIE_003"]');
+    const ligne = page.locator('tr[data-controle="TIE-003"]');
     await expect(ligne).toContainText('Non réalisé faute de données');
     await expect(ligne).toContainText('Dates de lettrage absentes');
     await expect(ligne).toContainText('aucune conclusion ne peut en être tirée');
-    await expect(page.locator('tr[data-controle="CAP_001"]')).toContainText('Erreur technique');
-    await expect(page.locator('tr[data-controle="GEN_004"]')).toContainText('Non applicable');
+    await expect(page.locator('tr[data-controle="CAP-001"]')).toContainText('Erreur technique');
+    await expect(page.locator('tr[data-controle="GEN-004"]')).toContainText('Non applicable');
     await expect(page.getByTestId('bandeau-obsolete')).toHaveCount(0);
     expect(erreurs).toEqual([]);
   });

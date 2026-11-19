@@ -24,14 +24,14 @@ test.describe('règles du cabinet', () => {
 
     const f = page.locator('form[data-formulaire="proposer-regle"]');
     // Contrôle à fondement réglementaire : affiché non paramétrable, avec l'explication ; aucun champ, aucun envoi possible.
-    await f.getByLabel('Contrôle').selectOption('TRE_001');
+    await f.getByLabel('Contrôle').selectOption('TRE-001');
     await expect(f.getByTestId('non-parametrable')).toContainText('Ce contrôle repose sur une règle réglementaire : ses paramètres ne se modifient pas par une préférence de cabinet.');
     await expect(f.getByTestId('parametres-regle')).toHaveCount(0);
     await expect(f.getByRole('button', { name: 'Proposer cette règle' })).toBeDisabled();
-    expect(await statutBff(page, 'POST', 'v1/regles', { controleId: 'TRE_001', entiteId: ID.dupain, parametres: { seuil: '50.00' }, motif: 'Essai sur une règle réglementaire' })).toBe(409);
+    expect(await statutBff(page, 'POST', 'v1/regles', { controleId: 'TRE-001', entiteId: ID.dupain, parametres: { seuil: '50.00' }, motif: 'Essai sur une règle réglementaire' })).toBe(409);
 
     // Contrôle interne : champs déduits de parametresParDefaut (montant en chaîne décimale, liste, entier, case à cocher).
-    await f.getByLabel('Contrôle').selectOption('TIE_001');
+    await f.getByLabel('Contrôle').selectOption('TIE-001');
     await expect(f.getByLabel(/Seuil \(seuil\)/)).toHaveValue('0.00');
     await expect(f.getByLabel(/Prefixes comptes/)).toHaveValue('411');
     await expect(f.getByLabel(/Max constats/)).toHaveValue('200');
@@ -52,7 +52,7 @@ test.describe('règles du cabinet', () => {
     const envoi = page.waitForRequest((r) => r.method() === 'POST' && r.url().endsWith('/api/bff/v1/regles'));
     await f.getByRole('button', { name: 'Proposer cette règle' }).click();
     // Seul le paramètre modifié part, et le montant reste une chaîne décimale.
-    expect((await envoi).postDataJSON()).toEqual({ controleId: 'TIE_001', entiteId: ID.dupain, parametres: { seuil: '100.00' }, motif: 'Petits avoirs clients en attente de remboursement, sans enjeu' });
+    expect((await envoi).postDataJSON()).toEqual({ controleId: 'TIE-001', entiteId: ID.dupain, parametres: { seuil: '100.00' }, motif: 'Petits avoirs clients en attente de remboursement, sans enjeu' });
 
     const regle = page.locator('[data-statut-regles="proposee"] [data-regle]');
     await expect(regle).toHaveCount(1);
@@ -99,10 +99,10 @@ test.describe('règles du cabinet', () => {
     await expect(alice.getByTestId('bandeau-obsolete')).toBeVisible();
     await expect(alice.getByTestId('origine-parametres')).toHaveCount(0);
     await alice.getByRole('button', { name: 'Relancer les contrôles' }).click();
-    const ligne = alice.locator('tr[data-controle="TIE_001"]');
+    const ligne = alice.locator('tr[data-controle="TIE-001"]');
     await expect(ligne.getByTestId('origine-parametres')).toContainText('Paramètres propres au dossier — règle v1', { timeout: 20_000 });
     await expect(ligne).toHaveAttribute('data-statut', 'sans_anomalie');
-    await expect(alice.locator('tr[data-controle="TRE_001"]').getByTestId('origine-parametres')).toHaveCount(0);
+    await expect(alice.locator('tr[data-controle="TRE-001"]').getByTestId('origine-parametres')).toHaveCount(0);
 
     // Retrait (réversible, historisé), avec confirmation.
     await alice.goto('http://localhost:3000/regles');
@@ -120,7 +120,7 @@ test.describe('règles du cabinet — gestionnaire et client', () => {
   test('pas d’auto-approbation ; préférence de tout le cabinet ; refus avec motif', async ({ page }) => {
     await page.goto('/regles');
     const f = page.locator('form[data-formulaire="proposer-regle"]');
-    await f.getByLabel('Contrôle').selectOption('GEN_005');
+    await f.getByLabel('Contrôle').selectOption('GEN-005');
     await expect(f.getByRole('radio', { name: 'Tout le cabinet' })).toBeChecked();
     await f.getByLabel(/Seuil \(seuil\)/).fill('25000');
     await f.getByLabel('Motif de la proposition (obligatoire)').fill('Seuil relevé pour les grands dossiers');
@@ -150,7 +150,7 @@ test.describe('règles du cabinet — gestionnaire et client', () => {
   test('au-delà d’une page : décomptes sur toutes les règles, pages « plus anciennes » et « plus récentes »', async ({ page }) => {
     await page.goto('/regles');
     for (let i = 0; i < 53; i++) {
-      expect(await statutBff(page, 'POST', 'v1/regles', { controleId: 'TIE_001', entiteId: ID.dupain, motif: `Proposition d’essai n° ${i + 1}`, parametres: { seuil: `${i + 1}.00` } })).toBe(201);
+      expect(await statutBff(page, 'POST', 'v1/regles', { controleId: 'TIE-001', entiteId: ID.dupain, motif: `Proposition d’essai n° ${i + 1}`, parametres: { seuil: `${i + 1}.00` } })).toBe(201);
     }
     await page.goto('/regles');
     const proposees = page.locator('section[data-statut-regles="proposee"]');

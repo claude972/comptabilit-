@@ -20,7 +20,7 @@ test.beforeEach(async () => {
 test.describe('administration — administratrice', () => {
   test.use({ storageState: etatDe('alice') });
 
-  test('membres en lecture seule, création d’un dossier (territoire obligatoire, non présélectionné), fiche, exercice, habilitations, audit', async ({ page }) => {
+  test('membres, création d’un dossier (territoire obligatoire, non présélectionné), fiche, exercice, habilitations, audit', async ({ page }) => {
     const erreurs = surveiller(page);
     await page.goto('/');
     await page.getByRole('navigation', { name: 'Navigation principale' }).getByRole('link', { name: 'Administration' }).click();

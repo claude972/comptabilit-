@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { FormulaireDossier } from '@/components/administration';
+import { GestionMembre } from '@/components/administration-membres';
 import { ErreurAcces } from '@/components/erreurs';
 import { Alerte, Carte, Etiquette, SousTitre, Tableau, Titre } from '@/components/ui/base';
 import { type JournalAudit, type MembreCabinet, detailsSimples, libelleTerritoire } from '@/lib/administration';
@@ -31,6 +32,11 @@ export default async function PageAdministration() {
               Abonnement du cabinet
             </Link>
           </li>
+          <li>
+            <Link href="/administration/indicateurs" prefetch={false}>
+              Indicateurs du cabinet
+            </Link>
+          </li>
         </ul>
       </nav>
 
@@ -43,6 +49,7 @@ export default async function PageAdministration() {
               <th scope="col">Adresse</th>
               <th scope="col">Rôle</th>
               <th scope="col">État</th>
+              <th scope="col">Changer le rôle, désactiver</th>
             </tr>
           </thead>
           <tbody>
@@ -55,13 +62,20 @@ export default async function PageAdministration() {
                   {m.actif ? 'Actif' : 'Inactif'}
                   {m.expireLe ? ` · accès jusqu’au ${formaterHorodatage(m.expireLe)}` : ''}
                 </td>
+                <td>
+                  <GestionMembre utilisateurId={m.utilisateurId} nom={m.nom} role={m.role} actif={m.actif} soiMeme={m.utilisateurId === acces.moi.utilisateur.id} />
+                </td>
               </tr>
             ))}
           </tbody>
         </Tableau>
+        <Alerte ton="neutre" className="text-sm" data-testid="garde-fous-membres">
+          Garde-fous appliqués par le serveur : on ne modifie pas sa propre appartenance ; le cabinet conserve toujours au moins un administrateur actif ; un changement de
+          rôle retire les habilitations de dossier qui dépassent le plafond du nouveau rôle ; une désactivation ferme immédiatement tous les accès. Chaque modification est
+          journalisée.
+        </Alerte>
         <Alerte ton="neutre" className="text-sm" data-testid="sans-invitation">
-          Lecture seule : l’invitation de nouveaux utilisateurs, le changement de rôle et la désactivation d’un membre ne sont pas encore proposés par
-          Comtaple. Ils se font pour l’instant hors de cet écran.
+          Comtaple ne propose pas l’invitation de nouveaux utilisateurs : la création d’un compte se fait pour l’instant hors de cet écran, par l’éditeur.
         </Alerte>
       </section>
 

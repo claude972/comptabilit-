@@ -78,6 +78,21 @@ export default async function PageAdministrationDossier({ params }: { params: Pr
         )}
       </Carte>
 
+      <Carte className="space-y-2">
+        <SousTitre>Restitution du dossier</SousTitre>
+        {auMoins(d.niveau, 'validation') ? (
+          <p>
+            <Link href={`/dossiers/${d.id}/restitution`} prefetch={false}>
+              Demander ou télécharger un export de restitution
+            </Link>
+          </p>
+        ) : (
+          <p className="text-texte-doux" data-testid="restitution-impossible">
+            L’export de restitution demande l’habilitation « Validation » sur ce dossier : le rôle d’administrateur du cabinet ne suffit pas.
+          </p>
+        )}
+      </Carte>
+
       <section aria-labelledby="titre-habilitations" className="space-y-2">
         <SousTitre id="titre-habilitations">Habilitations sur ce dossier</SousTitre>
         <p className="text-sm text-texte-doux">

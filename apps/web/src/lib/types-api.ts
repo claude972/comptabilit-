@@ -148,6 +148,8 @@ export interface SourceRegle {
   periodeApplication?: string | null;
   titre?: string;
   cycle?: string;
+  /** Règle du cabinet (ou exception du dossier) dont viennent les paramètres appliqués ; null : paramètres par défaut. */
+  regleCabinet?: { regleId: string; version: number; portee: 'cabinet' | 'dossier' } | null;
 }
 export interface AnomalieFec {
   ligne: number | null;

@@ -33,7 +33,7 @@ test.describe('espace cabinet — collaboratrice (niveau collaboration)', () => 
     await expect(ligne).toContainText('Collaboration');
     await ligne.getByRole('link', { name: 'Boulangerie Dupain SAS (fictive)' }).click();
     const onglets = page.getByRole('navigation', { name: 'Sections du dossier' });
-    await expect(onglets.getByRole('link')).toHaveText(['Pièces', 'Comptabilité', 'Banque', 'Révision', 'Analyse']);
+    await expect(onglets.getByRole('link')).toHaveText(['Pièces', 'Comptabilité', 'Banque', 'Révision', 'Analyse', 'Inventaire', 'Mission', 'Veille']); // « Restitution » : niveau validation seulement
     await expect(onglets.getByRole('link', { name: 'Pièces' })).toHaveAttribute('aria-current', 'page');
     await expect(page.getByText('Habilitation : Collaboration')).toBeVisible();
     expect(erreurs).toEqual([]);

@@ -44,7 +44,8 @@ const HORODATAGE = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', timeSt
 /** Horodatage serveur → date et heure de Paris. */
 export function formaterHorodatage(v: string | null | undefined): string {
   if (!v) return '—';
-  const d = new Date(v.includes('T') ? v : v.replace(' ', 'T'));
+  // Forme PostgreSQL « 2026-11-19 07:02:35.673462+00 » : séparateur et décalage sans minutes normalisés avant lecture.
+  const d = new Date((v.includes('T') ? v : v.replace(' ', 'T')).replace(/([+-]\d{2})$/, '$1:00'));
   return Number.isNaN(d.getTime()) ? v : HORODATAGE.format(d);
 }
 

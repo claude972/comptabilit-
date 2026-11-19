@@ -15,6 +15,7 @@ interface ChampsDossier {
   siren: string;
   formeJuridique: string;
   regimeFiscal: string;
+  codeNaf: string;
   territoireFiscal: string;
 }
 
@@ -25,6 +26,7 @@ export function FormulaireDossier({ dossier }: { dossier?: FicheDossier }) {
     siren: dossier?.siren ?? '',
     formeJuridique: dossier?.formeJuridique ?? '',
     regimeFiscal: dossier?.regimeFiscal ?? '',
+    codeNaf: dossier?.codeNaf ?? '',
     territoireFiscal: dossier?.territoireFiscal ?? '',
   };
   const [f, setF] = useState(initial);
@@ -46,6 +48,7 @@ export function FormulaireDossier({ dossier }: { dossier?: FicheDossier }) {
       if (siren && siren !== (dossier.siren ?? '')) corps.siren = siren;
       if (f.formeJuridique.trim() !== (dossier.formeJuridique ?? '')) corps.formeJuridique = f.formeJuridique.trim();
       if (f.regimeFiscal.trim() !== (dossier.regimeFiscal ?? '')) corps.regimeFiscal = f.regimeFiscal.trim();
+      if (f.codeNaf.trim() !== (dossier.codeNaf ?? '')) corps.codeNaf = f.codeNaf.trim();
       if (territoireChange) corps.territoireFiscal = f.territoireFiscal;
       if (!Object.keys(corps).length) return appel.setErreur('Aucune modification à enregistrer.');
       await appel.executer(`v1/dossiers/${dossier.id}`, { method: 'PATCH', json: corps }, 'Dossier modifié.');
@@ -58,12 +61,13 @@ export function FormulaireDossier({ dossier }: { dossier?: FicheDossier }) {
         ...(siren ? { siren } : {}),
         ...(f.formeJuridique.trim() ? { formeJuridique: f.formeJuridique.trim() } : {}),
         ...(f.regimeFiscal.trim() ? { regimeFiscal: f.regimeFiscal.trim() } : {}),
+        ...(f.codeNaf.trim() ? { codeNaf: f.codeNaf.trim() } : {}),
         territoireFiscal: f.territoireFiscal,
       },
     });
     if (r) {
       setCree({ id: r.id, raisonSociale: r.raisonSociale });
-      setF({ raisonSociale: '', siren: '', formeJuridique: '', regimeFiscal: '', territoireFiscal: '' });
+      setF({ raisonSociale: '', siren: '', formeJuridique: '', regimeFiscal: '', codeNaf: '', territoireFiscal: '' });
     }
   }
 
@@ -85,6 +89,10 @@ export function FormulaireDossier({ dossier }: { dossier?: FicheDossier }) {
         <div>
           <Libelle htmlFor={`${id}-regime`}>Régime fiscal</Libelle>
           <Saisie id={`${id}-regime`} value={f.regimeFiscal} maxLength={50} onChange={(e) => maj({ regimeFiscal: e.target.value })} autoComplete="off" />
+        </div>
+        <div>
+          <Libelle htmlFor={`${id}-naf`}>Code NAF (facultatif)</Libelle>
+          <Saisie id={`${id}-naf`} value={f.codeNaf} maxLength={10} onChange={(e) => maj({ codeNaf: e.target.value })} autoComplete="off" />
         </div>
         <div>
           <Libelle htmlFor={`${id}-territoire`}>Territoire fiscal (obligatoire)</Libelle>

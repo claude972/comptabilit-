@@ -2,9 +2,11 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { ErreurAcces } from '@/components/erreurs';
 import { Onglets } from '@/components/navigation';
-import { Etiquette, Titre } from '@/components/ui/base';
+import { Etiquette, Libelle, Saisie, Titre } from '@/components/ui/base';
+import { Bouton } from '@/components/ui/bouton';
 import { LIBELLE_NIVEAU } from '@/lib/libelles';
 import { contexteDossier } from '@/lib/serveur/dossier';
+import { auMoins } from '@/lib/types-api';
 
 export default async function MiseEnPageDossier({ children, params }: { children: ReactNode; params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -23,6 +25,18 @@ export default async function MiseEnPageDossier({ children, params }: { children
         <div className="flex flex-wrap items-center gap-2">
           <Titre>{ctx.dossier.raisonSociale}</Titre>
           <Etiquette ton="info">Habilitation : {LIBELLE_NIVEAU[ctx.niveau]}</Etiquette>
+          {/* Recherche dans le dossier : formulaire GET, fonctionne sans JavaScript ; la requête est dans l'URL de la page de résultats. */}
+          <form method="get" action={`${base}/recherche`} role="search" aria-label="Rechercher dans ce dossier" className="ml-auto flex items-end gap-2">
+            <div>
+              <Libelle htmlFor="recherche-dossier" className="sr-only">
+                Rechercher dans ce dossier (pièces, écritures, constats)
+              </Libelle>
+              <Saisie id="recherche-dossier" type="search" name="q" minLength={2} maxLength={200} placeholder="Rechercher dans ce dossier" className="min-w-72" required />
+            </div>
+            <Bouton type="submit" variante="secondaire">
+              Chercher dans le dossier
+            </Bouton>
+          </form>
         </div>
       </div>
       <Onglets
@@ -33,6 +47,11 @@ export default async function MiseEnPageDossier({ children, params }: { children
           { href: `${base}/banque`, libelle: 'Banque' },
           { href: `${base}/revision`, libelle: 'Révision' },
           { href: `${base}/analyse`, libelle: 'Analyse' },
+          { href: `${base}/inventaire`, libelle: 'Inventaire' },
+          { href: `${base}/mission`, libelle: 'Mission' },
+          { href: `${base}/veille`, libelle: 'Veille' },
+          // La restitution exige l'habilitation de validation : l'onglet n'est proposé qu'à ce niveau (l'API vérifie).
+          ...(auMoins(ctx.niveau, 'validation') ? [{ href: `${base}/restitution`, libelle: 'Restitution' }] : []),
         ]}
       />
       {children}

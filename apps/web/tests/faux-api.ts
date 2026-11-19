@@ -18,6 +18,7 @@ import http from 'node:http';
 import {
   CATALOGUE_INDICATEURS, type LigneEcriture, type LigneFec, type MouvementBancaire, type Offre, PARAMETRES_RAPPROCHEMENT_PAR_DEFAUT, calculerBalance, calculerEcheance, calculerIndicateurs, correspondancePour, etatQuota, projeterBilan, projeterCompteDeResultat, serviceOuvert, situationAbonnement, REGLES_RAPPROCHEMENT, type RapportReleve, analyserFec, decoderTexteReleve, detecterFormatReleve, elementDepuisMouvement,
   elementsBanqueDepuisEcritures, enBlocs, lireCamt053, lireCsvBanque, lireOfx, proposerProfilCsv, rapprocher, schemaParametresRapprochement, schemaProfilCsvBanque,
+  type ContenuLettre, type LettreDatee, PRESTATIONS, dec, estimerTemps, evaluerApplicabilite, schemaContenuLettre, schemaCriteresEvolution, situerTravail, somme, versChaine,
 } from '@comtaple/core';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
@@ -97,10 +98,12 @@ let ENTITES: Enr0[] = structuredClone(ENTITES_INITIALES);
 let HABILITATIONS = structuredClone(HABILITATIONS_INITIALES);
 /** Appartenances ajoutées par un test (compte multi-cabinets : aucun compte de démonstration n'en a plusieurs). */
 let APPARTENANCES_EN_PLUS: Array<{ utilisateurId: string; cabinetId: string; role: string }> = [];
-const appartenancesDe = (utilisateurId: string) => [
-  ...UTILISATEURS.filter((u) => u.id === utilisateurId).map((u) => ({ cabinetId: u.cabinetId as string, role: u.role })),
-  ...APPARTENANCES_EN_PLUS.filter((x) => x.utilisateurId === utilisateurId).map((x) => ({ cabinetId: x.cabinetId, role: x.role })),
+/** Toutes les appartenances (actives ou non), avec le rôle éventuellement modifié par `PATCH v1/cabinet/membres/:id`. */
+const toutesAppartenancesDe = (utilisateurId: string) => [
+  ...UTILISATEURS.filter((u) => u.id === utilisateurId).map((u) => ({ cabinetId: u.cabinetId as string, role: suite.membres.get(u.id)?.role ?? u.role, actif: suite.membres.get(u.id)?.actif ?? true })),
+  ...APPARTENANCES_EN_PLUS.filter((x) => x.utilisateurId === utilisateurId).map((x) => ({ cabinetId: x.cabinetId, role: x.role, actif: true })),
 ];
+const appartenancesDe = (utilisateurId: string) => toutesAppartenancesDe(utilisateurId).filter((x) => x.actif).map((x) => ({ cabinetId: x.cabinetId, role: x.role }));
 
 interface Acces {
   cabinetId: string;
@@ -136,6 +139,71 @@ interface Etat {
   propositions: Enr[];
 }
 let etat: Etat;
+/**
+ * Règles du cabinet, inventaire, missions, conseils, veille, restitutions, membres : état propre aux écrans ajoutés
+ * (calqué sur regles/inventaire/missions/conseils/veille/restitution/administration.controller.ts).
+ */
+interface Suite {
+  regles: Enr[];
+  ecritures: Enr[];
+  missions: Enr[];
+  lettres: Enr[];
+  travaux: Enr[];
+  baremes: Enr[];
+  conseils: Enr[];
+  evenements: Enr[];
+  sources: Enr[];
+  evolutions: Enr[];
+  suivis: Enr[];
+  restitutions: Enr[];
+  archives: Map<string, Buffer>;
+  /** Modifications d'appartenance (rôle, actif) par utilisateur : les comptes de démonstration eux-mêmes sont constants. */
+  membres: Map<string, { role?: string; actif?: boolean }>;
+}
+const ID_EVOLUTIONS = { metropole: 'eeeeeeee-0000-4000-8000-000000000001', naf: 'eeeeeeee-0000-4000-8000-000000000002', martinique: 'eeeeeeee-0000-4000-8000-000000000003', brute: 'eeeeeeee-0000-4000-8000-000000000004' } as const;
+function suiteInitiale(): Suite {
+  // Horodatage récent au format renvoyé par PostgreSQL (« 2026-11-19 07:02:35.673+00 ») : la veille n'est « assurée » que 7 jours.
+  const recent = new Date(Date.now() - 3_600_000).toISOString().replace('T', ' ').replace('Z', '+00');
+  const source = (emetteur: string, libelle: string, url: string, ok: boolean) => ({
+    id: randomUUID(), emetteur, libelle, url, actif: true, dernierEssaiLe: recent, dernierSuccesLe: ok ? recent : null,
+    dernierStatut: ok ? 'inchangee' : 'indisponible', dernierDetail: ok ? null : 'HTTP 403', empreinteContenu: ok ? 'abc' : null, creeLe: '2026-11-19 06:37:56.840878+00',
+  });
+  const evolution = (id: string, reference: string, criteres: Enr, etatVerification = 'verifiee') => ({
+    id, emetteur: 'BOFiP', reference, url: 'https://bofip.impots.gouv.fr/bofip/2109-PGP.html', passage: null, datePublication: '2025-01-15', dateEffet: '2025-01-01',
+    conditions: etatVerification === 'verifiee' ? 'Exercices ouverts à compter du 1er janvier 2025.' : null, resume: etatVerification === 'verifiee' ? `Évolution fictive de test : ${reference}.` : null, criteres, etatVerification, verifieeLe: etatVerification === 'verifiee' ? '2026-11-18' : null,
+  });
+  return {
+    regles: [], ecritures: [], missions: [], lettres: [], travaux: [], baremes: [], conseils: [], evenements: [], suivis: [], restitutions: [], archives: new Map(), membres: new Map(),
+    sources: [
+      source('BOFiP', 'BOI-BIC-CHG-20-30-10 (biens de faible valeur)', 'https://bofip.impots.gouv.fr/bofip/2109-PGP.html', true),
+      source('BOFiP', 'BOI-CF-IOR-60-40-20 (format du FEC)', 'https://bofip.impots.gouv.fr/bofip/9028-PGP.html', true),
+      source('Légifrance', 'Code de commerce, article L223-21 (comptes courants d’associés, SARL)', 'https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000006223124', false),
+      source('Légifrance', 'LPF, article A47 A-1 (fichier des écritures comptables)', 'https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000027804775', false),
+    ],
+    evolutions: [
+      evolution(ID_EVOLUTIONS.metropole, 'Seuil fictif pour les sociétés à l’IS en métropole', { territoires: ['metropole'], regimesFiscaux: ['IS'], exercicesOuvertsAPartirDu: '2025-01-01' }),
+      evolution(ID_EVOLUTIONS.naf, 'Mesure fictive pour la boulangerie (NAF 10.71)', { prefixesNaf: ['10.71'] }),
+      evolution(ID_EVOLUTIONS.martinique, 'Mesure fictive propre à la Martinique', { territoires: ['martinique'] }),
+      evolution(ID_EVOLUTIONS.brute, 'Détection brute non qualifiée', {}, 'detectee_a_qualifier'),
+    ],
+  };
+}
+let suite: Suite = suiteInitiale();
+/** Paramètres par défaut fictifs des contrôles du simulateur (le catalogue réel est dans @comtaple/core). */
+const PARAMETRES_DEFAUT: Record<string, Enr> = {
+  GEN_005: { seuil: '10000.00' },
+  TIE_001: { prefixesComptes: ['411'], seuil: '0.00', maxConstats: 200, inclureComptesSoldes: false },
+  TIE_002: { prefixesComptes: ['401'], seuil: '0.00', maxConstats: 200 },
+  TRE_001: { prefixesComptes: ['53'], seuil: '0.00', maxConstats: 200 },
+};
+/** Règle approuvée applicable à un contrôle pour un dossier : préférence du cabinet, surchargée par l'exception du dossier. */
+function regleApplicable(entiteId: string, controleId: string): { regle: Enr; portee: 'cabinet' | 'dossier' } | null {
+  const approuvees = suite.regles.filter((x) => x.statut === 'approuvee' && x.controleId === controleId);
+  const dossier = approuvees.findLast((x) => x.entiteId === entiteId);
+  if (dossier) return { regle: dossier, portee: 'dossier' };
+  const cabinet = approuvees.findLast((x) => x.entiteId === null);
+  return cabinet ? { regle: cabinet, portee: 'cabinet' } : null;
+}
 /** Pannes programmées par les tests (routes /__test/pannes). */
 let pannes = { couperMorceauNumero: 0, conflitMorceauNumero: 0, ralentirMorceauxMs: 0, erreurTerminer: 0 };
 let compteurMorceaux = 0;
@@ -258,8 +326,13 @@ function produireResultats(e: Etat, execution: Enr): void {
   const lignes = e.lignes.filter((l) => l.lotImportId === execution.lotImportId);
   const precedents = e.constats.filter((c) => c.exerciceId === execution.exerciceId && c.executionId !== execution.id);
   for (const [controleId, cycle, titre, source] of CATALOGUE) {
-    const [statut, motif] = STATUTS_FIXES[controleId]!;
-    const resultat = { id: randomUUID(), cabinetId: execution.cabinetId, entiteId: execution.entiteId, executionId: execution.id, controleId, versionControle: '1.0.0', statut, motif, parametres: {}, mesures: {}, source: { ...source, titre, cycle } };
+    let [statut, motif] = STATUTS_FIXES[controleId]!;
+    // Règle approuvée du cabinet ou du dossier : paramètres appliqués et origine tracée ; un seuil qui couvre le montant fictif éteint le constat.
+    const applicable = regleApplicable(execution.entiteId, controleId);
+    const parametres = { ...(PARAMETRES_DEFAUT[controleId] ?? {}), ...(applicable?.regle.parametres ?? {}) };
+    const montantFictif = ({ GEN_002: '1520.00', TRE_001: '320.50', TIE_001: '89.90' } as Record<string, string>)[controleId];
+    if (statut === 'constat' && applicable && typeof parametres.seuil === 'string' && montantFictif && centimes(parametres.seuil) >= centimes(montantFictif)) [statut, motif] = ['sans_anomalie', null];
+    const resultat = { id: randomUUID(), cabinetId: execution.cabinetId, entiteId: execution.entiteId, executionId: execution.id, controleId, versionControle: '1.0.0', statut, motif, parametres, mesures: {}, source: { ...source, titre, cycle, regleCabinet: applicable ? { regleId: applicable.regle.id, version: applicable.regle.version, portee: applicable.portee } : null } };
     e.resultats.push(resultat);
     if (statut !== 'constat') continue;
     const modele = {
@@ -385,6 +458,7 @@ async function authentifier(req: http.IncomingMessage, sansCabinet = false): Pro
   const u = UTILISATEURS.find((x) => x.id === sujet);
   if (!u) throw new ErreurHttp(403, 'Compte non rattaché à un cabinet');
   const appartenances = appartenancesDe(u.id);
+  if (appartenances.length === 0) throw new ErreurHttp(403, 'Aucun cabinet actif pour ce compte');
   const demande = req.headers['x-cabinet-id'];
   let choisie = appartenances.length === 1 ? appartenances[0] : undefined;
   if (typeof demande === 'string' && demande) {
@@ -506,6 +580,8 @@ async function routerV1(r: Requete): Promise<unknown> {
     if (abonnement !== undefined) return abonnement;
     const etats = routerEtats(r, a);
     if (etats !== undefined) return etats;
+    const ajouts = routerSuite(r, a);
+    if (ajouts !== undefined || r.res.writableEnded) return ajouts;
   }
 
   if (m === 'GET' && chemin === 'moi') return { utilisateur: { id: a.utilisateurId, nom: a.nom, email: a.email }, cabinet: CABINETS.find((c) => c.id === a.cabinetId), role: a.role };
@@ -532,7 +608,7 @@ async function routerV1(r: Requete): Promise<unknown> {
   if (m === 'GET' && chemin === 'reference/controles') {
     return CATALOGUE.map(([id, cycle, titre, source]) => ({
       id, version: '1.0.0', cycle, titre, objectif: `Objectif fictif du contrôle ${id}.`, perimetre: 'Écritures de l’exercice.', donneesObligatoires: ['CompteNum', 'Debit', 'Credit'],
-      logique: 'Logique déterministe décrite dans le catalogue réel.', parametresParDefaut: id === 'GEN_005' ? { seuil: '10000.00' } : {}, exceptions: 'Aucune.', source, resultatsAttendus: 'Un constat par compte concerné.',
+      logique: 'Logique déterministe décrite dans le catalogue réel.', parametresParDefaut: PARAMETRES_DEFAUT[id] ?? {}, exceptions: 'Aucune.', source, resultatsAttendus: 'Un constat par compte concerné.',
     }));
   }
 
@@ -1179,7 +1255,7 @@ function tracerAudit(a: { cabinetId: string; utilisateurId?: string }, action: s
   audit.push({ id: audit.length + 1, cabinetId: a.cabinetId, acteurId: a.utilisateurId ?? null, acteurType: a.utilisateurId ? 'utilisateur' : 'systeme', action, cibleType, cibleId, entiteId, details, horodatage: instant(), empreintePrecedente: null, empreinte: sha256(`${audit.length}`) });
 }
 const membresDuCabinet = (cabinetId: string) =>
-  UTILISATEURS.flatMap((u) => appartenancesDe(u.id).filter((x) => x.cabinetId === cabinetId).map((x) => ({ utilisateurId: u.id, nom: u.nom, email: u.email, role: x.role, actif: true, expireLe: null })));
+  UTILISATEURS.flatMap((u) => toutesAppartenancesDe(u.id).filter((x) => x.cabinetId === cabinetId).map((x) => ({ utilisateurId: u.id, nom: u.nom, email: u.email, role: x.role, actif: x.actif, expireLe: null })));
 const ficheEntite = (e: Enr) => ({ id: e.id, cabinetId: e.cabinetId, raisonSociale: e.raisonSociale, siren: e.siren ?? null, formeJuridique: e.formeJuridique ?? null, regimeFiscal: e.regimeFiscal ?? 'IS', referentielComptable: 'PCG', territoireFiscal: e.territoireFiscal ?? 'metropole', codeNaf: e.codeNaf ?? null, devise: 'EUR', actif: true, creeLe: e.creeLe ?? '2026-11-18T08:00:00.000Z' });
 function sirenValide(s: string): boolean {
   let somme = 0;
@@ -1226,6 +1302,69 @@ function routerAdministration(r: Requete, a: Acces): unknown {
   if (m === 'GET' && s.join('/') === 'cabinet/membres') {
     exigerGestion();
     return membresDuCabinet(a.cabinetId).sort((x, y) => x.nom.localeCompare(y.nom));
+  }
+  if (m === 'PATCH' && s[0] === 'cabinet' && s[1] === 'membres' && s.length === 3) {
+    const utilisateurId = exigerUuid(s[2]);
+    const d = r.json();
+    const ROLES = ['administrateur', 'associe', 'reviseur', 'collaborateur', 'client_deposant', 'client_lecture', 'support'];
+    if (d.role !== undefined && !ROLES.includes(d.role)) throw invalide('role', 'valeur inconnue');
+    if (d.actif !== undefined && typeof d.actif !== 'boolean') throw invalide('actif', 'booléen attendu');
+    if (d.role === undefined && d.actif === undefined) throw invalide('', 'aucune modification');
+    if (utilisateurId === a.utilisateurId) throw new ErreurHttp(403, 'On ne modifie pas sa propre appartenance');
+    exigerGestion();
+    const membres = membresDuCabinet(a.cabinetId);
+    const avant = membres.find((x) => x.utilisateurId === utilisateurId);
+    if (!avant) throw new ErreurHttp(404, 'Membre introuvable dans ce cabinet');
+    const role: string = d.role ?? avant.role;
+    const actif: boolean = d.actif ?? avant.actif;
+    if (avant.role === 'administrateur' && avant.actif && (role !== 'administrateur' || !actif) && !membres.some((x) => x.utilisateurId !== utilisateurId && x.role === 'administrateur' && x.actif)) {
+      throw new ErreurHttp(409, 'Le cabinet doit conserver au moins un administrateur actif');
+    }
+    suite.membres.set(utilisateurId, { role, actif });
+    let retirees = 0;
+    if (role !== avant.role) {
+      const admises = PLAFOND_NIVEAUX[role] ?? [];
+      const avantRetrait = HABILITATIONS.length;
+      HABILITATIONS = HABILITATIONS.filter((h) => h.utilisateurId !== utilisateurId || admises.includes(h.niveau));
+      retirees = avantRetrait - HABILITATIONS.length;
+    }
+    tracerAudit(a, 'membre.modifie', 'utilisateur', utilisateurId, null, { roleAvant: avant.role, roleApres: role, actifAvant: avant.actif, actifApres: actif, habilitationsRetirees: retirees });
+    return { id: randomUUID(), cabinetId: a.cabinetId, utilisateurId, role, actif, expireLe: null, habilitationsRetirees: retirees };
+  }
+  if (m === 'GET' && s.join('/') === 'cabinet/indicateurs') {
+    const iso = /^\d{4}-\d{2}-\d{2}$/;
+    const fin = r.query.get('au') ?? new Date().toISOString().slice(0, 10);
+    const debut = r.query.get('du') ?? `${fin.slice(0, 8)}01`;
+    if (!iso.test(debut) || !iso.test(fin) || debut > fin || Number.isNaN(Date.parse(debut)) || Number.isNaN(Date.parse(fin))) throw new ErreurHttp(400, 'Période invalide (du, au : AAAA-MM-JJ)');
+    exigerGestion();
+    // Décomptes agrégés (jamais par personne), calculés sur l'état simulé : formes de la fonction SQL `cabinet_indicateurs`.
+    const compter = <T,>(liste: T[], cle: (x: T) => string) => liste.reduce<Record<string, number>>((t, x) => ({ ...t, [cle(x)]: (t[cle(x)] ?? 0) + 1 }), {});
+    const docs = etat.documents.filter((x) => x.cabinetId === a.cabinetId);
+    const courantes = new Set(etat.executions.filter((x) => !x.obsolete).map((x) => x.id));
+    const constats = etat.constats.filter((x) => x.cabinetId === a.cabinetId && courantes.has(x.executionId));
+    const extractions = etat.extractions.filter((x) => x.cabinetId === a.cabinetId && x.actuelle);
+    const travaux = suite.travaux.filter((x) => x.cabinetId === a.cabinetId && x.dateTravail >= debut && x.dateTravail <= fin);
+    return {
+      periode: { du: debut, au: fin },
+      pieces: { recues: docs.length, parStatut: compter(docs, (x) => x.statut), receptionsParCanal: compter(etat.receptions.filter((x) => x.cabinetId === a.cabinetId), (x) => x.canal), doublonsBinaires: etat.receptions.filter((x) => x.doublonBinaire).length, delaiTraitementMedianHeures: docs.some((x) => x.statut === 'traite') ? 0.25 : null },
+      extractions: {
+        parMethode: compter(extractions, (x) => x.methode),
+        accepteesSansCorrection: extractions.filter((x) => x.statut === 'valide' && x.methode !== 'saisie_humaine').length,
+        corrigeesPuisValidees: extractions.filter((x) => x.statut === 'valide' && x.methode === 'saisie_humaine').length,
+        rejetees: extractions.filter((x) => x.statut === 'rejete').length,
+        nonExaminees: extractions.filter((x) => x.statut === 'projet').length,
+      },
+      imports: { parTypeEtStatut: compter(etat.lots.filter((x) => x.cabinetId === a.cabinetId), (x) => `${x.type}:${x.statut}`), lignesEcritureImportees: etat.lots.filter((x) => x.cabinetId === a.cabinetId && x.type === 'fec').reduce((t, x) => t + x.progression, 0) },
+      constats: { parStatutDeRevue: compter(constats, (x) => x.statutRevue), parGravite: compter(constats, (x) => x.gravite), parControle: compter(constats, (x) => x.controleId), aRevoir: etat.constats.filter((x) => x.aRevoir).length },
+      controles: { parStatut: compter(etat.resultats.filter((x) => courantes.has(x.executionId)), (x) => x.statut) },
+      rapprochements: { parStatut: compter(etat.propositions, (x) => x.statut) },
+      temps: { observeMinutesParPrestation: travaux.filter((x) => x.tempsObserveMinutes !== null).reduce<Record<string, number>>((t, x) => ({ ...t, [x.prestation]: (t[x.prestation] ?? 0) + x.tempsObserveMinutes }), {}), travauxSansTempsSaisi: travaux.filter((x) => x.tempsObserveMinutes === null).length },
+      parDossier: ENTITES.filter((e) => e.cabinetId === a.cabinetId).map((e) => ({
+        entiteId: e.id, raisonSociale: e.raisonSociale, pieces: docs.filter((x) => x.entiteId === e.id).length, piecesAControler: docs.filter((x) => x.entiteId === e.id && x.statut === 'a_controler').length,
+        constatsOuverts: constats.filter((x) => x.entiteId === e.id && ['a_examiner', 'en_cours', 'piece_demandee'].includes(x.statutRevue)).length,
+        tempsObserveMinutes: travaux.filter((x) => x.entiteId === e.id).reduce((t, x) => t + (x.tempsObserveMinutes ?? 0), 0),
+      })).sort((x, y) => x.raisonSociale.localeCompare(y.raisonSociale)),
+    };
   }
   if (m === 'GET' && s[0] === 'audit' && s.length === 1) {
     exigerGestion();
@@ -1286,7 +1425,7 @@ function routerAdministration(r: Requete, a: Acces): unknown {
       if (!ORDRE.includes(d.niveau)) throw invalide('niveau', 'valeur inconnue');
       exigerGestion();
       if (!entiteVisible(id)) throw new ErreurHttp(404, 'Dossier introuvable');
-      const membre = membresDuCabinet(a.cabinetId).find((x) => x.utilisateurId === utilisateurId);
+      const membre = membresDuCabinet(a.cabinetId).find((x) => x.utilisateurId === utilisateurId && x.actif);
       if (!membre) throw new ErreurHttp(404, 'Cette personne n’est pas membre actif du cabinet');
       if (!PLAFOND_NIVEAUX[membre.role]?.includes(d.niveau)) throw new ErreurHttp(400, `Le rôle « ${membre.role} » ne peut pas recevoir le niveau « ${d.niveau} »`);
       let h = HABILITATIONS.find((x) => x.entiteId === id && x.utilisateurId === utilisateurId);
@@ -1595,6 +1734,547 @@ function routerEtats(r: Requete, a: Acces): unknown {
   return undefined;
 }
 
+// ───────────── Règles du cabinet, inventaire, missions, conseils, veille, recherche, restitution ─────────────
+// Calqué sur regles/inventaire/missions/conseils/veille/recherche/restitution.controller.ts. Le rattachement des travaux,
+// l'estimation de temps, l'applicabilité d'une évolution, la balance et l'équilibre d'une écriture utilisent le VRAI
+// moteur (@comtaple/core). L'impact d'une règle, la recherche plein texte et l'archive de restitution sont FICTIFS.
+const estClient = (a: Acces) => a.role === 'client_deposant' || a.role === 'client_lecture';
+const DATE_ISO = /^\d{4}-\d{2}-\d{2}$/;
+const MONTANTS_FICTIFS: Record<string, string> = { GEN_002: '1520.00', TRE_001: '320.50', TIE_001: '89.90' };
+function chaine(d: Enr, nom: string, min: number, max: number): string {
+  if (typeof d[nom] !== 'string' || d[nom].length < min || d[nom].length > max) throw invalide(nom, `chaîne de ${min} à ${max} caractères attendue`);
+  return d[nom];
+}
+function dateIso(d: Enr, nom: string): string {
+  if (typeof d[nom] !== 'string' || !DATE_ISO.test(d[nom])) throw invalide(nom, 'date AAAA-MM-JJ attendue');
+  return d[nom];
+}
+function uuidOptionnel(d: Enr, nom: string): string | null {
+  if (d[nom] === undefined) return null;
+  if (typeof d[nom] !== 'string' || !UUID.test(d[nom])) throw invalide(nom, 'identifiant invalide');
+  return d[nom];
+}
+/** Mesure FICTIVE d'un contrôle du simulateur avec des paramètres donnés (le vrai moteur n'est pas exécuté ici). */
+function mesureFictive(controleId: string, surcharge: Enr | null) {
+  const parametres = { ...(PARAMETRES_DEFAUT[controleId] ?? {}), ...(surcharge ?? {}) };
+  let statut = STATUTS_FIXES[controleId]![0];
+  const montant = MONTANTS_FICTIFS[controleId];
+  if (statut === 'constat' && surcharge && typeof parametres.seuil === 'string' && montant && centimes(parametres.seuil) >= centimes(montant)) statut = 'sans_anomalie';
+  return { statut, constats: statut === 'constat' ? 1 : 0, parametres };
+}
+/** Écritures d'inventaire approuvées → lignes au format du moteur (journal « INV »), comme `versLignes` du contrôleur. */
+function lignesInventaire(ecritures: Enr[]): LigneEcriture[] {
+  let n = 0;
+  return ecritures.flatMap((e) =>
+    (e.lignes as Enr[]).map((l) => ({
+      id: `${e.id}:${n}`, numeroLigne: 1_000_000_000 + n++, journalCode: 'INV', journalLib: 'Écritures d’inventaire proposées', ecritureNum: `INV-${e.id.slice(0, 8)}`, ecritureDate: e.dateEcriture, compteNum: l.compteNum, compteLib: l.compteLib,
+      compAuxNum: null, compAuxLib: null, pieceRef: `INV-${e.id.slice(0, 8)}`, pieceDate: e.dateEcriture, ecritureLib: e.libelle, debit: l.debit, credit: l.credit, ecritureLet: null, dateLet: null, validDate: null, montantDevise: null, idevise: null,
+    })),
+  ) as unknown as LigneEcriture[];
+}
+const lettresDatees = (entiteId: string): LettreDatee[] => suite.lettres.filter((l) => l.entiteId === entiteId).map((l) => ({ id: l.id, dateEffet: l.dateEffet, statut: l.statut, version: l.version, contenu: l.contenu as ContenuLettre }));
+const horodatagePg = (decalageMs = 0) => new Date(Date.now() + decalageMs).toISOString().replace('T', ' ').replace('Z', '+00');
+/** Archive ZIP vide mais valide (enregistrement de fin de répertoire central), suivie d'un commentaire propre à la demande. */
+const zipFictif = (marque: string) => Buffer.concat([Buffer.from([0x50, 0x4b, 0x05, 0x06]), Buffer.alloc(16), Buffer.from([marque.length & 0xff, marque.length >> 8]), Buffer.from(marque, 'latin1')]);
+
+function routerSuite(r: Requete, a: Acces): unknown {
+  const { methode: m, segments: s } = r;
+  const chemin = s.join('/');
+  const gestionnaire = estGestionnaire(a);
+
+  // ── Règles du cabinet ──
+  if (s[0] === 'regles') {
+    const duCabinet = suite.regles.filter((x) => x.cabinetId === a.cabinetId);
+    if (m === 'GET' && s.length === 1) {
+      if (estClient(a)) throw new ErreurHttp(403, 'Réservé aux membres du cabinet');
+      return duCabinet.toReversed();
+    }
+    if (m === 'POST' && s.length === 1) {
+      const d = r.json();
+      const controleId = chaine(d, 'controleId', 1, 20);
+      const entiteId = uuidOptionnel(d, 'entiteId');
+      if (typeof d.parametres !== 'object' || d.parametres === null || Array.isArray(d.parametres)) throw invalide('parametres', 'objet attendu');
+      const motif = chaine(d, 'motif', 5, 2000);
+      if (estClient(a) || a.role === 'support') throw new ErreurHttp(403, 'Réservé aux collaborateurs du cabinet');
+      const def = CATALOGUE.find((c) => c[0] === controleId);
+      if (!def) throw new ErreurHttp(400, 'Contrôle inconnu');
+      if ((def[3] as Enr).type === 'reglementaire') throw new ErreurHttp(409, 'Ce contrôle repose sur une règle réglementaire : ses paramètres ne se modifient pas par une préférence de cabinet.');
+      const defauts = PARAMETRES_DEFAUT[controleId] ?? {};
+      const inconnus = Object.keys(d.parametres).filter((k) => !(k in defauts));
+      if (inconnus.length) throw new ErreurHttp(400, `Paramètre(s) inconnu(s) pour ${controleId} : ${inconnus.join(', ')}`);
+      // Même exigence que le schéma du contrôle : un montant est une chaîne décimale, jamais un nombre.
+      const erreurs = Object.entries(d.parametres as Enr).flatMap(([k, v]) => {
+        const attendu = defauts[k];
+        const ok = typeof attendu === 'string' ? typeof v === 'string' && DECIMAL.test(v) : Array.isArray(attendu) ? Array.isArray(v) && v.every((x) => typeof x === 'string') : typeof v === typeof attendu;
+        return ok ? [] : [{ champ: k, probleme: typeof attendu === 'string' ? 'chaîne décimale attendue' : 'type invalide' }];
+      });
+      if (erreurs.length) throw new ErreurHttp(400, { message: 'Paramètres invalides pour ce contrôle', erreurs });
+      if (entiteId) exigerNiveau(a, entiteId, 'collaboration');
+      else if (a.role === 'collaborateur') throw new ErreurHttp(403, 'Une préférence de tout le cabinet se propose à partir du rôle de réviseur');
+      const version = Math.max(0, ...duCabinet.filter((x) => x.controleId === controleId && x.entiteId === entiteId).map((x) => x.version)) + 1;
+      const regle = { id: randomUUID(), cabinetId: a.cabinetId, controleId, entiteId, parametres: d.parametres, version, statut: 'proposee', motif, impact: null, proposeePar: a.utilisateurId, approuveePar: null, decideeLe: null, creeLe: instant() };
+      suite.regles.push(regle);
+      tracerAudit(a, 'regle.proposee', 'regle_cabinet', regle.id, entiteId, { controleId, version });
+      return regle;
+    }
+    if (m === 'POST' && s.length === 3) {
+      const id = exigerUuid(s[1]);
+      const charger = () => {
+        const x = duCabinet.find((y) => y.id === id);
+        if (!x) throw new ErreurHttp(404, 'Règle introuvable');
+        return x;
+      };
+      const rendreObsolete = (entiteId: string | null) => {
+        for (const e of etat.executions) if (e.cabinetId === a.cabinetId && (entiteId === null || e.entiteId === entiteId)) e.obsolete = true;
+      };
+      const exigerGestion = () => {
+        if (!gestionnaire) throw new ErreurHttp(403, 'Réservé aux administrateurs et associés du cabinet');
+      };
+      if (s[2] === 'impact') {
+        const d = r.json();
+        if (typeof d.exerciceId !== 'string' || !UUID.test(d.exerciceId)) throw invalide('exerciceId', 'identifiant invalide');
+        const regle = charger();
+        const ex = chargerExercice(a, d.exerciceId, 'collaboration');
+        if (regle.entiteId && regle.entiteId !== ex.entiteId) throw new ErreurHttp(400, 'Cette règle est une exception d’un autre dossier');
+        if (!etat.lots.some((l) => l.exerciceId === ex.id && l.type === 'fec' && l.actif)) throw new ErreurHttp(409, 'Aucune donnée comptable active pour cet exercice : impact non mesurable');
+        const avant = mesureFictive(regle.controleId, regleApplicable(ex.entiteId, regle.controleId)?.regle.parametres ?? null);
+        const apres = mesureFictive(regle.controleId, regle.parametres);
+        regle.impact = { exerciceId: ex.id, versionDonnees: ex.versionDonnees, mesureLe: new Date().toISOString(), avant, apres, constatsQuiDisparaissent: Math.max(0, avant.constats - apres.constats), constatsQuiApparaissent: Math.max(0, apres.constats - avant.constats) };
+        tracerAudit(a, 'regle.impact_mesure', 'regle_cabinet', id, ex.entiteId, { avant: avant.constats, apres: apres.constats });
+        return regle.impact;
+      }
+      if (s[2] === 'approuver') {
+        exigerGestion();
+        const regle = charger();
+        if (regle.statut !== 'proposee') throw new ErreurHttp(409, `Règle au statut « ${regle.statut} »`);
+        if (regle.proposeePar === a.utilisateurId) throw new ErreurHttp(403, 'Une règle ne peut pas être approuvée par la personne qui l’a proposée');
+        if (!regle.impact) throw new ErreurHttp(409, 'Mesurez l’impact de la règle avant de l’approuver');
+        for (const x of duCabinet) if (x.statut === 'approuvee' && x.controleId === regle.controleId && x.entiteId === regle.entiteId) Object.assign(x, { statut: 'retiree', decideeLe: instant() });
+        Object.assign(regle, { statut: 'approuvee', approuveePar: a.utilisateurId, decideeLe: instant() });
+        rendreObsolete(regle.entiteId);
+        tracerAudit(a, 'regle.approuvee', 'regle_cabinet', id, regle.entiteId, { controleId: regle.controleId, version: regle.version });
+        return regle;
+      }
+      if (s[2] === 'refuser') {
+        const d = r.json();
+        chaine(d, 'motif', 1, 2000);
+        exigerGestion();
+        const regle = charger();
+        if (regle.statut !== 'proposee') throw new ErreurHttp(409, `Règle au statut « ${regle.statut} »`);
+        Object.assign(regle, { statut: 'refusee', approuveePar: a.utilisateurId, decideeLe: instant() });
+        tracerAudit(a, 'regle.refusee', 'regle_cabinet', id, regle.entiteId, { motif: d.motif });
+        return regle;
+      }
+      if (s[2] === 'retirer') {
+        exigerGestion();
+        const regle = charger();
+        if (regle.statut !== 'approuvee') throw new ErreurHttp(409, `Règle au statut « ${regle.statut} »`);
+        Object.assign(regle, { statut: 'retiree', decideeLe: instant() });
+        rendreObsolete(regle.entiteId);
+        tracerAudit(a, 'regle.retiree', 'regle_cabinet', id, regle.entiteId, { controleId: regle.controleId, version: regle.version });
+        return regle;
+      }
+    }
+    return undefined;
+  }
+
+  // ── Écritures d'inventaire ──
+  if (s[0] === 'exercices' && s[2] === 'ecritures-inventaire' && (s.length === 3 || (s.length === 4 && s[3] === 'export'))) {
+    const id = exigerUuid(s[1]);
+    if (m === 'POST' && s.length === 3) {
+      const d = r.json();
+      const dateEcriture = dateIso(d, 'dateEcriture');
+      const libelle = chaine(d, 'libelle', 1, 200);
+      const justification = chaine(d, 'justification', 10, 4000);
+      const calcul = chaine(d, 'calcul', 3, 4000);
+      if (!Array.isArray(d.lignes) || d.lignes.length < 2 || d.lignes.length > 200) throw invalide('lignes', '2 à 200 lignes attendues');
+      (d.lignes as Enr[]).forEach((l, i) => {
+        if (typeof l.compteNum !== 'string' || !/^[1-7]\d{2,11}$/.test(l.compteNum)) throw invalide(`lignes.${i}.compteNum`, 'numéro de compte du PCG attendu (classes 1 à 7, 3 chiffres au moins)');
+        chaine(l, 'compteLib', 1, 200);
+        for (const k of ['debit', 'credit']) if (typeof l[k] !== 'string' || !DECIMAL.test(l[k])) throw invalide(`lignes.${i}.${k}`, 'chaîne décimale attendue');
+        const debit = dec(l.debit);
+        const credit = dec(l.credit);
+        if (debit.isNegative() || credit.isNegative()) throw new ErreurHttp(400, 'Montants négatifs interdits : inversez le sens');
+        if (debit.isZero() === credit.isZero()) throw new ErreurHttp(400, 'Chaque ligne porte un montant au débit OU au crédit');
+      });
+      const totalDebit = somme((d.lignes as Enr[]).map((l) => l.debit));
+      const totalCredit = somme((d.lignes as Enr[]).map((l) => l.credit));
+      if (!totalDebit.equals(totalCredit)) throw new ErreurHttp(400, { message: 'Écriture déséquilibrée', totalDebit: versChaine(totalDebit), totalCredit: versChaine(totalCredit), ecart: versChaine(totalDebit.minus(totalCredit)) });
+      const ex = chargerExercice(a, id, 'collaboration');
+      if (dateEcriture < ex.debut || dateEcriture > ex.fin) throw new ErreurHttp(400, 'La date de l’écriture doit être dans l’exercice');
+      const e = {
+        id: randomUUID(), cabinetId: a.cabinetId, entiteId: ex.entiteId, exerciceId: id, dateEcriture, libelle, origine: 'saisie_humaine', justification, calcul, pieces: [],
+        lignes: (d.lignes as Enr[]).map((l) => ({ compteNum: l.compteNum, compteLib: l.compteLib, debit: versChaine(dec(l.debit)), credit: versChaine(dec(l.credit)) })), totalDebit: versChaine(totalDebit), statut: 'proposee', versionDonnees: ex.versionDonnees,
+        proposeePar: a.utilisateurId, decideePar: null, decideeLe: null, motifDecision: null, exporteeLe: null, creeLe: instant(),
+      };
+      suite.ecritures.push(e);
+      tracerAudit(a, 'ecriture_inventaire.proposee', 'ecriture_inventaire', e.id, ex.entiteId, { total: e.totalDebit });
+      return e;
+    }
+    if (m === 'GET' && s.length === 3) {
+      const ex = chargerExercice(a, id, 'lecture');
+      return suite.ecritures.filter((e) => e.exerciceId === id).map((e) => ({ ...e, aRevoir: e.versionDonnees !== ex.versionDonnees }));
+    }
+    if (m === 'POST' && s.length === 4) {
+      const ex = chargerExercice(a, id, 'revision');
+      const aJour = suite.ecritures.filter((e) => e.exerciceId === id && ['approuvee', 'exportee'].includes(e.statut) && e.versionDonnees === ex.versionDonnees).sort((x, y) => x.dateEcriture.localeCompare(y.dateEcriture));
+      if (!aJour.length) throw new ErreurHttp(409, 'Aucune écriture approuvée à exporter');
+      const champCsv = (v: string) => (/[";\n\r]/.test(v) || /^[=+\-@]/.test(v) ? `"${(/^[=+\-@]/.test(v) ? `'${v}` : v).replace(/"/g, '""')}"` : v);
+      const lignes = ['JournalCode;EcritureNum;EcritureDate;CompteNum;CompteLib;EcritureLib;Debit;Credit'];
+      for (const l of lignesInventaire(aJour)) lignes.push(['INV', l.ecritureNum, l.ecritureDate.replace(/-/g, ''), l.compteNum, champCsv(l.compteLib), champCsv(l.ecritureLib), l.debit.replace('.', ','), l.credit.replace('.', ',')].join(';'));
+      for (const e of aJour) Object.assign(e, { statut: 'exportee', exporteeLe: instant() });
+      tracerAudit(a, 'ecritures_inventaire.exportees', 'exercice', id, ex.entiteId, { ecritures: aJour.length });
+      r.res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="ecritures-inventaire-${id}.csv"`, 'X-Ecritures-Exportees': String(aJour.length), 'Cache-Control': 'private, no-store' });
+      r.res.end(`${lignes.join('\r\n')}\r\n`);
+      return undefined;
+    }
+  }
+  if (m === 'POST' && s[0] === 'ecritures-inventaire' && s[2] === 'decision' && s.length === 3) {
+    const id = exigerUuid(s[1]);
+    const d = r.json();
+    if (d.decision !== 'approuver' && d.decision !== 'rejeter') throw invalide('decision', 'valeur inconnue');
+    if (d.motif !== undefined) chaine(d, 'motif', 1, 2000);
+    if (d.decision === 'rejeter' && !d.motif) throw new ErreurHttp(400, 'Un motif est requis pour rejeter');
+    const e = suite.ecritures.find((x) => x.id === id && x.cabinetId === a.cabinetId && visibleEnLecture(a, x.entiteId));
+    if (!e) throw new ErreurHttp(404, 'Écriture introuvable');
+    exigerNiveau(a, e.entiteId, 'revision');
+    if (e.statut !== 'proposee') throw new ErreurHttp(409, `Écriture au statut « ${e.statut} »`);
+    if (e.proposeePar === a.utilisateurId) throw new ErreurHttp(403, 'Une écriture ne peut pas être approuvée ou rejetée par la personne qui l’a proposée');
+    const ex = etat.exercices.find((x) => x.id === e.exerciceId);
+    if (d.decision === 'approuver' && ex && ex.versionDonnees !== e.versionDonnees) throw new ErreurHttp(409, 'Les données importées ont changé depuis cette proposition : elle doit être revue et proposée à nouveau');
+    Object.assign(e, { statut: d.decision === 'approuver' ? 'approuvee' : 'rejetee', decideePar: a.utilisateurId, decideeLe: instant(), motifDecision: d.motif ?? null });
+    tracerAudit(a, `ecriture_inventaire.${e.statut}`, 'ecriture_inventaire', id, e.entiteId);
+    return e;
+  }
+  if (m === 'GET' && s[0] === 'exercices' && s[2] === 'balance-ajustee' && s.length === 3) {
+    const { exercice, lignes } = donneesEtats(a, exigerUuid(s[1]));
+    const approuvees = suite.ecritures.filter((e) => e.exerciceId === exercice.id && ['approuvee', 'exportee'].includes(e.statut));
+    const aJour = approuvees.filter((e) => e.versionDonnees === exercice.versionDonnees);
+    const balanceImportee = calculerBalance(lignes);
+    const balanceAjustee = calculerBalance([...lignes, ...lignesInventaire(aJour)]);
+    const resultat = (b: typeof balanceImportee) =>
+      versChaine(b.lignes.reduce((t, l) => (l.compteNum.startsWith('7') ? t.plus(dec(l.soldeCrediteur)).minus(dec(l.soldeDebiteur)) : l.compteNum.startsWith('6') ? t.minus(dec(l.soldeDebiteur)).plus(dec(l.soldeCrediteur)) : t), dec('0')));
+    return {
+      mention: 'PROJET — balance de travail. Les écritures d’inventaire sont des propositions approuvées en interne ; elles ne sont pas intégrées dans le logiciel comptable.',
+      exercice, ecrituresPrisesEnCompte: aJour.map((e) => ({ id: e.id, libelle: e.libelle, dateEcriture: e.dateEcriture, total: e.totalDebit, statut: e.statut })), ecrituresEcarteesCarDonneesModifiees: approuvees.length - aJour.length,
+      balanceImportee, balanceAjustee, impact: { resultatAvant: resultat(balanceImportee), resultatApres: resultat(balanceAjustee), variation: versChaine(dec(resultat(balanceAjustee)).minus(dec(resultat(balanceImportee)))) },
+    };
+  }
+
+  // ── Missions, lettres, travaux, barème ──
+  if (m === 'GET' && chemin === 'reference/prestations') return Object.entries(PRESTATIONS).map(([code, libelle]) => ({ code, libelle }));
+  const estimation = (prestation: string) => {
+    const b = suite.baremes.find((x) => x.cabinetId === a.cabinetId && x.prestation === prestation);
+    const observes = suite.travaux.filter((t) => t.cabinetId === a.cabinetId && t.prestation === prestation && t.tempsObserveMinutes !== null && niveauSur(a, t.entiteId)).map((t) => t.tempsObserveMinutes as number);
+    return estimerTemps({ baremeMinutes: b?.minutesReference ?? null, tempsObservesMinutes: observes });
+  };
+  if (s[0] === 'dossiers' && s[2] === 'missions' && s.length === 3) {
+    const id = exigerUuid(s[1]);
+    if (m === 'POST') {
+      const d = r.json();
+      const libelle = chaine(d, 'libelle', 1, 200);
+      for (const k of ['debut', 'fin']) if (d[k] !== undefined) dateIso(d, k);
+      exigerNiveau(a, id, 'collaboration');
+      const mission = { id: randomUUID(), cabinetId: a.cabinetId, entiteId: id, libelle, debut: d.debut ?? null, fin: d.fin ?? null, creeLe: instant() };
+      suite.missions.push(mission);
+      tracerAudit(a, 'mission.creee', 'mission', mission.id, id);
+      return mission;
+    }
+    if (m === 'GET') {
+      exigerNiveau(a, id, 'lecture');
+      const lettres = suite.lettres.filter((l) => l.entiteId === id).sort((x, y) => x.dateEffet.localeCompare(y.dateEffet) || x.version - y.version);
+      return suite.missions.filter((x) => x.entiteId === id).map((x) => ({ ...x, lettres: lettres.filter((l) => l.missionId === x.id) }));
+    }
+  }
+  if (m === 'POST' && s[0] === 'missions' && s[2] === 'lettres' && s.length === 3) {
+    const id = exigerUuid(s[1]);
+    const d = r.json();
+    const dateEffet = dateIso(d, 'dateEffet');
+    const contenu = schemaContenuLettre.safeParse(d.contenu);
+    if (!contenu.success) throw new ErreurHttp(400, { message: 'Requête invalide', erreurs: contenu.error.issues.map((i) => ({ champ: `contenu.${i.path.join('.')}`, probleme: i.message })) });
+    const avenantDe = uuidOptionnel(d, 'avenantDe');
+    const mission = suite.missions.find((x) => x.id === id && x.cabinetId === a.cabinetId && visibleEnLecture(a, x.entiteId));
+    if (!mission) throw new ErreurHttp(404, 'Mission introuvable');
+    exigerNiveau(a, mission.entiteId, 'collaboration');
+    if (avenantDe && !suite.lettres.some((l) => l.id === avenantDe && l.missionId === id)) throw new ErreurHttp(400, 'La lettre modifiée par cet avenant est introuvable dans cette mission');
+    const version = Math.max(0, ...suite.lettres.filter((l) => l.missionId === id).map((l) => l.version)) + 1;
+    const lettre = { id: randomUUID(), cabinetId: a.cabinetId, entiteId: mission.entiteId, missionId: id, avenantDe, documentId: null, dateEffet, contenu: contenu.data, origine: 'saisie_humaine', version, statut: 'projet', redigeePar: a.utilisateurId, valideePar: null, valideeLe: null, creeLe: instant() };
+    suite.lettres.push(lettre);
+    tracerAudit(a, avenantDe ? 'avenant.redige' : 'lettre_mission.redigee', 'lettre_mission', lettre.id, mission.entiteId, { version });
+    return lettre;
+  }
+  if (m === 'POST' && s[0] === 'lettres' && s[2] === 'validation' && s.length === 3) {
+    const id = exigerUuid(s[1]);
+    const lettre = suite.lettres.find((l) => l.id === id && l.cabinetId === a.cabinetId && visibleEnLecture(a, l.entiteId));
+    if (!lettre) throw new ErreurHttp(404, 'Lettre introuvable');
+    exigerNiveau(a, lettre.entiteId, 'validation');
+    if (lettre.statut !== 'projet') throw new ErreurHttp(409, `Lettre au statut « ${lettre.statut} »`);
+    Object.assign(lettre, { statut: 'validee', valideePar: a.utilisateurId, valideeLe: instant() });
+    tracerAudit(a, 'lettre_mission.validee', 'lettre_mission', id, lettre.entiteId, { version: lettre.version, dateEffet: lettre.dateEffet });
+    return lettre;
+  }
+  if (s[0] === 'dossiers' && s[2] === 'travaux' && s.length === 3) {
+    const id = exigerUuid(s[1]);
+    if (m === 'POST') {
+      const d = r.json();
+      const dateTravail = dateIso(d, 'dateTravail');
+      if (typeof d.prestation !== 'string' || !(d.prestation in PRESTATIONS)) throw invalide('prestation', 'valeur inconnue');
+      const description = chaine(d, 'description', 1, 2000);
+      if (d.tempsObserveMinutes !== undefined && (!Number.isInteger(d.tempsObserveMinutes) || d.tempsObserveMinutes <= 0 || d.tempsObserveMinutes > 100_000)) throw invalide('tempsObserveMinutes', 'entier positif attendu');
+      exigerNiveau(a, id, 'collaboration');
+      const t = { id: randomUUID(), cabinetId: a.cabinetId, entiteId: id, dateTravail, prestation: d.prestation, description, tempsObserveMinutes: d.tempsObserveMinutes ?? null, auteurId: a.utilisateurId, creeLe: instant() };
+      suite.travaux.push(t);
+      return { ...t, rattachement: situerTravail(lettresDatees(id), { date: dateTravail, prestation: d.prestation }) };
+    }
+    if (m === 'GET') {
+      exigerNiveau(a, id, 'lecture');
+      const lettres = lettresDatees(id);
+      return suite.travaux.filter((t) => t.entiteId === id).sort((x, y) => y.dateTravail.localeCompare(x.dateTravail)).map((t) => ({ ...t, rattachement: situerTravail(lettres, { date: t.dateTravail, prestation: t.prestation }) }));
+    }
+  }
+  if (m === 'POST' && s[0] === 'travaux' && s[2] === 'proposition-avenant' && s.length === 3) {
+    const id = exigerUuid(s[1]);
+    const t = suite.travaux.find((x) => x.id === id && x.cabinetId === a.cabinetId && visibleEnLecture(a, x.entiteId));
+    if (!t) throw new ErreurHttp(404, 'Travail introuvable');
+    exigerNiveau(a, t.entiteId, 'collaboration');
+    const situation = situerTravail(lettresDatees(t.entiteId), { date: t.dateTravail, prestation: t.prestation });
+    if (situation.situation !== 'potentiellement_hors_perimetre') throw new ErreurHttp(409, situation.situation === 'dans_le_perimetre' ? 'Ce travail est dans le périmètre de la lettre applicable' : situation.motif);
+    const base = suite.lettres.find((l) => l.id === situation.lettreId)!;
+    const contenu = base.contenu as ContenuLettre;
+    const version = Math.max(0, ...suite.lettres.filter((l) => l.missionId === base.missionId).map((l) => l.version)) + 1;
+    const projet = {
+      id: randomUUID(), cabinetId: a.cabinetId, entiteId: t.entiteId, missionId: base.missionId, avenantDe: base.id, documentId: null, dateEffet: t.dateTravail,
+      contenu: { ...contenu, perimetre: [...contenu.perimetre, { prestation: t.prestation, precision: `Ajout proposé à la suite du travail du ${t.dateTravail}` }] }, origine: 'proposition_avenant', version, statut: 'projet', redigeePar: a.utilisateurId, valideePar: null, valideeLe: null, creeLe: instant(),
+    };
+    suite.lettres.push(projet);
+    tracerAudit(a, 'avenant.propose', 'lettre_mission', projet.id, t.entiteId, { travailId: id, prestation: t.prestation });
+    return { avenant: projet, motif: situation.motif, estimation: estimation(t.prestation), mention: 'Projet d’avenant préparé par le logiciel : à relire, compléter (honoraires) et valider par une personne habilitée.' };
+  }
+  if (s[0] === 'cabinet' && s[1] === 'baremes') {
+    if (m === 'GET' && s.length === 2) {
+      if (estClient(a)) throw new ErreurHttp(403, 'Réservé aux membres du cabinet');
+      return suite.baremes.filter((b) => b.cabinetId === a.cabinetId).sort((x, y) => x.prestation.localeCompare(y.prestation));
+    }
+    if (m === 'PUT' && s.length === 3) {
+      const code = s[2]!;
+      if (!(code in PRESTATIONS)) throw new ErreurHttp(400, 'Prestation inconnue');
+      const d = r.json();
+      if (!Number.isInteger(d.minutesReference) || d.minutesReference <= 0 || d.minutesReference > 100_000) throw invalide('minutesReference', 'entier positif attendu');
+      if (!gestionnaire) throw new ErreurHttp(403, 'Réservé aux administrateurs et associés du cabinet');
+      let b = suite.baremes.find((x) => x.cabinetId === a.cabinetId && x.prestation === code);
+      if (b) Object.assign(b, { minutesReference: d.minutesReference, definiPar: a.utilisateurId });
+      else suite.baremes.push((b = { id: randomUUID(), cabinetId: a.cabinetId, prestation: code, minutesReference: d.minutesReference, definiPar: a.utilisateurId, creeLe: instant() }));
+      tracerAudit(a, 'bareme.defini', 'bareme', code, null, { minutesReference: d.minutesReference });
+      return b;
+    }
+  }
+
+  // ── Registre des conseils ──
+  const validerConseil = (d: Enr) => ({ dateConseil: dateIso(d, 'dateConseil'), objet: chaine(d, 'objet', 1, 300), contenu: chaine(d, 'contenu', 1, 20_000), destinataire: chaine(d, 'destinataire', 1, 300), missionId: uuidOptionnel(d, 'missionId'), pieces: (d.pieces ?? []) as string[] });
+  const verifierPieces = (entiteId: string, pieces: string[]) => {
+    if (!Array.isArray(pieces) || pieces.some((x) => typeof x !== 'string' || !UUID.test(x))) throw invalide('pieces', 'identifiants invalides');
+    if (pieces.some((x) => !etat.documents.some((doc) => doc.id === x && doc.entiteId === entiteId))) throw new ErreurHttp(400, 'Une pièce jointe n’appartient pas à ce dossier');
+  };
+  if (s[0] === 'dossiers' && s[2] === 'conseils' && s.length === 3) {
+    const id = exigerUuid(s[1]);
+    if (m === 'POST') {
+      const d = validerConseil(r.json());
+      exigerNiveau(a, id, 'collaboration');
+      verifierPieces(id, d.pieces);
+      const c = { id: randomUUID(), cabinetId: a.cabinetId, entiteId: id, ...d, auteurId: a.utilisateurId, version: 1, remplaceConseilId: null, statut: 'projet', validePar: null, valideLe: null, envoiAutorisePar: null, envoiAutoriseLe: null, creeLe: instant() };
+      suite.conseils.push(c);
+      tracerAudit(a, 'conseil.redige', 'conseil', c.id, id);
+      return c;
+    }
+    if (m === 'GET') {
+      exigerNiveau(a, id, 'lecture');
+      return suite.conseils
+        .filter((c) => c.entiteId === id)
+        .sort((x, y) => y.dateConseil.localeCompare(x.dateConseil) || y.creeLe.localeCompare(x.creeLe))
+        .map((c) => {
+          const siens = suite.evenements.filter((e) => e.conseilId === c.id).sort((x, y) => x.dateEvenement.localeCompare(y.dateEvenement));
+          const fait = (type: string) => siens.find((e) => e.type === type)?.dateEvenement ?? null;
+          return { ...c, auteur: nomDe(c.auteurId), faits: { envoi: fait('envoi'), remise: fait('remise'), reception: fait('reception'), lecture: fait('lecture') }, evenements: siens };
+        });
+    }
+  }
+  if (s[0] === 'conseils' && s.length >= 2) {
+    const id = exigerUuid(s[1]);
+    const charger = () => {
+      const c = suite.conseils.find((x) => x.id === id && x.cabinetId === a.cabinetId && visibleEnLecture(a, x.entiteId));
+      if (!c) throw new ErreurHttp(404, 'Conseil introuvable');
+      return c;
+    };
+    if (m === 'PUT' && s.length === 2) {
+      const d = validerConseil(r.json());
+      const c = charger();
+      exigerNiveau(a, c.entiteId, 'collaboration');
+      if (c.statut !== 'projet') throw new ErreurHttp(409, 'Un conseil validé ne se modifie plus : créez une nouvelle version');
+      verifierPieces(c.entiteId, d.pieces);
+      Object.assign(c, d);
+      tracerAudit(a, 'conseil.modifie', 'conseil', id, c.entiteId);
+      return c;
+    }
+    if (m === 'POST' && s[2] === 'nouvelle-version' && s.length === 3) {
+      const c = charger();
+      exigerNiveau(a, c.entiteId, 'collaboration');
+      if (c.statut === 'projet') throw new ErreurHttp(409, 'Ce conseil est encore un projet : modifiez-le directement');
+      const n = { ...c, id: randomUUID(), auteurId: a.utilisateurId, version: c.version + 1, remplaceConseilId: c.id, statut: 'projet', validePar: null, valideLe: null, envoiAutorisePar: null, envoiAutoriseLe: null, creeLe: instant() };
+      suite.conseils.push(n);
+      tracerAudit(a, 'conseil.nouvelle_version', 'conseil', n.id, c.entiteId, { remplace: c.id, version: n.version });
+      return n;
+    }
+    if (m === 'POST' && s[2] === 'validation' && s.length === 3) {
+      const c = charger();
+      exigerNiveau(a, c.entiteId, 'validation');
+      if (c.statut !== 'projet') throw new ErreurHttp(409, `Conseil au statut « ${c.statut} »`);
+      Object.assign(c, { statut: 'valide', validePar: a.utilisateurId, valideLe: instant() });
+      const remplace = suite.conseils.find((x) => x.id === c.remplaceConseilId);
+      if (remplace) remplace.statut = 'remplace';
+      tracerAudit(a, 'conseil.valide', 'conseil', id, c.entiteId, { version: c.version });
+      return c;
+    }
+    if (m === 'POST' && s[2] === 'autorisation-envoi' && s.length === 3) {
+      const c = charger();
+      exigerNiveau(a, c.entiteId, 'validation');
+      if (c.statut !== 'valide') throw new ErreurHttp(409, c.statut === 'projet' ? 'Un projet ne peut pas être envoyé : il doit d’abord être validé' : `Conseil au statut « ${c.statut} »`);
+      Object.assign(c, { statut: 'envoi_autorise', envoiAutorisePar: a.utilisateurId, envoiAutoriseLe: instant() });
+      tracerAudit(a, 'conseil.envoi_autorise', 'conseil', id, c.entiteId);
+      return c;
+    }
+    if (m === 'POST' && s[2] === 'evenements' && s.length === 3) {
+      const d = r.json();
+      if (!['envoi', 'remise', 'reception', 'lecture'].includes(d.type)) throw invalide('type', 'valeur inconnue');
+      if (typeof d.dateEvenement !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/.test(d.dateEvenement)) throw invalide('dateEvenement', 'date et heure ISO avec décalage attendues');
+      chaine(d, 'canal', 1, 100);
+      chaine(d, 'justificatif', 5, 1000);
+      const c = charger();
+      exigerNiveau(a, c.entiteId, 'collaboration');
+      if (c.statut !== 'envoi_autorise') throw new ErreurHttp(409, 'Aucun événement d’envoi ne peut être consigné sans autorisation d’envoi');
+      if (Date.parse(d.dateEvenement) > Date.now() + 60_000) throw new ErreurHttp(400, 'Un fait constaté ne peut pas être daté dans le futur');
+      const envoi = suite.evenements.find((e) => e.conseilId === id && e.type === 'envoi');
+      if (d.type !== 'envoi') {
+        if (!envoi) throw new ErreurHttp(409, 'Consignez d’abord l’envoi');
+        if (Date.parse(d.dateEvenement) < Date.parse(envoi.dateEvenement)) throw new ErreurHttp(400, 'Cet événement ne peut pas précéder l’envoi');
+      }
+      const e = { id: randomUUID(), cabinetId: a.cabinetId, entiteId: c.entiteId, conseilId: id, type: d.type, dateEvenement: new Date(d.dateEvenement).toISOString(), canal: d.canal, justificatif: d.justificatif, justificatifDocumentId: null, saisiPar: a.utilisateurId, creeLe: instant() };
+      suite.evenements.push(e);
+      tracerAudit(a, `conseil.${d.type}_consigne`, 'conseil', id, c.entiteId, { canal: d.canal });
+      return e;
+    }
+  }
+
+  // ── Veille ──
+  if (m === 'GET' && chemin === 'veille/sources') {
+    if (estClient(a)) throw new ErreurHttp(403, 'Réservé aux membres du cabinet');
+    const limite = Date.now() - 7 * 86_400_000;
+    return {
+      evolutionsDetecteesNonQualifiees: suite.evolutions.filter((e) => e.etatVerification === 'detectee_a_qualifier').length,
+      sources: suite.sources.filter((x) => x.actif).map(({ empreinteContenu: _e, ...x }) => ({ ...x, veilleAssuree: x.dernierSuccesLe !== null && Date.parse(x.dernierSuccesLe.replace(' ', 'T').replace(/\+00$/, 'Z')) >= limite })),
+    };
+  }
+  if (s[0] === 'dossiers' && s[2] === 'veille') {
+    const id = exigerUuid(s[1]);
+    if (m === 'GET' && s.length === 3) {
+      exigerNiveau(a, id, 'lecture');
+      const e = ENTITES.find((x) => x.id === id)!;
+      const profil = { territoireFiscal: e.territoireFiscal ?? 'metropole', regimeFiscal: e.regimeFiscal ?? 'IS', formeJuridique: e.formeJuridique ?? null, codeNaf: e.codeNaf ?? null, referentielComptable: 'PCG', exercices: etat.exercices.filter((x) => x.entiteId === id).map((x) => ({ debut: x.debut, fin: x.fin })) };
+      return suite.evolutions
+        .filter((ev) => ev.etatVerification === 'verifiee')
+        .map((ev) => {
+          const criteres = schemaCriteresEvolution.safeParse(ev.criteres);
+          const applicabilite = criteres.success ? evaluerApplicabilite(profil, criteres.data) : { statut: 'a_confirmer' as const, raisons: ['Critères de l’évolution illisibles : applicabilité à apprécier manuellement.'], manquants: [], exercicesConcernes: [] };
+          const sv = suite.suivis.find((x) => x.entiteId === id && x.evolutionId === ev.id);
+          return { id: ev.id, emetteur: ev.emetteur, reference: ev.reference, url: ev.url, passage: ev.passage, datePublication: ev.datePublication, dateEffet: ev.dateEffet, conditions: ev.conditions, resume: ev.resume, verifieeLe: ev.verifieeLe, applicabilite, suivi: sv ? { statut: sv.statut, note: sv.note, majLe: sv.majLe } : null };
+        });
+    }
+    if (m === 'PUT' && s.length === 4) {
+      const evolutionId = exigerUuid(s[3]);
+      const d = r.json();
+      if (!['a_examiner', 'pris_en_compte', 'sans_objet'].includes(d.statut)) throw invalide('statut', 'valeur inconnue');
+      if (d.note !== undefined && (typeof d.note !== 'string' || d.note.length > 2000)) throw invalide('note', 'trop long');
+      exigerNiveau(a, id, 'collaboration');
+      if (!suite.evolutions.some((e) => e.id === evolutionId && e.etatVerification === 'verifiee')) throw new ErreurHttp(404, 'Évolution introuvable');
+      let sv = suite.suivis.find((x) => x.entiteId === id && x.evolutionId === evolutionId);
+      if (sv) Object.assign(sv, { statut: d.statut, note: d.note ?? null, auteurId: a.utilisateurId, majLe: horodatagePg() });
+      else suite.suivis.push((sv = { id: randomUUID(), cabinetId: a.cabinetId, entiteId: id, evolutionId, statut: d.statut, note: d.note ?? null, auteurId: a.utilisateurId, majLe: horodatagePg() }));
+      tracerAudit(a, 'veille.suivi', 'evolution', evolutionId, id, { statut: d.statut });
+      return sv;
+    }
+  }
+
+  // ── Recherche (FICTIVE : sous-chaîne insensible à la casse, sans analyse linguistique ; marqueurs « » comme l'API) ──
+  if (m === 'GET' && chemin === 'recherche') {
+    const entiteId = exigerUuid(r.query.get('entiteId') ?? undefined, 'entiteId');
+    const requete = (r.query.get('q') ?? '').trim();
+    if (requete.length < 2 || requete.length > 200) throw new ErreurHttp(400, 'Recherche de 2 à 200 caractères');
+    const niveau = exigerNiveau(a, entiteId, 'depot');
+    const mots = requete.split(/\s+/).filter((x) => x !== 'OR' && x.length > 1).map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const motif = new RegExp(mots.join('|') || '$^', 'gi');
+    const trouve = (texte: string) => new RegExp(motif.source, 'i').test(texte);
+    const pieces = etat.documents
+      .filter((d) => d.entiteId === entiteId && (niveau !== 'depot' || etat.receptions.some((x) => x.documentId === d.id && x.deposantId === a.utilisateurId)))
+      .flatMap((d) => {
+        const extraction = etat.extractions.find((x) => x.documentId === d.id && x.actuelle);
+        const texte = Object.values((extraction?.champs ?? {}) as Enr).map((c) => c?.extrait).filter((x): x is string => typeof x === 'string').join('\n');
+        return texte && trouve(texte) ? [{ documentId: d.id, nomOrigine: d.nomOrigine, page: 1, statut: d.statut, extrait: texte.replace(motif, '«$&»') }] : [];
+      });
+    if (niveau === 'depot') return { requete, perimetre: 'Vos propres dépôts dans ce dossier', pieces, ecritures: [], constats: [] };
+    const actifs = new Set(etat.lots.filter((l) => l.actif).map((l) => l.id));
+    const ecritures = etat.lignes
+      .filter((l) => l.entiteId === entiteId && actifs.has(l.lotImportId) && trouve(`${l.ecritureLib} ${l.pieceRef} ${l.compteLib}`))
+      .slice(0, 50)
+      .map((l) => ({ id: l.id, exerciceId: l.exerciceId, lotImportId: l.lotImportId, date: l.ecritureDate, journal: l.journalCode, numero: l.ecritureNum, compte: l.compteNum, piece: l.pieceRef, libelle: l.ecritureLib, debit: l.debit, credit: l.credit }));
+    const courantes = new Set(etat.executions.filter((e) => !e.obsolete).map((e) => e.id));
+    const constats = etat.constats
+      .filter((c) => c.entiteId === entiteId && courantes.has(c.executionId) && trouve(`${c.titre} ${c.explication}`))
+      .slice(0, 30)
+      .map((c) => ({ id: c.id, exerciceId: c.exerciceId, controleId: c.controleId, titre: c.titre, statutRevue: c.statutRevue, montant: c.montant }));
+    return { requete, perimetre: 'Pièces, écritures du lot actif et constats de la dernière exécution, dans ce dossier', pieces, ecritures, constats };
+  }
+
+  // ── Restitution (archive FICTIVE : ZIP vide valide) ──
+  if (s[0] === 'dossiers' && s[2] === 'restitutions' && s.length === 3) {
+    const id = exigerUuid(s[1]);
+    if (m === 'POST') {
+      exigerNiveau(a, id, 'validation');
+      const x: Enr = { id: randomUUID(), cabinetId: a.cabinetId, entiteId: id, statut: 'en_attente', cleArchive: null, sha256: null, taille: null, resume: null, erreur: null, demandePar: a.utilisateurId, creeLe: horodatagePg(), termineLe: null };
+      suite.restitutions.push(x);
+      tracerAudit(a, 'restitution.demandee', 'restitution', x.id, id);
+      const reference = suite;
+      setTimeout(() => {
+        if (suite !== reference) return;
+        const archive = zipFictif(`restitution fictive ${x.id}`);
+        reference.archives.set(x.id, archive);
+        const docs = etat.documents.filter((d) => d.entiteId === id);
+        Object.assign(x, {
+          statut: 'termine', cleArchive: `fictif/restitutions/${x.id}.zip`, sha256: sha256(archive), taille: archive.length, termineLe: horodatagePg(),
+          resume: { genereLe: new Date().toISOString(), dossier: ENTITES.find((e) => e.id === id)?.raisonSociale, pieces: docs.length, originaux: Math.max(0, docs.length - 1), originauxExclus: [{ sha256: 'f'.repeat(64), motif: 'écarté par l’antivirus' }], lotsImport: etat.lots.filter((l) => l.entiteId === id).length, lignesEcriture: etat.lignes.filter((l) => l.entiteId === id).length, constats: etat.constats.filter((c) => c.entiteId === id).length, decisions: etat.decisions.length, mouvementsBancaires: etat.mouvements.filter((mv) => mv.entiteId === id).length, rapprochements: 0, reglesCabinet: suite.regles.length, evenementsAudit: audit.filter((l) => l.entiteId === id).length },
+        });
+      }, DELAI_WORKER_MS);
+      r.res.statusCode = 202;
+      return x;
+    }
+    if (m === 'GET') {
+      exigerNiveau(a, id, 'validation');
+      return suite.restitutions.filter((x) => x.entiteId === id).toReversed();
+    }
+  }
+  if (m === 'GET' && s[0] === 'restitutions' && s[2] === 'archive' && s.length === 3) {
+    const id = exigerUuid(s[1]);
+    const x = suite.restitutions.find((y) => y.id === id && y.cabinetId === a.cabinetId && niveauSur(a, y.entiteId));
+    if (!x) throw new ErreurHttp(404, 'Restitution introuvable');
+    exigerNiveau(a, x.entiteId, 'validation');
+    const archive = suite.archives.get(id);
+    if (x.statut !== 'termine' || !archive) throw new ErreurHttp(409, `Archive non disponible (statut : ${x.statut})`);
+    tracerAudit(a, 'restitution.telechargee', 'restitution', id, x.entiteId);
+    r.res.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Length': archive.length, 'Content-Disposition': `attachment; filename="restitution-${id}.zip"`, 'Cache-Control': 'private, no-store' });
+    r.res.end(archive);
+    return undefined;
+  }
+  return undefined;
+}
+
 // ───────────── Imitation des traitements du worker (minuteries) ─────────────
 function imiterImport(lotId: string): void {
   const reference = etat;
@@ -1669,6 +2349,7 @@ const serveur = http.createServer(async (req, res) => {
     if (segments[0] === '__test') {
       // Routes de pilotage des tests : absentes de l'API réelle.
       if (methode === 'POST' && segments[1] === 'reinitialiser') {
+        suite = suiteInitiale();
         ENTITES = structuredClone(ENTITES_INITIALES);
         HABILITATIONS = structuredClone(HABILITATIONS_INITIALES);
         APPARTENANCES_EN_PLUS = [];
@@ -1717,6 +2398,9 @@ const serveur = http.createServer(async (req, res) => {
         pannes = { ...pannes, ...json() };
         compteurMorceaux = 0;
         resultat = pannes;
+      } else if (methode === 'GET' && segments[1] === 'suite') {
+        // Lecture de l'état des écrans ajoutés (règles, inventaire, missions, conseils, veille, restitutions, membres).
+        resultat = { regles: suite.regles, ecritures: suite.ecritures, missions: suite.missions, lettres: suite.lettres, travaux: suite.travaux, baremes: suite.baremes, conseils: suite.conseils, evenements: suite.evenements, suivis: suite.suivis, restitutions: suite.restitutions, membres: [...suite.membres.entries()], habilitations: HABILITATIONS };
       } else if (methode === 'GET' && segments[1] === 'journal') resultat = journal;
       else if (methode === 'GET' && segments[1] === 'etat') {
         resultat = {
@@ -1744,7 +2428,7 @@ const serveur = http.createServer(async (req, res) => {
     }
     const sortie = Buffer.from(JSON.stringify(resultat));
     // NestJS répond 201 à un POST, sauf mention contraire (@HttpCode) : terminer et validation répondent 200.
-    if (res.statusCode === 200 && methode === 'POST' && segments[0] === 'v1' && !/\/(terminer|validation|affecter|mail\/retour)$/.test(url.pathname)) res.statusCode = 201;
+    if (res.statusCode === 200 && methode === 'POST' && segments[0] === 'v1' && !/\/(terminer|validation|affecter|mail\/retour|impact|approuver|refuser|retirer|decision|autorisation-envoi)$/.test(url.pathname)) res.statusCode = 201;
     res.writeHead(res.statusCode, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': sortie.length });
     res.end(sortie);
     journaliser(res.statusCode);

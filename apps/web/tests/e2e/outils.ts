@@ -116,3 +116,25 @@ export function surveiller(page: Page): string[] {
   page.on('pageerror', (e) => erreurs.push(`pageerror: ${e.message}`));
   return erreurs;
 }
+
+// ───────────── Écrans ajoutés : règles, inventaire, missions, conseils, veille, restitution, membres ─────────────
+export interface EtatSuite {
+  regles: Array<{ id: string; controleId: string; entiteId: string | null; statut: string; version: number; parametres: Record<string, unknown>; impact: unknown; proposeePar: string; approuveePar: string | null }>;
+  ecritures: Array<{ id: string; statut: string; libelle: string; totalDebit: string; proposeePar: string; decideePar: string | null; motifDecision: string | null }>;
+  lettres: Array<{ id: string; statut: string; version: number; origine: string; avenantDe: string | null; contenu: { perimetre: Array<{ prestation: string }> } }>;
+  travaux: Array<{ id: string; prestation: string; tempsObserveMinutes: number | null }>;
+  conseils: Array<{ id: string; statut: string; version: number; contenu: string; remplaceConseilId: string | null }>;
+  evenements: Array<{ conseilId: string; type: string; canal: string; justificatif: string }>;
+  suivis: Array<{ entiteId: string; evolutionId: string; statut: string; note: string | null }>;
+  restitutions: Array<{ id: string; statut: string; sha256: string | null }>;
+  membres: Array<[string, { role?: string; actif?: boolean }]>;
+  habilitations: Array<{ entiteId: string; utilisateurId: string; niveau: string }>;
+}
+export const etatSuite = () => simulateur<EtatSuite>('suite');
+/** Appel du BFF depuis la page (même origine, en-tête CSRF) : renvoie le statut HTTP, pour vérifier un refus côté serveur. */
+export async function statutBff(page: Page, methode: string, chemin: string, corps?: unknown): Promise<number> {
+  return page.evaluate(
+    async ([m, c, d]) => (await fetch(`/api/bff/${c}`, { method: m, headers: { ...(m === 'GET' ? {} : { 'X-Comtaple-Csrf': '1' }), ...(d !== null ? { 'Content-Type': 'application/json' } : {}) }, body: d })).status,
+    [methode, chemin, corps === undefined ? null : JSON.stringify(corps)] as const,
+  );
+}

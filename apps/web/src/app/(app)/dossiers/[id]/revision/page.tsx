@@ -8,6 +8,7 @@ import { Alerte, Carte, Etiquette, Libelle, Liste, MentionProjet, SousTitre, Tab
 import { Bouton } from '@/components/ui/bouton';
 import { LIBELLE_CYCLE, LIBELLE_GRAVITE, LIBELLE_STATUT_CONTROLE, LIBELLE_STATUT_LOT, LIBELLE_STATUT_REVUE } from '@/lib/libelles';
 import { formaterHorodatage, formaterMontant } from '@/lib/montants';
+import { libelleOrigineParametres } from '@/lib/regles';
 import { tenter } from '@/lib/serveur/api';
 import { parametre } from '@/lib/serveur/donnees';
 import { contexteDossier, contexteExercice } from '@/lib/serveur/dossier';
@@ -108,6 +109,16 @@ export default async function PageRevision({ params, searchParams }: { params: P
                       <span className="font-mono">{r.controleId}</span> <span className="text-sm font-normal text-texte-doux">v{r.versionControle}</span>
                       {r.source?.titre ? <span className="block font-normal">{r.source.titre}</span> : null}
                       {r.source?.cycle ? <span className="block text-sm font-normal text-texte-doux">Cycle : {LIBELLE_CYCLE[r.source.cycle] ?? r.source.cycle}</span> : null}
+                      {r.source?.regleCabinet ? (
+                        <span className="mt-1 block font-normal" data-testid="origine-parametres">
+                          <Etiquette ton="info" className="whitespace-normal">
+                            {libelleOrigineParametres(r.source.regleCabinet)}
+                          </Etiquette>{' '}
+                          <Link href="/regles" prefetch={false} className="text-sm">
+                            Voir les règles du cabinet
+                          </Link>
+                        </span>
+                      ) : null}
                     </th>
                     <td>
                       <EtiquetteStatutControle statut={r.statut} />

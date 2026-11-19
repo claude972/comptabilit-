@@ -72,6 +72,36 @@ Les jetons OIDC ne sont jamais exposés au navigateur : le serveur Next.js déti
 ### D-016 — MFA non imposé dans le royaume de développement (2026-11-19)
 Le royaume Keycloak local sert aux tests automatisés et n'impose pas de second facteur. Le royaume de production devra l'imposer pour les comptes du cabinet ; ce point figure dans `docs/acces-externes.md`. Le client `comtaple-tests` (mot de passe direct) n'existe que dans le royaume de développement.
 
+### D-017 — Port 3100 pour l'application web (2026-11-19)
+Le port 3000 du poste est occupé par un autre projet. L'application est servie sur 3100 ; le royaume Keycloak de développement accepte les deux origines. Ports réservés aux tests : 3200 (web simulé), 4100 (simulateur d'API des tests navigateur), 4300 (seconde API des parcours mail).
+
+### D-018 — Garde de territoire fiscal (2026-11-19)
+Hors « métropole », ou tant que le territoire est « à confirmer », les contrôles dont la règle ou le seuil relève de la fiscalité métropolitaine (`TVA-001`, `TVA-002`, `IMM-002`) ne sont pas réalisés et l'indiquent. Le territoire est obligatoire et sans valeur par défaut à la création d'un dossier. Un changement de territoire rend les contrôles exécutés obsolètes.
+
+### D-019 — Rapprochement bancaire : proposition, jamais écriture (2026-11-19)
+Le moteur propose ; un réviseur valide ou rejette. Une validation ne modifie aucune écriture importée et n'écrit aucun lettrage : le logiciel de production comptable reste le système de référence. Une ambiguïté n'est jamais tranchée ; un abandon pour borne de calcul est toujours signalé. Convention de sens : positif = encaissement, des deux côtés.
+
+### D-020 — Identité d'un mouvement bancaire (2026-11-19)
+Un mouvement est unique par dossier et par clé stable (compte, date, montant, référence bancaire ; à défaut empreinte des champs et rang parmi les homonymes du jour). Limite : deux exports de périodes différentes sans référence bancaire peuvent décaler le rang d'homonymes et créer un doublon ; le cadrage des soldes le révèle.
+
+### D-021 — CSV bancaire : abstention puis confirmation humaine (2026-11-19)
+Si les colonnes ne sont pas reconnues avec certitude, l'import échoue en demandant un profil ; l'utilisateur le confirme et relance. Un profil proposé automatiquement est marqué comme tel dans le rapport.
+
+### D-022 — Fonctions SQL étroites à droits du propriétaire (2026-11-19)
+Quelques besoins traversent volontairement le cloisonnement par dossier ou par cabinet : rattrapage du worker, purge des téléversements, membres d'un dossier, décomptes d'usage de l'abonnement, situation de l'abonnement, obsolescence après changement de règle, résolution d'une notification mail. Chacun passe par une fonction `SECURITY DEFINER` qui vérifie l'appelant, ne renvoie que des identifiants, des décomptes ou des champs non sensibles, et n'est exécutable que par le rôle qui en a besoin. La liste est dans les migrations ; toute nouvelle fonction de ce type doit être justifiée ici.
+
+### D-023 — Abonnements : séparation éditeur / cabinet (2026-11-19)
+La grille tarifaire, l'ouverture d'un essai, l'émission des échéances et le rapprochement des virements sont des opérations de l'éditeur (rôle d'administration, module de provisionnement). Le rôle applicatif n'a aucun droit d'écriture sur les offres et les échéances. Le cabinet peut seulement demander un changement d'offre ou résilier. Les montants de la grille de démonstration sont fictifs. Il n'existe pas encore d'outil d'exploitation pour l'éditeur : les opérations se font par les fonctions du module.
+
+### D-024 — Service fermé, données accessibles (2026-11-19)
+Essai expiré, abonnement suspendu ou résilié : les nouveaux dépôts et imports sont refusés ; consultation, téléchargement et restitution restent possibles. Les quotas de pièces et de stockage sont affichés et signalés, mais ne bloquent pas la collecte : une pièce transmise par un client n'est jamais refusée pour dépassement.
+
+### D-025 — Règles de cabinet (2026-11-19)
+Une préférence de cabinet ou une exception de dossier est un jeu de paramètres d'un contrôle, validé par le schéma du contrôle, versionné, sans effet tant qu'il n'est pas approuvé. L'approbation exige une mesure d'impact préalable et une autre personne que l'auteur (administrateur ou associé). Le retrait rétablit les paramètres par défaut. Les contrôles à fondement réglementaire ne sont pas paramétrables par ce parcours. Aucune règle n'est jamais partagée entre cabinets.
+
+### D-026 — Restitution (2026-11-19)
+Archive ZIP par dossier, au niveau d'habilitation « validation ». Les originaux sont relus et comparés à leur empreinte avant d'entrer dans l'archive ; ceux que l'antivirus a écartés sont exclus et listés. Les noms d'origine ne déterminent jamais les chemins. Limite : les données structurées sont assemblées en mémoire (les écritures sont lues par tranches) ; une restitution de tout un cabinet en une fois n'existe pas.
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

@@ -36,7 +36,7 @@ Les URL des fournisseurs ne sont pas configurables autrement : ce sont les URL o
 
 | Usage | URL | Remarque |
 |---|---|---|
-| Redirection OAuth (Google et Microsoft) | `MAIL_URI_REDIRECTION`, par défaut `<WEB_URL>/connexions-mail/retour` | C'est une page de l'**application web**, pas de l'API : elle doit relayer `state`, `code` (ou `error`) à `POST /v1/mail/retour` avec la session de l'utilisateur. L'API refuse un retour présenté par un autre utilisateur ou un autre cabinet que celui qui a lancé la demande. **Cette page web reste à écrire.** |
+| Redirection OAuth (Google et Microsoft) | `MAIL_URI_REDIRECTION`, par défaut `<WEB_URL>/connexions-mail/retour` | C'est une page de l'**application web**, pas de l'API : elle doit relayer `state`, `code` (ou `error`) à `POST /v1/mail/retour` avec la session de l'utilisateur. L'API refuse un retour présenté par un autre utilisateur ou un autre cabinet que celui qui a lancé la demande. Cette page existe dans l'application web (`/connexions-mail/retour`) ; elle n'a été vérifiée que contre un simulateur, jamais avec un vrai fournisseur.** |
 | Push Pub/Sub (Gmail) | `<MAIL_URL_PUBLIQUE_API>/v1/mail/notifications/gmail` | À saisir comme point de terminaison de l'abonnement push, avec authentification OIDC. |
 | Notifications Graph (changements et cycle de vie) | `<MAIL_URL_PUBLIQUE_API>/v1/mail/notifications/microsoft` | Déclarée automatiquement à la création de chaque abonnement ; rien à saisir dans Entra. |
 

@@ -201,3 +201,74 @@ export function lienCitation(base: string, c: Citation): { href: string; externe
   }
   return null;
 }
+
+// ───────────────────────────── Assistant sur un portefeuille de dossiers ─────────────────────────────
+
+/** Citation d'une réponse de portefeuille : elle porte le dossier de sa source (`null` pour une source officielle). */
+export type CitationPortefeuille = Citation & { dossierId: string | null };
+export interface SegmentPortefeuille extends Omit<Segment, 'citations'> {
+  citations: CitationPortefeuille[];
+}
+export interface ReponsePortefeuilleAssistant extends Omit<ReponseAssistant, 'perimetre' | 'segments' | 'sources'> {
+  segments: SegmentPortefeuille[];
+  sources: CitationPortefeuille[];
+}
+export interface DossierInterroge {
+  id: string;
+  nom: string;
+  exercice: { id: string; debut: string; fin: string } | null;
+  /** Période effectivement analysée dans ce dossier ; null si aucun exercice ne s'y prête. */
+  periode: { debut: string; fin: string } | null;
+  donneesManquantes: string[];
+  sources: number;
+  nonRestitues: number;
+}
+export interface PerimetrePortefeuille {
+  borne: number;
+  elementsParDossier: number;
+  autorises: number;
+  dossiers: DossierInterroge[];
+  nonInterroges: Array<{ id: string; nom: string }>;
+  horsPerimetre: string[];
+  periodeCommune: { debut: string; fin: string } | null;
+}
+export interface MasqueRelecture {
+  dossiers: number;
+  redactionRetiree: boolean;
+}
+export interface ReponsePortefeuille {
+  echangeId: string | null;
+  echangeEnregistre: boolean;
+  mode: ModeEchange;
+  perimetre: PerimetrePortefeuille;
+  reponse: ReponsePortefeuilleAssistant;
+  ia: EtatIa;
+}
+export interface EchangePortefeuille {
+  id: string;
+  question: string;
+  mode: ModeEchange;
+  statut: string;
+  creeLe: string;
+  perimetre: PerimetrePortefeuille;
+  reponse: ReponsePortefeuilleAssistant;
+  masque: MasqueRelecture | null;
+}
+export interface HistoriquePortefeuille {
+  page: number;
+  taillePage: number;
+  total: number;
+  echanges: EchangePortefeuille[];
+}
+export interface PerimetreAssistant {
+  borne: number;
+  elementsParDossier: number;
+  dossiers: Array<{ id: string; nom: string; niveau: string }>;
+}
+
+/** Destination d'une citation de portefeuille : la pièce ou le constat DU dossier de la source ; jamais d'un autre. */
+export function lienCitationPortefeuille(c: CitationPortefeuille): { href: string; externe: boolean } | null {
+  if (c.nature === 'source_officielle') return lienCitation('', c);
+  if (!c.dossierId || !new RegExp(`^${UUID}$`, 'i').test(c.dossierId)) return null;
+  return lienCitation(`/dossiers/${c.dossierId}`, c);
+}

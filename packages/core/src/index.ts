@@ -118,3 +118,20 @@ export type {
   BanqueImputation, CandidatEcriture, CriteresAppariement, DecisionARevoir, DecisionFacture, DecisionTiers, DemandeTiersFactures, EtatFacture, FicheFacture, FicheTiers, IdentifiantTiers, Imputation,
   ParametresTiersFactures, PieceFacture, PropositionImputation, PropositionTiers, RapprochementValide, RefEcriture, ResultatTiersFactures, SuspicionDoubleComptabilisation, TypeTiers,
 } from './tiers/types.js';
+
+// Amélioration contrôlée : suggestions déterministes tirées des décisions de revue d'un cabinet.
+export type {
+  CategorieAmelioration,
+  ControleAmelioration,
+  CorrectionExtraction,
+  CriteresAmelioration,
+  DecisionAnterieure,
+  DecisionConstatRevue,
+  DecisionRapprochementRevue,
+  EntreeAmelioration,
+  FondementControle,
+  PreuveDecision,
+  ResultatAmelioration,
+  SuggestionAmelioration,
+} from './amelioration.js';
+export { CATEGORIES_AMELIORATION, CRITERES_AMELIORATION, PARAMETRES_SEUIL_MONTANT, controlesPourAmelioration, fondementControle, suggererAmeliorations } from './amelioration.js';

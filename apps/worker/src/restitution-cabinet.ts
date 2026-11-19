@@ -33,7 +33,7 @@ mention d'une validation, avec son auteur et sa date.
 
 Non inclus : les sauvegardes, les journaux techniques, les jetons et secrets de connexion (colonnes listées
 dans « colonnesExclues »), les lignes brutes des relevés (présentes dans les originaux), les originaux écartés
-par l'antivirus ou dont le contenu ne correspond plus à l'empreinte enregistrée (« originauxExclus »), et tout ce qui concerne un dossier hors périmètre. Le journal d'audit ne
+par l'antivirus ou dont le contenu ne correspond plus à l'empreinte enregistrée (« originauxExclus »), les questions posées à l'assistant sur plusieurs dossiers à la fois (écrits personnels de leur auteur), et tout ce qui concerne un dossier hors périmètre. Le journal d'audit ne
 contient que les lignes du cabinet et des dossiers du périmètre : s'il manque des dossiers, la chaîne
 d'empreintes du journal ne peut pas être revérifiée à partir de cette seule archive.
 `;
@@ -42,7 +42,12 @@ d'empreintes du journal ne peut pas être revérifiée à partir de cette seule 
 const colonneExclue = (nom: string) => /jeton|chiffre|secret/i.test(nom) || nom === 'brut';
 /** Tables traitées à part, ou sans objet dans une restitution. */
 /** `restitutions_cabinet` : registre des restitutions elles-mêmes ; le périmètre de celle-ci est déjà au manifeste. */
-const TABLES_A_PART = new Set(['lignes_ecriture', 'demandes_connexion_mail', 'restitutions_cabinet']);
+/**
+ * `echanges_portefeuille` : écrits personnels de leur auteur, dont le contenu porte sur PLUSIEURS dossiers — il ne peut pas
+ * être ramené au périmètre de l'archive ligne par ligne. Ils ne sont donc pas restitués (la base refuse d'ailleurs au
+ * worker de les lire) ; ils sont supprimés en fin de contrat, comme les autres échanges avec l'assistant.
+ */
+const TABLES_A_PART = new Set(['lignes_ecriture', 'demandes_connexion_mail', 'restitutions_cabinet', 'echanges_portefeuille']);
 const TRANCHE = 2000;
 
 

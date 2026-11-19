@@ -30,13 +30,31 @@ function Erreurs({ erreurs }: { erreurs: string[] }) {
   );
 }
 
-/** Proposition d'une règle (`POST v1/regles`). Les champs de paramètres découlent de `parametresParDefaut` du contrôle choisi. */
-export function ProposerRegle({ controles, dossiers, cabinetPossible }: { controles: ControleReduit[]; dossiers: DossierReduit[]; cabinetPossible: boolean }) {
-  const [controleId, setControleId] = useState('');
-  const [portee, setPortee] = useState<'cabinet' | 'dossier'>(cabinetPossible ? 'cabinet' : 'dossier');
-  const [entiteId, setEntiteId] = useState('');
-  const [saisies, setSaisies] = useState<Saisies>({});
-  const [motif, setMotif] = useState('');
+/** Valeurs de départ du formulaire quand il est pré-rempli à partir d'une suggestion (rien n'est envoyé sans validation du formulaire). */
+export interface PropositionInitiale {
+  controleId: string;
+  entiteId: string | null;
+  parametres: Record<string, string>;
+  motif: string;
+}
+
+/**
+ * Proposition d'une règle (`POST v1/regles`). Les champs de paramètres découlent de `parametresParDefaut` du contrôle choisi.
+ * `initiale` pré-remplit le formulaire à partir d'une suggestion : la personne relit, ajuste, puis propose elle-même.
+ */
+export function ProposerRegle({ controles, dossiers, cabinetPossible, initiale }: { controles: ControleReduit[]; dossiers: DossierReduit[]; cabinetPossible: boolean; initiale?: PropositionInitiale | null }) {
+  const depart = initiale ? controles.find((c) => c.id === initiale.controleId && !c.reglementaire) : undefined;
+  const [controleId, setControleId] = useState(depart?.id ?? '');
+  const [portee, setPortee] = useState<'cabinet' | 'dossier'>(depart && initiale ? (initiale.entiteId || !cabinetPossible ? 'dossier' : 'cabinet') : cabinetPossible ? 'cabinet' : 'dossier');
+  const [entiteId, setEntiteId] = useState(depart && initiale?.entiteId && dossiers.some((d) => d.id === initiale.entiteId) ? initiale.entiteId : '');
+  const [saisies, setSaisies] = useState<Saisies>(() => {
+    if (!depart || !initiale) return {};
+    const base = saisiesInitiales(champsParametres(depart.parametresParDefaut ?? {}));
+    // Seuls les paramètres connus du contrôle, à valeur textuelle, sont repris de la suggestion.
+    for (const [cle, v] of Object.entries(initiale.parametres)) if (typeof base[cle] === 'string' && typeof v === 'string') base[cle] = v;
+    return base;
+  });
+  const [motif, setMotif] = useState(depart && initiale ? initiale.motif : '');
   const [erreurs, setErreurs] = useState<string[]>([]);
   const appel = useAppel();
   const id = useId();
@@ -68,6 +86,11 @@ export function ProposerRegle({ controles, dossiers, cabinetPossible }: { contro
   }
   return (
     <form onSubmit={envoyer} className="space-y-3" data-formulaire="proposer-regle" noValidate>
+      {depart ? (
+        <Alerte ton="info" data-testid="proposition-preremplie">
+          Formulaire pré-rempli à partir d’une suggestion : relisez le contrôle, la portée, les paramètres et le motif, ajustez-les, puis proposez. Rien n’est envoyé tant que vous n’avez pas validé ce formulaire.
+        </Alerte>
+      ) : null}
       <div>
         <Libelle htmlFor={`${id}-controle`}>Contrôle</Libelle>
         <Liste id={`${id}-controle`} value={controleId} onChange={(e) => choisir(e.target.value)}>

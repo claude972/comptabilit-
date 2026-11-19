@@ -3386,6 +3386,75 @@
         ]
       }
     },
+    "/v1/regles/suggestions": {
+      "get": {
+        "description": "Calcul déterministe, à la demande, par le moteur du cœur (critères explicites et versionnés, renvoyés dans « criteres ») sur les seules décisions de CE cabinet lisibles par la personne (dossiers où elle est habilitée) : constats rejetés avec motif, champs extraits corrigés, rapprochements rejetés. Cinq catégories : correction_donnee (rien à proposer), exception_dossier et preference_cabinet (seules « proposables », par une personne, via POST v1/regles : mesure d’impact puis approbation par une AUTRE personne), nouvelle_regle_metier (signalement à instruire par l’éditeur, rien n’est créé ni transmis), modification_regle_reglementaire (jamais de règle de cabinet : renvoi vers la veille). Chaque suggestion porte ses preuves (décisions sources, décomptes, période), le paramètre concerné quand sa sémantique est établie (valeur indicative en chaîne décimale) et ce qu’elle ne fait pas. Rien n’est activé ni enregistré par cette lecture.",
+        "operationId": "ReglesController_suggestions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Suggestions d’amélioration tirées des décisions de revue du cabinet (réviseurs, associés, administrateurs)",
+        "tags": [
+          "Règles du cabinet"
+        ]
+      }
+    },
+    "/v1/regles/suggestions/ecarter": {
+      "post": {
+        "description": "La suggestion doit être en cours (404 sinon). La décision est conservée en ajout seul ; la suggestion ne sera reproposée que si des décisions postérieures atteignent à elles seules les seuils. Une « correction de donnée » ne s’écarte pas.",
+        "operationId": "ReglesController_ecarter",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "empreinte": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 300
+                  },
+                  "motif": {
+                    "type": "string",
+                    "minLength": 5,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "empreinte",
+                  "motif"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Écarter une suggestion d’amélioration, avec un motif (réviseurs, associés, administrateurs)",
+        "tags": [
+          "Règles du cabinet"
+        ]
+      }
+    },
     "/v1/regles/{id}/impact": {
       "post": {
         "description": "Exécute le contrôle concerné deux fois sur les données actives de l’exercice (paramètres en vigueur, puis paramètres proposés) et compare. Rien n’est enregistré dans la révision.",
@@ -6186,6 +6255,124 @@
           }
         ],
         "summary": "Mes questions à l’assistant sur ce dossier, les plus récentes d’abord",
+        "tags": [
+          "Assistant et IA"
+        ]
+      }
+    },
+    "/v1/assistant/questions": {
+      "post": {
+        "description": "Périmètre calculé par la base sous l’identité de la session : les dossiers actifs du cabinet où la personne a au moins le niveau « lecture ». « dossierIds », s’il est fourni, est intersecté avec ce périmètre : un identifiant qui n’en fait pas partie (non habilité, autre cabinet, inexistant) est écarté et listé dans « perimetre.horsPerimetre », sans dire s’il existe ; 404 si aucun des dossiers demandés n’est dans le périmètre. Au plus 20 dossiers par question : au-delà, le périmètre est réduit (ordre alphabétique) et les dossiers non interrogés sont listés dans « perimetre.nonInterroges ». Période : le dernier exercice de chaque dossier, ou sa part dans la période commune fournie ; annoncée dossier par dossier, comme les données manquantes. Chaque source citée porte « dossierId ». Le nombre d’éléments restitués par dossier dépend du nombre de dossiers (« perimetre.elementsParDossier ») ; ce qui dépasse est décompté (« nonRestitues »). Refusé (403) aux déposants et à qui n’a aucun dossier ouvert en lecture. Sans IA connectée — état actuel — la réponse porte « mode: sans_ia ». L’échange est enregistré pour son auteur seulement.",
+        "operationId": "AssistantController_poserPortefeuille",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "question": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 1000
+                  },
+                  "dossierIds": {
+                    "minItems": 1,
+                    "maxItems": 200,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                    }
+                  },
+                  "periode": {
+                    "type": "object",
+                    "properties": {
+                      "debut": {
+                        "type": "string",
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                      },
+                      "fin": {
+                        "type": "string",
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                      }
+                    },
+                    "required": [
+                      "debut",
+                      "fin"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "question"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Poser une question documentée sur un PORTEFEUILLE de dossiers autorisés",
+        "tags": [
+          "Assistant et IA"
+        ]
+      },
+      "get": {
+        "description": "Chacun ne relit que ses propres échanges (règle appliquée par la base). Chaque échange est FILTRÉ à la lecture selon les habilitations du moment : un dossier qui n’est plus dans le périmètre de la personne disparaît de l’échange (périmètre, sources, éléments de réponse) ; « masque » dit combien de dossiers ont été retirés, sans les nommer. Si la réponse avait été rédigée par un modèle, sa rédaction est alors retirée en bloc.",
+        "operationId": "AssistantController_historiquePortefeuille",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mes questions de portefeuille à l’assistant, les plus récentes d’abord",
+        "tags": [
+          "Assistant et IA"
+        ]
+      }
+    },
+    "/v1/assistant/perimetre": {
+      "get": {
+        "description": "Dossiers actifs où la personne a au moins le niveau « lecture », calculés par la base ; borne par question et nombre d’éléments restitués par dossier. Refusé (403) aux déposants.",
+        "operationId": "AssistantController_perimetre",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Dossiers que l’assistant de portefeuille peut interroger pour la personne connectée",
         "tags": [
           "Assistant et IA"
         ]

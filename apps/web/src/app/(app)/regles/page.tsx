@@ -2,14 +2,15 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ErreurAcces } from '@/components/erreurs';
 import { DecisionRegle, MesurerImpact, ProposerRegle } from '@/components/regles/actions';
+import { CarteSuggestion } from '@/components/regles/suggestions';
 import { EtiquetteStatutControle } from '@/components/revision-affichage';
 import { Alerte, Carte, Etiquette, MentionProjet, SousTitre, Titre, type Ton } from '@/components/ui/base';
 import type { MembreCabinet } from '@/lib/administration';
 import { estGestionnaire } from '@/lib/messagerie';
 import { formaterHorodatage } from '@/lib/montants';
-import { EXPLICATION_REGLEMENTAIRE, LIBELLE_STATUT_REGLE, ORDRE_STATUTS_REGLE, REGLES_DU_JEU, type PageRegles, type StatutRegle, TITRE_STATUT_REGLE, afficherParametre } from '@/lib/regles';
+import { EXPLICATION_REGLEMENTAIRE, LIBELLE_STATUT_REGLE, ORDRE_STATUTS_REGLE, REGLES_DU_JEU, type PageRegles, type StatutRegle, TITRE_STATUT_REGLE, type VueSuggestions, afficherParametre, suggestionAPreremplir } from '@/lib/regles';
 import { tenter } from '@/lib/serveur/api';
-import { lireDossiers, lireMoi } from '@/lib/serveur/donnees';
+import { lireDossiers, lireMoi, parametre } from '@/lib/serveur/donnees';
 import { type ControleCatalogue, auMoins } from '@/lib/types-api';
 
 export const metadata: Metadata = { title: 'Règles du cabinet' };
@@ -17,18 +18,22 @@ export const metadata: Metadata = { title: 'Règles du cabinet' };
 const TON: Record<StatutRegle, Ton> = { proposee: 'attention', approuvee: 'succes', retiree: 'neutre', refusee: 'neutre' };
 
 export default async function PageRegles({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const brute = (await searchParams).page;
+  const recherche = await searchParams;
+  const brute = recherche.page;
   const page = Math.max(1, Number.parseInt((Array.isArray(brute) ? brute[0] : brute) ?? '1', 10) || 1);
   const moi = await lireMoi();
   if (!moi.ok) return <ErreurAcces statut={moi.statut} message={moi.message} />;
   const { role, utilisateur } = moi.donnees;
   if (role === 'client_deposant' || role === 'client_lecture') return <ErreurAcces statut={403} message="Les règles du cabinet sont réservées aux membres du cabinet." />;
   const gestionnaire = estGestionnaire(role);
-  const [regles, catalogue, dossiers, membres] = await Promise.all([
+  // Suggestions tirées des corrections : réviseurs, associés, administrateurs (l'API refuse les autres rôles).
+  const voitSuggestions = gestionnaire || role === 'reviseur';
+  const [regles, catalogue, dossiers, membres, suggestions] = await Promise.all([
     tenter<PageRegles>(`v1/regles?page=${page}`),
     tenter<ControleCatalogue[]>('v1/reference/controles'),
     lireDossiers(),
     gestionnaire ? tenter<MembreCabinet[]>('v1/cabinet/membres') : null,
+    voitSuggestions ? tenter<VueSuggestions>('v1/regles/suggestions') : null,
   ]);
   if (!regles.ok) return <ErreurAcces statut={regles.statut} message={regles.message} />;
   const controles = catalogue.ok ? catalogue.donnees : [];
@@ -40,6 +45,9 @@ export default async function PageRegles({ searchParams }: { searchParams: Promi
   const nomMembre = new Map((membres?.ok ? membres.donnees : []).map((m) => [m.utilisateurId, m.nom]));
   const qui = (id: string | null) => (!id ? '—' : id === utilisateur.id ? 'vous' : (nomMembre.get(id) ?? 'un autre membre du cabinet'));
   const peutProposer = role !== 'support';
+  const vue = suggestions?.ok ? suggestions.donnees : null;
+  // « Proposer cette règle » depuis une suggestion : seule une suggestion EN COURS et proposable pré-remplit le formulaire.
+  const aPreremplir = suggestionAPreremplir(vue, parametre(recherche.suggestion));
 
   return (
     <div className="space-y-6">
@@ -54,8 +62,47 @@ export default async function PageRegles({ searchParams }: { searchParams: Promi
         <p className="mt-1 text-sm">Les contrôles à fondement réglementaire ne sont pas paramétrables. {gestionnaire ? '' : 'Approuver, refuser et retirer sont réservés aux administrateurs et associés.'}</p>
       </Alerte>
 
+      {voitSuggestions ? (
+        <section aria-labelledby="titre-suggestions" className="space-y-2" data-testid="suggestions">
+          <SousTitre id="titre-suggestions">Suggestions tirées des corrections ({vue ? vue.suggestions.filter((x) => x.categorie !== 'correction_donnee').length : 0})</SousTitre>
+          {!vue ? (
+            <Alerte ton="attention">Les suggestions n’ont pas pu être calculées pour le moment.</Alerte>
+          ) : (
+            <>
+              <p className="text-sm text-texte-doux" data-testid="cadre-suggestions">
+                Calcul déterministe, sans IA, sur les décisions de revue des {vue.perimetre.fenetreMois} derniers mois. {vue.perimetre.mention} Critères v{vue.criteres.version} — {vue.criteres.statut}. Une suggestion n’active rien : elle ne devient une règle
+                proposée que si une personne le décide.
+              </p>
+              {vue.perimetre.plafondsAtteints.length ? <Alerte ton="attention">Volume important : les décisions les plus anciennes n’ont pas été comptées ({vue.perimetre.plafondsAtteints.join(', ')}).</Alerte> : null}
+              {vue.suggestions.length === 0 ? (
+                <p className="text-texte-doux" data-testid="aucune-suggestion">
+                  {vue.sansDecision ? 'Aucune décision de revue dans votre périmètre : rien à suggérer.' : 'Aucune récurrence n’atteint les seuils : rien à suggérer.'}
+                </p>
+              ) : null}
+              <ul className="space-y-3">
+                {vue.suggestions.map((x) => (
+                  <CarteSuggestion key={x.empreinte} suggestion={x} peutProposer={peutProposer} />
+                ))}
+              </ul>
+              {vue.ecarteesMaintenues.length ? (
+                <details data-testid="suggestions-ecartees">
+                  <summary className="flex min-h-11 cursor-pointer items-center font-medium">Suggestions écartées ou déjà tranchées ({vue.ecarteesMaintenues.length})</summary>
+                  <ul className="list-disc pl-5 text-sm">
+                    {vue.ecarteesMaintenues.map((e) => (
+                      <li key={`${e.empreinte}-${e.le}`} className="break-words">
+                        <span className="font-mono">{e.empreinte.split('|').slice(0, 2).join(' · ')}</span> — {formaterHorodatage(e.le)} — {e.motif}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
+            </>
+          )}
+        </section>
+      ) : null}
+
       {peutProposer ? (
-        <Carte className="space-y-3">
+        <Carte className="space-y-3" id="proposer">
           <SousTitre>Proposer une règle</SousTitre>
           {!catalogue.ok ? (
             <Alerte ton="attention">Le catalogue des contrôles est indisponible : impossible de proposer une règle pour l’instant.</Alerte>
@@ -64,6 +111,8 @@ export default async function PageRegles({ searchParams }: { searchParams: Promi
               controles={controles.map((c) => ({ id: c.id, titre: c.titre, parametresParDefaut: c.parametresParDefaut ?? {}, reglementaire: c.source?.type === 'reglementaire' }))}
               dossiers={dossiersActifs}
               cabinetPossible={role !== 'collaborateur'}
+              initiale={aPreremplir?.proposition ?? null}
+              key={parametre(recherche.suggestion) ?? 'vierge'}
             />
           )}
         </Carte>

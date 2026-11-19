@@ -8,6 +8,7 @@ import {
   LIBELLE_SEGMENT,
   type ModeEchange,
   type ReponseAssistant,
+  type TypeSegment,
   libelleMotifEcart,
   libelleRefus,
   lienCitation,
@@ -32,12 +33,14 @@ export function BandeauEtatIa({ etat }: { etat: EtatIa | null }) {
 
 const TON_SEGMENT = { fait: 'neutre', calcul: 'info', hypothese: 'attention', interpretation: 'attention' } as const;
 
-function LienCitation({ base, citation }: { base: string; citation: Citation }) {
-  const lien = lienCitation(base, citation);
+type Lien = { href: string; externe: boolean } | null;
+
+function LienCitation({ lien, citation, dossier }: { lien: Lien; citation: Citation; dossier?: string | null }) {
   const nature = <span className="text-texte-doux">{LIBELLE_NATURE_SOURCE[citation.nature]} : </span>;
   const texte = citation.nature === 'source_officielle' ? (citation.reference?.titre ?? citation.libelle) : citation.libelle;
   return (
     <li className="break-words" data-citation={citation.id} data-nature={citation.nature}>
+      {dossier ? <span className="font-medium">{dossier} — </span> : null}
       {nature}
       {lien?.externe ? (
         <a href={lien.href} target="_blank" rel="noopener noreferrer">
@@ -81,28 +84,7 @@ export function ReponseStructuree({ base, mode, reponse, nomDossier }: { base: s
         </Alerte>
       ) : null}
 
-      {reponse.segments.length ? (
-        <ol className="space-y-2" aria-label="Éléments de réponse">
-          {reponse.segments.map((s, i) => (
-            <li key={i} className="space-y-1 rounded-lg border border-bordure bg-surface p-3" data-segment={s.type}>
-              <p className="flex flex-wrap items-center gap-2">
-                <Etiquette ton={TON_SEGMENT[s.type]}>{LIBELLE_SEGMENT[s.type]}</Etiquette>
-                {s.reglementaire ? <Etiquette ton="info">Référence réglementaire</Etiquette> : null}
-              </p>
-              <p className="break-words whitespace-pre-wrap">{s.texte}</p>
-              {s.citations.length ? (
-                <ul className="space-y-0.5 text-sm" aria-label="Sources citées">
-                  {s.citations.map((c) => (
-                    <LienCitation key={c.id} base={base} citation={c} />
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-texte-doux">Sans source citée : texte proposé, à vérifier.</p>
-              )}
-            </li>
-          ))}
-        </ol>
-      ) : null}
+      <ListeSegments segments={reponse.segments} lienDe={(c) => lienCitation(base, c)} />
 
       {reponse.donneesManquantes.length ? (
         <div data-testid="donnees-manquantes">
@@ -117,6 +99,45 @@ export function ReponseStructuree({ base, mode, reponse, nomDossier }: { base: s
         </div>
       ) : null}
 
+      <VerificationsReponse reponse={reponse} />
+    </div>
+  );
+}
+
+/** Segments typés d'une réponse, chacun avec ses citations. `lienDe` donne la destination d'une citation (ou rien). */
+export function ListeSegments<C extends Citation>({ segments, lienDe, dossierDe }: { segments: Array<{ type: TypeSegment; texte: string; citations: C[]; reglementaire: boolean }>; lienDe: (c: C) => Lien; dossierDe?: (c: C) => string | null }) {
+  return (
+    <>
+      {segments.length ? (
+        <ol className="space-y-2" aria-label="Éléments de réponse">
+          {segments.map((s, i) => (
+            <li key={i} className="space-y-1 rounded-lg border border-bordure bg-surface p-3" data-segment={s.type}>
+              <p className="flex flex-wrap items-center gap-2">
+                <Etiquette ton={TON_SEGMENT[s.type]}>{LIBELLE_SEGMENT[s.type]}</Etiquette>
+                {s.reglementaire ? <Etiquette ton="info">Référence réglementaire</Etiquette> : null}
+              </p>
+              <p className="break-words whitespace-pre-wrap">{s.texte}</p>
+              {s.citations.length ? (
+                <ul className="space-y-0.5 text-sm" aria-label="Sources citées">
+                  {s.citations.map((c) => (
+                    <LienCitation key={c.id} lien={lienDe(c)} citation={c} dossier={dossierDe?.(c) ?? null} />
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-texte-doux">Sans source citée : texte proposé, à vérifier.</p>
+              )}
+            </li>
+          ))}
+        </ol>
+      ) : null}
+    </>
+  );
+}
+
+/** Points écartés par les vérifications, demandes du modèle refusées, mention de confiance : communs à toutes les réponses. */
+export function VerificationsReponse({ reponse }: { reponse: Pick<ReponseAssistant, 'pointsEcartes' | 'refus' | 'confiance'> }) {
+  return (
+    <>
       {reponse.pointsEcartes.length ? (
         <div data-testid="points-ecartes">
           <p className="font-medium">Points écartés par les vérifications ({reponse.pointsEcartes.length})</p>
@@ -146,6 +167,6 @@ export function ReponseStructuree({ base, mode, reponse, nomDossier }: { base: s
       <p className="text-sm text-texte-doux" data-testid="confiance">
         Confiance non évaluée — {reponse.confiance.mention}
       </p>
-    </div>
+    </>
   );
 }

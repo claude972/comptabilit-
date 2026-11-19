@@ -47,6 +47,7 @@ const lignes = (fichiers: Map<string, Buffer>, table: string): any[] =>
   (fichiers.get(`donnees/${table}.jsonl`)?.toString('utf8') ?? '').split('\n').filter(Boolean).map((l) => JSON.parse(l));
 
 const SEL = randomBytes(4).toString('hex');
+const MARQUE_PORTEFEUILLE = `jamaisrestitue${SEL}`;
 const COMPTES = ['alice', 'remi', 'chloe'] as const;
 const VERIFICATEUR = join(import.meta.dirname, '../../../scripts/verifier-restitution.mjs');
 let editeur: pg.Client;
@@ -102,6 +103,16 @@ beforeAll(async () => {
   await attendreLot('chloe', lot.fin.json.lotImportId);
   // L'administratrice n'a plus qu'un accès de lecture au dossier B : il ne doit pas entrer dans SA restitution.
   await api('alice', 'PUT', `/v1/dossiers/${dossierB}/habilitations/${DEMO.alice}`, { niveau: 'lecture' });
+  // Amélioration contrôlée et assistant de portefeuille (lignes fictives posées par le rôle d'administration) : une
+  // suggestion écartée par dossier (restituée dans le périmètre), et un échange de portefeuille (JAMAIS restitué : il
+  // porte sur plusieurs dossiers à la fois).
+  for (const d of [dossierA, dossierB]) {
+    await editeur.query(
+      `insert into suggestions_ecartees (cabinet_id, empreinte, categorie, controle_id, entite_id_cible, version_criteres, decomptes, motif, ecartee_par) values ($1, $2, 'exception_dossier', 'TIE-001', $3, '1.0.0', '{}'::jsonb, 'Cas particuliers', $4)`,
+      [cabinet, `exception_dossier|TIE-001|${d}`, d, DEMO.alice],
+    );
+  }
+  await editeur.query(`insert into echanges_portefeuille (cabinet_id, utilisateur_id, question, mode, statut, dossiers, contenu) values ($1, $2, $3, 'sans_ia', 'repondu', $4::jsonb, '{}'::jsonb)`, [cabinet, DEMO.chloe, `Question ${MARQUE_PORTEFEUILLE}`, JSON.stringify([dossierA, dossierB])]);
 }, 240_000);
 
 afterAll(async () => {
@@ -160,6 +171,11 @@ describe('restitution d’un cabinet entier', () => {
     // Habilitations : aucune ligne d'aucune table ne porte le dossier B, ni un autre cabinet.
     const tables = [...fichiers.keys()].filter((n) => n.endsWith('.jsonl')).map((n) => n.slice('donnees/'.length, -'.jsonl'.length));
     expect(tables).toEqual(expect.arrayContaining(['entites', 'documents', 'fichiers', 'lots_import', 'habilitations_dossier', 'journal_audit', 'appartenances', 'abonnements', 'exercices']));
+    // Suggestions écartées : restituées, dans le périmètre seulement. Échanges de portefeuille : absents de l'archive.
+    expect(lignes(fichiers, 'suggestions_ecartees').map((l) => l.entiteId)).toEqual([dossierA]);
+    expect(tables).not.toContain('echanges_portefeuille');
+    expect(manifeste.tables.echanges_portefeuille).toBeUndefined();
+    for (const [nom, contenu] of fichiers) expect(contenu.includes(MARQUE_PORTEFEUILLE), nom).toBe(false);
     for (const table of tables) {
       for (const l of lignes(fichiers, table)) {
         expect(l.cabinetId, table).toBe(cabinet);

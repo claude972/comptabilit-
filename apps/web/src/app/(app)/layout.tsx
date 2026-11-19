@@ -45,6 +45,8 @@ export default async function MiseEnPage({ children }: { children: ReactNode }) 
     : [
         { href: '/', libelle: 'Tableau de bord' },
         { href: '/dossiers', libelle: 'Dossiers' },
+        // Assistant sur le portefeuille de dossiers autorisés : tous les rôles non déposants (l'API refuse les déposants).
+        { href: '/assistant', libelle: 'Assistant' },
         { href: '/deposer', libelle: 'Déposer' },
         { href: '/depots', libelle: 'Pièces déposées' },
         { href: '/reference/controles', libelle: 'Catalogue des contrôles' },

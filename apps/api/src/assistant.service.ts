@@ -17,6 +17,7 @@ import {
   type ContexteFonction,
   creerFonctionsMetierTypes,
   type ElementSource,
+  type FonctionMetier,
   fusionnerClassements,
   type Habilitations,
   normaliserMotsCles,
@@ -154,8 +155,9 @@ interface PassageTrouve {
  * une transaction posée avec l'identité de l'utilisateur (RLS) et filtre sur le dossier et la période du contexte
  * fourni par l'orchestrateur (jamais par le modèle).
  */
-export function creerPortsAssistant(dep: DependancesAssistant, acces: Acces, dossierId: string, exercice: ExerciceAnalyse | null): PortsFonctionsMetier {
+export function creerPortsAssistant(dep: DependancesAssistant, acces: Acces, dossierId: string, exercice: ExerciceAnalyse | null, options: { plafondLignes?: number } = {}): PortsFonctionsMetier {
   const { bd, ia } = dep;
+  const plafondLignes = options.plafondLignes ?? PLAFOND_LIGNES;
   const lire = <T>(fn: (tx: Tx) => Promise<T>): Promise<T> => bd.avecContexte(acces, fn);
   // Défense en profondeur : l'orchestrateur ne transmet que le périmètre imposé, on le revérifie quand même.
   const exigerContexte = (c: ContexteFonction, avecDossier: boolean): void => {
@@ -305,13 +307,13 @@ export function creerPortsAssistant(dep: DependancesAssistant, acces: Acces, dos
       return lire(async (tx) => {
         const lot = await lotActif(tx);
         if (!lot) return { elements: [], donneesManquantes: ['Aucune donnée comptable importée pour cet exercice : indicateur non calculable.'] };
-        if (lot.progression > PLAFOND_LIGNES) return { elements: [], donneesManquantes: ['Volume trop important pour un calcul immédiat de l’indicateur.'] };
+        if (lot.progression > plafondLignes) return { elements: [], donneesManquantes: ['Volume trop important pour un calcul immédiat de l’indicateur.'] };
         const lignes = await lignesDuLot(tx, lot.id);
         const [precedent] = await tx.select().from(s.exercices).where(and(eq(s.exercices.entiteId, dossierId), lt(s.exercices.fin, exercice.debut))).orderBy(desc(s.exercices.fin)).limit(1);
         let exercicePrecedent: { lignes: LigneEcriture[]; exercice: { debut: string; fin: string } } | null = null;
         if (precedent) {
           const [lotP] = await tx.select().from(s.lotsImport).where(and(eq(s.lotsImport.exerciceId, precedent.id), eq(s.lotsImport.type, 'fec'), eq(s.lotsImport.actif, true)));
-          if (lotP && lotP.progression <= PLAFOND_LIGNES) exercicePrecedent = { lignes: await lignesDuLot(tx, lotP.id), exercice: { debut: precedent.debut, fin: precedent.fin } };
+          if (lotP && lotP.progression <= plafondLignes) exercicePrecedent = { lignes: await lignesDuLot(tx, lotP.id), exercice: { debut: precedent.debut, fin: precedent.fin } };
         }
         // Le moteur calcule sur l'exercice entier : une sous-période demandée ne change pas la valeur, et la période est dite.
         const [v] = calculerIndicateurs({ lignes, exercice: { debut: exercice.debut, fin: exercice.fin }, exercicePrecedent }, { ids: [definition.id] });
@@ -412,21 +414,45 @@ function versPassage(l: Record<string, unknown>): PassageTrouve {
   return { cle: `${documentId}:${page}:${String(l.origine)}:${Number(l.rang)}`, documentId, page, nomOrigine: String(l.nomOrigine ?? ''), extrait: String(l.extrait ?? ''), texte: String(l.texte ?? '') };
 }
 
-/** Habilitations de l'assistant : le niveau RÉEL de l'utilisateur sur le dossier, relu en base à chaque appel de fonction. */
-export function creerHabilitationsAssistant(dep: DependancesAssistant, acces: Acces, dossierId: string): Habilitations {
+/**
+ * Habilitations de l'assistant : le niveau RÉEL de l'utilisateur sur le dossier visé, relu en base à chaque appel de
+ * fonction. `dossiers` est le périmètre imposé (un dossier, ou plusieurs pour une question de portefeuille) : un dossier
+ * qui n'en fait pas partie est refusé sans lecture. Une fonction sans portée de dossier (sources réglementaires) exige
+ * qu'au moins un dossier du périmètre soit encore ouvert au niveau requis.
+ */
+export function creerHabilitationsAssistant(dep: DependancesAssistant, acces: Acces, dossiers: string | readonly string[]): Habilitations {
+  const perimetre = typeof dossiers === 'string' ? [dossiers] : [...dossiers];
   return {
     async autoriser(d) {
       if (d.cabinetId !== acces.cabinetId || d.utilisateurId !== acces.utilisateurId) return false;
-      if (d.dossierId !== null && d.dossierId !== dossierId) return false;
+      if (d.dossierId !== null && !perimetre.includes(d.dossierId)) return false;
       const requis = NIVEAU_REQUIS[d.habilitation];
       if (!requis) return false;
-      const niveau = await dep.bd.avecContexte(acces, (tx) => niveauSur(tx, dossierId));
-      return niveau !== null && auMoins(niveau, requis);
+      return dep.bd.avecContexte(acces, async (tx) => {
+        for (const id of d.dossierId !== null ? [d.dossierId] : perimetre) {
+          const niveau = await niveauSur(tx, id);
+          if (niveau !== null && auMoins(niveau, requis)) return true;
+        }
+        return false;
+      });
     },
   };
 }
 
-function estRefusDeLaBase(e: unknown): boolean {
+/** Liste blanche des fonctions métier de l'assistant (dossier ou portefeuille), avec les indicateurs proposés. */
+export function fonctionsAssistant(ports: PortsFonctionsMetier): FonctionMetier[] {
+  const catalogue = new Map(CATALOGUE_INDICATEURS.map((d) => [d.id, d]));
+  return creerFonctionsMetierTypes(ports, {
+    indicateurs: INDICATEURS_ASSISTANT.flatMap((i) => (catalogue.has(i.id) ? [{ id: i.id, libelle: catalogue.get(i.id)?.libelle ?? i.id, motsCles: i.motsCles }] : [])),
+  });
+}
+
+/** Une réponse du SIMULATEUR n'est jamais enregistrée ni présentée comme celle d'un modèle réel. */
+export function modeEchange(dep: DependancesAssistant, reponse: ReponseAssistant): ReponseQuestion['mode'] {
+  return reponse.mode === 'sans_ia' ? 'sans_ia' : dep.ia.natureFournisseur === 'reel' ? 'ia' : 'simulateur';
+}
+
+export function estRefusDeLaBase(e: unknown): boolean {
   const code = (e as { code?: string; cause?: { code?: string } } | null)?.code ?? (e as { cause?: { code?: string } } | null)?.cause?.code;
   return code === '42501';
 }
@@ -453,18 +479,14 @@ export async function poserQuestion(dep: DependancesAssistant, acces: Acces, dos
   const annee = new Date().getUTCFullYear();
   const periode = exercice ? { debut: exercice.debut, fin: exercice.fin } : { debut: `${annee}-01-01`, fin: `${annee}-12-31` };
   const perimetre = { cabinetId: acces.cabinetId, utilisateurId: acces.utilisateurId, dossierIds: [dossierId], periode };
-  const catalogue = new Map(CATALOGUE_INDICATEURS.map((d) => [d.id, d]));
-  const fonctions = creerFonctionsMetierTypes(creerPortsAssistant(dep, acces, dossierId, exercice), {
-    indicateurs: INDICATEURS_ASSISTANT.flatMap((i) => (catalogue.has(i.id) ? [{ id: i.id, libelle: catalogue.get(i.id)?.libelle ?? i.id, motsCles: i.motsCles }] : [])),
-  });
+  const fonctions = fonctionsAssistant(creerPortsAssistant(dep, acces, dossierId, exercice));
 
   // 3) Réponse : le paquet bascule seul en « sans IA » si aucun modèle n'est utilisable.
   const reponse = await repondreQuestion(
     { passerelle: dep.ia.active(), fonctions, habilitations: creerHabilitationsAssistant(dep, acces, dossierId), journal: dep.ia.journal },
     { question: demande.question, perimetre },
   );
-  // Une réponse du SIMULATEUR n'est jamais enregistrée ni présentée comme celle d'un modèle réel.
-  const mode: ReponseQuestion['mode'] = reponse.mode === 'sans_ia' ? 'sans_ia' : dep.ia.natureFournisseur === 'reel' ? 'ia' : 'simulateur';
+  const mode = modeEchange(dep, reponse);
 
   // 4) Enregistrement de l'échange (chacun les siens), puis journal d'audit de l'action — sans le texte de la question.
   let echangeId: string | null = null;

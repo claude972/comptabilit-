@@ -5,6 +5,7 @@ import { type AccesBd, and, count, desc, eq, inArray, isNull, journaliser, notif
 import { lignesDuLot, parametresApprouves, relevesDuDossier } from '@comtaple/plateforme';
 import { z } from 'zod';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
+import { ecarterSuggestion, lireSuggestions } from './amelioration.service.js';
 import { BD } from './jetons.js';
 import { schemaOpenApi, uuid, valider } from './validation.js';
 
@@ -17,6 +18,7 @@ const proposition = z.object({
 });
 const mesure = z.object({ exerciceId: uuid });
 const refus = z.object({ motif: z.string().min(1).max(2000) });
+const ecart = z.strictObject({ empreinte: z.string().min(1).max(300), motif: z.string().trim().min(5, 'motif de 5 caractères au moins').max(2000) });
 
 /** Plafond de lignes pour une mesure d'impact synchrone (au-delà : à faire en traitement différé, non implémenté). */
 const PLAFOND_LIGNES_IMPACT = 250_000;
@@ -65,6 +67,26 @@ export class ReglesController {
       const total = statut ? (parStatut[statut] ?? 0) : decomptes.reduce((t, d) => t + d.n, 0);
       return { page: Number(pageBrute), taillePage: TAILLE_PAGE, total, suite: lues.length > TAILLE_PAGE, parStatut, regles: enrichies };
     });
+  }
+
+  @Get('suggestions')
+  @ApiOperation({
+    summary: 'Suggestions d’amélioration tirées des décisions de revue du cabinet (réviseurs, associés, administrateurs)',
+    description:
+      'Calcul déterministe, à la demande, par le moteur du cœur (critères explicites et versionnés, renvoyés dans « criteres ») sur les seules décisions de CE cabinet lisibles par la personne (dossiers où elle est habilitée) : constats rejetés avec motif, champs extraits corrigés, rapprochements rejetés. Cinq catégories : correction_donnee (rien à proposer), exception_dossier et preference_cabinet (seules « proposables », par une personne, via POST v1/regles : mesure d’impact puis approbation par une AUTRE personne), nouvelle_regle_metier (signalement à instruire par l’éditeur, rien n’est créé ni transmis), modification_regle_reglementaire (jamais de règle de cabinet : renvoi vers la veille). Chaque suggestion porte ses preuves (décisions sources, décomptes, période), le paramètre concerné quand sa sémantique est établie (valeur indicative en chaîne décimale) et ce qu’elle ne fait pas. Rien n’est activé ni enregistré par cette lecture.',
+  })
+  async suggestions(@AccesCourant() acces: Acces) {
+    return lireSuggestions(this.bd, acces);
+  }
+
+  @Post('suggestions/ecarter')
+  @ApiOperation({
+    summary: 'Écarter une suggestion d’amélioration, avec un motif (réviseurs, associés, administrateurs)',
+    description: 'La suggestion doit être en cours (404 sinon). La décision est conservée en ajout seul ; la suggestion ne sera reproposée que si des décisions postérieures atteignent à elles seules les seuils. Une « correction de donnée » ne s’écarte pas.',
+  })
+  @ApiBody({ schema: schemaOpenApi(ecart) })
+  async ecarter(@AccesCourant() acces: Acces, @Body() corps: unknown) {
+    return ecarterSuggestion(this.bd, acces, valider(ecart, corps));
   }
 
   @Post()

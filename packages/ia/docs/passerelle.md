@@ -194,6 +194,9 @@ des décomptes, le nom de la fonction et la référence du prompt.
 |---|---|---|
 | `POST v1/dossiers/:id/assistant/questions` `{ question, exerciceId? }` | niveau `lecture` sur le dossier, vérifié avant toute recherche (404 si le dossier n'est pas visible, 403 en dessous) | `repondreQuestion` bascule sur `repondreSansIa` : réponse `mode: "sans_ia"`, `iaIndisponible.code = "non_connecte"`. Renvoie `{ echangeId, echangeEnregistre, mode, exercice, reponse, ia }`. Question de 3 à 1 000 caractères, objet strict (aucune clé libre), 20 questions par minute et par utilisateur. |
 | `GET v1/dossiers/:id/assistant/questions?page=` | niveau `lecture` | Ses propres échanges, les plus récents d'abord (20 par page). |
+| `POST v1/assistant/questions` `{ question, dossierIds?, periode? }` | tout rôle sauf déposant ; au moins un dossier ouvert au niveau `lecture` (403 sinon) | Question sur un PORTEFEUILLE (section 10.9). Renvoie `{ echangeId, echangeEnregistre, mode, perimetre, reponse, ia }`. Même borne de question et même limite de débit que l'assistant d'un dossier. |
+| `GET v1/assistant/questions?page=` | idem | Ses propres échanges de portefeuille, FILTRÉS à la lecture selon les habilitations du moment. |
+| `GET v1/assistant/perimetre` | idem | Dossiers que l'assistant peut interroger pour la personne, borne par question. |
 | `GET v1/ia` | tout membre authentifié ; mesures pour les gestionnaires seulement | Statut, phrase d'état, modèles figés, prompts et versions, tarifs configurés ; `mesures` (par nature, type, tâche, résultat : nombre, durées, jetons, coût estimé) tirées de `evenements_ia`. |
 | `POST v1/documents/:id/proposition-classement` | niveau `collaboration` | `classerPiece` → `ia_indisponible` + repli étiqueté (rattachement par indice exact — SIREN ou raison sociale d'un dossier où l'utilisateur est habilité —, type « à qualifier »). |
 | `POST v1/constats/:id/explication` | `collaboration` | `expliquerConstat` → repli étiqueté = message du moteur. |
@@ -245,12 +248,14 @@ pas utilisable ; sinon `vectoriserPassages` (une panne laisse le texte indexé, 
 |---|---|---|---|
 | `evenements_ia` | API et worker (ajout seul) | gestionnaires du cabinet | traces sans contenu |
 | `echanges_assistant` | API | l'auteur seulement | question, mode (`sans_ia`, `simulateur`, `ia`), statut, réponse |
+| `echanges_portefeuille` | API (ajout seul) | l'auteur seulement ; contenu filtré à la lecture par l'API | question, mode, statut, dossiers interrogés, `{ perimetre, reponse }` où chaque source porte son dossier |
 | `passages_recherche` | worker seulement | API, sous la politique du dossier | texte des passages, vecteur éventuel |
 | `propositions_ia` | API | membres habilités du dossier | propositions des tâches, jamais appliquées |
 
 ### 10.6 Interface
 
-Onglet « Assistant » du dossier (bandeau d'état tiré de `GET v1/ia`, exercice, question, réponse structurée, citations,
+Page « Assistant » du cabinet (`/assistant`, lien de navigation pour tous les rôles sauf déposant : portefeuille, section
+10.9) ; onglet « Assistant » du dossier (bandeau d'état tiré de `GET v1/ia`, exercice, question, réponse structurée, citations,
 historique) ; « Proposer un classement » sur la page d'une pièce ; « Expliquer ce constat » sur la page d'un constat ;
 `/administration/ia` pour les gestionnaires (état, modèles, mesures).
 
@@ -267,6 +272,10 @@ historique) ; « Proposer un classement » sur la page d'une pièce ; « Expliqu
 
 ### 10.8 Limites de l'intégration
 
+- **Mode sans IA, 40 éléments.** `repondreSansIa` ne restitue que les 40 premiers éléments trouvés et n'annonce pas ceux
+  qu'il laisse de côté (ils restent dans `sources`). L'assistant d'un dossier peut donc atteindre ce plafond en silence
+  (balance de 40 comptes, par exemple) ; l'assistant de portefeuille l'évite par un décompte par dossier (10.9).
+
 - **Preuve de connexion non persistée.** `verifierConnexion()` n'est appelée par aucune route et sa preuve n'a pas de
   table : avec un jeton configuré, le statut reste `configure_non_verifie` et aucun modèle n'est sollicité. Pour activer,
   il faudra une route réservée aux gestionnaires et un stockage de la preuve partagé entre l'API et le worker.
@@ -280,3 +289,36 @@ historique) ; « Proposer un classement » sur la page d'une pièce ; « Expliqu
 - Le mode sans IA déclenche les fonctions par mots-clés : « compte » ou « facture » lancent aussi une recherche
   d'écritures sur les mots de la question, ce qui peut ramener des écritures sans rapport.
 
+### 10.9 Assistant sur un portefeuille de dossiers (`apps/api/src/assistant-portefeuille.service.ts`)
+
+Le paquet n'a pas été modifié. `repondreQuestion` accepte déjà un périmètre de plusieurs dossiers ; l'intégration s'y
+adapte ainsi :
+
+| Comportement du paquet (constaté dans `assistant/fonctions.ts`, `sans-ia.ts`, `types.ts`) | Adaptation dans l'application |
+|---|---|
+| `PerimetreImpose.dossierIds` : 1 à **20** identifiants | Borne de 20 dossiers par question. Au-delà, le périmètre est réduit (ordre alphabétique) et les dossiers non interrogés sont nommés dans `perimetre.nonInterroges`. |
+| Une seule `periode` pour tout le périmètre | Le périmètre porte l'ENVELOPPE des périodes ; chaque port ramène le contexte à la période analysée de SON dossier (dernier exercice, ou sa part dans la période commune fournie). La période est rendue dossier par dossier. |
+| Mode modèle, plusieurs dossiers : `dossierId` devient obligatoire dans la déclaration des fonctions à portée de dossier ; absent → refus `dossier_a_preciser` ; hors de la liste → refus `dossier_hors_perimetre` (la trace du refus ne porte pas le dossier demandé) | Rien à ajouter : les refus sont rendus dans `reponse.refus` et tracés dans `evenements_ia`. |
+| Mode sans IA : chaque fonction déclenchée est exécutée pour CHAQUE dossier du périmètre, dans l'ordre de déclaration des fonctions ; 40 éléments au plus, sans annonce | Décompte par dossier : `floor(35 / n)` éléments au plus par dossier (35, 11, 7, 3, 1 pour 1, 3, 5, 10, 20 dossiers), 5 places gardées pour les sources officielles ; fonctions réordonnées (calculs du moteur, balance, constats, écritures, pièces en dernier). Ce qui dépasse est décompté par dossier (`nonRestitues`) et affiché. Le plafond de 40 n'est donc jamais atteint. |
+| `donneesManquantes` : liste à plat, dédoublonnée, sans dossier | Les ports préfixent chaque mention par `Dossier <identifiant> :` pour le paquet (et donc pour le modèle), et l'application les range par dossier dans `perimetre.dossiers[].donneesManquantes`. |
+| `Citation` sans dossier | L'application ajoute `dossierId` à chaque citation et à chaque source (`null` pour une source officielle), d'après le port qui a rendu l'élément. |
+| `Habilitations.autoriser` appelé avant chaque exécution | Le niveau de la personne sur LE dossier visé est relu en base à chaque appel : un retrait d'habilitation pendant la réponse fait refuser l'appel suivant (`habilitation_refusee`). |
+
+Périmètre : dossiers actifs où `app_niveau_entite(id) >= 'lecture'`, calculé par la base sous l'identité de la session.
+`dossierIds` est intersecté avec ce périmètre ; un identifiant écarté (non habilité, autre cabinet, inexistant) est rendu
+tel que reçu dans `perimetre.horsPerimetre`, sans distinction ; 404 si aucun n'est retenu ; 403 pour un déposant ou sans
+aucun dossier en lecture. Indicateurs : pas de calcul à la volée au-delà de 100 000 lignes par dossier (dit comme donnée
+manquante).
+
+**Relecture et retrait d'habilitation.** L'échange conservé contient la réponse telle que rendue. `GET
+v1/assistant/questions` la filtre selon le périmètre du moment (`filtrerSelonHabilitations`, fonction pure) : un dossier
+qui n'est plus autorisé disparaît du périmètre, avec ses données manquantes, ses sources et les segments qui les citent ;
+`masque.dossiers` dit combien, sans les nommer. Si la réponse avait été RÉDIGÉE par un modèle, toute la rédaction est
+alors retirée (un texte libre peut mentionner un dossier sans le citer) et il ne reste que les sources encore autorisées.
+La ligne en base n'est pas réécrite : si l'habilitation est rendue, l'échange redevient complet. Le texte de la question,
+écrit par la personne, n'est pas filtré.
+
+État : sans IA en service, testé sur la pile réelle ; chemin « modèle » testé contre le simulateur avec les ports réels
+(`apps/api/src/parcours-assistant-portefeuille.itest.ts`), jamais contre un modèle réel. Limites : le modèle ne reçoit
+que des identifiants de dossiers, pas leurs noms ; la limite de débit est commune aux deux assistants ; le simulateur
+d'API du navigateur n'imite pas la période commune.

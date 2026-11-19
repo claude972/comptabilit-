@@ -16,6 +16,7 @@ import {
 import type { ServicesIa } from '@comtaple/plateforme';
 import { z } from 'zod';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
+import { BORNE_DOSSIERS_PORTEFEUILLE, DOSSIERS_DEMANDES_MAX, elementsParDossier, lirePerimetre, poserQuestionPortefeuille, relireEchangesPortefeuille } from './assistant-portefeuille.service.js';
 import { limiterDebitIa, poserQuestion, QUESTION_MAX, QUESTION_MIN } from './assistant.service.js';
 import { BD, IA } from './jetons.js';
 import { schemaOpenApi, uuid, valider } from './validation.js';
@@ -23,6 +24,17 @@ import { schemaOpenApi, uuid, valider } from './validation.js';
 const question = z.strictObject({
   question: z.string().trim().min(QUESTION_MIN, `question de ${QUESTION_MIN} caractères au moins`).max(QUESTION_MAX, `question de ${QUESTION_MAX} caractères au plus`),
   exerciceId: uuid.optional(),
+});
+const dateIso = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date AAAA-MM-JJ attendue');
+const questionPortefeuille = z.strictObject({
+  question: z.string().trim().min(QUESTION_MIN, `question de ${QUESTION_MIN} caractères au moins`).max(QUESTION_MAX, `question de ${QUESTION_MAX} caractères au plus`),
+  /** Absent : tous les dossiers autorisés. Présent : intersecté avec le périmètre autorisé. */
+  dossierIds: z.array(uuid).min(1).max(DOSSIERS_DEMANDES_MAX).optional(),
+  /** Période commune facultative ; à défaut, le dernier exercice de chaque dossier. */
+  periode: z
+    .strictObject({ debut: dateIso, fin: dateIso })
+    .refine((p) => p.debut <= p.fin && !Number.isNaN(Date.parse(p.debut)) && !Number.isNaN(Date.parse(p.fin)), 'période invalide')
+    .optional(),
 });
 const TAILLE_PAGE = 20;
 
@@ -83,6 +95,43 @@ export class AssistantController {
       ).rows;
       return { page, taillePage: TAILLE_PAGE, total: n, echanges };
     });
+  }
+
+  @Post('assistant/questions')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Poser une question documentée sur un PORTEFEUILLE de dossiers autorisés',
+    description: `Périmètre calculé par la base sous l’identité de la session : les dossiers actifs du cabinet où la personne a au moins le niveau « lecture ». « dossierIds », s’il est fourni, est intersecté avec ce périmètre : un identifiant qui n’en fait pas partie (non habilité, autre cabinet, inexistant) est écarté et listé dans « perimetre.horsPerimetre », sans dire s’il existe ; 404 si aucun des dossiers demandés n’est dans le périmètre. Au plus ${BORNE_DOSSIERS_PORTEFEUILLE} dossiers par question : au-delà, le périmètre est réduit (ordre alphabétique) et les dossiers non interrogés sont listés dans « perimetre.nonInterroges ». Période : le dernier exercice de chaque dossier, ou sa part dans la période commune fournie ; annoncée dossier par dossier, comme les données manquantes. Chaque source citée porte « dossierId ». Le nombre d’éléments restitués par dossier dépend du nombre de dossiers (« perimetre.elementsParDossier ») ; ce qui dépasse est décompté (« nonRestitues »). Refusé (403) aux déposants et à qui n’a aucun dossier ouvert en lecture. Sans IA connectée — état actuel — la réponse porte « mode: sans_ia ». L’échange est enregistré pour son auteur seulement.`,
+  })
+  @ApiBody({ schema: schemaOpenApi(questionPortefeuille) })
+  async poserPortefeuille(@AccesCourant() acces: Acces, @Body() corps: unknown) {
+    const d = valider(questionPortefeuille, corps);
+    limiterDebitIa(`question:${acces.utilisateurId}`);
+    const r = await poserQuestionPortefeuille({ bd: this.bd, ia: this.ia }, acces, d);
+    return { ...r, ia: this.etat() };
+  }
+
+  @Get('assistant/questions')
+  @ApiOperation({
+    summary: 'Mes questions de portefeuille à l’assistant, les plus récentes d’abord',
+    description:
+      'Chacun ne relit que ses propres échanges (règle appliquée par la base). Chaque échange est FILTRÉ à la lecture selon les habilitations du moment : un dossier qui n’est plus dans le périmètre de la personne disparaît de l’échange (périmètre, sources, éléments de réponse) ; « masque » dit combien de dossiers ont été retirés, sans les nommer. Si la réponse avait été rédigée par un modèle, sa rédaction est alors retirée en bloc.',
+  })
+  @ApiQuery({ name: 'page', required: false })
+  async historiquePortefeuille(@AccesCourant() acces: Acces, @Query('page') pageBrute?: string) {
+    const page = Number(pageBrute ?? 1);
+    if (!Number.isInteger(page) || page < 1 || page > 10_000) throw new BadRequestException('page : entier positif attendu');
+    return relireEchangesPortefeuille({ bd: this.bd, ia: this.ia }, acces, page);
+  }
+
+  @Get('assistant/perimetre')
+  @ApiOperation({
+    summary: 'Dossiers que l’assistant de portefeuille peut interroger pour la personne connectée',
+    description: 'Dossiers actifs où la personne a au moins le niveau « lecture », calculés par la base ; borne par question et nombre d’éléments restitués par dossier. Refusé (403) aux déposants.',
+  })
+  async perimetre(@AccesCourant() acces: Acces) {
+    const dossiers = await lirePerimetre({ bd: this.bd, ia: this.ia }, acces);
+    return { borne: BORNE_DOSSIERS_PORTEFEUILLE, elementsParDossier: elementsParDossier(Math.min(Math.max(dossiers.length, 1), BORNE_DOSSIERS_PORTEFEUILLE)), dossiers };
   }
 
   @Get('ia')

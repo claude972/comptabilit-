@@ -128,3 +128,67 @@ export interface PageRegles {
   parStatut: Partial<Record<StatutRegle, number>>;
   regles: RegleCabinet[];
 }
+
+// ───────────────────────────── Suggestions d'amélioration tirées des corrections ─────────────────────────────
+
+export type CategorieSuggestion = 'correction_donnee' | 'exception_dossier' | 'preference_cabinet' | 'nouvelle_regle_metier' | 'modification_regle_reglementaire';
+export interface SuggestionAmelioration {
+  empreinte: string;
+  categorie: CategorieSuggestion;
+  titre: string;
+  constat: string;
+  critere: string;
+  controleId: string | null;
+  dossierIds: string[];
+  dossiers: Array<{ id: string; nom: string }>;
+  portee: 'dossier' | 'cabinet' | null;
+  proposable: boolean;
+  renvoi: 'veille' | 'editeur' | null;
+  /** Valeurs en chaînes décimales, jamais des nombres flottants. */
+  parametre: { cle: string; valeurParDefaut: string; valeurIndicative: string; explication: string } | null;
+  proposition: { controleId: string; entiteId: string | null; parametres: Record<string, string>; motif: string } | null;
+  preuves: {
+    decomptes: Record<string, number>;
+    periode: { du: string; au: string } | null;
+    decisions: Array<{ decisionId: string; cibleId: string; dossierId: string; date: string; motif: string | null }>;
+    decisionsNonListees: number;
+  };
+  neFaitPas: string[];
+  dejaEcartee: { le: string; motif: string } | null;
+}
+export interface VueSuggestions {
+  criteres: { version: string; statut: string; fenetreMois: number };
+  suggestions: SuggestionAmelioration[];
+  ecarteesMaintenues: Array<{ empreinte: string; le: string; motif: string }>;
+  dejaEnCours: string[];
+  sansDecision: boolean;
+  perimetre: { dossiers: number; fenetreMois: number; mention: string; plafondsAtteints: string[] };
+}
+
+export const LIBELLE_CATEGORIE_SUGGESTION: Record<CategorieSuggestion, string> = {
+  correction_donnee: 'Correction de données',
+  exception_dossier: 'Exception propre à un dossier',
+  preference_cabinet: 'Préférence du cabinet',
+  nouvelle_regle_metier: 'Nouvelle règle métier (signalement)',
+  modification_regle_reglementaire: 'Règle réglementaire (renvoi vers la veille)',
+};
+const LIBELLE_DECOMPTE: Record<string, string> = {
+  rejetsMotives: 'rejets motivés',
+  rejetsNonMotives: 'rejets sans motif suffisant (non comptés)',
+  decisionsContraires: 'décisions contraires',
+  executions: 'exécutions de contrôles concernées',
+  dossiers: 'dossiers',
+  piecesCorrigees: 'pièces corrigées',
+  validations: 'validations',
+  constatsCorriges: 'constats corrigés',
+  champsCorriges: 'champs extraits corrigés',
+  rejetsIsoles: 'rejets de constats isolés',
+  rapprochementsRejetesIsoles: 'rejets de rapprochements isolés',
+};
+export const libelleDecompte = (cle: string): string => LIBELLE_DECOMPTE[cle] ?? cle;
+
+/** Suggestion (proposable) désignée par l'adresse `/regles?suggestion=…` : sert à pré-remplir le formulaire de proposition. */
+export function suggestionAPreremplir(vue: VueSuggestions | null, empreinte: string | undefined): SuggestionAmelioration | null {
+  if (!vue || !empreinte) return null;
+  return vue.suggestions.find((s) => s.empreinte === empreinte && s.proposable && s.proposition !== null) ?? null;
+}

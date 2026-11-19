@@ -1319,6 +1319,55 @@ export const echangesAssistant = pgTable(
 );
 
 /**
+ * Questions posées à l'assistant sur un PORTEFEUILLE de dossiers (plusieurs dossiers autorisés à la fois). Un tel échange
+ * n'appartient à aucun dossier unique : la table ne porte donc pas `entite_id` (pas de politique par dossier), seulement
+ * la règle « chacun les siens ». La réponse conservée étiquette chaque source par son dossier : à la RELECTURE,
+ * l'application la filtre selon les habilitations du moment (un dossier retiré depuis n'y apparaît plus).
+ */
+export const echangesPortefeuille = pgTable(
+  'echanges_portefeuille',
+  {
+    id: id(),
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    utilisateurId: uuid('utilisateur_id').notNull().references(() => utilisateurs.id),
+    question: text('question').notNull(),
+    mode: text('mode').notNull(),
+    statut: text('statut').notNull(),
+    /** Identifiants des dossiers effectivement interrogés (tableau JSON). */
+    dossiers: jsonb('dossiers').notNull(),
+    /** `{ perimetre, reponse }` tels que rendus au moment de la question. */
+    contenu: jsonb('contenu').notNull(),
+    creeLe: creeLe(),
+  },
+  (t) => [index('echanges_portefeuille_auteur').on(t.utilisateurId, t.creeLe)],
+);
+
+/**
+ * Suggestions d'amélioration ÉCARTÉES par une personne du cabinet, avec son motif. Conservées (ajout seul) pour ne pas
+ * reproposer la même suggestion à l'identique : elle ne revient que si des décisions POSTÉRIEURES atteignent à elles
+ * seules les seuils. `entite_id_cible` (et non `entite_id`) : visible de tout le cabinet, comme les règles.
+ */
+export const suggestionsEcartees = pgTable(
+  'suggestions_ecartees',
+  {
+    id: id(),
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    /** Identité stable de la suggestion (catégorie, contrôle ou objet, cible), produite par le moteur. */
+    empreinte: text('empreinte').notNull(),
+    categorie: text('categorie').notNull(),
+    controleId: text('controle_id'),
+    entiteId: uuid('entite_id_cible'),
+    versionCriteres: text('version_criteres').notNull(),
+    /** Décomptes de la suggestion au moment où elle a été écartée. */
+    decomptes: jsonb('decomptes').notNull(),
+    motif: text('motif').notNull(),
+    ecarteePar: uuid('ecartee_par').notNull().references(() => utilisateurs.id),
+    creeLe: creeLe(),
+  },
+  (t) => [index('suggestions_ecartees_cabinet').on(t.cabinetId, t.empreinte, t.creeLe)],
+);
+
+/**
  * Passages de texte des pièces et leur vecteur (bge-m3, 1024 dimensions) pour la recherche hybride. Le vecteur reste
  * NULL tant qu'aucun fournisseur d'embeddings n'est connecté : la recherche est alors purement textuelle, et le dit.
  */

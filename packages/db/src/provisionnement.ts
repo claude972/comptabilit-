@@ -361,7 +361,7 @@ const CINQ_ANS = { duree: '5 ans', pointDeDepart: 'fin du contrat', fondement: '
  * `version`, que le procès-verbal reprend. Statut : proposition de travail, à valider (V8 de docs/risques.md).
  */
 export const POLITIQUE_FIN_DE_CONTRAT: { version: string; statut: string; delaiGraceJoursParDefaut: number; categories: readonly CategorieFinDeContrat[] } = {
-  version: '2026-11-19.2',
+  version: '2026-11-19.3',
   statut: 'proposée, non arrêtée — durées et fondements à valider par un professionnel du droit et un expert-comptable',
   delaiGraceJoursParDefaut: 90,
   categories: [
@@ -373,10 +373,10 @@ export const POLITIQUE_FIN_DE_CONTRAT: { version: string; statut: string; delaiG
     { code: 'controles_constats', libelle: 'Contrôles et constats, dossiers de révision', tables: ['executions_controles', 'resultats_controles', 'constats', 'exports_revision'], devenir: 'restituer_puis_supprimer' },
     { code: 'decisions_validations', libelle: 'Décisions et validations : décisions, commentaires, écritures d’inventaire, confirmations d’annexe, immobilisations saisies, suivis de veille, liens confirmés ou infirmés entre tiers et entre factures', tables: ['decisions', 'commentaires', 'ecritures_inventaire', 'confirmations_annexe', 'immobilisations', 'suivis_evolution', 'liens_tiers', 'liens_factures'], devenir: 'restituer_puis_supprimer' },
     { code: 'missions_conseils', libelle: 'Missions et conseils : missions, lettres de mission, travaux, barèmes de temps, registre des conseils', tables: ['missions', 'lettres_mission', 'travaux', 'baremes_temps', 'conseils', 'evenements_conseil'], devenir: 'restituer_puis_supprimer' },
-    { code: 'regles_parametres', libelle: 'Règles et paramètres du cabinet', tables: ['regles_cabinet', 'parametres_cabinet'], devenir: 'restituer_puis_supprimer' },
+    { code: 'regles_parametres', libelle: 'Règles et paramètres du cabinet, suggestions d’amélioration écartées (motif et auteur)', tables: ['regles_cabinet', 'parametres_cabinet', 'suggestions_ecartees'], devenir: 'restituer_puis_supprimer' },
     { code: 'messagerie', libelle: 'Connexions de messagerie et jetons, messages vus, pièces à qualifier', tables: ['connexions_mail', 'demandes_connexion_mail', 'pieces_mail_vues', 'pieces_a_qualifier', 'signalements_mail', 'messages_mail'], devenir: 'supprimer', note: 'Les jetons (chiffrés) ne sont jamais restitués ; ils sont détruits avec la connexion.' },
     { code: 'notifications', libelle: 'Notifications internes et préférences', tables: ['notifications', 'preferences_notification'], devenir: 'supprimer' },
-    { code: 'assistant', libelle: 'Échanges avec l’assistant et propositions d’IA', tables: ['echanges_assistant', 'propositions_ia'], devenir: 'supprimer' },
+    { code: 'assistant', libelle: 'Échanges avec l’assistant (par dossier et de portefeuille) et propositions d’IA', tables: ['echanges_assistant', 'echanges_portefeuille', 'propositions_ia'], devenir: 'supprimer', note: 'Les échanges de portefeuille (plusieurs dossiers à la fois) ne figurent pas dans l’archive de restitution du cabinet : écrits personnels, non ramenables au périmètre d’une archive.' },
     { code: 'traces_ia', libelle: 'Traces de la passerelle IA (mesures sans contenu)', tables: ['evenements_ia'], devenir: 'anonymiser', conservation: { duree: '6 mois', pointDeDepart: 'événement', fondement: 'Mesures d’exploitation de l’Éditeur (bas de la fourchette de la recommandation CNIL sur la journalisation, délibération n° 2021-122) — valeur de travail', statut: PROPOSE }, note: 'L’identifiant de la personne et celui du dossier sont effacés ; restent des décomptes rattachés au cabinet.' },
     { code: 'abonnement_facturation', libelle: 'Abonnement et éléments de facturation (échéances, événements)', tables: ['abonnements', 'echeances_abonnement', 'evenements_facturation'], devenir: 'conserver_jusqu_a', conservation: { duree: '10 ans', pointDeDepart: 'clôture de l’exercice de l’Éditeur', fondement: 'Code de commerce, art. L. 123-22 ; LPF, art. L. 102 B (6 ans) — documents comptables de l’Éditeur, responsable de ce traitement', statut: PROPOSE } },
     { code: 'restitutions_dossier', libelle: 'Restitutions par dossier (registre)', tables: ['restitutions'], devenir: 'supprimer', note: 'Archives générées : 30 jours proposés ; elles dupliquent les données.' },

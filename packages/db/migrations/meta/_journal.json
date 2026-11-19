@@ -274,6 +274,13 @@
       "when": 1795126744507,
       "tag": "0038_fin_de_contrat",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1795129373140,
+      "tag": "0039_assistant_portefeuille",
+      "breakpoints": true
     }
   ]
 }

@@ -20,6 +20,7 @@ import {
   elementsBanqueDepuisEcritures, enBlocs, lireCamt053, lireCsvBanque, lireOfx, proposerProfilCsv, rapprocher, schemaParametresRapprochement, schemaProfilCsvBanque,
   type DecisionFacture, type DecisionTiers, type FicheFacture, type PieceFacture, cleEcriture, suivreTiersEtFactures,
   type ContenuLettre, type LettreDatee, PRESTATIONS, calculerRentabiliteMission, schemaChaineDecimale, dec, estimerTemps, evaluerApplicabilite, schemaContenuLettre, schemaCriteresEvolution, situerTravail, somme, versChaine,
+  type ControleAmelioration, CRITERES_AMELIORATION, PARAMETRES_SEUIL_MONTANT, suggererAmeliorations,
 } from '@comtaple/core';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
@@ -165,6 +166,10 @@ interface Suite {
   coutsHoraires: Map<string, { coutHoraireInterneHt: string | null; majLe: string }>;
   /** Échanges avec l'assistant (assistant.controller.ts) : chacun ne relit que les siens. */
   echangesAssistant: Enr[];
+  /** Échanges de portefeuille (assistant-portefeuille.service.ts) : contenu complet, filtré à la relecture. */
+  echangesPortefeuille: Enr[];
+  /** Suggestions d'amélioration écartées (amelioration.service.ts), en ajout seul. */
+  suggestionsEcartees: Enr[];
 }
 const ID_EVOLUTIONS = { metropole: 'eeeeeeee-0000-4000-8000-000000000001', naf: 'eeeeeeee-0000-4000-8000-000000000002', martinique: 'eeeeeeee-0000-4000-8000-000000000003', brute: 'eeeeeeee-0000-4000-8000-000000000004' } as const;
 function suiteInitiale(): Suite {
@@ -179,7 +184,7 @@ function suiteInitiale(): Suite {
     conditions: etatVerification === 'verifiee' ? 'Exercices ouverts à compter du 1er janvier 2025.' : null, resume: etatVerification === 'verifiee' ? `Évolution fictive de test : ${reference}.` : null, criteres, etatVerification, verifieeLe: etatVerification === 'verifiee' ? '2026-11-18' : null,
   });
   return {
-    regles: [], ecritures: [], missions: [], lettres: [], travaux: [], baremes: [], conseils: [], evenements: [], suivis: [], restitutions: [], archives: new Map(), membres: new Map(), campagnes: [], coutsHoraires: new Map(), echangesAssistant: [],
+    regles: [], ecritures: [], missions: [], lettres: [], travaux: [], baremes: [], conseils: [], evenements: [], suivis: [], restitutions: [], archives: new Map(), membres: new Map(), campagnes: [], coutsHoraires: new Map(), echangesAssistant: [], echangesPortefeuille: [], suggestionsEcartees: [],
     sources: [
       source('BOFiP', 'BOI-BIC-CHG-20-30-10 (biens de faible valeur)', 'https://bofip.impots.gouv.fr/bofip/2109-PGP.html', true),
       source('BOFiP', 'BOI-CF-IOR-60-40-20 (format du FEC)', 'https://bofip.impots.gouv.fr/bofip/9028-PGP.html', true),
@@ -2375,6 +2380,46 @@ function routerSuite(r: Requete, a: Acces): unknown {
   // ── Règles du cabinet ──
   if (s[0] === 'regles') {
     const duCabinet = suite.regles.filter((x) => x.cabinetId === a.cabinetId);
+    // Suggestions d'amélioration (amelioration.service.ts) : le MOTEUR RÉEL de @comtaple/core, sur les décisions du simulateur.
+    if (s[1] === 'suggestions') {
+      if (!['administrateur', 'associe', 'reviseur'].includes(a.role)) throw new ErreurHttp(403, 'Les suggestions d’amélioration sont réservées aux réviseurs, associés et administrateurs du cabinet');
+      const visible = (entiteId: string) => auMoins(niveauSur(a, entiteId) ?? 'depot', 'lecture');
+      const calculer = () => {
+        const constats = etat.decisions.filter((d) => d.cibleType === 'constat').flatMap((d) => {
+          const c = etat.constats.find((x) => x.id === d.cibleId);
+          return c && visible(c.entiteId) ? [{ decisionId: `${d.cibleId}:${d.creeLe}`, constatId: c.id, controleId: c.controleId, dossierId: c.entiteId, exerciceId: c.exerciceId, executionId: c.executionId, cle: c.cle, action: d.action, motif: d.motif, montant: c.montant, date: d.creeLe }] : [];
+        });
+        const controles: ControleAmelioration[] = CATALOGUE.map(([id, cycle, titre, source]) => {
+          const fondement = (source as Enr).type === 'reglementaire' ? 'reglementaire' : cycle === 'tva' ? 'fiscal' : 'interne';
+          const cle = fondement === 'interne' ? (PARAMETRES_SEUIL_MONTANT[id] ?? null) : null;
+          return { id, titre, fondement, reference: (source as Enr).reference, parametreSeuil: cle, seuilParDefaut: cle ? (PARAMETRES_DEFAUT[id]?.[cle] ?? '0.00') : null };
+        });
+        const empreinteRegle = (x: Enr) => (x.entiteId ? `exception_dossier|${x.controleId}|${x.entiteId}` : `preference_cabinet|${x.controleId}`);
+        const ecartees = [
+          ...suite.suggestionsEcartees.filter((x) => x.cabinetId === a.cabinetId).map((x) => ({ empreinte: x.empreinte, le: x.creeLe, motif: x.motif })),
+          ...duCabinet.filter((x) => x.statut === 'refusee' || x.statut === 'retiree').map((x) => ({ empreinte: empreinteRegle(x), le: x.decideeLe ?? x.creeLe, motif: x.statut === 'refusee' ? 'Règle refusée' : 'Règle retirée' })),
+        ];
+        const res = suggererAmeliorations({ constats, corrections: [], rapprochements: [], controles, ecartees, reglesEnCours: duCabinet.filter((x) => x.statut === 'proposee' || x.statut === 'approuvee').map(empreinteRegle) });
+        const vus = ENTITES.filter((e) => e.cabinetId === a.cabinetId && visible(e.id));
+        return {
+          ...res,
+          suggestions: res.suggestions.map((x) => ({ ...x, dossiers: x.dossierIds.map((id) => ({ id, nom: vus.find((e) => e.id === id)?.raisonSociale ?? 'Dossier' })) })),
+          perimetre: { dossiers: vus.length, fenetreMois: CRITERES_AMELIORATION.fenetreMois, mention: 'Calculé sur les seules décisions de ce cabinet, dans les dossiers où vous êtes habilité. Une récurrence portée par des dossiers que vous ne voyez pas n’apparaît pas ici.', plafondsAtteints: [] },
+        };
+      };
+      if (m === 'GET' && s.length === 2) return calculer();
+      if (m === 'POST' && s[2] === 'ecarter' && s.length === 3) {
+        const d = r.json();
+        const empreinte = chaine(d, 'empreinte', 1, 300);
+        const motif = chaine(d, 'motif', 5, 2000);
+        const cible = calculer().suggestions.find((x) => x.empreinte === empreinte && x.categorie !== 'correction_donnee');
+        if (!cible) throw new ErreurHttp(404, 'Suggestion introuvable : elle n’est plus d’actualité ou a déjà été écartée');
+        const ligne = { id: randomUUID(), cabinetId: a.cabinetId, empreinte, categorie: cible.categorie, controleId: cible.controleId, entiteId: cible.portee === 'dossier' ? (cible.dossierIds[0] ?? null) : null, versionCriteres: CRITERES_AMELIORATION.version, decomptes: cible.preuves.decomptes, motif, ecarteePar: a.utilisateurId, creeLe: instant() };
+        suite.suggestionsEcartees.push(ligne);
+        tracerAudit(a, 'suggestion.ecartee', 'suggestion_amelioration', ligne.id, ligne.entiteId, { categorie: cible.categorie, controleId: cible.controleId });
+        return ligne;
+      }
+    }
     if (m === 'GET' && s.length === 1) {
       if (estClient(a)) throw new ErreurHttp(403, 'Réservé aux membres du cabinet');
       // Comme l'API : avec « page », réponse paginée (50 par page) et décomptes par statut ; sans, tableau (ancienne forme).
@@ -2890,6 +2935,51 @@ function routerSuite(r: Requete, a: Acces): unknown {
         : { mesures: null, mesuresReservees: 'Les mesures sont réservées aux administrateurs et associés du cabinet.' }),
     };
   }
+  /** Recherche FICTIVE du mode sans IA dans un dossier (sous-chaînes), partagée par l'assistant du dossier et celui du portefeuille. */
+  const rechercheSansIa = (id: string, question: string, exercice: Enr | undefined, periode: { debut: string; fin: string }) => {
+    const sansAccent = (t: string) => t.toLocaleLowerCase('fr').normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const motsVides = new Set(['quel', 'quelle', 'quels', 'quelles', 'est', 'sont', 'les', 'des', 'une', 'que', 'qui', 'pour', 'dans', 'sur', 'par', 'ont', 'ete', 'dit', 'contient', 'compte', 'solde', 'constats', 'constat', 'ecritures', 'ecriture', 'facture', 'factures']);
+    const mots = (sansAccent(question).match(/[a-z0-9][a-z0-9-]+/g) ?? []).filter((x) => x.length >= 3 && !motsVides.has(x));
+    const trouve = (texte: string) => mots.some((x) => sansAccent(texte).includes(x));
+    const declenche = (...cles: string[]) => (sansAccent(question).match(/[a-z0-9]+/g) ?? []).some((x) => cles.includes(x));
+    const elements: Array<{ id: string; nature: string; libelle: string; valeurs: Record<string, string> }> = [];
+    let fonctions = 1;
+    // Pièces : texte extrait (extraits des champs), restitué tel quel comme une DONNÉE.
+    for (const doc of etat.documents.filter((x) => x.entiteId === id && x.statut !== 'remplace' && x.statut !== 'quarantaine')) {
+      const extraction = etat.extractions.find((x) => x.documentId === doc.id && x.actuelle);
+      const texte = Object.values((extraction?.champs ?? {}) as Enr).map((c) => c?.extrait).filter((x): x is string => typeof x === 'string').join(' ');
+      if (texte && (trouve(texte) || trouve(doc.nomOrigine))) elements.push({ id: `piece:${doc.id}:p1`, nature: 'piece', libelle: `${doc.nomOrigine} — page 1`, valeurs: { page: '1', extrait: texte.slice(0, 400) } });
+    }
+    const actifs = new Set(etat.lots.filter((l) => l.actif && l.exerciceId === exercice?.id).map((l) => l.id));
+    if (declenche('ecriture', 'ecritures', 'compte', 'journal', 'facture', 'factures', 'paiement', 'reglement', 'montant')) {
+      fonctions += 1;
+      for (const l of etat.lignes.filter((x) => x.entiteId === id && actifs.has(x.lotImportId) && trouve(`${x.ecritureLib} ${x.pieceRef} ${x.compteLib}`)).slice(0, 20)) {
+        elements.push({ id: `ecriture:${l.id}`, nature: 'ecriture', libelle: `Écriture ${l.journalCode} n° ${l.ecritureNum} du ${l.ecritureDate}`, valeurs: { date: l.ecritureDate, journal: l.journalCode, compte: l.compteNum, pièce: l.pieceRef, libellé: l.ecritureLib, débit: l.debit, crédit: l.credit } });
+      }
+    }
+    if (declenche('balance', 'solde', 'soldes')) {
+      fonctions += 1;
+      const prefixe = /\bcomptes?\s+(\d{1,8})\b/i.exec(question)?.[1] ?? '';
+      const balance = calculerBalance(etat.lignes.filter((x) => x.entiteId === id && actifs.has(x.lotImportId)) as unknown as LigneEcriture[]);
+      for (const l of balance.lignes.filter((x) => x.compteNum.startsWith(prefixe)).slice(0, 40)) {
+        elements.push({ id: `balance:${exercice?.id}:${l.compteNum}:${periode.debut}:${periode.fin}`, nature: 'resultat_moteur', libelle: `Balance — compte ${l.compteNum} ${l.compteLib}`, valeurs: { compte: l.compteNum, 'total débit': l.totalDebit, 'total crédit': l.totalCredit, 'solde débiteur': l.soldeDebiteur, 'solde créditeur': l.soldeCrediteur, période: `du ${periode.debut} au ${periode.fin}` } });
+      }
+    }
+    if (declenche('constat', 'constats', 'anomalie', 'anomalies', 'controle', 'controles', 'alerte', 'alertes')) {
+      fonctions += 1;
+      const execution = etat.executions.filter((e) => e.exerciceId === exercice?.id && e.statut === 'termine').at(-1);
+      for (const c of etat.constats.filter((x) => x.entiteId === id && x.executionId === execution?.id).slice(0, 20)) {
+        elements.push({ id: `constat:${c.id}`, nature: 'constat', libelle: `Constat ${c.controleId} — ${c.titre}`, valeurs: { contrôle: c.controleId, gravité: c.gravite, revue: c.statutRevue, ...(c.montant !== null ? { montant: c.montant } : {}) } });
+      }
+    }
+    if (declenche('tva', 'impot', 'impots', 'fiscal', 'fiscale', 'loi', 'obligation', 'delai', 'declaration', 'seuil', 'taux')) {
+      fonctions += 1;
+      for (const ev of suite.evolutions.filter((x) => x.etatVerification === 'verifiee' && trouve(`${x.reference} ${x.resume ?? ''}`)).slice(0, 5)) {
+        elements.push({ id: `evolution:${ev.id}`, nature: 'source_officielle', libelle: `${ev.emetteur} — ${ev.reference}`, valeurs: {}, ...{ reference: { titre: ev.reference, url: ev.url, dateVersion: ev.verifieeLe ?? ev.dateEffet ?? null } } });
+      }
+    }
+    return { elements, fonctions };
+  };
   if (s[0] === 'dossiers' && s[2] === 'assistant' && s[3] === 'questions' && s.length === 4) {
     const id = exigerUuid(s[1]);
     if (m === 'GET') {
@@ -2913,47 +3003,7 @@ function routerSuite(r: Requete, a: Acces): unknown {
       if (exerciceId && !exercice) throw new ErreurHttp(404, 'Exercice introuvable dans ce dossier');
       const annee = new Date().getUTCFullYear();
       const periode = exercice ? { debut: exercice.debut, fin: exercice.fin } : { debut: `${annee}-01-01`, fin: `${annee}-12-31` };
-      const sansAccent = (t: string) => t.toLocaleLowerCase('fr').normalize('NFD').replace(/[̀-ͯ]/g, '');
-      const motsVides = new Set(['quel', 'quelle', 'quels', 'quelles', 'est', 'sont', 'les', 'des', 'une', 'que', 'qui', 'pour', 'dans', 'sur', 'par', 'ont', 'ete', 'dit', 'contient', 'compte', 'solde', 'constats', 'constat', 'ecritures', 'ecriture', 'facture', 'factures']);
-      const mots = (sansAccent(question).match(/[a-z0-9][a-z0-9-]+/g) ?? []).filter((x) => x.length >= 3 && !motsVides.has(x));
-      const trouve = (texte: string) => mots.some((x) => sansAccent(texte).includes(x));
-      const declenche = (...cles: string[]) => (sansAccent(question).match(/[a-z0-9]+/g) ?? []).some((x) => cles.includes(x));
-      const elements: Array<{ id: string; nature: string; libelle: string; valeurs: Record<string, string> }> = [];
-      let fonctions = 1;
-      // Pièces : texte extrait (extraits des champs), restitué tel quel comme une DONNÉE.
-      for (const doc of etat.documents.filter((x) => x.entiteId === id && x.statut !== 'remplace' && x.statut !== 'quarantaine')) {
-        const extraction = etat.extractions.find((x) => x.documentId === doc.id && x.actuelle);
-        const texte = Object.values((extraction?.champs ?? {}) as Enr).map((c) => c?.extrait).filter((x): x is string => typeof x === 'string').join(' ');
-        if (texte && (trouve(texte) || trouve(doc.nomOrigine))) elements.push({ id: `piece:${doc.id}:p1`, nature: 'piece', libelle: `${doc.nomOrigine} — page 1`, valeurs: { page: '1', extrait: texte.slice(0, 400) } });
-      }
-      const actifs = new Set(etat.lots.filter((l) => l.actif && l.exerciceId === exercice?.id).map((l) => l.id));
-      if (declenche('ecriture', 'ecritures', 'compte', 'journal', 'facture', 'factures', 'paiement', 'reglement', 'montant')) {
-        fonctions += 1;
-        for (const l of etat.lignes.filter((x) => x.entiteId === id && actifs.has(x.lotImportId) && trouve(`${x.ecritureLib} ${x.pieceRef} ${x.compteLib}`)).slice(0, 20)) {
-          elements.push({ id: `ecriture:${l.id}`, nature: 'ecriture', libelle: `Écriture ${l.journalCode} n° ${l.ecritureNum} du ${l.ecritureDate}`, valeurs: { date: l.ecritureDate, journal: l.journalCode, compte: l.compteNum, pièce: l.pieceRef, libellé: l.ecritureLib, débit: l.debit, crédit: l.credit } });
-        }
-      }
-      if (declenche('balance', 'solde', 'soldes')) {
-        fonctions += 1;
-        const prefixe = /\bcomptes?\s+(\d{1,8})\b/i.exec(question)?.[1] ?? '';
-        const balance = calculerBalance(etat.lignes.filter((x) => x.entiteId === id && actifs.has(x.lotImportId)) as unknown as LigneEcriture[]);
-        for (const l of balance.lignes.filter((x) => x.compteNum.startsWith(prefixe)).slice(0, 40)) {
-          elements.push({ id: `balance:${exercice?.id}:${l.compteNum}:${periode.debut}:${periode.fin}`, nature: 'resultat_moteur', libelle: `Balance — compte ${l.compteNum} ${l.compteLib}`, valeurs: { compte: l.compteNum, 'total débit': l.totalDebit, 'total crédit': l.totalCredit, 'solde débiteur': l.soldeDebiteur, 'solde créditeur': l.soldeCrediteur, période: `du ${periode.debut} au ${periode.fin}` } });
-        }
-      }
-      if (declenche('constat', 'constats', 'anomalie', 'anomalies', 'controle', 'controles', 'alerte', 'alertes')) {
-        fonctions += 1;
-        const execution = etat.executions.filter((e) => e.exerciceId === exercice?.id && e.statut === 'termine').at(-1);
-        for (const c of etat.constats.filter((x) => x.entiteId === id && x.executionId === execution?.id).slice(0, 20)) {
-          elements.push({ id: `constat:${c.id}`, nature: 'constat', libelle: `Constat ${c.controleId} — ${c.titre}`, valeurs: { contrôle: c.controleId, gravité: c.gravite, revue: c.statutRevue, ...(c.montant !== null ? { montant: c.montant } : {}) } });
-        }
-      }
-      if (declenche('tva', 'impot', 'impots', 'fiscal', 'fiscale', 'loi', 'obligation', 'delai', 'declaration', 'seuil', 'taux')) {
-        fonctions += 1;
-        for (const ev of suite.evolutions.filter((x) => x.etatVerification === 'verifiee' && trouve(`${x.reference} ${x.resume ?? ''}`)).slice(0, 5)) {
-          elements.push({ id: `evolution:${ev.id}`, nature: 'source_officielle', libelle: `${ev.emetteur} — ${ev.reference}`, valeurs: {}, ...{ reference: { titre: ev.reference, url: ev.url, dateVersion: ev.verifieeLe ?? ev.dateEffet ?? null } } });
-        }
-      }
+      const { elements, fonctions } = rechercheSansIa(id, question, exercice, periode);
       const citation = (e: (typeof elements)[number]) => ({ id: e.id, nature: e.nature, libelle: e.libelle, reference: (e as Enr).reference ?? null });
       const segments = elements.slice(0, 40).map((e) => ({
         type: e.nature === 'resultat_moteur' ? 'calcul' : 'fait',
@@ -2976,6 +3026,84 @@ function routerSuite(r: Requete, a: Acces): unknown {
       if (enregistre) suite.echangesAssistant.push({ id: echangeId, cabinetId: a.cabinetId, entiteId: id, utilisateurId: a.utilisateurId, exerciceId: exercice?.id ?? null, question, mode: 'sans_ia', statut: reponse.statut, reponse, creeLe: horodatagePg(suite.echangesAssistant.length), fonctions });
       tracerAudit(a, 'assistant.question', 'echange_assistant', echangeId ?? '', id, { mode: 'sans_ia', statut: reponse.statut, longueurQuestion: question.length });
       return { echangeId, echangeEnregistre: enregistre, mode: 'sans_ia', exercice: exercice ? { id: exercice.id, debut: exercice.debut, fin: exercice.fin } : null, reponse, ia: ETAT_IA };
+    }
+  }
+  // ── Assistant sur un PORTEFEUILLE de dossiers (calqué sur assistant-portefeuille.service.ts) ──
+  if (s[0] === 'assistant' && (s[1] === 'questions' || s[1] === 'perimetre') && s.length === 2) {
+    if (a.role === 'client_deposant') throw new ErreurHttp(403, 'L’assistant n’est pas ouvert aux déposants');
+    const BORNE = 20;
+    const budgetPour = (n: number) => Math.max(1, Math.floor(35 / Math.max(1, n)));
+    const autorises = ENTITES.filter((e) => e.cabinetId === a.cabinetId && auMoins(niveauSur(a, e.id) ?? 'depot', 'lecture'))
+      .map((e) => ({ id: e.id as string, nom: e.raisonSociale as string, niveau: niveauSur(a, e.id) as Niveau }))
+      .sort((x, y) => x.nom.localeCompare(y.nom));
+    if (m === 'GET' && s[1] === 'perimetre') return { borne: BORNE, elementsParDossier: budgetPour(Math.min(Math.max(autorises.length, 1), BORNE)), dossiers: autorises };
+    if (m === 'GET') {
+      const page = Number(r.query.get('page') ?? 1);
+      if (!Number.isInteger(page) || page < 1 || page > 10_000) throw new ErreurHttp(400, 'page : entier positif attendu');
+      const permis = new Set(autorises.map((d) => d.id));
+      const miens = suite.echangesPortefeuille.filter((e) => e.cabinetId === a.cabinetId && e.utilisateurId === a.utilisateurId).toReversed();
+      // Comme le service réel : filtrage à la LECTURE selon les habilitations du moment (ici : réponses sans IA uniquement).
+      const filtrer = (e: Enr) => {
+        const visibles = (e.perimetre.dossiers as Enr[]).filter((d) => permis.has(d.id));
+        const masques = e.perimetre.dossiers.length - visibles.length;
+        const permise = (c: Enr) => c.dossierId === null || permis.has(c.dossierId);
+        const segments = (e.reponse.segments as Enr[]).filter((x) => (x.citations as Enr[]).every(permise));
+        const vide = segments.length === 0 && e.reponse.statut === 'repondu';
+        const reponse = { ...e.reponse, statut: vide ? 'abstention' : e.reponse.statut, motifAbstention: vide ? 'Les éléments de cette réponse provenaient de dossiers auxquels vous n’avez plus accès.' : e.reponse.motifAbstention, segments, sources: (e.reponse.sources as Enr[]).filter(permise) };
+        return { id: e.id, question: e.question, mode: e.mode, statut: reponse.statut, creeLe: e.creeLe, perimetre: { ...e.perimetre, dossiers: visibles, nonInterroges: (e.perimetre.nonInterroges as Enr[]).filter((d) => permis.has(d.id)) }, reponse, masque: masques > 0 ? { dossiers: masques, redactionRetiree: false } : null };
+      };
+      return { page, taillePage: 20, total: miens.length, echanges: miens.slice((page - 1) * 20, page * 20).map(filtrer) };
+    }
+    if (m === 'POST') {
+      const d = r.json();
+      const inconnue = Object.keys(d).find((k) => k !== 'question' && k !== 'dossierIds' && k !== 'periode');
+      if (inconnue) throw invalide(inconnue, 'clé inattendue');
+      const question = typeof d.question === 'string' ? d.question.trim() : '';
+      if (question.length < 3) throw invalide('question', 'question de 3 caractères au moins');
+      if (question.length > 1000) throw invalide('question', 'question de 1000 caractères au plus');
+      if (d.dossierIds !== undefined && (!Array.isArray(d.dossierIds) || d.dossierIds.length < 1 || d.dossierIds.length > 200 || d.dossierIds.some((x: unknown) => typeof x !== 'string' || !UUID.test(x)))) throw invalide('dossierIds', 'identifiant invalide');
+      if (d.periode !== undefined) throw new ErreurHttp(400, 'Simulateur : la période commune n’est pas imitée');
+      if (autorises.length === 0) throw new ErreurHttp(403, 'Aucun dossier ne vous est ouvert en lecture : l’assistant n’a rien à interroger');
+      const demandes: string[] | null = d.dossierIds ? [...new Set((d.dossierIds as string[]).map((x) => x.toLowerCase()))] : null;
+      const horsPerimetre = demandes ? demandes.filter((x) => !autorises.some((e) => e.id === x)) : [];
+      const retenus = demandes ? autorises.filter((e) => demandes.includes(e.id)) : autorises;
+      if (retenus.length === 0) throw new ErreurHttp(404, 'Aucun des dossiers demandés n’est dans votre périmètre');
+      const interroges = retenus.slice(0, BORNE);
+      const budget = budgetPour(interroges.length);
+      const segments: Enr[] = [];
+      const sources: Enr[] = [];
+      let fonctionsTotal = 0;
+      const dossiers = interroges.map((dossier) => {
+        const exercice = etat.exercices.filter((x) => x.entiteId === dossier.id).sort((x, y) => y.fin.localeCompare(x.fin))[0];
+        const annee = new Date().getUTCFullYear();
+        const periode = exercice ? { debut: exercice.debut, fin: exercice.fin } : { debut: `${annee}-01-01`, fin: `${annee}-12-31` };
+        const { elements, fonctions } = rechercheSansIa(dossier.id, question, exercice, periode);
+        fonctionsTotal += fonctions;
+        // Calculs du moteur d'abord, pièces en dernier ; sources officielles hors décompte par dossier.
+        const rang = (n: string) => ['resultat_moteur', 'constat', 'ecriture', 'piece'].indexOf(n);
+        const duDossier = elements.filter((e) => e.nature !== 'source_officielle').sort((x, y) => rang(x.nature) - rang(y.nature));
+        const gardes = duDossier.slice(0, budget);
+        const officielles = elements.filter((e) => e.nature === 'source_officielle' && !sources.some((x) => x.id === e.id));
+        for (const e of [...gardes, ...officielles]) {
+          const c = { id: e.id, nature: e.nature, libelle: e.libelle, reference: (e as Enr).reference ?? null, dossierId: e.nature === 'source_officielle' ? null : dossier.id };
+          sources.push(c);
+          segments.push({ type: e.nature === 'resultat_moteur' ? 'calcul' : 'fait', texte: Object.keys(e.valeurs).length ? `${e.libelle} — ${Object.entries(e.valeurs).map(([k, v]) => `${k} : ${v}`).join(' ; ')}` : e.libelle, citations: [c], reglementaire: e.nature === 'source_officielle' });
+        }
+        const manquantes = exercice ? (etat.lots.some((l) => l.actif && l.exerciceId === exercice.id) ? [] : ['Aucune donnée comptable importée pour cet exercice.']) : ['Aucun exercice n’est ouvert dans ce dossier : la comptabilité n’a pas été interrogée.'];
+        return { id: dossier.id, nom: dossier.nom, exercice: exercice ? { id: exercice.id, debut: exercice.debut, fin: exercice.fin } : null, periode: exercice ? periode : null, donneesManquantes: manquantes, sources: gardes.length, nonRestitues: duDossier.length - gardes.length };
+      });
+      const reponse = {
+        statut: segments.length ? 'repondu' : 'abstention',
+        motifAbstention: segments.length ? null : 'Aucun élément trouvé par la recherche et les fonctions du moteur pour cette question.',
+        mode: 'sans_ia', etiquette: 'Sans IA : résultats de recherche et calculs du moteur, sans rédaction', segments, donneesManquantes: [],
+        pointsEcartes: [], abstentionsPartielles: [], refus: [], sources, etapes: 0,
+        confiance: { statut: 'non_evaluee', mention: MENTION_CONFIANCE_IA }, iaIndisponible: { code: 'non_connecte' }, prompt: null,
+      };
+      const perimetre = { borne: BORNE, elementsParDossier: budget, autorises: autorises.length, dossiers, nonInterroges: retenus.slice(BORNE).map((e) => ({ id: e.id, nom: e.nom })), horsPerimetre, periodeCommune: null };
+      const echangeId = randomUUID();
+      suite.echangesPortefeuille.push({ id: echangeId, cabinetId: a.cabinetId, utilisateurId: a.utilisateurId, question, mode: 'sans_ia', statut: reponse.statut, perimetre, reponse, creeLe: horodatagePg(suite.echangesPortefeuille.length), fonctions: fonctionsTotal });
+      tracerAudit(a, 'assistant.question_portefeuille', 'echange_portefeuille', echangeId, null, { mode: 'sans_ia', statut: reponse.statut, dossiersInterroges: dossiers.length, horsPerimetre: horsPerimetre.length, longueurQuestion: question.length });
+      return { echangeId, echangeEnregistre: true, mode: 'sans_ia', perimetre, reponse, ia: ETAT_IA };
     }
   }
   const tacheSansIa = (tache: string, origine: string, etiquette: string, proposition: unknown, preuves: unknown[]) => ({
@@ -3168,6 +3296,17 @@ const serveur = http.createServer(async (req, res) => {
         if (d.obsoleteRapprochement) for (const x of etat.rapprochementsExec) x.obsolete = true;
         if (d.exercice) Object.assign(etat.exercices[0]!, d.exercice); // ex. exercice ouvert avant 2025 (pas de table de correspondance)
         resultat = { entites: ENTITES.map((e) => ({ id: e.id, raisonSociale: e.raisonSociale, territoireFiscal: e.territoireFiscal ?? 'metropole' })), habilitations: HABILITATIONS, exercices: etat.exercices.map((x) => ({ id: x.id, entiteId: x.entiteId, debut: x.debut, fin: x.fin })), televersements: etat.televersements.map((t) => ({ id: t.id, statut: t.statut })), propositions: etat.propositions.map((x) => ({ id: x.id, statut: x.statut, motif: x.motif, regle: x.regle })) };
+      } else if (methode === 'POST' && segments[1] === 'revue') {
+        // Pilotage : constats FICTIFS déjà rejetés avec motif (décisions de revue), pour exercer les suggestions d'amélioration.
+        const d = json();
+        for (const x of (d.constatsRejetes ?? []) as Enr[]) {
+          const execution = etat.executions.filter((e) => e.entiteId === x.entiteId && e.statut === 'termine').at(-1) ?? etat.executions.at(-1)!;
+          const modele: Enr = etat.constats.find((c) => c.executionId === execution.id) ?? etat.constats[0]!;
+          const constat: Enr = { ...modele, id: randomUUID(), cabinetId: ENTITES.find((e) => e.id === x.entiteId)?.cabinetId ?? modele.cabinetId, entiteId: x.entiteId, exerciceId: x.exerciceId ?? execution.exerciceId, executionId: x.entiteId === execution.entiteId ? execution.id : randomUUID(), controleId: x.controleId, cle: x.cle, titre: x.titre ?? `Constat fictif ${x.cle}`, montant: x.montant ?? null, statutRevue: 'rejete', aRevoir: false };
+          etat.constats.push(constat);
+          etat.decisions.push({ cibleType: 'constat', cibleId: constat.id, action: 'rejeter', motif: x.motif ?? null, versionCible: execution.versionDonnees ?? 0, creeLe: instant(), auteurId: x.auteurId ?? DEMO.remi });
+        }
+        resultat = { constats: etat.constats.length, decisions: etat.decisions.length };
       } else if (methode === 'POST' && segments[1] === 'mail') {
         // Pilotage de la messagerie simulée : connecteur configuré ou non, jeu de données fictif.
         const d = json();
@@ -3183,7 +3322,7 @@ const serveur = http.createServer(async (req, res) => {
         resultat = pannes;
       } else if (methode === 'GET' && segments[1] === 'suite') {
         // Lecture de l'état des écrans ajoutés (règles, inventaire, missions, conseils, veille, restitutions, membres).
-        resultat = { regles: suite.regles, ecritures: suite.ecritures, missions: suite.missions, lettres: suite.lettres, travaux: suite.travaux, baremes: suite.baremes, conseils: suite.conseils, evenements: suite.evenements, suivis: suite.suivis, restitutions: suite.restitutions, echangesAssistant: suite.echangesAssistant, membres: [...suite.membres.entries()], habilitations: HABILITATIONS, campagnes: suite.campagnes, lots: etat.lots.map((l) => ({ id: l.id, entiteId: l.entiteId, type: l.type, statut: l.statut, actif: l.actif, campagneId: l.campagneId ?? null, motifAnnulation: l.motifAnnulation ?? null, statutAvantAnnulation: l.statutAvantAnnulation ?? null })), coutHoraire: suite.coutsHoraires.get(DEMO.cabinetA)?.coutHoraireInterneHt ?? null };
+        resultat = { regles: suite.regles, ecritures: suite.ecritures, missions: suite.missions, lettres: suite.lettres, travaux: suite.travaux, baremes: suite.baremes, conseils: suite.conseils, evenements: suite.evenements, suivis: suite.suivis, restitutions: suite.restitutions, echangesAssistant: suite.echangesAssistant, echangesPortefeuille: suite.echangesPortefeuille, suggestionsEcartees: suite.suggestionsEcartees, membres: [...suite.membres.entries()], habilitations: HABILITATIONS, campagnes: suite.campagnes, lots: etat.lots.map((l) => ({ id: l.id, entiteId: l.entiteId, type: l.type, statut: l.statut, actif: l.actif, campagneId: l.campagneId ?? null, motifAnnulation: l.motifAnnulation ?? null, statutAvantAnnulation: l.statutAvantAnnulation ?? null })), coutHoraire: suite.coutsHoraires.get(DEMO.cabinetA)?.coutHoraireInterneHt ?? null };
       } else if (methode === 'GET' && segments[1] === 'tiers') {
         // Décisions enregistrées par les écrans « Tiers et factures ».
         resultat = tiersSim;
@@ -3214,7 +3353,7 @@ const serveur = http.createServer(async (req, res) => {
     }
     const sortie = Buffer.from(JSON.stringify(resultat));
     // NestJS répond 201 à un POST, sauf mention contraire (@HttpCode) : terminer et validation répondent 200.
-    if (res.statusCode === 200 && methode === 'POST' && segments[0] === 'v1' && !/\/(terminer|validation|affecter|mail\/retour|impact|approuver|refuser|retirer|decision|autorisation-envoi)$/.test(url.pathname)) res.statusCode = 201;
+    if (res.statusCode === 200 && methode === 'POST' && segments[0] === 'v1' && !/\/(terminer|validation|affecter|mail\/retour|assistant\/questions|impact|approuver|refuser|retirer|decision|autorisation-envoi)$/.test(url.pathname)) res.statusCode = 201;
     res.writeHead(res.statusCode, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': sortie.length });
     res.end(sortie);
     journaliser(res.statusCode);

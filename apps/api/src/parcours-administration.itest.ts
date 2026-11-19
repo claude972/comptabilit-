@@ -96,6 +96,8 @@ describe('dossiers et habilitations', () => {
 describe('listes paginées et téléversements abandonnés', () => {
   it('les documents sont paginés, et « mes dépôts » filtre aussi pour un collaborateur', async () => {
     const tout = await api('chloe', 'GET', `/v1/documents?entiteId=${DEMO.dupain}`);
+    // Toute pièce a au moins une réception (décompte longtemps resté à 0 : sous-requête mal corrélée, corrigée).
+    expect(tout.json.documents.every((d: any) => d.nbReceptions >= 1)).toBe(true);
     expect(tout.json).toMatchObject({ page: 1, taillePage: 100 });
     // Total et décomptes par statut sur tout le dossier, pas seulement sur la page.
     expect(tout.json.total).toBeGreaterThanOrEqual(tout.json.documents.length);

@@ -6,7 +6,7 @@ import { Alerte, Carte, Etiquette, SousTitre, Titre } from '@/components/ui/base
 import { LIBELLE_NIVEAU, LIBELLE_STATUT_DOCUMENT } from '@/lib/libelles';
 import { tenter } from '@/lib/serveur/api';
 import { estDeposant, lireDossiers, lireMoi } from '@/lib/serveur/donnees';
-import { type ListeDocuments, type StatutDocument, auMoins } from '@/lib/types-api';
+import { type StatutDocument, auMoins } from '@/lib/types-api';
 
 export const metadata: Metadata = { title: 'Tableau de bord' };
 
@@ -21,7 +21,16 @@ export default async function TableauDeBord() {
   if (!dossiers.ok) return <ErreurAcces statut={dossiers.statut} message={dossiers.message} />;
   const habilites = dossiers.donnees.filter((d) => d.niveau !== null);
   const nonHabilites = dossiers.donnees.length - habilites.length;
-  const files = await Promise.all(habilites.map(async (d) => ({ dossier: d, liste: await tenter<ListeDocuments>(`v1/documents?entiteId=${d.id}`) })));
+  // Une seule requête pour tout le portefeuille : pièces en attente par dossier et par statut.
+  const attente = await tenter<Array<{ entiteId: string; statut: StatutDocument; n: number }>>('v1/tableau-de-bord/pieces');
+  const parDossier = new Map<string, Map<StatutDocument, number>>();
+  if (attente.ok) for (const l of attente.donnees) parDossier.set(l.entiteId, (parDossier.get(l.entiteId) ?? new Map()).set(l.statut, l.n));
+  const total = (id: string) => [...(parDossier.get(id)?.values() ?? [])].reduce((a, b) => a + b, 0);
+  // Les dossiers qui ont des pièces à traiter d'abord ; au-delà de MAX cartes, la liste complète est dans « Dossiers ».
+  const MAX = 24;
+  const tries = [...habilites].sort((a, b) => total(b.id) - total(a.id) || a.raisonSociale.localeCompare(b.raisonSociale, 'fr'));
+  const aSuivre = tries.filter((d) => total(d.id) > 0).length;
+  const affiches = tries.slice(0, MAX);
 
   return (
     <div className="space-y-4">
@@ -31,10 +40,20 @@ export default async function TableauDeBord() {
         {nonHabilites > 0 ? ` (${nonHabilites} autre${nonHabilites > 1 ? 's' : ''} du cabinet sans habilitation)` : ''}.
       </p>
       {habilites.length === 0 ? <Alerte ton="attention">Vous n’êtes habilité sur aucun dossier pour le moment.</Alerte> : null}
+      {!attente.ok ? <Alerte ton="attention">Le décompte des pièces en attente est indisponible pour le moment.</Alerte> : null}
+      {habilites.length > 0 ? (
+        <p data-testid="resume-portefeuille">
+          {attente.ok ? `${aSuivre} dossier${aSuivre > 1 ? 's ont' : ' a'} des pièces en attente de traitement. ` : ''}
+          {habilites.length > MAX ? `Les ${MAX} premiers sont affichés, ceux qui ont des pièces en attente d’abord. ` : ''}
+          <Link href="/dossiers" prefetch={false}>
+            Voir et rechercher tous les dossiers
+          </Link>
+        </p>
+      ) : null}
       <ul className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {files.map(({ dossier, liste }) => {
-          const comptes = new Map<StatutDocument, number>();
-          if (liste.ok) for (const doc of liste.donnees.documents) comptes.set(doc.statut, (comptes.get(doc.statut) ?? 0) + 1);
+        {affiches.map((dossier) => {
+          const comptes = parDossier.get(dossier.id) ?? new Map<StatutDocument, number>();
+          const liste = { ok: attente.ok };
           const cabinet = auMoins(dossier.niveau, 'lecture');
           return (
             <li key={dossier.id}>

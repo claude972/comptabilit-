@@ -126,8 +126,10 @@ export class DocumentsController {
           motifStatut: s.documents.motifStatut,
           creeLe: s.documents.creeLe,
           majLe: s.documents.majLe,
-          nbReceptions: sql<number>`(select count(*)::int from receptions r where r.document_id = ${s.documents.id})`,
-          demandesOuvertes: sql<number>`(select count(*)::int from echanges_document e where e.document_id = ${s.documents.id} and e.type = 'demande_complement' and not e.resolu)`,
+          // Le nom de la table est écrit en toutes lettres : dans un champ de sélection, Drizzle rend la colonne sans son
+          // préfixe (« id »), que la sous-requête résolvait alors sur SA propre table — les deux décomptes valaient toujours 0.
+          nbReceptions: sql<number>`(select count(*)::int from receptions r where r.document_id = "documents"."id")`,
+          demandesOuvertes: sql<number>`(select count(*)::int from echanges_document e where e.document_id = "documents"."id" and e.type = 'demande_complement' and not e.resolu)`,
         })
         .from(s.documents)
         .where(and(...conditions))

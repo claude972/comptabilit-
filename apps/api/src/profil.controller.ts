@@ -51,6 +51,25 @@ export class ProfilController {
   }
 
   @ApiBearerAuth()
+  @Get('tableau-de-bord/pieces')
+  @ApiOperation({
+    summary: 'Pièces en attente de traitement, par dossier et par statut, sur les dossiers où l’on est habilité en lecture au moins',
+    description: 'Une seule requête pour tout le portefeuille (le tableau de bord n’interroge plus chaque dossier). Versions remplacées exclues. Les dossiers où l’habilitation se limite au dépôt ne sont pas comptés ici.',
+  })
+  async piecesEnAttente(@AccesCourant() acces: Acces) {
+    return this.bd.avecContexte(acces, async (tx) => {
+      const r = await tx.execute(sql`
+        select d.entite_id as "entiteId", d.statut, count(*)::int as n
+          from documents d
+         where d.statut in ('recu', 'en_analyse', 'a_completer', 'a_controler', 'quarantaine')
+           and d.remplace_par is null
+           and app_niveau_entite(d.entite_id) in ('lecture', 'collaboration', 'revision', 'validation')
+         group by d.entite_id, d.statut`);
+      return r.rows as Array<{ entiteId: string; statut: string; n: number }>;
+    });
+  }
+
+  @ApiBearerAuth()
   @Get('dossiers/:entiteId/exercices')
   @ApiOperation({ summary: 'Exercices d’un dossier' })
   async exercices(@AccesCourant() acces: Acces, @Param('entiteId') entiteId: string) {

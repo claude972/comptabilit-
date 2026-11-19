@@ -122,7 +122,9 @@ export async function analyserDocument(c: Contexte, t: TacheAnalyseDocument): Pr
       if (!champs && pages.length > 0 && !illisible) champs = extraireChampsFacture(pages);
     }
   } catch (e) {
-    motif = `Lecture impossible : ${e instanceof Error ? e.message.slice(0, 200) : 'erreur'}`;
+    // Le message de la bibliothèque de lecture (en anglais, parfois technique) va au journal du worker, pas à l'utilisateur.
+    console.error(`[documents] lecture impossible du document ${t.documentId} : ${e instanceof Error ? e.name : 'erreur'}`);
+    motif = 'Lecture impossible : le fichier est endommagé ou son contenu ne correspond pas à son format. La pièce est conservée telle quelle ; déposez-la à nouveau si vous en avez une copie lisible.';
   }
 
   await conclure(

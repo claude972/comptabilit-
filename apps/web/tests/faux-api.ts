@@ -615,6 +615,16 @@ async function routerV1(r: Requete): Promise<unknown> {
       .map((e) => ({ id: e.id, raisonSociale: e.raisonSociale, formeJuridique: e.formeJuridique ?? null, regimeFiscal: e.regimeFiscal ?? 'IS', territoireFiscal: e.territoireFiscal ?? 'metropole', niveau: niveauSur(a, e.id) }))
       .sort((x, y) => x.raisonSociale.localeCompare(y.raisonSociale));
   }
+  if (m === 'GET' && chemin === 'tableau-de-bord/pieces') {
+    const comptes = new Map<string, number>();
+    for (const d of etat.documents) {
+      if (d.cabinetId !== a.cabinetId || !['recu', 'en_analyse', 'a_completer', 'a_controler', 'quarantaine'].includes(d.statut)) continue;
+      const n = niveauSur(a, d.entiteId);
+      if (!n || n === 'depot') continue;
+      comptes.set(`${d.entiteId}|${d.statut}`, (comptes.get(`${d.entiteId}|${d.statut}`) ?? 0) + 1);
+    }
+    return [...comptes].map(([k, n]) => ({ entiteId: k.split('|')[0], statut: k.split('|')[1], n }));
+  }
   if (m === 'GET' && s[0] === 'dossiers' && s[2] === 'exercices' && s.length === 3) {
     const entiteId = exigerUuid(s[1]);
     exigerNiveau(a, entiteId, 'lecture');

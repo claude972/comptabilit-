@@ -75,3 +75,31 @@ export const attendreLot = (qui: string, id: string) =>
     () => api(qui, 'GET', `/v1/imports/${id}`),
     (r) => ['termine', 'termine_avec_erreurs', 'echec'].includes(r.json?.statut),
   );
+
+/** PDF minimal à couche texte (Helvetica, WinAnsi), suffisant pour exercer la lecture PDF réelle du worker. */
+export function pdfTexte(lignes: string[], sel = ''): Buffer {
+  const enc = (t: string) =>
+    Buffer.from(
+      [...t].map((ch) => (ch === '€' ? 0x80 : ch === ' ' || ch === ' ' ? 0x20 : ch.charCodeAt(0) < 256 ? ch.charCodeAt(0) : 0x3f)),
+    )
+      .toString('latin1')
+      .replace(/[\\()]/g, (m) => `\\${m}`);
+  const flux = `BT /F1 10 Tf 50 800 Td 14 TL\n${lignes.map((l) => `(${enc(l)}) Tj T*`).join('\n')}\nET`;
+  const objets = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
+    `<< /Length ${Buffer.byteLength(flux, 'latin1')} >>\nstream\n${flux}\nendstream`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
+  ];
+  let corps = `%PDF-1.4\n%${sel}\n`;
+  const decalages: number[] = [];
+  objets.forEach((o, i) => {
+    decalages.push(Buffer.byteLength(corps, 'latin1'));
+    corps += `${i + 1} 0 obj\n${o}\nendobj\n`;
+  });
+  const xref = Buffer.byteLength(corps, 'latin1');
+  corps += `xref\n0 ${objets.length + 1}\n0000000000 65535 f \n${decalages.map((d) => `${String(d).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size ${objets.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(corps, 'latin1');
+}
+

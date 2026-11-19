@@ -91,3 +91,55 @@ export async function enregistrerReception(tx: Tx, p: ReceptionPiece): Promise<R
   });
   return { documentId: document!.id, nouveau: !dejaLa, doublonBinaire: Boolean(dejaLa), statutDocument: document!.statut };
 }
+
+export interface ResultatRemplacement {
+  version: number;
+  /** Une validation existait sur l'ancienne version et a été explicitement invalidée. */
+  validationInvalidee: boolean;
+}
+
+/**
+ * Fait de `nouveauId` la version suivante de `ancienId`.
+ *  - L'ancienne version et son fichier original sont CONSERVÉS et restent consultables ; elle passe au statut « remplace ».
+ *  - Si son extraction avait été validée, cette validation est explicitement invalidée (statut dédié, décision
+ *    historisée avec son auteur, ligne d'audit) : une validation porte sur une version déterminée et ne se transmet pas.
+ *  - La nouvelle version repart de « reçu » et doit être analysée puis validée à son tour.
+ * Distinct d'un doublon binaire (même fichier) et d'une suspicion de double comptabilisation (contrôle GEN-004).
+ */
+export async function remplacerDocument(tx: Tx, p: { cabinetId: string; ancienId: string; nouveauId: string; acteurId: string }): Promise<ResultatRemplacement> {
+  const [ancien] = await tx.select().from(s.documents).where(eq(s.documents.id, p.ancienId)).for('update');
+  if (!ancien) throw new Error('Document à remplacer introuvable');
+  if (ancien.remplacePar) throw new Error('Ce document a déjà été remplacé');
+  const version = ancien.version + 1;
+  await tx.update(s.documents).set({ version, remplaceDocumentId: ancien.id, nature: ancien.nature, exerciceId: ancien.exerciceId }).where(eq(s.documents.id, p.nouveauId));
+  await tx
+    .update(s.documents)
+    .set({ statut: 'remplace', remplacePar: p.nouveauId, motifStatut: `Remplacé par la version ${version}`, majLe: new Date().toISOString() })
+    .where(eq(s.documents.id, ancien.id));
+
+  const [extraction] = await tx.select().from(s.extractions).where(and(eq(s.extractions.documentId, ancien.id), eq(s.extractions.actuelle, true))).for('update');
+  const validationInvalidee = extraction?.statut === 'valide';
+  if (extraction && validationInvalidee) {
+    await tx.update(s.extractions).set({ statut: 'validation_invalidee' }).where(eq(s.extractions.id, extraction.id));
+    await tx.insert(s.decisions).values({
+      cabinetId: p.cabinetId,
+      entiteId: ancien.entiteId,
+      cibleType: 'extraction',
+      cibleId: extraction.id,
+      versionCible: extraction.version,
+      action: 'validation_invalidee',
+      motif: `Nouvelle version de la pièce reçue (version ${version}) : la validation de la version ${ancien.version} ne vaut pas pour elle.`,
+      auteurId: p.acteurId,
+    });
+  }
+  await journaliser(tx, {
+    cabinetId: p.cabinetId,
+    acteurId: p.acteurId,
+    action: 'document.nouvelle_version',
+    cibleType: 'document',
+    cibleId: p.nouveauId,
+    entiteId: ancien.entiteId,
+    details: { remplace: ancien.id, version, statutAncien: ancien.statut, validationInvalidee },
+  });
+  return { version, validationInvalidee };
+}

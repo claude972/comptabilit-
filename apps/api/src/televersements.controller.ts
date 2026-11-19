@@ -19,9 +19,9 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { type AccesBd, and, desc, eq, journaliser, schema as s, sql } from '@comtaple/db';
-import { assurerFichierOriginal, cles, type Config, enregistrerReception, type Files, type Stockage } from '@comtaple/plateforme';
+import { assurerFichierOriginal, cles, type Config, enregistrerReception, type Files, remplacerDocument, type Stockage } from '@comtaple/plateforme';
 import { z } from 'zod';
-import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
+import { type Acces, AccesCourant, auMoins, exigerNiveau, exigerUuid } from './acces.js';
 import { exigerServiceOuvert } from './abonnement.controller.js';
 import { BD, CONFIG, STOCKAGE, TACHES } from './jetons.js';
 import { schemaOpenApi, uuid, valider } from './validation.js';
@@ -37,6 +37,8 @@ const ouverture = z.object({
   usage: z.enum(['piece', 'fec', 'banque']).default('piece'),
   /** Relevé CSV : profil de colonnes confirmé par l'utilisateur (facultatif ; sinon proposition prudente du moteur). */
   profilCsv: z.record(z.string(), z.unknown()).optional(),
+  /** Pièce : ce dépôt est une NOUVELLE VERSION du document indiqué (≠ doublon binaire : le fichier doit différer). */
+  remplaceDocumentId: uuid.optional(),
   nature: z.enum(s.natureDocument.enumValues).default('a_qualifier'),
   commentaire: z.string().max(2000).optional(),
   exerciceId: uuid.optional(),
@@ -84,6 +86,21 @@ export class TeleversementsController {
     return this.bd.avecContexte(acces, async (tx) => {
       await exigerNiveau(tx, d.entiteId, d.usage === 'piece' ? 'depot' : 'collaboration');
       await exigerServiceOuvert(tx);
+      if (d.remplaceDocumentId) {
+        if (d.usage !== 'piece') throw new BadRequestException('Seule une pièce peut recevoir une nouvelle version');
+        const [ancien] = await tx.select().from(s.documents).where(eq(s.documents.id, d.remplaceDocumentId));
+        // Document d'un autre dossier ou invisible : même réponse que s'il n'existait pas.
+        if (!ancien || ancien.entiteId !== d.entiteId) throw new NotFoundException('Document à remplacer introuvable dans ce dossier');
+        if (ancien.remplacePar) throw new ConflictException('Ce document a déjà été remplacé : la nouvelle version se dépose sur sa version la plus récente');
+        if (ancien.statut === 'quarantaine') throw new ConflictException('Un document en quarantaine ne se remplace pas');
+        const niveau = await exigerNiveau(tx, d.entiteId, 'depot');
+        if (!auMoins(niveau, 'collaboration')) {
+          // Un déposant ne remplace que ses propres dépôts, et jamais une pièce déjà validée par le cabinet.
+          const [mienne] = await tx.select({ id: s.receptions.id }).from(s.receptions).where(and(eq(s.receptions.documentId, ancien.id), eq(s.receptions.deposantId, acces.utilisateurId)));
+          if (!mienne) throw new NotFoundException('Document à remplacer introuvable dans ce dossier');
+          if (ancien.statut === 'traite') throw new ForbiddenException('Cette pièce a été validée par le cabinet : seul un collaborateur habilité peut en déposer une nouvelle version');
+        }
+      }
       if (d.exerciceId) {
         const [ex] = await tx.select().from(s.exercices).where(and(eq(s.exercices.id, d.exerciceId), eq(s.exercices.entiteId, d.entiteId)));
         if (!ex) throw new NotFoundException('Exercice introuvable pour ce dossier');
@@ -102,7 +119,7 @@ export class TeleversementsController {
           ),
         )
         .orderBy(desc(s.televersements.creeLe));
-      if (existant && existant.tailleAttendue === d.taille) return vue(existant, this.cfg.TAILLE_MORCEAU);
+      if (existant && existant.tailleAttendue === d.taille && (existant.remplaceDocumentId ?? null) === (d.remplaceDocumentId ?? null)) return vue(existant, this.cfg.TAILLE_MORCEAU);
 
       const [cree] = await tx
         .insert(s.televersements)
@@ -118,6 +135,7 @@ export class TeleversementsController {
           nature: d.nature,
           commentaire: d.commentaire ?? null,
           usage: d.usage,
+          remplaceDocumentId: d.remplaceDocumentId ?? null,
           parametres: d.profilCsv ? { profilCsv: d.profilCsv } : null,
           exerciceId: d.exerciceId ?? null,
           statutDonnees: d.statutDonnees ?? null,
@@ -306,8 +324,13 @@ export class TeleversementsController {
         deposantId: acces.utilisateurId,
         provenance: { televersementId: t.id, nomFichier: t.nomFichier, sha256 },
       });
+      // Nouvelle version : seulement si le fichier diffère réellement (sinon c'est un doublon binaire, rien n'est remplacé).
+      let remplacement: Awaited<ReturnType<typeof remplacerDocument>> | null = null;
+      if (t.remplaceDocumentId && r.nouveau) {
+        remplacement = await remplacerDocument(tx, { cabinetId: acces.cabinetId, ancienId: t.remplaceDocumentId, nouveauId: r.documentId, acteurId: acces.utilisateurId });
+      }
       const [maj] = await tx.update(s.televersements).set({ statut: 'complet', documentId: r.documentId }).where(eq(s.televersements.id, t.id)).returning();
-      return { t: maj!, nouveau: r.nouveau, documentId: r.documentId, doublonBinaire: r.doublonBinaire, statutDocument: r.statutDocument };
+      return { t: maj!, nouveau: r.nouveau, documentId: r.documentId, doublonBinaire: r.doublonBinaire, statutDocument: r.statutDocument, remplacement };
     });
 
     if ('refuse' in resultat) {
@@ -326,6 +349,7 @@ export class TeleversementsController {
       recu: true,
       doublonBinaire: 'doublonBinaire' in resultat ? resultat.doublonBinaire : false,
       dejaImporte: 'lotImportId' in resultat ? !resultat.nouveau : false,
+      nouvelleVersion: 'remplacement' in resultat && resultat.remplacement ? resultat.remplacement : null,
     };
   }
 

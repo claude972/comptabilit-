@@ -127,6 +127,13 @@
       "when": 1795071543592,
       "tag": "0017_ecritures_inventaire",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1795074623244,
+      "tag": "0018_versions_documents",
+      "breakpoints": true
     }
   ]
 }

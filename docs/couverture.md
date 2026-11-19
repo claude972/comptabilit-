@@ -20,7 +20,7 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (second
 |---|---|---|
 | Monorepo, versions figées, environnement local reproductible | Testé | — |
 | Identités OIDC (Keycloak), session côté serveur, PKCE | Testé | Royaume de développement ; MFA et SSO non configurés |
-| Cabinets, appartenances, habilitations par dossier | Testé | La création d'un cabinet et de ses premiers comptes reste un provisionnement de l'éditeur. Invitation d'utilisateurs non implémentée |
+| Cabinets, appartenances, habilitations par dossier | Testé | La création d'un cabinet et de ses comptes reste un provisionnement de l'éditeur (pas d'invitation) |
 | Isolation entre cabinets et entre dossiers (RLS forcé) | Testé | Voir la limite assumée de la décision D-007 ; pas de test d'intrusion indépendant |
 | Rôle « support » à accès temporaire | Partiel | Expiration de l'appartenance prise en compte ; aucun parcours d'attribution |
 | Moteur décimal, montants en chaînes dans les API | Testé | — |
@@ -85,18 +85,17 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (second
 | Validation et rejet des rapprochements, obsolescence quand les données changent | Testé | — |
 | Suggestions IA de rapprochement | Non implémenté | La vérification arithmétique d'une suggestion existe dans le moteur ; aucune IA |
 | Contrôle de rapprochement bancaire `TRE-003` alimenté par les relevés | Testé | S'abstient si plusieurs comptes bancaires ne peuvent pas être associés aux comptes 512 (pas d'écran de correspondance) |
-| Cohérence entre exercices `CLO-002` alimentée par l'exercice précédent | Partiel | Branché ; non exercé de bout en bout avec deux exercices importés |
+| Cohérence entre exercices `CLO-002` alimentée par l'exercice précédent | Testé | Exercé de bout en bout avec deux exercices importés (fichiers synthétiques indépendants : le contrôle relève l'écart de reprise) ; pas de jeu où les à-nouveaux concordent |
 | Contrôles immobilisations, social, césure, TVA déductible | En attente de validation | — |
 | Agrégation bancaire par prestataire | Non implémenté | Aucun prestataire choisi |
 | Abonnements : forfait, tranches, essai, quotas, changement d'offre, résiliation, virement, historique | Testé | Grille de démonstration fictive ; opérations de l'éditeur par module de provisionnement, sans outil d'exploitation ; TVA et facturation légale hors périmètre ; aucun export vers un outil de facturation |
 | Service fermé hors abonnement (dépôts refusés, consultation conservée) | Testé | Les quotas sont affichés mais ne bloquent pas la collecte (décision D-024) |
 | Règles et paramètres propres au cabinet, avec mesure d'impact et approbation | Testé | Mesure d'impact synchrone, sur un seul contrôle et un exercice |
-| Administration : dossiers, exercices, habilitations, membres | Testé | Pas d'invitation d'utilisateur, de changement de rôle ni de désactivation d'un membre |
+| Administration : dossiers, exercices, habilitations, membres (rôle, désactivation) | Testé | Pas d'invitation ni de création de compte : la création d'un utilisateur reste une opération de l'éditeur dans Keycloak |
 | Export de restitution d'un dossier | Testé | Par dossier seulement ; données structurées assemblées en mémoire |
 | Purge des téléversements abandonnés | Partiel | Écrite dans le rattrapage du worker ; non exercée par un test (délai de 7 jours) |
-| Imports par lots de centaines de dossiers, annulation contrôlée | Non implémenté | — |
 | Métriques techniques (Prometheus) | Partiel | Points de collecte vérifiés ; ni Prometheus ni Grafana déployés ; pas de traces OpenTelemetry |
-| Images de conteneurs | Partiel | API : construite et démarrée. Worker et web : voir `rapport-de-tests.md` |
+| Images de conteneurs | Partiel | API, worker et web construites et démarrées en local (lecture seule, sans privilèges) ; non optimisées, jamais poussées vers un registre, aucun parcours complet à travers les trois conteneurs |
 | Description d'infrastructure OpenTofu | Partiel | Base managée et buckets seulement ; validée syntaxiquement, jamais planifiée ni appliquée |
 
 ## Lot 3 — Veille et assistant
@@ -128,7 +127,7 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (second
 |---|---|---|
 | Balance générale | Testé | — |
 | Projets de compte de résultat et de bilan | En attente de validation | Table de correspondance lue des intitulés du PCG, non validée par un professionnel ; exercices ouverts avant 2025 non couverts ; comptes ambigus laissés « non affectés » |
-| Propositions d'écritures d'inventaire, balance ajustée | Non implémenté | — |
+| Écritures d'inventaire proposées, approbation par un tiers, balance ajustée de travail, export CSV | Testé | Saisie humaine uniquement : aucune écriture n'est générée automatiquement ; l'intégration dans le logiciel comptable n'est pas faite par ce logiciel ; les états projetés ne tiennent pas compte de la balance ajustée |
 | Annexe, liasse fiscale | Non implémenté | — |
 | Télétransmission | Non implémenté, et non autorisée par conception sans périmètre et autorisation spécifiques | — |
 

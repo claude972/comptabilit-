@@ -85,6 +85,8 @@ export const statutDocument = pgEnum('statut_document', [
   'traite',
   'quarantaine',
   'rejete',
+  /** Remplacé par une version plus récente : conservé et consultable, mais plus jamais la version de travail. */
+  'remplace',
 ]);
 export const statutTeleversement = pgEnum('statut_televersement', ['ouvert', 'complet', 'abandonne', 'refuse']);
 export const natureFichier = pgEnum('nature_fichier', ['original', 'derive']);
@@ -366,6 +368,8 @@ export const televersements = pgTable('televersements', {
   exerciceId: uuid('exercice_id').references(() => exercices.id),
   statutDonnees: statutDonnees('statut_donnees'),
   lotImportId: uuid('lot_import_id'),
+  /** Pièce : document dont ce dépôt est une nouvelle version. */
+  remplaceDocumentId: uuid('remplace_document_id'),
   /** Paramètres propres à l'usage (ex. profil de colonnes confirmé pour un relevé CSV). */
   parametres: jsonb('parametres'),
   statut: statutTeleversement('statut').notNull().default('ouvert'),
@@ -389,6 +393,8 @@ export const documents = pgTable(
     /** Nouvelle version d'un même document (≠ doublon binaire, ≠ suspicion de double comptabilisation). */
     version: integer('version').notNull().default(1),
     remplaceDocumentId: uuid('remplace_document_id'),
+    /** Version suivante de ce document, quand il a été remplacé. */
+    remplacePar: uuid('remplace_par'),
     nbPages: integer('nb_pages'),
     motifStatut: text('motif_statut'),
     creeLe: creeLe(),

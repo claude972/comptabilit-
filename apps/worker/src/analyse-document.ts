@@ -33,7 +33,7 @@ export async function analyserDocument(c: Contexte, t: TacheAnalyseDocument): Pr
     if (!doc) return null;
     const [fichier] = await tx.select().from(s.fichiers).where(eq(s.fichiers.id, doc.fichierId));
     if (!fichier) return null;
-    if (doc.statut === 'traite') return null; // déjà validé : on ne touche plus à rien
+    if (doc.statut === 'traite' || doc.statut === 'remplace') return null; // validé ou remplacé : on ne touche plus à rien
     await tx.update(s.documents).set({ statut: 'en_analyse', motifStatut: null, majLe: sql`now()` }).where(eq(s.documents.id, doc.id));
     return { doc, fichier };
   });

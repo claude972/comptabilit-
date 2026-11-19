@@ -112,6 +112,8 @@ export class DocumentsController {
           nomOrigine: s.documents.nomOrigine,
           nature: s.documents.nature,
           statut: s.documents.statut,
+          version: s.documents.version,
+          remplacePar: s.documents.remplacePar,
           motifStatut: s.documents.motifStatut,
           creeLe: s.documents.creeLe,
           majLe: s.documents.majLe,
@@ -152,6 +154,20 @@ export class DocumentsController {
         .innerJoin(s.utilisateurs, eq(s.utilisateurs.id, s.echangesDocument.auteurId))
         .where(eq(s.echangesDocument.documentId, id))
         .orderBy(asc(s.echangesDocument.creeLe));
+      // Chaîne des versions de la pièce (de la plus ancienne à la plus récente), toutes conservées et consultables.
+      const versions = (
+        await tx.execute(sql`
+          with recursive avant as (
+            select d.id, d.version, d.statut, d.cree_le, d.remplace_document_id from documents d where d.id = ${id}::uuid
+            union all
+            select p.id, p.version, p.statut, p.cree_le, p.remplace_document_id from documents p join avant a on p.id = a.remplace_document_id
+          ), apres as (
+            select d.id, d.version, d.statut, d.cree_le, d.remplace_par from documents d where d.id = ${id}::uuid
+            union all
+            select n.id, n.version, n.statut, n.cree_le, n.remplace_par from documents n join apres a on n.id = a.remplace_par
+          )
+          select id, version, statut, cree_le as "creeLe" from avant union select id, version, statut, cree_le from apres order by version`)
+      ).rows;
       return {
         niveau,
         document: doc,
@@ -163,6 +179,8 @@ export class DocumentsController {
         },
         receptions: receptions.map((r) => ({ id: r.id, canal: r.canal, recuLe: r.recuLe, doublonBinaire: r.doublonBinaire, parMoi: r.deposantId === acces.utilisateurId })),
         extraction: extraction ?? null,
+        versions,
+        estVersionCourante: doc.remplacePar === null,
         echanges,
       };
     });
@@ -281,6 +299,7 @@ export class DocumentsController {
     return this.bd.avecContexte(acces, async (tx) => {
       const { doc } = await this.charger(tx, acces, id);
       await exigerNiveau(tx, doc.entiteId, 'collaboration');
+      if (doc.remplacePar) throw new ConflictException('Cette version a été remplacée : le travail se poursuit sur la version la plus récente');
       const [actuelle] = await tx
         .select()
         .from(s.extractions)
@@ -334,6 +353,7 @@ export class DocumentsController {
     return this.bd.avecContexte(acces, async (tx) => {
       const { doc } = await this.charger(tx, acces, id);
       await exigerNiveau(tx, doc.entiteId, 'revision');
+      if (doc.remplacePar) throw new ConflictException('Cette version a été remplacée : le travail se poursuit sur la version la plus récente');
       const [actuelle] = await tx
         .select()
         .from(s.extractions)

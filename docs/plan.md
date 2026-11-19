@@ -40,8 +40,10 @@ Critères d'acceptation et résultat :
 - [x] Export de restitution d'un dossier ; purge des téléversements abandonnés.
 - [x] Métriques techniques ; image de conteneur de l'API ; ébauche OpenTofu validée.
 - [ ] Correspondance explicite comptes 512 ↔ comptes bancaires quand il y en a plusieurs.
-- [ ] Invitation, changement de rôle et désactivation d'un membre.
-- [ ] Outil d'exploitation de l'éditeur (cabinets, grille, échéances, virements, qualification de la veille).
+- [x] Changement de rôle et désactivation d'un membre.
+- [ ] Invitation et création de compte d'un membre.
+- [x] Outil en ligne de commande de l'éditeur (abonnements, veille).
+- [ ] Création d'un cabinet et de ses comptes par cet outil.
 - [ ] Imports par lots, annulation contrôlée, restitution d'un cabinet entier.
 - [ ] Agrégation bancaire (prestataire à choisir) ; export vers l'outil de facturation de l'éditeur.
 
@@ -67,8 +69,9 @@ Critères d'acceptation et résultat :
 ## Lot 5 — États et fiscalité : amorcé
 
 - [x] Balance, projets de compte de résultat et de bilan.
+- [x] Écritures d'inventaire proposées (saisie humaine), balance ajustée de travail, export.
 - [ ] Validation professionnelle de la table de correspondance comptes → rubriques.
-- [ ] Écritures d'inventaire, balance ajustée, annexe, liasse.
+- [ ] États projetés sur la balance ajustée ; génération assistée d'écritures d'inventaire ; annexe ; liasse.
 
 ## Prochaines étapes proposées, par ordre de dépendance
 

@@ -10,6 +10,8 @@
  *   node scripts/editeur.mjs echeance <cabinetId> <AAAA-MM-01>
  *   node scripts/editeur.mjs virement <echeanceId> [AAAA-MM-JJ]
  *   node scripts/editeur.mjs suspendre <cabinetId> "<motif>"
+ *   node scripts/editeur.mjs support-ouvrir <cabinetId> <sujetOidc> <email> "<nom>" <heures (1 à 72)> "<motif>"
+ *   node scripts/editeur.mjs support-fermer <cabinetId> <utilisateurId>
  *   node scripts/editeur.mjs sources
  *   node scripts/editeur.mjs surveiller "<émetteur>" "<libellé>" <url https d'un domaine officiel>
  *   node scripts/editeur.mjs evolutions [a_qualifier|verifiee|ecartee]
@@ -68,6 +70,16 @@ try {
       exiger(2, 'suspendre <cabinetId> "<motif>"');
       await p.suspendre(client, args[0], args[1]);
       console.log('Abonnement suspendu : nouveaux dépôts et imports refusés, consultation conservée.');
+      break;
+    case 'support-ouvrir':
+      exiger(6, 'support-ouvrir <cabinetId> <sujetOidc> <email> "<nom>" <heures> "<motif>"');
+      console.log(await p.ouvrirAccesSupport(client, { cabinetId: args[0], sujetOidc: args[1], email: args[2], nom: args[3], heures: Number(args[4]), motif: args[5] }));
+      console.log('Accès ouvert en lecture seule, sans aucun dossier : un gestionnaire du cabinet doit habiliter ce compte (lecture) sur les dossiers concernés.');
+      break;
+    case 'support-fermer':
+      exiger(2, 'support-fermer <cabinetId> <utilisateurId>');
+      await p.fermerAccesSupport(client, args[0], args[1]);
+      console.log('Accès support fermé et habilitations retirées.');
       break;
     case 'sources':
       await table(`select emetteur, libelle, dernier_statut, dernier_succes_le::text, coalesce(dernier_detail, '') as detail from surveillances_sources where actif order by emetteur, libelle`);

@@ -11,7 +11,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { type AccesBd, and, eq, schema as s, sql, type Tx } from '@comtaple/db';
+import { type AccesBd, and, eq, journaliser, schema as s, sql, type Tx } from '@comtaple/db';
 import type { Config } from '@comtaple/plateforme';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { BD, CONFIG } from './jetons.js';
@@ -115,6 +115,14 @@ export class GardeAcces implements CanActivate {
       email: utilisateur.email,
       nom: utilisateur.nom,
     };
+    // Support : accès temporaire, en LECTURE SEULE quelle que soit l'habilitation reçue, et chaque accès est tracé
+    // dans le journal du cabinet (gabarit de route seulement, jamais de contenu).
+    if (acces.role === 'support') {
+      if (!['GET', 'HEAD'].includes(req.method)) throw new ForbiddenException('L’accès support est en lecture seule');
+      await this.bd.avecContexte(acces, (tx) =>
+        journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'support.consultation', details: { methode: req.method, route: req.route?.path ?? null } }),
+      );
+    }
     req.acces = acces;
     return true;
   }

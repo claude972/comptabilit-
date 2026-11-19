@@ -175,3 +175,43 @@ export async function qualifierEvolution(
 export async function ecarterEvolution(client: pg.ClientBase, evolutionId: string): Promise<void> {
   await client.query(`update evolutions_reglementaires set etat_verification = 'ecartee' where id = $1`, [evolutionId]);
 }
+
+// ───────────────────────────── Accès temporaire du support (opération de l'éditeur) ─────────────────────────────
+
+/**
+ * Ouvre à une personne du support un accès TEMPORAIRE à un cabinet : rôle « support », borné dans le temps, inscrit
+ * au journal d'audit du cabinet. Cet accès ne donne par lui-même accès à AUCUN dossier : un gestionnaire du cabinet
+ * doit encore l'habiliter (en lecture au plus) sur les dossiers concernés. L'application limite ce rôle à la lecture.
+ */
+export async function ouvrirAccesSupport(
+  client: pg.ClientBase,
+  p: { cabinetId: string; sujetOidc: string; email: string; nom: string; heures: number; motif: string },
+): Promise<{ utilisateurId: string; expireLe: string }> {
+  if (!(p.heures > 0 && p.heures <= 72)) throw new Error('Durée d’accès support : entre 1 et 72 heures.');
+  if (p.motif.trim().length < 5) throw new Error('Un motif est requis pour un accès support.');
+  const u = await client.query<{ id: string }>(
+    `insert into utilisateurs (sujet_oidc, email, nom) values ($1, $2, $3) on conflict (sujet_oidc) do update set email = excluded.email returning id`,
+    [p.sujetOidc, p.email, p.nom],
+  );
+  const utilisateurId = u.rows[0]!.id;
+  const existant = await client.query<{ role: string }>('select role from appartenances where cabinet_id = $1 and utilisateur_id = $2', [p.cabinetId, utilisateurId]);
+  if (existant.rowCount && existant.rows[0]!.role !== 'support') throw new Error('Cette personne est déjà membre du cabinet à un autre titre : aucun accès support n’est ouvert.');
+  const a = await client.query<{ expire_le: string }>(
+    `insert into appartenances (cabinet_id, utilisateur_id, role, actif, expire_le) values ($1, $2, 'support', true, now() + make_interval(hours => $3))
+     on conflict (cabinet_id, utilisateur_id) do update set actif = true, expire_le = excluded.expire_le returning expire_le::text`,
+    [p.cabinetId, utilisateurId, Math.round(p.heures)],
+  );
+  await client.query(
+    `insert into journal_audit (cabinet_id, acteur_type, action, cible_type, cible_id, details) values ($1, 'systeme', 'support.acces_ouvert', 'utilisateur', $2, $3)`,
+    [p.cabinetId, utilisateurId, JSON.stringify({ heures: Math.round(p.heures), expireLe: a.rows[0]!.expire_le, motif: p.motif })],
+  );
+  return { utilisateurId, expireLe: a.rows[0]!.expire_le };
+}
+
+/** Ferme immédiatement un accès support et retire ses habilitations de dossier. */
+export async function fermerAccesSupport(client: pg.ClientBase, cabinetId: string, utilisateurId: string): Promise<void> {
+  const r = await client.query(`update appartenances set actif = false, expire_le = now() where cabinet_id = $1 and utilisateur_id = $2 and role = 'support'`, [cabinetId, utilisateurId]);
+  if (!r.rowCount) return;
+  await client.query('delete from habilitations_dossier where cabinet_id = $1 and utilisateur_id = $2', [cabinetId, utilisateurId]);
+  await client.query(`insert into journal_audit (cabinet_id, acteur_type, action, cible_type, cible_id) values ($1, 'systeme', 'support.acces_ferme', 'utilisateur', $2)`, [cabinetId, utilisateurId]);
+}

@@ -2,7 +2,10 @@
 import { randomBytes } from 'node:crypto';
 import { DEMO } from '@comtaple/db/amorcer';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { api, jetons, ouvrirSessions, sha } from './essais/outils.js';
+import { urlBd } from '@comtaple/db';
+import { fermerAccesSupport, ouvrirAccesSupport } from '@comtaple/db/provisionnement';
+import pg from 'pg';
+import { API, api, jetons, ouvrirSessions, sha } from './essais/outils.js';
 
 const SEL = randomBytes(4).toString('hex');
 let dossierId = '';
@@ -194,5 +197,54 @@ describe('membres du cabinet', () => {
     expect((await api('remi', 'GET', `/v1/dossiers/${DEMO.martin}/exercices`)).statut).toBe(200);
     const audit = (await api('alice', 'GET', '/v1/audit?limite=40')).json.lignes.filter((l: any) => l.action === 'membre.modifie' && l.cibleId === DEMO.remi);
     expect(audit[audit.length - 1].details).toMatchObject({ roleAvant: 'reviseur', roleApres: 'collaborateur' });
+  });
+});
+
+describe('accès temporaire du support', () => {
+  // Bruno (administrateur du cabinet Bêta) joue ici la personne du support pour le cabinet Alpha.
+  const enA = (chemin: string, methode = 'GET', corps?: unknown) =>
+    fetch(`${API}${chemin}`, { method: methode, headers: { authorization: `Bearer ${jetons.bruno}`, 'x-cabinet-id': DEMO.cabinetA, ...(corps ? { 'content-type': 'application/json' } : {}) }, body: corps ? JSON.stringify(corps) : undefined });
+
+  it('borné dans le temps, sans dossier par défaut, en lecture seule, tracé — puis fermé', async () => {
+    const editeur = new pg.Client({ connectionString: urlBd('admin') });
+    await editeur.connect();
+    try {
+      expect((await enA('/v1/dossiers')).status).toBe(403); // aucun accès avant ouverture
+      await expect(ouvrirAccesSupport(editeur, { cabinetId: DEMO.cabinetA, sujetOidc: DEMO.bruno, email: 'bruno.admin@cabinet-b.test', nom: 'Bruno Admin', heures: 500, motif: 'Assistance' })).rejects.toThrow(/72 heures/);
+      await expect(ouvrirAccesSupport(editeur, { cabinetId: DEMO.cabinetA, sujetOidc: DEMO.bruno, email: 'bruno.admin@cabinet-b.test', nom: 'Bruno Admin', heures: 2, motif: '' })).rejects.toThrow(/motif/);
+      // Un membre du cabinet ne peut pas recevoir en plus un accès support (pas de changement de rôle détourné).
+      await expect(ouvrirAccesSupport(editeur, { cabinetId: DEMO.cabinetA, sujetOidc: DEMO.remi, email: 'remi.reviseur@cabinet-a.test', nom: 'Rémi', heures: 2, motif: 'Assistance' })).rejects.toThrow(/déjà membre/);
+      await ouvrirAccesSupport(editeur, { cabinetId: DEMO.cabinetA, sujetOidc: DEMO.bruno, email: 'bruno.admin@cabinet-b.test', nom: 'Bruno Admin', heures: 2, motif: 'Diagnostic d’un import à la demande du cabinet' });
+
+      // Accès ouvert, mais aucun dossier tant que le cabinet ne l'a pas habilité.
+      const dossiers = await enA('/v1/dossiers');
+      expect(dossiers.status).toBe(200);
+      expect(await dossiers.json()).toEqual([]);
+      expect((await enA(`/v1/documents?entiteId=${DEMO.dupain}`)).status).toBe(404);
+      // Le cabinet l'habilite : en lecture au plus.
+      expect((await api('alice', 'PUT', `/v1/dossiers/${DEMO.dupain}/habilitations/${DEMO.bruno}`, { niveau: 'collaboration' })).statut).toBe(400);
+      expect((await api('alice', 'PUT', `/v1/dossiers/${DEMO.dupain}/habilitations/${DEMO.bruno}`, { niveau: 'lecture' })).statut).toBe(200);
+      expect((await enA(`/v1/documents?entiteId=${DEMO.dupain}`)).status).toBe(200);
+      // Lecture seule : aucune écriture, même celles que le niveau « lecture » permettrait à un autre rôle.
+      const contenu = Buffer.from('%PDF-1.4 support');
+      expect((await enA('/v1/televersements', 'POST', { entiteId: DEMO.dupain, nomFichier: 's.pdf', taille: contenu.length, sha256: sha(contenu), canal: 'ordinateur' })).status).toBe(403);
+      expect((await enA(`/v1/dossiers/${DEMO.dupain}/conseils`, 'POST', {})).status).toBe(403);
+      // Toujours cloisonné : rien d'un dossier où il n'est pas habilité, et son propre cabinet reste séparé.
+      expect((await enA(`/v1/documents?entiteId=${DEMO.martin}`)).status).toBe(404);
+      // Chaque accès est tracé dans le journal du cabinet, visible de ses gestionnaires.
+      const actions = (await api('alice', 'GET', '/v1/audit?limite=40')).json.lignes.filter((l: any) => l.acteurId === DEMO.bruno || l.cibleId === DEMO.bruno).map((l: any) => l.action);
+      expect(actions).toEqual(expect.arrayContaining(['support.acces_ouvert', 'support.consultation']));
+
+      // Expiration : l'accès tombe de lui-même, sans intervention.
+      await editeur.query(`update appartenances set expire_le = now() - interval '1 minute' where cabinet_id = $1 and utilisateur_id = $2`, [DEMO.cabinetA, DEMO.bruno]);
+      expect((await enA(`/v1/documents?entiteId=${DEMO.dupain}`)).status).toBe(403);
+      expect((await api('bruno', 'GET', '/v1/dossiers')).statut).toBe(200); // son cabinet d'origine n'est pas affecté
+    } finally {
+      await fermerAccesSupport(editeur, DEMO.cabinetA, DEMO.bruno);
+      await editeur.query(`delete from appartenances where cabinet_id = $1 and utilisateur_id = $2 and role = 'support'`, [DEMO.cabinetA, DEMO.bruno]);
+      await editeur.end();
+    }
+    expect((await enA('/v1/dossiers')).status).toBe(403);
+    expect((await api('bruno', 'GET', '/v1/moi')).json.cabinet.id).toBe(DEMO.cabinetB);
   });
 });

@@ -62,9 +62,11 @@ Vérifié contre le simulateur d'API seulement : service fermé et actions d'abo
 | OCR d'un PDF de 30 pages | 127 s (4,2 s par page) | Idem |
 | Mémoire du service OCR | 260 Mio au repos, pic à 1 459 Mio | Idem |
 | Rapprochement de 8 800 × 8 800 éléments | 81 ms au cas nominal, environ 1 s en données dégradées | Moteur seul |
+| Campagne d'import sur 200 dossiers (`scripts/mesure-campagne.mjs`) | 192 imports réussis, 8 échecs (les 8 fichiers volontairement illisibles), aucun échec propagé ; 76 635 lignes importées et contrôlées ; 13,4 s de dépôt séquentiel, 1,3 s de plus pour la fin des imports, 14,8 s du premier dépôt à la fin des contrôles | Fichiers de 150 écritures (≈ 54 Ko), un seul utilisateur, worker à 2 traitements simultanés, poste local au repos |
+| Annulation d'un import en cours | Fichier de 291 567 lignes interrompu pendant le traitement, aucune ligne conservée, lot actif inchangé | Parcours de bout en bout |
 | Restauration de la base | 1 à 2 s pour une sauvegarde de 364 à 412 Ko | Base de test, volume négligeable |
 
-Ces chiffres décrivent ce poste et ces jeux. Ils ne sont pas des engagements de performance, et les objectifs de dimensionnement du cahier des charges (plusieurs centaines de dossiers, plusieurs cabinets simultanés) n'ont pas été mesurés. L'import complet d'un FEC de 100 000 lignes à travers l'API, le worker et la base n'a pas été chronométré (seul le moteur l'a été).
+Ces chiffres décrivent ce poste et ces jeux. Ils ne sont pas des engagements de performance. La campagne de 200 dossiers porte sur de PETITS fichiers et un seul cabinet : ni des fichiers de 100 000 lignes par dossier, ni plusieurs cabinets simultanés n'ont été mesurés. L'import complet d'un FEC de 100 000 lignes à travers l'API, le worker et la base n'a pas été chronométré (seul le moteur l'a été).
 
 ## Qualité de l'extraction et de l'OCR
 

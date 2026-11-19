@@ -55,7 +55,7 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (troisi
 | Connecteur Microsoft 365 | En attente de connexion | Idem ; boîtes partagées sans notifications (delta périodique) |
 | Import FEC et données de travail, en flux, idempotent, versionné | Testé | Variantes testées listées dans `packages/core/docs/fec-compatibilite.md` ; aucun FEC réel d'un logiciel du marché |
 | Rapport FEC : lisible / conforme / suffisant, ligne par ligne | En attente de validation | Contrôles de conformité non implémentés listés dans le rapport lui-même |
-| Campagnes d'import sur plusieurs dossiers : isolation, suivi et rapport par dossier, reprise des échecs | Testé | Exercé sur 3 dossiers, pas sur plusieurs centaines (aucun test de charge) ; dépôt fichier par fichier, pas d'archive répartie automatiquement |
+| Campagnes d'import sur plusieurs dossiers : isolation, suivi et rapport par dossier, reprise des échecs | Testé | Mesuré en local sur 200 dossiers avec de petits fichiers (192 réussis, 8 échecs attendus isolés) ; non mesuré avec de gros fichiers ni plusieurs cabinets simultanés ; dépôt fichier par fichier, pas d'archive répartie automatiquement |
 | Annulation réversible d'un import (comptable ou bancaire), rétablissement, reprise, interruption d'un import en cours | Testé | Interruption exercée sur un fichier de 290 000 lignes ; un import arrêté brutalement (processus tué) reste « en cours » et se traite à la main |
 | Contrôles déterministes (19 au catalogue) | En attente de validation | Tous exécutés à chaque import ; `TRE-003` et `CLO-002` sont réalisés quand des relevés et l'exercice précédent existent, sinon « non réalisés » avec leur motif |
 | Revue des constats : affectation, commentaires, décisions motivées | Testé | — |

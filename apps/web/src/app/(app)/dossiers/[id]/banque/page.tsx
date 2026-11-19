@@ -310,6 +310,11 @@ export default async function PageBanque({ params, searchParams }: { params: Pro
         ) : (
           <>
             <ChoixExercice exercices={ex.exercices} courant={exercice.id} />
+            <p>
+              <Link href={`${base}/correspondance?exercice=${exercice.id}`} prefetch={false} data-testid="lien-correspondance">
+                Correspondance des comptes de banque (512 ↔ comptes bancaires)
+              </Link>
+            </p>
             {collaboration && reference.ok ? <LancerRapprochement key={exercice.id} exerciceId={exercice.id} defauts={reference.donnees.parametresParDefaut} /> : null}
             {dernier && !dernier.ok ? <Alerte ton="attention">Le dernier rapprochement n’a pas pu être chargé. {dernier.message}</Alerte> : null}
             {dernier?.ok ? <Rapprochement d={dernier.donnees} regles={regles} libelleRegle={libelleRegle} revision={revision} lienPage={lienPageR} /> : null}

@@ -6,10 +6,10 @@ import { dec } from '../montant.js';
 import { elementDepuisMouvement, elementsBanqueDepuisEcritures } from '../rapprochement/conversion.js';
 import { rapprocher } from '../rapprochement/rapprocher.js';
 import { sourceInterne } from '../sources.js';
+import { cleCompteBancaire } from './correspondance-banque.js';
 import { ZERO, aPrefixe, definir, montant2, schemaMaxConstats, schemaMontantPositif, schemaPrefixes, soldeDe } from './outils.js';
 import type { Constat, LigneEcriture } from './types.js';
 
-const cleCompteBancaire = (c: { iban: string | null; identifiant: string | null }): string => (c.iban ?? c.identifiant ?? '').replace(/\s/g, '').toUpperCase();
 
 export const TRE_003 = definir({
   id: 'TRE-003',

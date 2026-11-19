@@ -2,7 +2,7 @@ import { BadRequestException, Body, ConflictException, Controller, ForbiddenExce
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { CATALOGUE_CONTROLES, executerControles } from '@comtaple/core';
 import { type AccesBd, and, count, desc, eq, inArray, isNull, journaliser, schema as s, sql, type Tx } from '@comtaple/db';
-import { lignesDuLot, parametresApprouves } from '@comtaple/plateforme';
+import { lignesDuLot, parametresApprouves, relevesDuDossier } from '@comtaple/plateforme';
 import { z } from 'zod';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
 import { BD } from './jetons.js';
@@ -130,7 +130,10 @@ export class ReglesController {
       if (lot.progression > PLAFOND_LIGNES_IMPACT) throw new ConflictException('Volume trop important pour une mesure immédiate');
       const lignes = await lignesDuLot(tx, lot.id);
       const enVigueur = await parametresApprouves(tx, ex.entiteId);
-      const contexte = { lignes, exercice: { debut: ex.debut, fin: ex.fin }, exercicePrecedent: null };
+      // Mêmes relevés actifs que l'exécution réelle des contrôles : sans eux, un contrôle qui en dépend (TRE-003) serait
+      // « non réalisé » avant comme après, et la mesure ne dirait rien.
+      const releves = await relevesDuDossier(tx, ex.entiteId);
+      const contexte = { lignes, exercice: { debut: ex.debut, fin: ex.fin }, exercicePrecedent: null, releves: releves.length ? releves : null };
       const [avant] = executerControles(contexte, { ids: [r.controleId], parametres: enVigueur.parametres });
       const [apres] = executerControles(contexte, { ids: [r.controleId], parametres: { ...enVigueur.parametres, [r.controleId]: r.parametres as Record<string, unknown> } });
       const cles = (x: typeof avant) => new Set(x!.constats.map((k) => k.cle));

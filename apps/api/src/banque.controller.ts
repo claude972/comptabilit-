@@ -1,8 +1,9 @@
-import { BadRequestException, Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
+import { createHash } from 'node:crypto';
+import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { decoderTexteReleve, detecterFormatReleve, PARAMETRES_RAPPROCHEMENT_PAR_DEFAUT, proposerProfilCsv, REGLES_RAPPROCHEMENT, schemaParametresRapprochement } from '@comtaple/core';
+import { CATALOGUE_CONTROLES, cleCompteBancaire, type Correspondance, decoderTexteReleve, detecterFormatReleve, etatCorrespondanceBanque, masquerCompteBancaire, verifierCorrespondances, PARAMETRES_RAPPROCHEMENT_PAR_DEFAUT, proposerProfilCsv, REGLES_RAPPROCHEMENT, schemaParametresRapprochement } from '@comtaple/core';
 import { type AccesBd, and, asc, count, desc, eq, gte, inArray, journaliser, lte, schema as s, sql, type Tx } from '@comtaple/db';
-import type { Files, Stockage } from '@comtaple/plateforme';
+import { type Files, parametresApprouves, type Stockage } from '@comtaple/plateforme';
 import { z } from 'zod';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
 import { avecNomsAnnulation } from './comptabilite.controller.js';
@@ -10,6 +11,10 @@ import { BD, STOCKAGE, TACHES } from './jetons.js';
 import { schemaOpenApi, valider } from './validation.js';
 
 const lancement = z.object({ parametres: schemaParametresRapprochement.partial().optional() });
+const propositionCorrespondance = z.object({
+  correspondances: z.array(z.object({ compteNum: z.string().regex(/^\d{3,12}$/), compteBancaireRef: z.string().regex(/^[0-9a-f]{24}$/) })).min(1).max(50),
+  motif: z.string().min(5).max(2000),
+});
 const decision = z.object({ decision: z.enum(['valider', 'rejeter', 'remettre_en_proposition']), motif: z.string().min(1).max(2000).optional() });
 const relance = z.object({ profilCsv: z.record(z.string(), z.unknown()) });
 const dateIso = /^\d{4}-\d{2}-\d{2}$/;
@@ -147,6 +152,124 @@ export class BanqueController {
     if (!ex) throw new NotFoundException('Exercice introuvable');
     await exigerNiveau(tx, ex.entiteId, minimum);
     return ex;
+  }
+
+  // ── Correspondance comptes 512 / comptes bancaires ──
+
+  /** Référence opaque d'un compte bancaire : l'IBAN complet n'est jamais renvoyé par ces routes ni attendu en entrée. */
+  private refCompte(entiteId: string, cle: string): string {
+    return createHash('sha256').update(`${entiteId}|${cle}`).digest('hex').slice(0, 24);
+  }
+
+  private async donneesCorrespondance(tx: Tx, ex: { id: string; entiteId: string }) {
+    const definition = CATALOGUE_CONTROLES.find((c) => c.id === 'TRE-003')!;
+    const enVigueur = await parametresApprouves(tx, ex.entiteId);
+    const approuves = (enVigueur.parametres['TRE-003'] ?? {}) as Record<string, unknown>;
+    const parametres = { ...(definition.parametresParDefaut as Record<string, unknown>), ...approuves } as { prefixesComptes: string[]; correspondances: Correspondance[] };
+    const [lot] = await tx.select({ id: s.lotsImport.id }).from(s.lotsImport).where(and(eq(s.lotsImport.exerciceId, ex.id), eq(s.lotsImport.type, 'fec'), eq(s.lotsImport.actif, true)));
+    const prefixes = parametres.prefixesComptes.filter((p) => /^\d{1,12}$/.test(p));
+    const comptes512 = lot && prefixes.length
+      ? ((await tx.execute(sql`
+          select l.compte_num as "compteNum", min(l.compte_lib) as "compteLib", count(*)::int as "nbLignes"
+            from lignes_ecriture l
+           where l.lot_import_id = ${lot.id}::uuid and l.compte_num like any(${`{${prefixes.map((p) => `${p}%`).join(',')}}`}::text[])
+           group by l.compte_num order by l.compte_num`)).rows as Array<{ compteNum: string; compteLib: string | null; nbLignes: number }>)
+      : [];
+    // Comptes bancaires des relevés ACTIFS du dossier (un relevé annulé est écarté), regroupés par clé.
+    const releves = await tx
+      .select({ iban: s.relevesBancaires.iban, identifiant: s.relevesBancaires.identifiant, format: s.relevesBancaires.format, dateOuverture: s.relevesBancaires.dateOuverture, dateCloture: s.relevesBancaires.dateCloture, cadrage: s.relevesBancaires.cadrage })
+      .from(s.relevesBancaires)
+      .innerJoin(s.lotsImport, and(eq(s.lotsImport.id, s.relevesBancaires.lotImportId), eq(s.lotsImport.actif, true)))
+      .where(eq(s.relevesBancaires.entiteId, ex.entiteId));
+    const parCle = new Map<string, { cle: string; nbReleves: number; formats: Set<string>; du: string | null; au: string | null; cadrages: Set<string> }>();
+    for (const r of releves) {
+      const cle = cleCompteBancaire(r);
+      if (!cle) continue;
+      const c = parCle.get(cle) ?? { cle, nbReleves: 0, formats: new Set<string>(), du: null, au: null, cadrages: new Set<string>() };
+      c.nbReleves++;
+      c.formats.add(r.format);
+      c.cadrages.add(r.cadrage);
+      if (r.dateOuverture && (!c.du || r.dateOuverture < c.du)) c.du = r.dateOuverture;
+      if (r.dateCloture && (!c.au || r.dateCloture > c.au)) c.au = r.dateCloture;
+      parCle.set(cle, c);
+    }
+    return { definition, approuves, parametres, origine: enVigueur.origines['TRE-003'] ?? null, donneesComptables: Boolean(lot), comptes512, comptesBancaires: [...parCle.values()].sort((a, b) => a.cle.localeCompare(b.cle)) };
+  }
+
+  @Get('exercices/:id/correspondance-banque')
+  @ApiOperation({
+    summary: 'Correspondance entre comptes comptables de banque (512) et comptes bancaires des relevés',
+    description:
+      'État de l’association utilisée par le rapprochement bancaire (contrôle TRE-003) : comptes 512 mouvementés, comptes bancaires des relevés actifs, correspondance EN VIGUEUR (règle approuvée, ou association d’office quand il n’y a qu’un compte de chaque côté) et propositions en attente. Les comptes bancaires sont désignés par une référence opaque et un libellé masqué : l’IBAN complet n’est pas renvoyé.',
+  })
+  async correspondance(@AccesCourant() acces: Acces, @Param('id') id: string) {
+    exigerUuid(id);
+    return this.bd.avecContexte(acces, async (tx) => {
+      const ex = await this.exercice(tx, id, 'lecture');
+      const d = await this.donneesCorrespondance(tx, ex);
+      const ref = (cle: string | null) => (cle ? this.refCompte(ex.entiteId, cle) : null);
+      const etat = etatCorrespondanceBanque(d.comptes512.map((c) => c.compteNum), d.comptesBancaires.map((c) => c.cle), d.parametres.correspondances ?? []);
+      const attente = await tx
+        .select()
+        .from(s.reglesCabinet)
+        .where(and(eq(s.reglesCabinet.controleId, 'TRE-003'), eq(s.reglesCabinet.entiteId, ex.entiteId), eq(s.reglesCabinet.statut, 'proposee')))
+        .orderBy(desc(s.reglesCabinet.creeLe))
+        .limit(20);
+      const auteurs = [...new Set(attente.map((r) => r.proposeePar).filter((x): x is string => Boolean(x)))];
+      const noms = new Map((auteurs.length ? await tx.select({ id: s.utilisateurs.id, nom: s.utilisateurs.nom }).from(s.utilisateurs).where(inArray(s.utilisateurs.id, auteurs)) : []).map((u) => [u.id, u.nom]));
+      const masquer = (correspondances: Correspondance[] | undefined) =>
+        (correspondances ?? []).map((c) => ({ compteNum: c.compteNum, compteBancaireRef: ref(c.compteBancaire.replace(/\s/g, '').toUpperCase()), compteBancaire: masquerCompteBancaire(c.compteBancaire.replace(/\s/g, '').toUpperCase()) }));
+      return {
+        exercice: { id: ex.id, entiteId: ex.entiteId, debut: ex.debut, fin: ex.fin },
+        donneesComptables: d.donneesComptables,
+        etat: etat.etat,
+        motif: etat.motif,
+        comptes: etat.comptes.map((c) => ({ ...d.comptes512.find((x) => x.compteNum === c.compteNum)!, etat: c.etat, compteBancaireRef: ref(c.compteBancaire), compteBancaire: c.compteBancaire ? masquerCompteBancaire(c.compteBancaire) : null })),
+        comptesBancaires: d.comptesBancaires.map((c) => ({ ref: ref(c.cle), libelle: masquerCompteBancaire(c.cle), nbReleves: c.nbReleves, formats: [...c.formats].sort(), du: c.du, au: c.au, cadrages: [...c.cadrages].sort(), libre: etat.comptesBancairesLibres.includes(c.cle) })),
+        enVigueur: { origine: d.origine, correspondances: masquer(d.parametres.correspondances) },
+        propositions: attente.map((r) => ({ id: r.id, version: r.version, motif: r.motif, proposeeParNom: r.proposeePar ? (noms.get(r.proposeePar) ?? null) : null, creeLe: r.creeLe, impactMesure: Boolean(r.impact), correspondances: masquer((r.parametres as { correspondances?: Correspondance[] }).correspondances) })),
+        mention: 'Une correspondance proposée n’a aucun effet tant qu’elle n’est pas approuvée par un administrateur ou un associé, après mesure de son impact (écran « Règles du cabinet »).',
+      };
+    });
+  }
+
+  @Post('exercices/:id/correspondance-banque')
+  @ApiOperation({
+    summary: 'Proposer une correspondance comptes 512 / comptes bancaires pour ce dossier (habilitation de collaboration)',
+    description:
+      'Crée une PROPOSITION de règle du dossier pour le contrôle TRE-003 (paramètre `correspondances`), en conservant les autres paramètres déjà approuvés. Elle suit le circuit des règles du cabinet : mesure d’impact, puis approbation par une AUTRE personne, administrateur ou associé. Chaque compte 512 et chaque compte bancaire doit exister dans le dossier, et l’association doit être un pour un.',
+  })
+  @ApiBody({ schema: schemaOpenApi(propositionCorrespondance) })
+  async proposerCorrespondance(@AccesCourant() acces: Acces, @Param('id') id: string, @Body() corps: unknown) {
+    exigerUuid(id);
+    const saisie = valider(propositionCorrespondance, corps);
+    if (acces.role === 'client_deposant' || acces.role === 'client_lecture' || acces.role === 'support') throw new ForbiddenException('Réservé aux collaborateurs du cabinet');
+    return this.bd.avecContexte(acces, async (tx) => {
+      const ex = await this.exercice(tx, id, 'collaboration');
+      const d = await this.donneesCorrespondance(tx, ex);
+      if (!d.donneesComptables) throw new ConflictException('Aucune donnée comptable active pour cet exercice');
+      const cleDe = new Map(d.comptesBancaires.map((c) => [this.refCompte(ex.entiteId, c.cle), c.cle]));
+      const inconnues = saisie.correspondances.filter((c) => !cleDe.has(c.compteBancaireRef));
+      if (inconnues.length) throw new BadRequestException('Compte bancaire inconnu de ce dossier (référence invalide ou relevé annulé depuis)');
+      const verif = verifierCorrespondances(d.comptes512.map((c) => c.compteNum), d.comptesBancaires.map((c) => c.cle), saisie.correspondances.map((c) => ({ compteNum: c.compteNum, compteBancaire: cleDe.get(c.compteBancaireRef)! })));
+      if (verif.erreurs.length) throw new BadRequestException({ message: 'Correspondance non recevable', erreurs: verif.erreurs.map((probleme) => ({ champ: 'correspondances', probleme })) });
+      const identique = (autre: Correspondance[] | undefined) =>
+        JSON.stringify([...(autre ?? [])].map((c) => ({ compteNum: c.compteNum, compteBancaire: c.compteBancaire.replace(/\s/g, '').toUpperCase() })).sort((a, b) => a.compteNum.localeCompare(b.compteNum))) === JSON.stringify(verif.correspondances);
+      if (identique(d.parametres.correspondances)) throw new ConflictException('Cette correspondance est déjà en vigueur');
+      const enAttente = await tx.select().from(s.reglesCabinet).where(and(eq(s.reglesCabinet.controleId, 'TRE-003'), eq(s.reglesCabinet.entiteId, ex.entiteId), eq(s.reglesCabinet.statut, 'proposee')));
+      if (enAttente.some((r) => identique((r.parametres as { correspondances?: Correspondance[] }).correspondances))) throw new ConflictException('Cette correspondance est déjà proposée et attend une décision');
+      // Les autres paramètres approuvés (seuils, tolérances) sont conservés : seule la correspondance change.
+      const parametres = { ...d.approuves, correspondances: verif.correspondances };
+      const fusion = d.definition.schemaParametres.safeParse({ ...(d.definition.parametresParDefaut as Record<string, unknown>), ...parametres });
+      if (!fusion.success) throw new BadRequestException('Paramètres invalides pour ce contrôle');
+      const [{ max } = { max: 0 }] = (await tx.execute(sql`select coalesce(max(version), 0)::int as max from regles_cabinet where controle_id = 'TRE-003' and entite_id_cible = ${ex.entiteId}::uuid`)).rows as Array<{ max: number }>;
+      const [r] = await tx
+        .insert(s.reglesCabinet)
+        .values({ cabinetId: acces.cabinetId, controleId: 'TRE-003', entiteId: ex.entiteId, parametres, version: max + 1, motif: saisie.motif, proposeePar: acces.utilisateurId })
+        .returning();
+      await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'regle.proposee', cibleType: 'regle_cabinet', cibleId: r!.id, entiteId: ex.entiteId, details: { controleId: 'TRE-003', version: r!.version, origine: 'correspondance_banque', comptes: verif.correspondances.map((c) => c.compteNum) } });
+      return { id: r!.id, version: r!.version, statut: r!.statut, mention: 'Proposition enregistrée : sans effet tant qu’elle n’est pas approuvée par un administrateur ou un associé, après mesure de son impact.' };
+    });
   }
 
   @Get('reference/rapprochement')

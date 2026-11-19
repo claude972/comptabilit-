@@ -15,6 +15,7 @@ export type { AnomalieFec, LigneFec, OptionsAnalyseFec, RapportFec, ReferentielF
 
 // 4. controles
 export { CATALOGUE_CONTROLES, executerControles, genererCatalogueMarkdown } from './controles/catalogue.js';
+export { type Correspondance, type EtatAssociation, type EtatCorrespondance, cleCompteBancaire, etatCorrespondanceBanque, masquerCompteBancaire, verifierCorrespondances } from './controles/correspondance-banque.js';
 export type {
   Constat, ContexteControle, CycleControle, DefinitionControle, LigneEcriture, ResultatControle, SourceRegle, StatutControle,
 } from './controles/types.js';

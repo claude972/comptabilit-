@@ -173,32 +173,7 @@ export async function importerReleve(c: Contexte, t: TacheImportReleve): Promise
 export { lignesDuLot } from '@comtaple/plateforme';
 
 /** Reconstitue, pour les contrôles, les relevés du dossier tels que lus par le moteur (relevés + leurs mouvements). */
-export async function relevesDuDossier(tx: Tx, entiteId: string): Promise<RapportReleve[]> {
-  // Seuls les relevés des lots ACTIFS comptent (un relevé annulé est conservé mais écarté).
-  const releves = await tx
-    .select({ r: s.relevesBancaires })
-    .from(s.relevesBancaires)
-    .innerJoin(s.lotsImport, and(eq(s.lotsImport.id, s.relevesBancaires.lotImportId), eq(s.lotsImport.actif, true)))
-    .where(eq(s.relevesBancaires.entiteId, entiteId))
-    .orderBy(asc(s.relevesBancaires.dateCloture))
-    .then((lignes) => lignes.map((l) => l.r));
-  if (releves.length === 0) return [];
-  // Chaque mouvement est restitué dans le relevé de chaque lot actif qui le contient.
-  const liens = await tx.select().from(s.mouvementsLots).where(eq(s.mouvementsLots.entiteId, entiteId));
-  const lotsDe = new Map<string, string[]>();
-  for (const l of liens) lotsDe.set(l.mouvementId, [...(lotsDe.get(l.mouvementId) ?? []), l.lotImportId]);
-  const mouvements = await tx.select().from(s.mouvementsBancaires).where(eq(s.mouvementsBancaires.entiteId, entiteId)).orderBy(asc(s.mouvementsBancaires.dateOperation), asc(s.mouvementsBancaires.rang));
-  const parLot = new Map<string, RapportReleve>();
-  for (const r of releves) {
-    const rapport = parLot.get(r.lotImportId) ?? { format: r.format as RapportReleve['format'], version: null, comptes: [], mouvements: [], anomalies: [], lisible: true, source: { type: 'interne', reference: 'Relevé importé', url: null, dateVerification: null, verification: 'sans_objet', periodeApplication: null } };
-    rapport.comptes.push(r.brut as RapportReleve['comptes'][number]);
-    parLot.set(r.lotImportId, rapport);
-  }
-  for (const m of mouvements) {
-    for (const lotId of lotsDe.get(m.id) ?? []) if (parLot.has(lotId)) parLot.get(lotId)!.mouvements.push(m.brut as MouvementBancaire);
-  }
-  return [...parLot.values()];
-}
+export { relevesDuDossier } from '@comtaple/plateforme';
 
 /**
  * Rapprochement banque ↔ comptabilité d'un exercice par le moteur déterministe (niveaux exact et règles explicites).

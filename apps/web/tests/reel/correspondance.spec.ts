@@ -159,6 +159,18 @@ test('correspondance : indéterminée, proposée par la collaboratrice sans effe
   // L'auteure de la proposition est prévenue de la décision, dans l'application seulement.
   await chloe.goto('/notifications');
   await expect(chloe.locator('li[data-type="regle.decidee"]').filter({ hasText: `Essai deux banques ${SEL}` })).toContainText('Votre proposition de règle a été approuvée');
+  // Préférences internes : une famille se désactive puis se réactive (état d'origine rétabli), et le réglage est conservé.
+  const preferences = chloe.getByTestId('preferences-notification');
+  await expect(preferences.getByRole('checkbox')).toHaveCount(5);
+  const imports = preferences.locator('input[data-famille="imports"]');
+  const coche = await imports.isChecked();
+  await imports.click();
+  await expect(preferences.getByText(coche ? 'Notifications désactivées pour cette famille.' : 'Notifications réactivées.')).toBeVisible();
+  await chloe.reload();
+  await expect(chloe.getByTestId('preferences-notification').locator('input[data-famille="imports"]')).toBeChecked({ checked: !coche });
+  await chloe.getByTestId('preferences-notification').locator('input[data-famille="imports"]').click();
+  await expect(chloe.getByTestId('preferences-notification').getByText(coche ? 'Notifications réactivées.' : 'Notifications désactivées pour cette famille.')).toBeVisible();
+  await expect(chloe.getByTestId('preferences-notification')).toContainText('rien n’est envoyé à l’extérieur');
   await alice.context().close();
   await chloe.context().close();
 });

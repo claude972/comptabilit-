@@ -41,7 +41,7 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (troisi
 | Téléversement reprenable, « Reçu » seulement après confirmation serveur | Testé | — |
 | Reprise après coupure, dépôts en attente sur l'appareil, purge | Testé | Émulation ; aucune exécution en arrière-plan (voulu) ; purge à 7 jours testée unitairement seulement |
 | Suivi des statuts, champs extraits, signalement d'erreur, demandes de complément | Testé | — |
-| Notifications | Testé | Internes à l'application uniquement : aucun courriel, SMS ni notification poussée. Complément demandé sur une pièce et réponse, règles à décider et décidées, archives de restitution ; les autres événements ne notifient pas (D-049) |
+| Notifications | Testé | Internes à l'application uniquement : aucun courriel, SMS ni notification poussée. Complément demandé sur une pièce et réponse, règles à décider et décidées, archives de restitution, imports terminés ou en échec, constats affectés ; préférences par famille (D-049, D-054) |
 | Dépôt depuis l'ordinateur | Testé | Pas de reprise après fermeture de la page |
 | Détection du type réel, limites de taille, antivirus, quarantaine | Testé | Traitements dans le processus du worker, sans bac à sable dédié |
 | Doublon binaire entre canaux | Testé | — |
@@ -92,7 +92,7 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (troisi
 | Service fermé hors abonnement (dépôts refusés, consultation conservée) | Testé | Les quotas sont affichés mais ne bloquent pas la collecte (décision D-024) |
 | Règles et paramètres propres au cabinet, avec mesure d'impact et approbation | Testé | Mesure d'impact synchrone, sur un seul contrôle et un exercice ; sert aussi à déclarer la correspondance comptes 512 ↔ comptes bancaires de `TRE-003`, sans écran dédié |
 | Administration : dossiers, exercices, habilitations, membres (rôle, désactivation) | Testé | Pas d'invitation ni de création de compte : la création d'un utilisateur reste une opération de l'éditeur dans Keycloak |
-| Export de restitution d'un dossier | Testé | Construit en flux depuis le 2026-11-19 (D-047) ; mémoire non mesurée sur un gros dossier |
+| Export de restitution d'un dossier | Testé | Construit en flux (D-047) ; un original non conforme n'est pas restitué, comme pour le cabinet (D-052) ; mémoire mesurée sur un gros dossier synthétique (rapport de tests) |
 | Correspondance comptes 512 / comptes bancaires | Testé | Proposition soumise au circuit des règles ; IBAN masqué ; par dossier seulement (D-048) |
 | Restitution d'un cabinet entier | Testé | Périmètre limité aux dossiers où le demandeur a le niveau « validation » (les autres sont listés, l'archive est dite incomplète) ; archive en flux ; manifeste vérifiable hors application ; téléchargement réservé au demandeur. Ni chiffrée ni signée. Mesurée en local sur 235 dossiers (D-043) |
 | Pagination des rapprochements et des règles du cabinet | Testé | Par décalage ; ancienne forme des règles conservée sans paramètre (D-044) |
@@ -141,7 +141,7 @@ Tous les domaines ci-dessus ont leurs écrans : collecte (téléphone et ordinat
 
 S'y ajoutent : nouvelle version d'une pièce (historique des versions, validation invalidée affichée), aperçu d'un CSV bancaire avant confirmation du profil, jonction de pièces à un conseil, une lettre ou une écriture d'inventaire, annulation motivée, rétablissement et reprise d'un import, campagnes d'import, rentabilité par mission, affectation d'un travail à une mission, diagnostic consigné affiché dans l'alerte de rupture du journal d'audit, restitution du cabinet (périmètre, archives, empreinte), pages de propositions de rapprochement et de règles, correspondance des comptes de banque, notifications internes (page et décompte dans l'en-tête).
 
-Non faits côté interface : préférences de notification ; aucune vérification sur appareil réel, sur Safari lui-même ou sur Firefox, ni au lecteur d'écran.
+Non faits côté interface : aucune vérification sur appareil réel, sur Safari lui-même ou sur Firefox, ni au lecteur d'écran.
 
 ## Couverture par type de dossier
 

@@ -243,6 +243,8 @@ export const travaux = pgTable('travaux', {
   id: id(),
   cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
   entiteId: uuid('entite_id').notNull().references(() => entites.id),
+  /** Affectation EXPLICITE à une mission du dossier, saisie par un membre du cabinet ; vide = non affecté (jamais déduit). */
+  missionId: uuid('mission_id').references(() => missions.id),
   dateTravail: date('date_travail', { mode: 'string' }).notNull(),
   /** Code de prestation du référentiel du cabinet (ex. tenue, revision, fiscal_tva). */
   prestation: text('prestation').notNull(),
@@ -1144,4 +1146,19 @@ export const politiquesConservation = pgTable('politiques_conservation', {
   immuable: boolean('immuable').notNull().default(false),
   valideePar: uuid('validee_par').references(() => utilisateurs.id),
   creeLe: creeLe(),
+});
+
+/**
+ * Anomalies CONSIGNÉES du journal d'audit : plages de lignes dont l'enchaînement est irrégulier pour une cause établie
+ * par l'éditeur (ex. défaut de chaînage concurrent corrigé depuis). Le contenu de chaque ligne reste vérifié par son
+ * empreinte ; seule l'irrégularité d'ordre est expliquée. Ajout seul, écrit par le provisionnement uniquement, et
+ * chaque consignation est elle-même inscrite au journal du cabinet.
+ */
+export const anomaliesJournal = pgTable('anomalies_journal', {
+  id: id(),
+  cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+  premiereLigne: bigint('premiere_ligne', { mode: 'number' }).notNull(),
+  derniereLigne: bigint('derniere_ligne', { mode: 'number' }).notNull(),
+  cause: text('cause').notNull(),
+  consigneeLe: horodatage('consignee_le').notNull().defaultNow(),
 });

@@ -21,8 +21,9 @@ echo "Restauration : $((FIN - DEBUT)) s pour $(du -h "$SAUVEGARDE" | cut -f1)"
 
 COMPTES="select 'documents', count(*) from documents union all select 'fichiers', count(*) from fichiers union all select 'lignes_ecriture', count(*) from lignes_ecriture union all select 'constats', count(*) from constats union all select 'decisions', count(*) from decisions union all select 'journal_audit', count(*) from journal_audit order by 1"
 echo "--- volumes restaurés ---"; $PSQL -d comtaple_essai_restauration -c "$COMPTES"
-RUPTURES=$($PSQL -d comtaple_essai_restauration -c "select count(*) from cabinets c where journal_audit_verifier(c.id) is not null")
-[ "$RUPTURES" = "0" ] && echo "Journal d'audit : chaîne intacte pour tous les cabinets" || { echo "ÉCHEC : chaîne d'audit rompue pour $RUPTURES cabinet(s)"; exit 1; }
+RUPTURES=$($PSQL -d comtaple_essai_restauration -c "select count(*) from cabinets c where journal_audit_verifier_hors_anomalies(c.id) is not null")
+CONSIGNEES=$($PSQL -d comtaple_essai_restauration -c "select count(*) from anomalies_journal")
+[ "$RUPTURES" = "0" ] && echo "Journal d'audit : aucune rupture inexpliquée ($CONSIGNEES anomalie(s) d'enchaînement consignée(s), contenu vérifié ligne par ligne)" || { echo "ÉCHEC : chaîne d'audit rompue pour $RUPTURES cabinet(s)"; exit 1; }
 SANS_RLS=$($PSQL -d comtaple_essai_restauration -c "select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r' and exists (select 1 from pg_attribute a where a.attrelid = c.oid and a.attname = 'cabinet_id' and not a.attisdropped) and not (c.relrowsecurity and c.relforcerowsecurity)")
 [ "$SANS_RLS" = "0" ] && echo "RLS : activé et forcé sur toutes les tables concernées" || { echo "ÉCHEC : $SANS_RLS table(s) sans RLS forcé après restauration"; exit 1; }
 POLITIQUES=$($PSQL -d comtaple_essai_restauration -c "select count(*) from pg_policies where schemaname = 'public'")

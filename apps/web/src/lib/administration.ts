@@ -45,7 +45,11 @@ export interface LigneAudit {
   horodatage: string;
 }
 export interface JournalAudit {
-  integrite: { rupture: number | string | null };
+  integrite: {
+    rupture: number | string | null;
+    premiereIrregularite?: number | string | null;
+    anomaliesConsignees?: Array<{ premiereLigne: number; derniereLigne: number; cause: string; consigneeLe: string }>;
+  };
   lignes: LigneAudit[];
 }
 

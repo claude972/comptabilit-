@@ -4,7 +4,9 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DEMO } from './amorcer.js';
+import pg from 'pg';
 import { chargerEnvLocal } from './env.js';
+import { consignerAnomalieJournal } from './provisionnement.js';
 import { type AccesBd, creerAccesBd, eq, journaliser, schema as s, sql, urlBd } from './index.js';
 
 chargerEnvLocal();
@@ -120,13 +122,49 @@ describe('habilitation par dossier', () => {
 });
 
 describe('journal d’audit', () => {
+  it('reste une chaîne linéaire sous écritures simultanées (numéro attribué sous le verrou du cabinet)', async () => {
+    // 80 écritures lancées en parallèle sur plusieurs connexions, chacune dans sa transaction, plus des écritures groupées.
+    await Promise.all(
+      Array.from({ length: 80 }, (_, i) =>
+        app.avecContexte(ctx(DEMO.cabinetB, DEMO.bruno), async (tx) => {
+          await journaliser(tx, { cabinetId: DEMO.cabinetB, acteurId: DEMO.bruno, action: 'test.concurrence', details: { i } });
+          if (i % 7 === 0) await journaliser(tx, { cabinetId: DEMO.cabinetB, acteurId: DEMO.bruno, action: 'test.concurrence', details: { i, bis: true } });
+        }),
+      ),
+    );
+    const r = await app.avecContexte(ctx(DEMO.cabinetB, DEMO.bruno), (tx) =>
+      tx.execute(sql`select journal_audit_verifier(${DEMO.cabinetB}::uuid) as stricte, (select count(*)::int from journal_audit_ecarts(${DEMO.cabinetB}::uuid)) as ecarts`),
+    );
+    expect(r.rows[0]).toEqual({ stricte: null, ecarts: 0 });
+  });
+
+  it('une anomalie ne se consigne que par l’éditeur, sur une irrégularité réelle et décrite ; jamais par l’application', async () => {
+    const editeur = new pg.Client({ connectionString: urlBd('admin') });
+    await editeur.connect();
+    try {
+      const cause = 'Essai automatisé : cette plage ne contient aucune irrégularité.';
+      await expect(consignerAnomalieJournal(editeur, DEMO.cabinetB, 1, 1, cause)).rejects.toThrow(/Aucune irrégularité/);
+      await expect(consignerAnomalieJournal(editeur, DEMO.cabinetB, 5, 1, cause)).rejects.toThrow(/invalide/);
+      await expect(consignerAnomalieJournal(editeur, DEMO.cabinetB, 1, 500, cause)).rejects.toThrow(/trop large/);
+      await expect(consignerAnomalieJournal(editeur, DEMO.cabinetB, 1, 1, 'trop court')).rejects.toThrow(/cause/);
+    } finally {
+      await editeur.end();
+    }
+    await expect(
+      app.avecContexte(ctx(DEMO.cabinetB, DEMO.bruno), (tx) => tx.execute(sql`insert into anomalies_journal (cabinet_id, premiere_ligne, derniere_ligne, cause) values (${DEMO.cabinetB}::uuid, 1, 2, 'x')`)),
+    ).rejects.toThrow();
+    // Cloisonnement : un cabinet ne voit que ses propres anomalies consignées.
+    const vues = await app.avecContexte(ctx(DEMO.cabinetB, DEMO.bruno), (tx) => tx.select().from(s.anomaliesJournal));
+    expect(vues.every((a) => a.cabinetId === DEMO.cabinetB)).toBe(true);
+  });
+
   it('est chaîné, vérifiable, et refuse modification et suppression', async () => {
     await app.avecContexte(ctx(DEMO.cabinetA, DEMO.alice), async (tx) => {
       await journaliser(tx, { cabinetId: DEMO.cabinetA, acteurId: DEMO.alice, action: 'test.audit', details: { n: 1 } });
       await journaliser(tx, { cabinetId: DEMO.cabinetA, acteurId: DEMO.alice, action: 'test.audit', details: { n: 2 } });
     });
     const verif = await app.avecContexte(ctx(DEMO.cabinetA, DEMO.alice), (tx) =>
-      tx.execute(sql`select journal_audit_verifier(${DEMO.cabinetA}::uuid) as rupture, (select count(*)::int from journal_audit) as n`),
+      tx.execute(sql`select journal_audit_verifier_hors_anomalies(${DEMO.cabinetA}::uuid) as rupture, (select count(*)::int from journal_audit) as n`),
     );
     expect(verif.rows[0]!.rupture).toBeNull();
     expect(Number(verif.rows[0]!.n)).toBeGreaterThanOrEqual(2);

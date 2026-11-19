@@ -240,4 +240,47 @@ describe('rentabilité d’une mission', () => {
     expect(r.honoraires.motif).toMatch(/Aucune lettre/);
     expect(r.tauxHoraireRealise.valeur).toBeNull();
   });
+
+  it('un travail s’affecte explicitement à une mission : il n’est plus compté dans les autres, et rien n’est déduit', async () => {
+    const avant = (await api('remi', 'GET', url())).json;
+    expect(avant.affectation).toMatchObject({ affectesACetteMission: 0, affectesAUneAutreMission: 0 });
+    expect(avant.mentions.join(' ')).not.toMatch(/autre\(s\) mission/); // une seule mission : pas d'ambiguïté à signaler
+    const mission2 = (await api('chloe', 'POST', `/v1/dossiers/${entiteId}/missions`, { libelle: 'Mission exceptionnelle 2025' })).json.id;
+    // Tant que rien n'est affecté, les travaux restent comptés et l'ambiguïté est dite.
+    const ambigu = (await api('remi', 'GET', url())).json;
+    expect(ambigu.temps.minutesDansPerimetre).toBe(avant.temps.minutesDansPerimetre);
+    expect(ambigu.mentions.join(' ')).toMatch(/ne sont affectés à aucune/);
+
+    // Refus : mission inconnue ou d'un autre dossier, déposant, autre cabinet.
+    const refus = { dateTravail: '2025-06-10', prestation: 'tenue', description: 'Travail affecté', tempsObserveMinutes: 60 };
+    expect((await api('chloe', 'POST', `/v1/dossiers/${entiteId}/travaux`, { ...refus, missionId: '00000000-0000-4000-8000-000000000000' })).statut).toBe(400);
+    const t = (await api('chloe', 'POST', `/v1/dossiers/${entiteId}/travaux`, { ...refus, missionId: mission2 })).json;
+    expect(t.missionId).toBe(mission2);
+    // Situé par rapport aux seules lettres de SA mission, qui n'en a aucune : la lettre de l'autre mission ne le couvre pas.
+    expect(t.rattachement.situation).toBe('aucune_lettre_applicable');
+    expect((await api('client', 'PUT', `/v1/travaux/${t.id}/mission`, { missionId: null })).statut).toBe(404); // un déposant ne voit pas les travaux
+    expect((await api('bruno', 'PUT', `/v1/travaux/${t.id}/mission`, { missionId: null })).statut).toBe(404);
+    expect((await api('chloe', 'PUT', `/v1/travaux/${t.id}/mission`, { missionId: '00000000-0000-4000-8000-000000000000' })).statut).toBe(400);
+
+    const m1 = (await api('remi', 'GET', url())).json;
+    expect(m1.temps.minutesDansPerimetre).toBe(avant.temps.minutesDansPerimetre); // les 60 minutes ne sont pas comptées ici
+    expect(m1.affectation.affectesAUneAutreMission).toBe(1);
+    expect(m1.mentions.join(' ')).toMatch(/affecté\(s\) à une autre mission/);
+    const m2 = (await api('remi', 'GET', `/v1/missions/${mission2}/rentabilite?du=2025-01-01&au=2025-12-31`)).json;
+    expect(m2.affectation.affectesACetteMission).toBe(1);
+    expect(m2.honoraires).toMatchObject({ statut: 'non_calculable', total: null }); // aucune lettre : aucun honoraire supposé
+
+    // Retrait de l'affectation : le travail redevient « non affecté », couvert par la lettre applicable du dossier.
+    const retire = (await api('chloe', 'PUT', `/v1/travaux/${t.id}/mission`, { missionId: null })).json;
+    expect(retire.missionId).toBeNull();
+    expect(retire.rattachement.situation).toBe('dans_le_perimetre');
+    expect((await api('remi', 'GET', url())).json.temps.minutesDansPerimetre).toBe(avant.temps.minutesDansPerimetre + 60);
+    // Affectation à la mission d'origine : comptée, et l'ambiguïté résiduelle porte sur les autres travaux.
+    expect((await api('chloe', 'PUT', `/v1/travaux/${t.id}/mission`, { missionId })).json.missionId).toBe(missionId);
+    const fin = (await api('remi', 'GET', url())).json;
+    expect(fin.affectation.affectesACetteMission).toBe(1);
+    expect(fin.temps.minutesDansPerimetre).toBe(avant.temps.minutesDansPerimetre + 60);
+    const journal = (await api('alice', 'GET', '/v1/audit?limite=40')).json.lignes.filter((l: any) => l.cibleId === t.id && l.action === 'travail.affecte');
+    expect(journal).toHaveLength(2); // retrait puis affectation ; la création affectée n'est pas un changement
+  });
 });

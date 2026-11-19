@@ -173,6 +173,11 @@ describe('journal d’audit', () => {
     const r = await api('alice', 'GET', '/v1/audit?limite=5');
     expect(r.statut).toBe(200);
     expect(r.json.integrite.rupture).toBeNull();
+    // Une irrégularité d'ordre n'est tolérée que si elle est consignée par l'éditeur, avec sa cause, et visible du cabinet.
+    const { premiereIrregularite, anomaliesConsignees } = r.json.integrite;
+    if (premiereIrregularite !== null) {
+      expect(anomaliesConsignees.some((a: any) => Number(premiereIrregularite) >= a.premiereLigne && Number(premiereIrregularite) <= a.derniereLigne && a.cause.length >= 30)).toBe(true);
+    }
     expect(r.json.lignes.every((l: any) => l.cabinetId === DEMO.cabinetA && l.empreinte)).toBe(true);
     expect(r.json.lignes.some((l: any) => typeof l.acteurNom === 'string')).toBe(true);
     // Pagination vers les lignes plus anciennes, sans chevauchement.

@@ -20,7 +20,10 @@ export class AuditController {
     return this.bd.avecContexte(acces, async (tx) => {
       const gestionnaire = (await tx.execute(sql`select app_est_gestionnaire() as ok`)).rows[0]?.ok;
       if (!gestionnaire) throw new ForbiddenException('Réservé aux administrateurs et associés du cabinet');
-      const rupture = (await tx.execute(sql`select journal_audit_verifier(${acces.cabinetId}::uuid) as rupture`)).rows[0]?.rupture ?? null;
+      // Vérification stricte, puis vérification tenant compte des anomalies d'enchaînement consignées par l'éditeur.
+      const v = (await tx.execute(sql`select journal_audit_verifier(${acces.cabinetId}::uuid) as stricte, journal_audit_verifier_hors_anomalies(${acces.cabinetId}::uuid) as rupture`)).rows[0];
+      const rupture = v?.rupture ?? null;
+      const anomaliesConsignees = await tx.select().from(s.anomaliesJournal).orderBy(s.anomaliesJournal.premiereLigne);
       const avant = Number(avantBrut);
       const brutes = await tx
         .select()
@@ -34,7 +37,12 @@ export class AuditController {
       const noms = ids.length ? await tx.select({ id: s.utilisateurs.id, nom: s.utilisateurs.nom }).from(s.utilisateurs).where(inArray(s.utilisateurs.id, ids)) : [];
       const parId = new Map(noms.map((n) => [n.id, n.nom]));
       return {
-        integrite: { rupture },
+        // `rupture` : première ligne incohérente NON expliquée. `premiereIrregularite` : première ligne irrégulière, expliquée ou non.
+        integrite: {
+          rupture,
+          premiereIrregularite: v?.stricte ?? null,
+          anomaliesConsignees: anomaliesConsignees.map((a) => ({ premiereLigne: a.premiereLigne, derniereLigne: a.derniereLigne, cause: a.cause, consigneeLe: a.consigneeLe })),
+        },
         lignes: page.map((l) => ({ ...l, acteurNom: l.acteurId ? (parId.get(l.acteurId) ?? null) : null })),
         // Pagination : repasser « avant » avec cette valeur pour la page suivante (plus ancienne).
         suivant: brutes.length > limite ? page[page.length - 1]!.id : null,

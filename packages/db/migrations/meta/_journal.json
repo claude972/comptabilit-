@@ -169,6 +169,20 @@
       "when": 1795078018317,
       "tag": "0023_campagne_dossiers",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1795078661218,
+      "tag": "0024_travaux_mission",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1795078944018,
+      "tag": "0025_journal_chainage",
+      "breakpoints": true
     }
   ]
 }

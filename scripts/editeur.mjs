@@ -12,6 +12,8 @@
  *   node scripts/editeur.mjs suspendre <cabinetId> "<motif>"
  *   node scripts/editeur.mjs support-ouvrir <cabinetId> <sujetOidc> <email> "<nom>" <heures (1 à 72)> "<motif>"
  *   node scripts/editeur.mjs support-fermer <cabinetId> <utilisateurId>
+ *   node scripts/editeur.mjs journal-ecarts <cabinetId>
+ *   node scripts/editeur.mjs journal-anomalie <cabinetId> <premièreLigne> <dernièreLigne> "<cause>"   (irréversible)
  *   node scripts/editeur.mjs sources
  *   node scripts/editeur.mjs surveiller "<émetteur>" "<libellé>" <url https d'un domaine officiel>
  *   node scripts/editeur.mjs evolutions [a_qualifier|verifiee|ecartee]
@@ -80,6 +82,15 @@ try {
       exiger(2, 'support-fermer <cabinetId> <utilisateurId>');
       await p.fermerAccesSupport(client, args[0], args[1]);
       console.log('Accès support fermé et habilitations retirées.');
+      break;
+    case 'journal-ecarts':
+      exiger(1, 'journal-ecarts <cabinetId>');
+      console.table(await p.ecartsJournal(client, args[0]));
+      break;
+    case 'journal-anomalie':
+      exiger(4, 'journal-anomalie <cabinetId> <premièreLigne> <dernièreLigne> "<cause>"');
+      console.log(await p.consignerAnomalieJournal(client, args[0], Number(args[1]), Number(args[2]), args[3]));
+      console.log('Anomalie d’enchaînement consignée et inscrite au journal du cabinet. Le contenu de chaque ligne reste vérifié par son empreinte.');
       break;
     case 'sources':
       await table(`select emetteur, libelle, dernier_statut, dernier_succes_le::text, coalesce(dernier_detail, '') as detail from surveillances_sources where actif order by emetteur, libelle`);

@@ -215,3 +215,40 @@ export async function fermerAccesSupport(client: pg.ClientBase, cabinetId: strin
   await client.query('delete from habilitations_dossier where cabinet_id = $1 and utilisateur_id = $2', [cabinetId, utilisateurId]);
   await client.query(`insert into journal_audit (cabinet_id, acteur_type, action, cible_type, cible_id) values ($1, 'systeme', 'support.acces_ferme', 'utilisateur', $2)`, [cabinetId, utilisateurId]);
 }
+
+/** Lignes du journal d'un cabinet dont l'empreinte ou l'enchaînement est irrégulier (diagnostic, lecture seule). */
+export async function ecartsJournal(client: pg.ClientBase, cabinetId: string): Promise<Array<{ ligne: number; empreinteValide: boolean; enchainementValide: boolean }>> {
+  const r = await client.query<{ ligne: string; empreinte_valide: boolean; enchainement_valide: boolean }>('select * from journal_audit_ecarts($1)', [cabinetId]);
+  return r.rows.map((l) => ({ ligne: Number(l.ligne), empreinteValide: l.empreinte_valide, enchainementValide: l.enchainement_valide }));
+}
+
+/**
+ * Consigne une anomalie d'ENCHAÎNEMENT du journal d'un cabinet, pour une cause établie par l'éditeur. Refusée si une
+ * ligne de la plage a une empreinte fausse (contenu altéré : cela ne se consigne pas, cela se signale), si la plage ne
+ * contient aucune irrégularité, ou si elle n'explique pas à elle seule la rupture. La consignation est inscrite au
+ * journal du cabinet, qui la voit. Irréversible (ajout seul).
+ */
+export async function consignerAnomalieJournal(client: pg.ClientBase, cabinetId: string, premiereLigne: number, derniereLigne: number, cause: string): Promise<string> {
+  if (!Number.isSafeInteger(premiereLigne) || !Number.isSafeInteger(derniereLigne) || premiereLigne > derniereLigne) throw new Error('Plage de lignes invalide');
+  if (derniereLigne - premiereLigne > 50) throw new Error('Plage trop large (50 lignes au plus) : une anomalie se consigne au plus près.');
+  if (cause.trim().length < 30) throw new Error('La cause doit être décrite précisément (30 caractères au moins).');
+  await client.query('begin');
+  try {
+    const ecarts = (await ecartsJournal(client, cabinetId)).filter((e) => e.ligne >= premiereLigne && e.ligne <= derniereLigne);
+    if (ecarts.length === 0) throw new Error('Aucune irrégularité dans cette plage : rien à consigner.');
+    if (ecarts.some((e) => !e.empreinteValide)) throw new Error('Une ligne de la plage a une empreinte fausse : son contenu a pu être altéré. Ce cas ne se consigne pas.');
+    const a = await client.query<{ id: string }>('insert into anomalies_journal (cabinet_id, premiere_ligne, derniere_ligne, cause) values ($1, $2, $3, $4) returning id', [cabinetId, premiereLigne, derniereLigne, cause.trim()]);
+    const reste = await client.query<{ r: string | null }>('select journal_audit_verifier_hors_anomalies($1) as r', [cabinetId]);
+    const restant = reste.rows[0]!.r === null ? null : Number(reste.rows[0]!.r);
+    if (restant !== null && restant <= derniereLigne + 1) throw new Error(`Cette plage n’explique pas la rupture (ligne ${restant} toujours incohérente).`);
+    await client.query(
+      `insert into journal_audit (cabinet_id, acteur_type, action, cible_type, cible_id, details) values ($1, 'systeme', 'journal.anomalie_consignee', 'anomalie_journal', $2, $3)`,
+      [cabinetId, a.rows[0]!.id, JSON.stringify({ premiereLigne, derniereLigne, cause: cause.trim() })],
+    );
+    await client.query('commit');
+    return a.rows[0]!.id;
+  } catch (e) {
+    await client.query('rollback');
+    throw e;
+  }
+}

@@ -11,7 +11,8 @@ const dateIso = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date AAAA-MM-JJ attendu
 const prestation = z.enum(Object.keys(PRESTATIONS) as [string, ...string[]]);
 const mission = z.object({ libelle: z.string().min(1).max(200), debut: dateIso.optional(), fin: dateIso.optional() });
 const lettre = z.object({ dateEffet: dateIso, contenu: schemaContenuLettre, avenantDe: uuid.optional(), documentId: uuid.optional() });
-const travail = z.object({ dateTravail: dateIso, prestation, description: z.string().min(1).max(2000), tempsObserveMinutes: z.number().int().positive().max(100_000).optional() });
+const travail = z.object({ dateTravail: dateIso, prestation, description: z.string().min(1).max(2000), tempsObserveMinutes: z.number().int().positive().max(100_000).optional(), missionId: uuid.optional() });
+const affectation = z.object({ missionId: uuid.nullable() });
 const bareme = z.object({ minutesReference: z.number().int().positive().max(100_000) });
 const cout = z.object({ coutHoraireInterneHt: schemaChaineDecimale.nullable() });
 
@@ -103,9 +104,20 @@ export class MissionsController {
     });
   }
 
-  private async lettresValidees(tx: Tx, entiteId: string): Promise<LettreDatee[]> {
+  /** Lettres du dossier ; `missionId` restreint à celles d'une mission (travail explicitement affecté). */
+  private async lettresValidees(tx: Tx, entiteId: string): Promise<Array<LettreDatee & { missionId: string }>> {
     const lettres = await tx.select().from(s.lettresMission).where(eq(s.lettresMission.entiteId, entiteId));
-    return lettres.map((l) => ({ id: l.id, dateEffet: l.dateEffet, statut: l.statut, version: l.version, contenu: l.contenu as ContenuLettre }));
+    return lettres.map((l) => ({ id: l.id, missionId: l.missionId, dateEffet: l.dateEffet, statut: l.statut, version: l.version, contenu: l.contenu as ContenuLettre }));
+  }
+
+  /** Un travail affecté à une mission est situé par rapport aux seules lettres de cette mission. */
+  private situer(lettres: Array<LettreDatee & { missionId: string }>, t: { missionId: string | null; dateTravail: string; prestation: string }) {
+    return situerTravail(t.missionId ? lettres.filter((l) => l.missionId === t.missionId) : lettres, { date: t.dateTravail, prestation: t.prestation });
+  }
+
+  private async exigerMissionDuDossier(tx: Tx, missionId: string, entiteId: string): Promise<void> {
+    const [m] = await tx.select({ id: s.missions.id }).from(s.missions).where(and(eq(s.missions.id, missionId), eq(s.missions.entiteId, entiteId)));
+    if (!m) throw new BadRequestException('Cette mission n’appartient pas à ce dossier');
   }
 
   private async estimation(tx: Tx, prestationCode: string) {
@@ -123,11 +135,12 @@ export class MissionsController {
     const d = valider(travail, corps);
     return this.bd.avecContexte(acces, async (tx) => {
       await exigerNiveau(tx, id, 'collaboration');
+      if (d.missionId) await this.exigerMissionDuDossier(tx, d.missionId, id);
       const [t] = await tx
         .insert(s.travaux)
-        .values({ cabinetId: acces.cabinetId, entiteId: id, dateTravail: d.dateTravail, prestation: d.prestation, description: d.description, tempsObserveMinutes: d.tempsObserveMinutes ?? null, auteurId: acces.utilisateurId })
+        .values({ cabinetId: acces.cabinetId, entiteId: id, missionId: d.missionId ?? null, dateTravail: d.dateTravail, prestation: d.prestation, description: d.description, tempsObserveMinutes: d.tempsObserveMinutes ?? null, auteurId: acces.utilisateurId })
         .returning();
-      return { ...t, rattachement: situerTravail(await this.lettresValidees(tx, id), { date: d.dateTravail, prestation: d.prestation }) };
+      return { ...t!, rattachement: this.situer(await this.lettresValidees(tx, id), t!) };
     });
   }
 
@@ -142,7 +155,28 @@ export class MissionsController {
       await exigerNiveau(tx, id, 'lecture');
       const lettres = await this.lettresValidees(tx, id);
       const liste = await tx.select().from(s.travaux).where(eq(s.travaux.entiteId, id)).orderBy(desc(s.travaux.dateTravail)).limit(500);
-      return liste.map((t) => ({ ...t, rattachement: situerTravail(lettres, { date: t.dateTravail, prestation: t.prestation }) }));
+      return liste.map((t) => ({ ...t, rattachement: this.situer(lettres, t) }));
+    });
+  }
+
+  @Put('travaux/:id/mission')
+  @ApiOperation({
+    summary: 'Affecter un travail à une mission du dossier, ou retirer l’affectation',
+    description: 'Affectation explicite, saisie par un membre du cabinet et journalisée. Elle n’est jamais déduite : un travail non affecté reste signalé comme tel dans la rentabilité.',
+  })
+  @ApiBody({ schema: schemaOpenApi(affectation) })
+  async affecter(@AccesCourant() acces: Acces, @Param('id') id: string, @Body() corps: unknown) {
+    exigerUuid(id);
+    const d = valider(affectation, corps);
+    return this.bd.avecContexte(acces, async (tx) => {
+      const [t] = await tx.select().from(s.travaux).where(eq(s.travaux.id, id));
+      if (!t) throw new NotFoundException('Travail introuvable');
+      await exigerNiveau(tx, t.entiteId, 'collaboration');
+      if (d.missionId) await this.exigerMissionDuDossier(tx, d.missionId, t.entiteId);
+      if (t.missionId === d.missionId) return { ...t, rattachement: this.situer(await this.lettresValidees(tx, t.entiteId), t) };
+      const [maj] = await tx.update(s.travaux).set({ missionId: d.missionId }).where(eq(s.travaux.id, id)).returning();
+      await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'travail.affecte', cibleType: 'travail', cibleId: id, entiteId: t.entiteId, details: { de: t.missionId, vers: d.missionId } });
+      return { ...maj!, rattachement: this.situer(await this.lettresValidees(tx, t.entiteId), maj!) };
     });
   }
 
@@ -159,7 +193,7 @@ export class MissionsController {
       if (!t) throw new NotFoundException('Travail introuvable');
       await exigerNiveau(tx, t.entiteId, 'collaboration');
       const lettres = await this.lettresValidees(tx, t.entiteId);
-      const situation = situerTravail(lettres, { date: t.dateTravail, prestation: t.prestation });
+      const situation = this.situer(lettres, t);
       if (situation.situation !== 'potentiellement_hors_perimetre') throw new ConflictException(situation.situation === 'dans_le_perimetre' ? 'Ce travail est dans le périmètre de la lettre applicable' : situation.motif);
       const [base] = await tx.select().from(s.lettresMission).where(eq(s.lettresMission.id, situation.lettreId));
       const contenu = base!.contenu as ContenuLettre;
@@ -233,7 +267,11 @@ export class MissionsController {
       if (!m) throw new NotFoundException('Mission introuvable');
       await exigerNiveau(tx, m.entiteId, 'revision');
       const lettres = await tx.select().from(s.lettresMission).where(eq(s.lettresMission.missionId, id));
-      const travaux = await tx.select().from(s.travaux).where(and(eq(s.travaux.entiteId, m.entiteId), sql`${s.travaux.dateTravail} between ${du}::date and ${au}::date`));
+      const tousTravaux = await tx.select().from(s.travaux).where(and(eq(s.travaux.entiteId, m.entiteId), sql`${s.travaux.dateTravail} between ${du}::date and ${au}::date`));
+      // Les travaux explicitement affectés à une AUTRE mission sont écartés ; les non affectés restent comptés et signalés.
+      const travaux = tousTravaux.filter((t) => t.missionId === null || t.missionId === id);
+      const affectesAilleurs = tousTravaux.length - travaux.length;
+      const nonAffectes = travaux.filter((t) => t.missionId === null).length;
       const autresMissions = Number((await tx.execute(sql`select count(*)::int as n from missions where entite_id = ${m.entiteId}::uuid and id <> ${id}::uuid`)).rows[0]?.n ?? 0);
       const gestionnaire = Boolean((await tx.execute(sql`select app_est_gestionnaire() as ok`)).rows[0]?.ok);
       // Le coût horaire n'est lisible que par un gestionnaire (politique de la base) : sinon il reste null.
@@ -245,8 +283,9 @@ export class MissionsController {
         coutHoraire: p?.coutHoraireInterneHt ?? null,
       });
       if (!gestionnaire) r.marge = { ...r.marge, motif: 'Le coût et la marge sont réservés aux administrateurs et associés du cabinet.' };
-      if (autresMissions > 0) r.mentions.push(`Ce dossier a ${autresMissions} autre(s) mission(s) : les travaux ne sont pas affectés à une mission, ceux hors du périmètre de celle-ci peuvent relever d’une autre.`);
-      return { mission: m, mention: 'Aide à la gestion, calculée sur les saisies du cabinet ; ni une facturation, ni une comptabilité analytique.', ...r };
+      if (affectesAilleurs > 0) r.mentions.push(`${affectesAilleurs} travail(aux) de la période, affecté(s) à une autre mission du dossier, ne sont pas comptés ici.`);
+      if (autresMissions > 0 && nonAffectes > 0) r.mentions.push(`Ce dossier a ${autresMissions} autre(s) mission(s) et ${nonAffectes} travail(aux) de la période ne sont affectés à aucune : ils sont comptés ici, mais peuvent relever d’une autre mission.`);
+      return { mission: m, affectation: { affectesACetteMission: travaux.length - nonAffectes, nonAffectes, affectesAUneAutreMission: affectesAilleurs }, mention: 'Aide à la gestion, calculée sur les saisies du cabinet ; ni une facturation, ni une comptabilité analytique.', ...r };
     });
   }
 

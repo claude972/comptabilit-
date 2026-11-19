@@ -169,6 +169,23 @@ architecture et modèle de données, décisions, OpenAPI, catalogues, matrice de
 messageries, guide de déploiement / sauvegarde / restauration, politique de conservation, registre des risques,
 estimation des coûts, liste des accès externes.
 
+## Seconde relecture : lacunes rouvertes (2026-11-19, nuit)
+
+Relecture faite pour ne pas laisser une lacune se transformer en exclusion. Ces exigences du cahier des charges étaient
+notées « limite assumée » ou absentes de la matrice ; elles sont rouvertes et traitées par lots, l'état étant recalé ici
+à mesure. Les connexions réelles restent seules à dépendre d'un accès externe.
+
+| Exigence (section) | Ce qui manquait | État |
+|---|---|---|
+| Supervision OpenTelemetry (§5) | Aucune trace émise par l'API ni le worker | En cours |
+| Fichiers volumineux en flux (§17) | Contrôles non réalisés au-delà de 500 000 lignes | En cours |
+| Isolation des traitements PDF, image et XML (§16) | Analyseurs exécutés dans le processus du worker | En cours |
+| Tiers, factures, échéances et règlements (§7) | Pas de table des tiers ni de suivi des règlements par facture | À faire |
+| Assistant sur un portefeuille autorisé (§15) | Un seul dossier à la fois | À faire |
+| Notifications discrètes sur téléphone (§8A) | Notifications internes seulement, aucune notification poussée | À faire |
+| Amélioration contrôlée à partir des corrections (§13) | Les règles ne sont proposées que par saisie humaine ; aucune proposition tirée des corrections | À faire |
+| Devenir des données à la résiliation (§16) | Documenté, mais aucune procédure exécutable | À faire, en simulation seulement : aucune purge réelle n'est activée |
+
 ## Reste réel, hors dépendances externes
 
 Liste tenue dans `plan.md`, section « Chantier du 2026-11-19 (soir) » : preuve de connexion de la passerelle, amortissements non linéaires, assistant multi-dossiers, table des tiers et suivi des règlements, traces OpenTelemetry, contrôles en flux au-delà de 500 000 lignes, notifications poussées, purge à l'issue des durées de conservation.

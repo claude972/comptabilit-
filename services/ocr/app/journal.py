@@ -3,7 +3,8 @@
 RÈGLE DE CONFIDENTIALITÉ : on ne journalise JAMAIS le texte reconnu, ni les octets des pièces,
 ni les messages d'exception des bibliothèques de décodage (ils pourraient contenir des fragments
 du fichier). Seules des métadonnées techniques sont écrites : taille, type, nombre de pages,
-durée, code de retour, nom de classe d'une exception.
+durée, code de retour, nom de classe d'une exception. Seule exception : le message d'un échec de
+CHARGEMENT des modèles, qui survient avant toute lecture de pièce.
 """
 
 from __future__ import annotations
@@ -31,6 +32,8 @@ _CHAMPS_AUTORISES = frozenset(
         "version_moteur",
         "modeles",
         "en_attente",
+        # Uniquement pour l'échec du chargement des modèles, avant toute lecture de pièce (voir main.py).
+        "message_chargement",
     }
 )
 

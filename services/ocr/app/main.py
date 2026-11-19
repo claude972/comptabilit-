@@ -72,9 +72,11 @@ def creer_application(cfg: Configuration | None = None, moteur: Moteur | None = 
                 modeles=m.modeles,
                 duree_ms=int((time.monotonic() - debut) * 1000),
             )
-        except Exception as erreur:  # noqa: BLE001 — on ne journalise que le nom de la classe
+        except Exception as erreur:  # noqa: BLE001
             etat.echec_chargement = True
-            journaliser("moteur_echec_chargement", exception=type(erreur).__name__)
+            # Au chargement, aucune pièce n'a encore été lue (seule une image blanche de contrôle est traitée) : le
+            # message de l'exception ne peut contenir aucun fragment de document, et il est indispensable au diagnostic.
+            journaliser("moteur_echec_chargement", exception=type(erreur).__name__, message_chargement=str(erreur)[-1500:])
 
     @asynccontextmanager
     async def cycle_de_vie(_: FastAPI):

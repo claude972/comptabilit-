@@ -79,19 +79,32 @@ Critères d'acceptation et résultat :
 - [x] États projetés sur la balance ajustée.
 - [ ] Génération assistée d'écritures d'inventaire ; annexe ; liasse.
 
-## Prochaines étapes proposées, par ordre de dépendance
+## Chantier du 2026-11-19 (soir) : relecture complète du cahier des charges
 
-1. Faire valider par un expert-comptable : catalogue des contrôles, table de correspondance des états, conventions d'indicateurs, convention de rentabilité.
-2. Obtenir les accès externes (`acces-externes.md`) : OAuth Google et Microsoft, jeton OVHcloud, API Légifrance, corpus réel autorisé, authentification GitHub pour alimenter le dépôt distant.
-3. Réalisé le 2026-11-19 : restitution d'un cabinet entier (D-043), pagination des rapprochements et des règles (D-044), essais de restauration isolés (D-045), format d'ancre du journal (D-046), restitution d'un dossier en flux (D-047), correspondance comptes 512 / comptes bancaires (D-048), notifications internes (D-049), outil de chiffrement des sauvegardes (D-050), CI rendue auto-explicative (D-051).
-   Réalisé ensuite, le même jour : même traitement d'un original non conforme dans les deux restitutions (D-052), suites navigateur ajoutées à la CI (D-053, non exécutées sur GitHub), notifications d'import et de constat affecté et préférences (D-054), jeu chiffré complet et restauration depuis des copies chiffrées avec clé éphémère (D-055), mesure de mémoire de la restitution sur un gros dossier.
-   Réalisé ensuite : export Keycloak dans le jeu chiffré et restauration isolée prouvée avec une clé éphémère (D-057) ; regroupement des notifications, archivage réversible, politique de rétention testée sur données temporaires seulement (D-058) ; cause du blocage de Firefox établie (D-059).
-   Réalisé ensuite : jeu de sauvegarde cohérent base + Keycloak (D-060), plafond de tas du worker et limite de volume par traitement (D-061), essai de restauration du stockage par tranches (D-062), revue des écarts ouverts (un défaut corrigé sur la rentabilité, deux écarts déjà corrigés reclassés).
-   Plus aucune lacune locale n'est en attente dans ce plan. Limites connues et assumées, non planifiées : contrôles en flux au-delà de 500 000 lignes par exercice ; horodatages de formes différentes selon les routes ; progression d'import sans total ; choix de la lettre de référence d'un avenant ; lot 5 (annexe, liasse) et assistant, qui dépendent d'une validation ou d'un accès. Le reste dépend d'une intervention extérieure : liste en tête de `acces-externes.md`.
-   Bloqué par l'extérieur : voir « En bref » dans `acces-externes.md` (journal de la CI, push, Firefox, clé des sauvegardes, ancres du journal, accès de services, corpus réel, validations, appareils réels).
-4. Lacunes dépendant d'une validation ou d'un accès : génération assistée d'écritures d'inventaire, annexe et liasse (professionnel) ; assistant et recherche vectorielle (passerelle IA).
-5. Description complète de l'infrastructure, supervision déployée (jeton OVHcloud).
-6. Essais sur appareils réels, sur Safari et sur Firefox (non lançable sur le poste actuel), et évaluation de l'extraction sur pièces réelles.
+Matrice exigence → implémentation → preuve → reste : `exigences.md`. Réalisé à cette occasion (décisions D-064 à D-072) :
+
+- [x] Invitations et ouverture d'un cabinet ; export des éléments de facturation de l'éditeur.
+- [x] Agrégation bancaire : port, contrat pivot, simulateur, écran d'état (aucun prestataire : « non connecté »).
+- [x] Veille : taille et opérations identifiées.
+- [x] Recette de tous les écrans par profil (bureau et émulation mobile) ; six écarts d'usage corrigés.
+- [x] Paquet IA, assistant documenté et tâches IA branchés ; état réel « sans IA » ; chemin « modèle » contre simulateur.
+- [x] Indexation des pièces en passages (vecteurs en attente d'un fournisseur d'embeddings).
+- [x] Lot 5 : préparation de la liasse (2050 à 2053, 2033-A/B), projet d'annexe, propositions d'écritures d'inventaire.
+- [x] Déploiement et exploitation préparés : OpenTofu, composition de production, royaume Keycloak de production, supervision, script de déploiement, guide d'exploitation.
+- [x] Documents juridiques à l'état de projet (`docs/juridique/`).
+
+Reste réalisable sans intervention extérieure, non fait (par ordre d'utilité) :
+
+1. Boutons d'interface pour le commentaire d'indicateurs, l'analyse de lettre de mission et les suggestions de rapprochement (routes livrées).
+2. Persistance de la preuve de connexion de la passerelle IA et route de vérification (inutile tant qu'aucun jeton n'existe).
+3. Fichier des immobilisations (base, mise en service, durée) pour proposer les dotations aux amortissements.
+4. Assistant sur un portefeuille de plusieurs dossiers ; recherche multi-dossiers.
+5. Table des tiers et suivi des règlements par facture (aujourd'hui : comptes auxiliaires des écritures et rapprochement bancaire).
+6. Traces OpenTelemetry dans l'API et le worker (branchement décrit dans `exploitation.md`, demande un SDK).
+7. Contrôles en flux au-delà de 500 000 lignes par exercice ; dépôt d'une archive répartie entre dossiers ; notifications poussées.
+8. Purge effective à l'issue des durées de conservation (à ne pas écrire avant que les durées soient arrêtées).
+
+Le reste dépend d'une intervention extérieure : liste en tête de `acces-externes.md`.
 
 ## État de reprise (au 2026-11-19)
 
@@ -103,4 +116,6 @@ Pour reprendre le travail sans relire l'historique :
 - **Sauvegarder et essayer une restauration** : `scripts/sauvegarder.sh` (jeu cohérent), `scripts/essai-restauration.sh`, `scripts/essai-restauration-chiffree.sh` (clé éphémère). Ces essais sortent en code 3 sur cette base : c'est attendu (voir ci-dessous).
 - **États dégradés connus de la base locale, à ne pas « réparer »** : journal d'audit du cabinet Alpha fictif non intègre aux lignes 7603-7604 (D-038) ; un jeu de sauvegarde interrompu `comtaple-20261119-123716` (D-060) ; neuf sauvegardes à l'ancien format ; un dossier vide `~/Library/Application Support/Firefox` (D-059).
 - **Données d'essai volumineuses ajoutées** : cabinet Bêta, 200 dossiers « Mesure … » et un dossier « Mesure restitution … » (603 Mo d'originaux, plusieurs archives de 576 Mo) ; cabinet Alpha, deux archives de restitution de 359 Mo ; nombreux cabinets et dossiers d'essai créés par les parcours. Le stockage local sauvegardé pèse environ 8 Go.
-- **Rien n'est en attente côté local.** Ce qui reste exige une intervention extérieure : `acces-externes.md`, section « En bref ».
+- **Reste local connu** : liste ci-dessus (« Reste réalisable sans intervention extérieure »). Ce qui exige une intervention extérieure : `acces-externes.md`, section « En bref ».
+- **IA** : aucune n'est connectée ; l'assistant répond « sans IA ». Ne jamais activer un jeton sans les vérifications de `packages/ia/docs/passerelle.md` § 7.
+- **Migrations** : 0000 à 0035 ; les tests de base les rejouent toutes sur une base neuve.

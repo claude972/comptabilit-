@@ -49,7 +49,7 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (quatri
 | Extraction de factures : PDF à couche texte | En attente de validation | Règles prudentes qui s'abstiennent ; qualité jamais mesurée sur des pièces réelles |
 | Extraction de factures : Factur-X, CII, UBL | En attente de validation | Chemins recoupés avec des exemples publics ; aucune facture Factur-X réelle testée ; spécification officielle non consultée |
 | OCR local (PaddleOCR) | En attente de validation | Environ 4 s par page en local ; pages pivotées sans EXIF mal lues ; aucune photo réelle testée |
-| Proposition IA de type de pièce et de dossier | Non implémenté | Passerelle IA non connectée |
+| Proposition de classement d'une pièce (type et dossier) | Partiel | Route et bouton sur la page de la pièce ; SANS IA aujourd'hui : repli déterministe étiqueté (rattachement par indice exact, type laissé « à qualifier »). Rien n'est appliqué à la pièce sans action humaine. Chemin « modèle » testé au niveau du paquet contre SIMULATEUR seulement |
 | Revue d'une pièce : correction versionnée, validation par un réviseur | Testé | — |
 | Connecteur Gmail | En attente de connexion | Bibliothèque testée contre simulateur ; branchement dans l'application : voir « Messagerie » ci-dessous |
 | Connecteur Microsoft 365 | En attente de connexion | Idem ; boîtes partagées sans notifications (delta périodique) |
@@ -83,7 +83,7 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (quatri
 | CSV ambigu : abstention, aperçu du fichier, profil confirmé par un humain | Testé | — |
 | Rapprochement banque ↔ comptabilité (exact, groupé, partiel, compensation, tolérance) | En attente de validation | Propositions seulement ; appariements par somme parfois fortuits sur données dégradées (signalés) ; aucune écriture ni lettrage produit |
 | Validation et rejet des rapprochements, obsolescence quand les données changent | Testé | — |
-| Suggestions IA de rapprochement | Non implémenté | La vérification arithmétique d'une suggestion existe dans le moteur ; aucune IA |
+| Suggestions IA de rapprochement | En attente de connexion | Route livrée, vérification arithmétique par le moteur branchée ; sans IA : « IA indisponible », aucun repli. Jamais exercée avec une vraie suggestion ; pas de bouton à l'écran |
 | Contrôle de rapprochement bancaire `TRE-003` alimenté par les relevés | Testé | S'abstient si plusieurs comptes bancaires ne peuvent pas être associés aux comptes 512 (pas d'écran de correspondance) |
 | Cohérence entre exercices `CLO-002` alimentée par l'exercice précédent | Testé | Exercé de bout en bout avec deux exercices importés (fichiers synthétiques indépendants : le contrôle relève l'écart de reprise) ; pas de jeu où les à-nouveaux concordent |
 | Contrôles immobilisations, social, césure, TVA déductible | En attente de validation | — |
@@ -110,14 +110,17 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (quatri
 | Évolutions qualifiées par une personne (résumé, dates, conditions, critères) | En attente de validation | Opération de l'éditeur par provisionnement ; aucune évolution réelle n'a été qualifiée (seulement des évolutions d'essai fictives, retirées) |
 | Applicabilité par dossier, expliquée ; « à confirmer » si une caractéristique manque | Testé | Critères : territoire, régime, forme, NAF, référentiel, exercices, taille (chiffre d'affaires, total du bilan, effectif saisi) et opérations repérées dans les comptes (D-068). Taille tirée des écritures importées, avant inventaire ; une opération repérée est un indice comptable |
 | Suivi d'une évolution par dossier | Testé | — |
-| Recherche textuelle autorisée (pièces, écritures, constats) | Testé | Plein texte français ; pas de recherche vectorielle (pgvector inutilisé) ; portefeuille multi-dossiers non couvert |
-| Assistant documenté | Non implémenté | Dépend de la passerelle IA, non connectée |
+| Recherche textuelle autorisée (pièces, écritures, constats) | Testé | Plein texte français, par dossier ; portefeuille multi-dossiers non couvert. Recherche vectorielle : passages indexés par le worker, vecteurs NULL tant qu'aucun fournisseur d'embeddings n'est connecté ; fusion texte + vecteur testée avec des vecteurs SIMULÉS seulement |
+| Assistant documenté — mode sans IA | Testé | API sur pile réelle, navigateur simulé et réel. Habilitations vérifiées avant toute recherche, citations vers les vraies pièces, écritures et constats, période et périmètre affichés, abstention. Recherche par mots-clés, sans compréhension de la question ; pas de rédaction ; un seul dossier à la fois (pas de portefeuille) ; limite de débit en mémoire du processus |
+| Assistant documenté — rédaction par un modèle | En attente de connexion | Orchestration et garde-fous (fonctions métier en liste blanche, citations et chiffres vérifiés par code, refus d'un modèle manipulé) testés contre le SIMULATEUR avec les ports réels sous RLS : cela ne dit rien d'un modèle réel. Aucun jeton, aucun appel réel jamais fait |
+| Passerelle IA unique, traces sans contenu, mesures pour les gestionnaires | En attente de connexion | Statut réel : « non connecté ». Natures « réel », « simulateur » et « sans IA » distinguées. Preuve de connexion non persistée et aucune route de vérification : avec un jeton, le statut resterait « configuré, non vérifié » et aucun modèle ne serait sollicité. Coût non estimé (aucun tarif configuré) |
+| Explication d'un constat, commentaire d'indicateurs | Partiel | Sans IA : message du moteur ou gabarit, étiquetés. Bouton sur la page du constat ; pas de bouton pour le commentaire d'indicateurs |
 
 ## Lot 4 — Missions et performance
 
 | Fonctionnalité | État | Limites |
 |---|---|---|
-| Missions, lettres et avenants structurés (projet → validée), lettre signée jointe | Testé | Contenu SAISI par le cabinet : aucune analyse automatique d'une lettre existante |
+| Missions, lettres et avenants structurés (projet → validée), lettre signée jointe | Testé | Contenu SAISI par le cabinet. Analyse automatique d'une lettre existante : route livrée (citations exactes exigées, résultat = projet jamais appliqué), « IA indisponible » sans modèle, pas de bouton à l'écran |
 | Rattachement des travaux à la lettre applicable à leur date, hors-périmètre signalé | En attente de validation | Référentiel de prestations interne ; signalement, pas conclusion contractuelle |
 | Projet d'avenant avec estimation de temps sur base nommée | Testé | Honoraires de l'avenant à compléter par le cabinet ; explication par gabarit, sans IA |
 | Registre des conseils : validation, autorisation d'envoi, faits constatés distincts, pièces jointes | Testé | Le logiciel n'envoie rien ; les faits sont saisis avec justificatif |
@@ -169,7 +172,7 @@ Le territoire fiscal est une donnée explicite du dossier. Hors métropole, ou t
 | 6 | Notification mail répétée ou manquée | Testé contre simulateur de messagerie uniquement |
 | 7 | Jeton mail révoqué | Testé contre simulateur de messagerie uniquement |
 | 8 | Accès à un autre cabinet ou dossier | Testé (base, API, interface) |
-| 9 | Pièce contenant des instructions malveillantes | Testé — sachant qu'aucune IA ne lit les pièces à ce jour |
+| 9 | Pièce contenant des instructions malveillantes | Testé : restituée comme donnée par l'assistant sans IA ; avec un modèle SIMULÉ jouant un modèle manipulé, les garde-fous refusent et tracent. Aucun modèle réel n'a lu de pièce |
 | 10 | Restauration après incident | Testé en local : base, stockage objet et Keycloak restaurés dans des instances isolées et vérifiés ; limites dans `deploiement.md` |
 
 Environnements réellement utilisés : Chromium (ordinateur et émulation Pixel 7) et WebKit (ordinateur et émulation iPhone 15, parcours sur pile réelle seulement) sur macOS. WebKit est le moteur de Safari, pas Safari. Firefox ne peut pas être lancé par l'agent de développement sur le poste (D-059) : sa suite est exécutée, et réussie, par l'intégration continue (D-063). Aucun appareil réel, aucun lecteur d'écran.

@@ -1,7 +1,7 @@
 # Matrice des exigences — exigence → implémentation → preuve → reste réel
 
 Relecture complète du cahier des charges initial, section par section, faite le 2026-11-19 après la première intégration
-continue entièrement réussie. Ce document ne remplace pas `couverture.md` (état fonctionnalité par fonctionnalité) : il
+continue entièrement réussie, et recalée sur l'état réel en fin de chantier (décisions D-064 à D-072). Ce document ne remplace pas `couverture.md` (état fonctionnalité par fonctionnalité) : il
 part des EXIGENCES et dit, pour chacune, où elle est réalisée, par quoi c'est prouvé, et ce qui reste réellement.
 
 Lecture des colonnes :
@@ -16,7 +16,7 @@ Lecture des colonnes :
 
 | Exigence | Implémentation | Preuve | Reste réel |
 |---|---|---|---|
-| Hypothèses et décisions consignées | `docs/decisions.md` (D-001 → D-07x) | Document | — |
+| Hypothèses et décisions consignées | `docs/decisions.md` (D-001 → D-072) | Document | — |
 | Dépôt distant autorisé uniquement | `origin` = dépôt de l'utilisateur | `git remote -v` | — |
 | Simulé jamais présenté comme réel | Statuts `non_connecte` / `simule` ; `GET v1/integrations` | Tests API « intégrations », parcours réel messagerie | — |
 | Sans clé : adaptateur réel + simulateur | Mail (Gmail, Microsoft), IA (`@comtaple/ia`), agrégation bancaire (port) | Suites mail (57) et IA | Connexions réelles **(externe)** |
@@ -34,10 +34,10 @@ Lecture des colonnes :
 | Exigence | Implémentation | Preuve | Reste réel |
 |---|---|---|---|
 | Stack imposée (TypeScript strict, Next.js, NestJS, PostgreSQL/Drizzle, Redis/BullMQ, Keycloak, S3, PaddleOCR, ClamAV, Playwright, Vitest, Compose, OpenTofu) | Monorepo | CI réussie | TypeScript 6 au lieu de 7 (D-003) ; S3 local SeaweedFS (D-005) |
-| shadcn/ui | Composants accessibles maison sur Tailwind, sans la bibliothèque shadcn/ui | — | Écart assumé, consigné dans `decisions.md` |
+| shadcn/ui | Composants accessibles écrits pour le projet sur Tailwind, sans la bibliothèque shadcn/ui | — | Écart assumé (table des écarts de `decisions.md`) |
 | Recherche textuelle PostgreSQL **et pgvector** | Plein texte en place ; stockage vectoriel et recherche hybride préparés | Tests | Embeddings réels **(externe : jeton IA)** |
 | Passerelle IA unique, modèles figés | `@comtaple/ia` | Tests contre simulateur | Activation **(externe)** : jeton, vérifications contractuelles, évaluation sur corpus métier |
-| Supervision OpenTelemetry, Prometheus, Grafana | `infra/supervision/` | Essai local | Déploiement réel **(externe)** |
+| Supervision OpenTelemetry, Prometheus, Grafana | `infra/supervision/` (Prometheus, Grafana, collecteur) | Essai local | Traces non émises par l'API et le worker (SDK à ajouter) ; déploiement réel **(externe)** |
 | Infrastructure OVHcloud décrite par OpenTofu et scripts | `infra/opentofu/`, `infra/production/`, `scripts/deployer.sh` | `tofu validate`, `compose config`, mode à blanc | Jamais appliqué **(externe : compte, dépense)** |
 | Montants jamais en flottant ; chaînes décimales dans les API | `montant.ts`, schémas Zod | Tests moteur | — |
 
@@ -77,14 +77,14 @@ Lecture des colonnes :
 | Factures PDF/images, Factur-X, UBL, CII | Extraction structurée puis texte puis OCR | Tests | Pièces réelles **(externe)** |
 | Relevés CAMT.053, OFX, CSV | Moteur + worker | Tests | Relevés réels **(externe)** |
 | Lots : file durable, parallélisme limité, progression, reprise, annulation, rapport, idempotence, versions | Campagnes d'import | Tests + mesure 200 dossiers | — |
-| IA : proposition de type de pièce et de dossier, incertitude → à qualifier | Tâche `classerPiece`, proposition stockée avec preuves | Tests contre simulateur | Modèle réel **(externe)** |
+| IA : proposition de type de pièce et de dossier, incertitude → à qualifier | Tâche `classerPiece`, route et bouton ; sans IA : repli déterministe étiqueté | Tests API (repli) ; modèle contre simulateur au niveau du paquet | Modèle réel **(externe)** |
 | Adaptateur d'agrégation bancaire | Port, simulateur, statut « non connecté » | Tests | Prestataire agréé à choisir et contrat **(externe)** |
 
 ## §9 — Contrôles, rapprochements, dossier de révision
 
 | Exigence | Implémentation | Preuve | Reste réel |
 |---|---|---|---|
-| Rapprochements : exact, règles explicites, suggestions IA vérifiées arithmétiquement | Niveaux 1 et 2 ; niveau 3 par `suggererRapprochements` + vérification du moteur | Tests | Modèle réel **(externe)** |
+| Rapprochements : exact, règles explicites, suggestions IA vérifiées arithmétiquement | Niveaux 1 et 2 ; niveau 3 : route `suggererRapprochements` + vérification du moteur branchée | Tests (niveaux 1 et 2 ; niveau 3 : « IA indisponible ») | Bouton d'interface ; modèle réel **(externe)** |
 | Bibliothèque de contrôles par cycle, avec fiche complète | 19 contrôles, `catalogue-controles.md` | 465 tests moteur | Validation professionnelle **(externe)** |
 | Six statuts distincts ; absence de données jamais favorable | `sans_anomalie`, `constat`, `non_applicable`, `non_realise`, `erreur` + « anomalie confirmée » par décision de revue | Tests | — |
 | Revue humaine (affecter, commenter, demander une pièce, accepter, corriger, rejeter, clôturer avec motif) | API + écrans | Tests API et navigateur | — |
@@ -113,7 +113,7 @@ Lecture des colonnes :
 
 | Exigence | Implémentation | Preuve | Reste réel |
 |---|---|---|---|
-| Analyse des lettres et avenants (périmètre, durée, honoraires, obligations, livrables, mandats, révision) | Saisie structurée + tâche IA `analyserLettreMission` (citations exactes exigées) | Tests contre simulateur | Modèle réel **(externe)** |
+| Analyse des lettres et avenants (périmètre, durée, honoraires, obligations, livrables, mandats, révision) | Saisie structurée + route `analyserLettreMission` (citations exactes exigées, projet jamais appliqué) | Tests (saisie ; route : « IA indisponible ») | Bouton d'interface ; modèle réel **(externe)** |
 | Rattachement des travaux, hors périmètre, projet d'avenant, estimations par le moteur | Moteur + API + écrans | Tests | Validation **(externe)** |
 | Registre des conseils, faits d'envoi distingués | API + écrans | Tests | — |
 
@@ -129,7 +129,7 @@ Lecture des colonnes :
 | Exigence | Implémentation | Preuve | Reste réel |
 |---|---|---|---|
 | Indicateurs du dossier (SIG, BFR, délais, trésorerie, évolutions, signaux) | 25 indicateurs | Tests | Validation **(externe)** |
-| Commentaire rédigé par l'IA à partir des résultats | Tâche `commenterIndicateurs` (chiffres vérifiés) | Tests contre simulateur | Modèle réel **(externe)** |
+| Commentaire rédigé par l'IA à partir des résultats | Tâche `commenterIndicateurs` (chiffres vérifiés), route ; sans IA : gabarit étiqueté | Tests API (repli) | Bouton d'interface ; modèle réel **(externe)** |
 | Indicateurs du cabinet (temps, rentabilité, volumes, délais, charge, anomalies) | API + écrans | Tests | — |
 | Indicateurs du logiciel (imports, rapprochements, propositions, abstentions, coût) | Indicateurs d'activité + mesures de la passerelle IA | Tests | Qualité d'extraction et faux positifs : exigent un corpus évalué **(externe)** |
 
@@ -137,7 +137,7 @@ Lecture des colonnes :
 
 | Exigence | Implémentation | Preuve | Reste réel |
 |---|---|---|---|
-| Questions sur un dossier autorisé ; habilitations avant recherche ; citations ; période et périmètre ; données manquantes ; fait/calcul/hypothèse/interprétation ; abstention ; fonctions métier autorisées seulement ; pas de SQL libre ; contenus non fiables | `@comtaple/ia` (orchestration et garde-fous), API `v1/assistant`, écran | Tests contre simulateur, parcours | Rédaction par le modèle réel **(externe)** ; d'ici là, mode « sans IA » étiqueté |
+| Questions sur un dossier autorisé ; habilitations avant recherche ; citations ; période et périmètre ; données manquantes ; fait/calcul/hypothèse/interprétation ; abstention ; fonctions métier autorisées seulement ; pas de SQL libre ; contenus non fiables | `@comtaple/ia` (orchestration et garde-fous), routes `v1/dossiers/:id/assistant/questions`, onglet « Assistant » | 24 parcours API (sans IA sur pile réelle ; modèle contre simulateur avec la base réelle), navigateur simulé et réel | Portefeuille de plusieurs dossiers : non couvert ; rédaction par le modèle réel **(externe)** ; d'ici là, mode « sans IA » étiqueté |
 
 ## §16 — Socle SaaS, sécurité, conservation
 
@@ -171,4 +171,4 @@ estimation des coûts, liste des accès externes.
 
 ## Reste réel, hors dépendances externes
 
-Tenu à jour en fin de chantier dans `plan.md` (« État de reprise »).
+Liste tenue dans `plan.md`, section « Chantier du 2026-11-19 (soir) » : boutons d'interface de trois tâches IA, preuve de connexion de la passerelle, fichier des immobilisations, assistant multi-dossiers, table des tiers et suivi des règlements, traces OpenTelemetry, contrôles en flux au-delà de 500 000 lignes, notifications poussées, purge à l'issue des durées de conservation.

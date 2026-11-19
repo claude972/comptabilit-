@@ -9,6 +9,9 @@ Liste courte des seuls obstacles que le développement local ne peut pas lever ;
 1. ~~Journal de la CI en échec~~ — levé le 2026-11-19 : causes établies par annotations publiques et corrigées, CI réussie (D-063). Un jeton de lecture des journaux resterait utile (nombres de tests, détail d'un futur échec), sans être bloquant.
 2. ~~Push des commits locaux~~ — levé le 2026-11-19 : accord de l'utilisateur, dépôt distant à jour.
 3. ~~Suite Firefox~~ — levé le 2026-11-19 : exécutée et réussie en CI (D-063). Elle ne peut toujours pas être lancée par l'agent sur le poste (D-059).
+3 bis. **Activation de l'IA** — jeton OVHcloud AI Endpoints, vérifications contractuelles préalables (région, conservation, non-réutilisation), puis évaluation sur corpus réel autorisé ; d'ici là l'assistant fonctionne « sans IA ».
+3 ter. **Prestataire d'agrégation bancaire** — à choisir et contracter (statut réglementaire à vérifier) ; d'ici là, import de fichiers bancaires seulement.
+3 quater. **Formulaires fiscaux du millésime** — les codes de cases n'ont pas pu être lus (site des impôts en maintenance le 2026-11-19) : à relire sur impots.gouv.fr, puis à faire valider.
 4. **Garde de la clé privée des sauvegardes** (ligne 16) — décider où la conserver ; d'ici là, les sauvegardes locales restent en clair.
 5. **Destination indépendante des ancres du journal d'audit** (ligne 15) — sans elle, aucun ancrage effectif.
 6. **Accès de services** (lignes 2 à 5 et 11) — applications OAuth Google et Microsoft, jeton OVHcloud (IA et infrastructure), API Légifrance.

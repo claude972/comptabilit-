@@ -9,11 +9,11 @@ Le logiciel ne se substitue ni à un expert-comptable ni à un avocat. Ce regist
 | V1 | Chaque contrôle du catalogue : objectif, logique, seuils par défaut, formulation des constats, gravité | Expert-comptable | En attente |
 | V2 | Interprétation du format FEC (sens `+1`/`-1` en variante Montant/Sens, contrôles de conformité non implémentés) | Expert-comptable, sur fichiers réels | En attente |
 | V3 | Référence et seuils fiscaux utilisés par les contrôles de TVA et d'immobilisations | Expert-comptable / fiscaliste | En attente |
-| V4 | Qualification des rôles RGPD par finalité, contrat de sous-traitance, liste des sous-traitants, registre des traitements | DPO / avocat | Documents non rédigés |
-| V5 | Analyse de nécessité d'une AIPD | DPO | Non réalisée |
-| V6 | Analyse des obligations du règlement européen sur l'IA | Avocat | Non réalisée |
-| V7 | Secret professionnel, responsabilités contractuelles, conditions générales | Avocat | Non réalisé |
-| V8 | Durées de conservation par catégorie et leur fondement | Avocat / expert-comptable | Non définies (voir `conservation.md`) |
+| V4 | Qualification des rôles RGPD par finalité, contrat de sous-traitance, liste des sous-traitants, registre des traitements | DPO / avocat | Rédigés à l'état de PROJET le 2026-11-19 (dossier `juridique/` : `roles-rgpd.md`, `contrat-sous-traitance-projet.md`, `sous-traitants.md`, `registre-traitements.md`, `gestion-des-droits.md`, `procedure-incident.md` ; index dans `juridique/README.md`) ; aucune validation ; aucun sous-traitant contracté |
+| V5 | Analyse de nécessité d'une AIPD | DPO | Projet rédigé le 2026-11-19 (`juridique/analyse-aipd.md`) : AIPD proposée avant mise en service et au plus tard avant l'activation de l'IA ; conclusion non validée ; aucune AIPD réalisée |
+| V6 | Analyse des obligations du règlement européen sur l'IA | Avocat | Projet rédigé le 2026-11-19 (`juridique/analyse-reglement-ia.md`), tenant compte du règlement (UE) 2026/1744 : classification proposée hors haut risque, article 50 à mettre en œuvre ; non validé |
+| V7 | Secret professionnel, responsabilités contractuelles, conditions générales | Avocat | Points d'attention et clauses à prévoir rédigés à l'état de PROJET le 2026-11-19 (`juridique/secret-professionnel-responsabilites.md`) ; conditions générales et politique de confidentialité non rédigées ; validation attendue |
+| V8 | Durées de conservation par catégorie et leur fondement | Avocat / expert-comptable | Durées PROPOSÉES avec leur fondement le 2026-11-19 (`conservation.md`) ; plusieurs références non revérifiées sur Légifrance ; rien d'arrêté ni d'appliqué ; validation attendue |
 | V9 | Autorisation de mise en production | Éditeur | Non demandée |
 | V11 | Table de correspondance comptes → rubriques des projets de bilan et de compte de résultat ; conventions des indicateurs financiers | Expert-comptable | En attente |
 | V12 | Référentiel de prestations et formulation des signalements « hors périmètre » | Expert-comptable | En attente |

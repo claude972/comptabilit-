@@ -85,6 +85,13 @@
       "when": 1795069491918,
       "tag": "0011_regles_obsolescence",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1795069618333,
+      "tag": "0012_restitutions",
+      "breakpoints": true
     }
   ]
 }

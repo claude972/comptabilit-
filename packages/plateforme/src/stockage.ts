@@ -124,4 +124,5 @@ export const cles = {
   original: (cabinetId: string, sha256: string) => `cabinets/${cabinetId}/originaux/${sha256.slice(0, 2)}/${sha256}`,
   derive: (cabinetId: string, fichierId: string, nom: string) => `cabinets/${cabinetId}/derives/${fichierId}/${nom}`,
   export: (cabinetId: string, nom: string) => `cabinets/${cabinetId}/exports/${nom}`,
+  restitution: (cabinetId: string, id: string) => `cabinets/${cabinetId}/restitutions/${id}.zip`,
 };

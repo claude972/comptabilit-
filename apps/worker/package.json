@@ -16,10 +16,12 @@
     "@comtaple/plateforme": "workspace:*",
     "bullmq": "6.7.7",
     "pdfjs-dist": "6.5.438",
-    "playwright": "1.65.1"
+    "playwright": "1.65.1",
+    "yazl": "3.3.1"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@types/yazl": "3.3.1",
     "typescript": "6.0.3",
     "vitest": "5.1.1"
   }

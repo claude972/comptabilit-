@@ -611,6 +611,23 @@ export const exportsRevision = pgTable('exports_revision', {
   termineLe: horodatage('termine_le'),
 });
 
+/** Export de restitution complet d'un dossier (originaux + données + décisions), archive ZIP avec manifeste d'empreintes. */
+export const restitutions = pgTable('restitutions', {
+  id: id(),
+  cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+  entiteId: uuid('entite_id').notNull().references(() => entites.id),
+  statut: statutLot('statut').notNull().default('en_attente'),
+  cleArchive: text('cle_archive'),
+  sha256: text('sha256'),
+  taille: bigint('taille', { mode: 'number' }),
+  /** Résumé du contenu : nombre d'éléments par catégorie, originaux exclus et pourquoi. */
+  resume: jsonb('resume'),
+  erreur: text('erreur'),
+  demandePar: uuid('demande_par').references(() => utilisateurs.id),
+  creeLe: creeLe(),
+  termineLe: horodatage('termine_le'),
+});
+
 /** Décisions et validations humaines : toujours rattachées à une version déterminée de la cible. */
 export const decisions = pgTable('decisions', {
   id: id(),

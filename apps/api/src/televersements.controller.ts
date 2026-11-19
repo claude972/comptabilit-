@@ -28,7 +28,8 @@ import { schemaOpenApi, uuid, valider } from './validation.js';
 
 const ouverture = z.object({
   entiteId: uuid,
-  nomFichier: z.string().min(1).max(255),
+  // Les caractères de contrôle (dont l'octet nul, refusé par PostgreSQL) n'ont rien à faire dans un nom de fichier.
+  nomFichier: z.string().min(1).max(255).regex(/^[^\u0000-\u001f\u007f]+$/, 'caractères de contrôle interdits'),
   taille: z.number().int().positive(),
   sha256: z.string().regex(/^[0-9a-f]{64}$/, 'empreinte SHA-256 hexadécimale attendue'),
   typeMime: z.string().max(100).optional(),

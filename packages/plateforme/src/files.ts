@@ -24,6 +24,10 @@ export interface TacheControles {
   cabinetId: string;
   executionId: string;
 }
+export interface TacheRestitution {
+  cabinetId: string;
+  restitutionId: string;
+}
 export interface TacheImportReleve {
   cabinetId: string;
   lotImportId: string;
@@ -80,6 +84,9 @@ export class Files {
   }
   executerControles(t: TacheControles) {
     return this.comptabilite.add('controles', t, { jobId: `ctl-${t.executionId}` });
+  }
+  genererRestitution(t: TacheRestitution) {
+    return this.exports.add('restitution', t, { jobId: `res-${t.restitutionId}` });
   }
   importerReleve(t: TacheImportReleve) {
     return this.comptabilite.add('importer-releve', t, { jobId: `rel-${t.lotImportId}-${Date.now()}` });

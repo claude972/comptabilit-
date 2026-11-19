@@ -3355,6 +3355,10 @@
                     "type": "integer",
                     "exclusiveMinimum": 0,
                     "maximum": 100000
+                  },
+                  "missionId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
                   }
                 },
                 "required": [
@@ -3406,6 +3410,63 @@
           }
         ],
         "summary": "Travaux d’un dossier, rattachés à la lettre applicable à leur date, avec signalement des travaux potentiellement hors périmètre",
+        "tags": [
+          "Missions"
+        ]
+      }
+    },
+    "/v1/travaux/{id}/mission": {
+      "put": {
+        "description": "Affectation explicite, saisie par un membre du cabinet et journalisée. Elle n’est jamais déduite : un travail non affecté reste signalé comme tel dans la rentabilité.",
+        "operationId": "MissionsController_affecter",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "missionId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "missionId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Affecter un travail à une mission du dossier, ou retirer l’affectation",
         "tags": [
           "Missions"
         ]

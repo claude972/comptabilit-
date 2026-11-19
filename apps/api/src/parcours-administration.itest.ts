@@ -143,3 +143,42 @@ describe('indicateurs du cabinet', () => {
     expect((await api('alice', 'GET', '/v1/cabinet/indicateurs?du=2026-13-45')).statut).toBe(400);
   });
 });
+
+describe('membres du cabinet', () => {
+  const membre = (qui: string, id: string, corps: unknown) => api(qui, 'PATCH', `/v1/cabinet/membres/${id}`, corps);
+
+  it('garde-fous : gestionnaires seulement, pas sa propre appartenance, toujours un administrateur actif', async () => {
+    expect((await membre('remi', DEMO.chloe, { role: 'reviseur' })).statut).toBe(403);
+    expect((await membre('alice', DEMO.alice, { actif: false })).statut).toBe(403);
+    expect((await membre('alice', DEMO.bruno, { role: 'collaborateur' })).statut).toBe(404); // autre cabinet
+    expect((await membre('alice', DEMO.chloe, {})).statut).toBe(400);
+    // Bruno est le seul administrateur du cabinet Bêta : personne d'autre que lui ne peut l'y modifier, et lui-même non plus.
+    expect((await membre('bruno', DEMO.bruno, { role: 'collaborateur' })).statut).toBe(403);
+  });
+
+  it('une désactivation ferme immédiatement tous les accès ; la réactivation les rétablit', async () => {
+    expect((await api('chloe', 'GET', '/v1/dossiers')).statut).toBe(200);
+    expect((await membre('alice', DEMO.chloe, { actif: false })).json.actif).toBe(false);
+    expect((await api('chloe', 'GET', '/v1/dossiers')).statut).toBe(403); // jeton encore valide, accès fermé
+    expect((await api('chloe', 'GET', `/v1/documents?entiteId=${DEMO.dupain}`)).statut).toBe(403);
+    expect((await membre('alice', DEMO.chloe, { actif: true })).json.actif).toBe(true);
+    expect((await api('chloe', 'GET', `/v1/documents?entiteId=${DEMO.dupain}`)).statut).toBe(200);
+  });
+
+  it('un changement de rôle retire les habilitations au-dessus du nouveau plafond, sans les rabaisser en silence', async () => {
+    const d = await api('alice', 'POST', '/v1/dossiers', { raisonSociale: `Essai rôles ${SEL} (fictif)`, territoireFiscal: 'metropole' });
+    expect((await api('alice', 'PUT', `/v1/dossiers/${d.json.id}/habilitations/${DEMO.remi}`, { niveau: 'revision' })).statut).toBe(200);
+    const r = await membre('alice', DEMO.remi, { role: 'collaborateur' });
+    expect(r.json.role).toBe('collaborateur');
+    expect(r.json.habilitationsRetirees).toBeGreaterThanOrEqual(1); // « révision » dépasse le plafond d'un collaborateur
+    expect((await api('remi', 'GET', `/v1/dossiers/${d.json.id}`)).statut).toBe(404);
+    // Remise en état des comptes de démonstration : rôle et habilitations de révision d'origine.
+    expect((await membre('alice', DEMO.remi, { role: 'reviseur' })).json.role).toBe('reviseur');
+    for (const dossier of [DEMO.dupain, DEMO.martin, DEMO.bellevue]) {
+      expect((await api('alice', 'PUT', `/v1/dossiers/${dossier}/habilitations/${DEMO.remi}`, { niveau: 'revision' })).statut).toBe(200);
+    }
+    expect((await api('remi', 'GET', `/v1/dossiers/${DEMO.martin}/exercices`)).statut).toBe(200);
+    const audit = (await api('alice', 'GET', '/v1/audit?limite=40')).json.lignes.filter((l: any) => l.action === 'membre.modifie' && l.cibleId === DEMO.remi);
+    expect(audit[audit.length - 1].details).toMatchObject({ roleAvant: 'reviseur', roleApres: 'collaborateur' });
+  });
+});

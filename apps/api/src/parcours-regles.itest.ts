@@ -157,3 +157,26 @@ describe('états de travail et indicateurs du dossier', () => {
     expect(cat.json.every((d: any) => d.formule && d.convention && d.regleDonneeManquante && d.source)).toBe(true);
   });
 });
+
+describe('cohérence entre exercices (CLO-002) avec deux exercices importés', () => {
+  it('le contrôle est réalisé dès que l’exercice précédent a des données actives, et l’exercice N-1 alimente les indicateurs', async () => {
+    const avant = (await api('remi', 'GET', `/v1/exercices/${exerciceId}/revue`)).json.resultats.find((x: any) => x.controleId === 'CLO-002');
+    expect(avant.statut).toBe('non_realise'); // pas encore d'exercice précédent
+    const ex2024 = (await api('chloe', 'POST', `/v1/dossiers/${entiteId}/exercices`, { debut: '2024-01-01', fin: '2024-12-31' })).json.id;
+    const fec2024 = genererFecSynthetique({ exercice: { debut: '2024-01-01', fin: '2024-12-31' }, nbEcritures: 200, graine: Number.parseInt(SEL.slice(0, 6), 16) + 99 });
+    const d = await deposer('chloe', entiteId, Buffer.from(fec2024.contenu), { usage: 'fec', exerciceId: ex2024, statutDonnees: 'fec' }, fec2024.nomFichier);
+    await attendreLot('chloe', d.fin.json.lotImportId);
+    const lance = await api('remi', 'POST', `/v1/exercices/${exerciceId}/controles`);
+    const revue = await attendre(
+      () => api('remi', 'GET', `/v1/exercices/${exerciceId}/revue`),
+      (x) => x.json?.execution?.id === lance.json.id && x.json.execution.statut === 'termine',
+    );
+    const clo = revue.json.resultats.find((x: any) => x.controleId === 'CLO-002');
+    // Les deux fichiers synthétiques sont indépendants : la reprise des à-nouveaux ne concorde pas, et le contrôle le voit.
+    expect(clo.statut, `motif : ${clo.motif}`).not.toBe('non_realise');
+    expect(['constat', 'sans_anomalie']).toContain(clo.statut);
+    const ind = await api('remi', 'GET', `/v1/exercices/${exerciceId}/indicateurs`);
+    expect(ind.json.donnees.exercicePrecedentFourni).toBe(true);
+    expect(ind.json.indicateurs.some((i: any) => i.precedent && i.precedent.valeur !== null)).toBe(true);
+  });
+});

@@ -19,6 +19,7 @@ const dossier = z.object({
 });
 const exercice = z.object({ debut: dateIso, fin: dateIso }).refine((e) => e.debut < e.fin, 'la fin doit suivre le début');
 const habilitation = z.object({ niveau: z.enum(s.niveauHabilitation.enumValues) });
+const membre = z.object({ role: z.enum(s.roleCabinet.enumValues).optional(), actif: z.boolean().optional() }).refine((m) => m.role !== undefined || m.actif !== undefined, 'aucune modification');
 
 async function exigerGestionnaire(tx: Tx): Promise<void> {
   const ok = (await tx.execute(sql`select app_est_gestionnaire() as ok`)).rows[0]?.ok;
@@ -67,6 +68,46 @@ export class AdministrationController {
         .innerJoin(s.utilisateurs, eq(s.utilisateurs.id, s.appartenances.utilisateurId))
         .where(eq(s.appartenances.cabinetId, acces.cabinetId))
         .orderBy(asc(s.utilisateurs.nom));
+    });
+  }
+
+  @Patch('cabinet/membres/:utilisateurId')
+  @ApiOperation({
+    summary: 'Changer le rôle d’un membre ou le désactiver (gestionnaires)',
+    description:
+      'Garde-fous : on ne modifie pas sa propre appartenance ; le cabinet garde toujours au moins un administrateur actif ; un changement de rôle retire les habilitations de dossier qui dépassent le plafond du nouveau rôle ; une désactivation ferme immédiatement tous les accès. L’invitation d’un nouvel utilisateur n’existe pas (création de compte par l’éditeur).',
+  })
+  @ApiBody({ schema: schemaOpenApi(membre) })
+  async modifierMembre(@AccesCourant() acces: Acces, @Param('utilisateurId') utilisateurId: string, @Body() corps: unknown) {
+    exigerUuid(utilisateurId);
+    const d = valider(membre, corps);
+    if (utilisateurId === acces.utilisateurId) throw new ForbiddenException('On ne modifie pas sa propre appartenance');
+    return this.bd.avecContexte(acces, async (tx) => {
+      await exigerGestionnaire(tx);
+      const [a] = await tx.select().from(s.appartenances).where(and(eq(s.appartenances.cabinetId, acces.cabinetId), eq(s.appartenances.utilisateurId, utilisateurId))).for('update');
+      if (!a) throw new NotFoundException('Membre introuvable dans ce cabinet');
+      const role = d.role ?? a.role;
+      const actif = d.actif ?? a.actif;
+      // Le cabinet ne doit jamais se retrouver sans administrateur actif.
+      if (a.role === 'administrateur' && a.actif && (role !== 'administrateur' || !actif)) {
+        const [{ n } = { n: 0 }] = (
+          await tx.execute(sql`select count(*)::int as n from appartenances where cabinet_id = ${acces.cabinetId}::uuid and role = 'administrateur' and actif and utilisateur_id <> ${utilisateurId}::uuid`)
+        ).rows as Array<{ n: number }>;
+        if (n === 0) throw new ConflictException('Le cabinet doit conserver au moins un administrateur actif');
+      }
+      const [maj] = await tx.update(s.appartenances).set({ role, actif }).where(eq(s.appartenances.id, a.id)).returning();
+      // Habilitations de dossier au-dessus du plafond du nouveau rôle : retirées (et non rabaissées en silence).
+      let retirees = 0;
+      if (role !== a.role) {
+        const admises = PLAFOND[role] ?? [];
+        const siennes = await tx.select().from(s.habilitationsDossier).where(eq(s.habilitationsDossier.utilisateurId, utilisateurId));
+        for (const h of siennes.filter((x) => !admises.includes(x.niveau))) {
+          await tx.delete(s.habilitationsDossier).where(eq(s.habilitationsDossier.id, h.id));
+          retirees++;
+        }
+      }
+      await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'membre.modifie', cibleType: 'utilisateur', cibleId: utilisateurId, details: { roleAvant: a.role, roleApres: role, actifAvant: a.actif, actifApres: actif, habilitationsRetirees: retirees } });
+      return { ...maj, habilitationsRetirees: retirees };
     });
   }
 

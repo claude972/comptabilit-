@@ -1,6 +1,6 @@
 # Matrice de couverture — état réel
 
-Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (seconde passe).
+Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (troisième passe).
 
 ## Légende des états
 
@@ -22,7 +22,7 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (second
 | Identités OIDC (Keycloak), session côté serveur, PKCE | Testé | Royaume de développement ; MFA et SSO non configurés |
 | Cabinets, appartenances, habilitations par dossier | Testé | La création d'un cabinet et de ses comptes reste un provisionnement de l'éditeur (pas d'invitation) |
 | Isolation entre cabinets et entre dossiers (RLS forcé) | Testé | Voir la limite assumée de la décision D-007 ; pas de test d'intrusion indépendant |
-| Rôle « support » à accès temporaire | Partiel | Expiration de l'appartenance prise en compte ; aucun parcours d'attribution |
+| Rôle « support » à accès temporaire | Testé | Ouvert par l'éditeur (ligne de commande), 72 h au plus, lecture seule, chaque consultation tracée ; le compte du support doit exister dans le fournisseur d'identité |
 | Moteur décimal, montants en chaînes dans les API | Testé | — |
 | Stockage documentaire par empreinte | Testé | S3 local de développement ; Object Lock non testé |
 | Journal d'audit en ajout seul, chaîné, consultable | Testé | Pas d'archivage externe protégé |
@@ -45,7 +45,7 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (second
 | Dépôt depuis l'ordinateur | Testé | Pas de reprise après fermeture de la page |
 | Détection du type réel, limites de taille, antivirus, quarantaine | Testé | Traitements dans le processus du worker, sans bac à sable dédié |
 | Doublon binaire entre canaux | Testé | — |
-| Nouvelle version d'un même document | Non implémenté | Colonnes présentes ; aucun parcours |
+| Nouvelle version d'une pièce : original conservé, validation explicitement invalidée | Testé | Les références à l'ancienne version (pièce jointe d'un conseil ou d'une écriture) ne sont pas basculées vers la nouvelle |
 | Extraction de factures : PDF à couche texte | En attente de validation | Règles prudentes qui s'abstiennent ; qualité jamais mesurée sur des pièces réelles |
 | Extraction de factures : Factur-X, CII, UBL | En attente de validation | Chemins recoupés avec des exemples publics ; aucune facture Factur-X réelle testée ; spécification officielle non consultée |
 | OCR local (PaddleOCR) | En attente de validation | Environ 4 s par page en local ; pages pivotées sans EXIF mal lues ; aucune photo réelle testée |
@@ -55,8 +55,8 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (second
 | Connecteur Microsoft 365 | En attente de connexion | Idem ; boîtes partagées sans notifications (delta périodique) |
 | Import FEC et données de travail, en flux, idempotent, versionné | Testé | Variantes testées listées dans `packages/core/docs/fec-compatibilite.md` ; aucun FEC réel d'un logiciel du marché |
 | Rapport FEC : lisible / conforme / suffisant, ligne par ligne | En attente de validation | Contrôles de conformité non implémentés listés dans le rapport lui-même |
-| Imports par lots de plusieurs centaines de dossiers | Non implémenté | Import dossier par dossier |
-| Annulation contrôlée d'un import | Non implémenté | — |
+| Campagnes d'import sur plusieurs dossiers : isolation, suivi et rapport par dossier, reprise des échecs | Testé | Exercé sur 3 dossiers, pas sur plusieurs centaines (aucun test de charge) ; dépôt fichier par fichier, pas d'archive répartie automatiquement |
+| Annulation réversible d'un import (comptable ou bancaire), rétablissement, reprise | Testé | L'interruption d'un import EN COURS est codée mais non exercée par un test (fenêtre de temps trop courte en local) ; un import interrompu brutalement reste « en cours » |
 | Contrôles déterministes (19 au catalogue) | En attente de validation | Tous exécutés à chaque import ; `TRE-003` et `CLO-002` sont réalisés quand des relevés et l'exercice précédent existent, sinon « non réalisés » avec leur motif |
 | Revue des constats : affectation, commentaires, décisions motivées | Testé | — |
 | Détection des travaux à revoir après modification des données | Testé | — |
@@ -80,7 +80,7 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (second
 |---|---|---|
 | Import de relevés camt.053, OFX, CSV (sans prestataire bancaire) | Testé | Jeux synthétiques ; schémas ISO 20022 des versions .03 à .08 non consultés ; relevés de carte OFX, CFONB 120 et MT940 non lus ; aucun relevé réel |
 | Idempotence des mouvements, cadrage des soldes | Testé | Deux exports chevauchants sans référence bancaire peuvent créer un doublon (décision D-020) |
-| CSV ambigu : abstention puis profil confirmé par un humain | Testé | Pas d'aperçu du fichier à l'écran |
+| CSV ambigu : abstention, aperçu du fichier, profil confirmé par un humain | Testé | — |
 | Rapprochement banque ↔ comptabilité (exact, groupé, partiel, compensation, tolérance) | En attente de validation | Propositions seulement ; appariements par somme parfois fortuits sur données dégradées (signalés) ; aucune écriture ni lettrage produit |
 | Validation et rejet des rapprochements, obsolescence quand les données changent | Testé | — |
 | Suggestions IA de rapprochement | Non implémenté | La vérification arithmétique d'une suggestion existe dans le moteur ; aucune IA |
@@ -90,10 +90,10 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (second
 | Agrégation bancaire par prestataire | Non implémenté | Aucun prestataire choisi |
 | Abonnements : forfait, tranches, essai, quotas, changement d'offre, résiliation, virement, historique | Testé | Grille de démonstration fictive ; opérations de l'éditeur par module de provisionnement, sans outil d'exploitation ; TVA et facturation légale hors périmètre ; aucun export vers un outil de facturation |
 | Service fermé hors abonnement (dépôts refusés, consultation conservée) | Testé | Les quotas sont affichés mais ne bloquent pas la collecte (décision D-024) |
-| Règles et paramètres propres au cabinet, avec mesure d'impact et approbation | Testé | Mesure d'impact synchrone, sur un seul contrôle et un exercice |
+| Règles et paramètres propres au cabinet, avec mesure d'impact et approbation | Testé | Mesure d'impact synchrone, sur un seul contrôle et un exercice ; sert aussi à déclarer la correspondance comptes 512 ↔ comptes bancaires de `TRE-003`, sans écran dédié |
 | Administration : dossiers, exercices, habilitations, membres (rôle, désactivation) | Testé | Pas d'invitation ni de création de compte : la création d'un utilisateur reste une opération de l'éditeur dans Keycloak |
 | Export de restitution d'un dossier | Testé | Par dossier seulement ; données structurées assemblées en mémoire |
-| Purge des téléversements abandonnés | Partiel | Écrite dans le rattrapage du worker ; non exercée par un test (délai de 7 jours) |
+| Purge des téléversements abandonnés ; rattrapage des traitements en attente | Testé | Purge exercée sur le stockage réel ; rattrapage exercé pour une restitution, par construction identique pour les autres natures |
 | Métriques techniques (Prometheus) | Partiel | Points de collecte vérifiés ; ni Prometheus ni Grafana déployés ; pas de traces OpenTelemetry |
 | Images de conteneurs | Partiel | API, worker et web construites et démarrées en local (lecture seule, sans privilèges) ; non optimisées, jamais poussées vers un registre, aucun parcours complet à travers les trois conteneurs |
 | Description d'infrastructure OpenTofu | Partiel | Base managée et buckets seulement ; validée syntaxiquement, jamais planifiée ni appliquée |
@@ -113,13 +113,13 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (second
 
 | Fonctionnalité | État | Limites |
 |---|---|---|
-| Missions, lettres et avenants structurés (projet → validée) | Testé | Contenu SAISI par le cabinet : aucune analyse automatique d'une lettre existante |
+| Missions, lettres et avenants structurés (projet → validée), lettre signée jointe | Testé | Contenu SAISI par le cabinet : aucune analyse automatique d'une lettre existante |
 | Rattachement des travaux à la lettre applicable à leur date, hors-périmètre signalé | En attente de validation | Référentiel de prestations interne ; signalement, pas conclusion contractuelle |
 | Projet d'avenant avec estimation de temps sur base nommée | Testé | Honoraires de l'avenant à compléter par le cabinet ; explication par gabarit, sans IA |
-| Registre des conseils : validation, autorisation d'envoi, faits constatés distincts | Testé | Le logiciel n'envoie rien ; les faits sont saisis avec justificatif |
+| Registre des conseils : validation, autorisation d'envoi, faits constatés distincts, pièces jointes | Testé | Le logiciel n'envoie rien ; les faits sont saisis avec justificatif |
 | Indicateurs financiers du dossier (25, avec formule et traçabilité) | En attente de validation | Avant écritures d'inventaire ; SIG hors modèle réglementaire depuis la réforme du PCG (conventions internes) ; délais seulement avec un taux de TVA fourni |
 | Indicateurs d'activité du cabinet et du logiciel | Testé | Par cabinet et par dossier, jamais par personne ; ne mesurent pas la qualité des extractions |
-| Rentabilité par mission | Non implémenté | Temps observés disponibles ; pas de rapprochement avec les honoraires |
+| Rentabilité par mission (honoraires saisis, temps observés, marge si un coût horaire est saisi) | En attente de validation | Prorata des forfaits sur 365 jours (convention interne) ; travaux rattachés par le périmètre, non affectés à une mission ; aucune facturation réelle rapprochée |
 
 ## Lot 5 — États et fiscalité
 
@@ -127,7 +127,7 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (second
 |---|---|---|
 | Balance générale | Testé | — |
 | Projets de compte de résultat et de bilan | En attente de validation | Table de correspondance lue des intitulés du PCG, non validée par un professionnel ; exercices ouverts avant 2025 non couverts ; comptes ambigus laissés « non affectés » |
-| Écritures d'inventaire proposées, approbation par un tiers, balance ajustée de travail, export CSV | Testé | Saisie humaine uniquement : aucune écriture n'est générée automatiquement ; l'intégration dans le logiciel comptable n'est pas faite par ce logiciel ; les états projetés ne tiennent pas compte de la balance ajustée |
+| Écritures d'inventaire proposées, approbation par un tiers, balance ajustée de travail, export CSV, états projetés sur la balance ajustée | Testé | Saisie humaine uniquement : aucune écriture n'est générée automatiquement ; l'intégration dans le logiciel comptable n'est pas faite par ce logiciel |
 | Annexe, liasse fiscale | Non implémenté | — |
 | Télétransmission | Non implémenté, et non autorisée par conception sans périmètre et autorisation spécifiques | — |
 
@@ -156,7 +156,7 @@ Le territoire fiscal est une donnée explicite du dossier. Hors métropole, ou t
 | 1 | Photo sur téléphone → réception → extraction → rattachement → revue → export | Testé (API + navigateur en émulation mobile, pile réelle). L'export porte sur le dossier de révision |
 | 2 | Réception mail → pièce → doublon → traitement | Testé contre simulateur de messagerie uniquement (API, worker, base et stockage réels) |
 | 3 | Import FEC → contrôles → constats → dossier PDF | Testé |
-| 4 | Nouvelle version d'un fichier → validations à revoir | Testé (données comptables). Non couvert pour les pièces |
+| 4 | Nouvelle version d'un fichier → validations à revoir | Testé pour les données comptables (travaux « à revoir ») et pour les pièces (validation invalidée, original conservé) |
 | 5 | Coupure réseau pendant un dépôt | Testé (API réelle ; interface en émulation contre simulateur) |
 | 6 | Notification mail répétée ou manquée | Testé contre simulateur de messagerie uniquement |
 | 7 | Jeton mail révoqué | Testé contre simulateur de messagerie uniquement |

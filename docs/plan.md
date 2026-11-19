@@ -44,7 +44,10 @@ Critères d'acceptation et résultat :
 - [ ] Invitation et création de compte d'un membre.
 - [x] Outil en ligne de commande de l'éditeur (abonnements, veille).
 - [ ] Création d'un cabinet et de ses comptes par cet outil.
-- [ ] Imports par lots, annulation contrôlée, restitution d'un cabinet entier.
+- [x] Annulation réversible et reprise d'un import ; campagnes d'import sur plusieurs dossiers.
+- [x] Nouvelle version d'une pièce ; aperçu d'un CSV bancaire ; pièces jointes aux conseils, lettres et écritures.
+- [x] Rattrapage générique des traitements en attente ; accès temporaire du support ; rotation du secret des jetons mail.
+- [ ] Restitution d'un cabinet entier ; dépôt d'une archive répartie entre dossiers ; test de charge sur plusieurs centaines de dossiers.
 - [ ] Agrégation bancaire (prestataire à choisir) ; export vers l'outil de facturation de l'éditeur.
 
 ## Lot 3 — Veille et assistant : veille et recherche réalisées, assistant bloqué
@@ -63,7 +66,8 @@ Critères d'acceptation et résultat :
 - [x] Registre des conseils.
 - [x] Indicateurs financiers du dossier ; indicateurs d'activité du cabinet.
 - [ ] Analyse automatique d'une lettre de mission existante (dépend de l'IA).
-- [ ] Rentabilité par mission.
+- [x] Rentabilité par mission (honoraires saisis, temps observés, coût horaire saisi).
+- [ ] Affectation explicite des travaux à une mission ; rapprochement avec la facturation réelle.
 - [ ] Validation professionnelle des conventions d'indicateurs.
 
 ## Lot 5 — États et fiscalité : amorcé
@@ -71,7 +75,8 @@ Critères d'acceptation et résultat :
 - [x] Balance, projets de compte de résultat et de bilan.
 - [x] Écritures d'inventaire proposées (saisie humaine), balance ajustée de travail, export.
 - [ ] Validation professionnelle de la table de correspondance comptes → rubriques.
-- [ ] États projetés sur la balance ajustée ; génération assistée d'écritures d'inventaire ; annexe ; liasse.
+- [x] États projetés sur la balance ajustée.
+- [ ] Génération assistée d'écritures d'inventaire ; annexe ; liasse.
 
 ## Prochaines étapes proposées, par ordre de dépendance
 

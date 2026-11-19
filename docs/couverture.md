@@ -41,7 +41,7 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (troisi
 | Téléversement reprenable, « Reçu » seulement après confirmation serveur | Testé | — |
 | Reprise après coupure, dépôts en attente sur l'appareil, purge | Testé | Émulation ; aucune exécution en arrière-plan (voulu) ; purge à 7 jours testée unitairement seulement |
 | Suivi des statuts, champs extraits, signalement d'erreur, demandes de complément | Testé | — |
-| Notifications | Testé | Internes à l'application uniquement : aucun courriel, SMS ni notification poussée. Complément demandé sur une pièce et réponse, règles à décider et décidées, archives de restitution, imports terminés ou en échec, constats affectés ; préférences par famille (D-049, D-054) |
+| Notifications | Testé | Internes à l'application uniquement : aucun courriel, SMS ni notification poussée. Complément demandé sur une pièce et réponse, règles à décider et décidées, archives de restitution, imports terminés ou en échec, constats affectés ; préférences par famille ; regroupement, archivage réversible ; rétention définie, appliquée sur données de test seulement (D-049, D-054, D-058) |
 | Dépôt depuis l'ordinateur | Testé | Pas de reprise après fermeture de la page |
 | Détection du type réel, limites de taille, antivirus, quarantaine | Testé | Traitements dans le processus du worker, sans bac à sable dédié |
 | Doublon binaire entre canaux | Testé | — |
@@ -170,4 +170,4 @@ Le territoire fiscal est une donnée explicite du dossier. Hors métropole, ou t
 | 9 | Pièce contenant des instructions malveillantes | Testé — sachant qu'aucune IA ne lit les pièces à ce jour |
 | 10 | Restauration après incident | Testé en local : base, stockage objet et Keycloak restaurés dans des instances isolées et vérifiés ; limites dans `deploiement.md` |
 
-Environnements réellement utilisés : Chromium (ordinateur et émulation Pixel 7) et WebKit (ordinateur et émulation iPhone 15, parcours sur pile réelle seulement) sur macOS. WebKit est le moteur de Safari, pas Safari. Firefox n'a pas pu être lancé sur ce poste. Aucun appareil réel, aucun lecteur d'écran.
+Environnements réellement utilisés : Chromium (ordinateur et émulation Pixel 7) et WebKit (ordinateur et émulation iPhone 15, parcours sur pile réelle seulement) sur macOS. WebKit est le moteur de Safari, pas Safari. Firefox ne peut pas être lancé par l'agent de développement (protections du poste, cause établie en D-059) : sa suite reste à exécuter par l'utilisateur ou par la CI. Aucun appareil réel, aucun lecteur d'écran.

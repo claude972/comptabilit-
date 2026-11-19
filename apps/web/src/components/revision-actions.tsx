@@ -11,11 +11,11 @@ import { appelBff } from '@/lib/televersement/transport-bff';
 import { type LotImport, type Niveau, auMoins } from '@/lib/types-api';
 
 /** Bouton déclenchant une action asynchrone du serveur (`POST`), avec retour d'état. */
-export function BoutonAction({ chemin, libelle, succes, variante = 'secondaire' }: { chemin: string; libelle: string; succes: string; variante?: 'primaire' | 'secondaire' | 'contour' }) {
+export function BoutonAction({ chemin, libelle, succes, variante = 'secondaire', corps }: { chemin: string; libelle: string; succes: string; variante?: 'primaire' | 'secondaire' | 'contour'; corps?: unknown }) {
   const appel = useAppel();
   return (
     <div className="space-y-2">
-      <Bouton variante={variante} disabled={appel.occupe} onClick={() => void appel.executer(chemin, { method: 'POST' }, succes)}>
+      <Bouton variante={variante} disabled={appel.occupe} onClick={() => void appel.executer(chemin, corps === undefined ? { method: 'POST' } : { method: 'POST', json: corps }, succes)}>
         {libelle}
       </Bouton>
       <Retours erreur={appel.erreur} succes={appel.succes} />

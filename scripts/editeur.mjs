@@ -14,6 +14,8 @@
  *   node scripts/editeur.mjs support-fermer <cabinetId> <utilisateurId>
  *   node scripts/editeur.mjs journal-ecarts <cabinetId>
  *   node scripts/editeur.mjs journal-anomalie <cabinetId> <premièreLigne> <dernièreLigne> "<cause>"   (irréversible)
+ *   node scripts/editeur.mjs notifications-retention [jours avant archivage=30] [jours avant suppression=180] [--appliquer]
+ *       SIMULATION sans « --appliquer ». Avec : archive les notifications lues anciennes, SUPPRIME les archivées anciennes (irréversible).
  *   node scripts/editeur.mjs sources
  *   node scripts/editeur.mjs surveiller "<émetteur>" "<libellé>" <url https d'un domaine officiel>
  *   node scripts/editeur.mjs evolutions [a_qualifier|verifiee|ecartee]
@@ -92,6 +94,14 @@ try {
       console.log(await p.consignerAnomalieJournal(client, args[0], Number(args[1]), Number(args[2]), args[3]));
       console.log('Anomalie d’enchaînement consignée et inscrite au journal du cabinet. Le contenu de chaque ligne reste vérifié par son empreinte.');
       break;
+    case 'notifications-retention': {
+      const appliquer = args.includes('--appliquer');
+      const [j1, j2] = args.filter((x) => x !== '--appliquer');
+      const lignes = await p.retentionNotifications(client, { archiverApresJours: j1 === undefined ? undefined : Number(j1), supprimerApresJours: j2 === undefined ? undefined : Number(j2), appliquer });
+      console.table(lignes);
+      console.log(appliquer ? 'Rétention APPLIQUÉE : les suppressions ci-dessus sont irréversibles.' : 'SIMULATION : rien n’a été modifié. Ajouter « --appliquer » pour exécuter (la suppression des notifications archivées est irréversible).');
+      break;
+    }
     case 'sources':
       await table(`select emetteur, libelle, dernier_statut, dernier_succes_le::text, coalesce(dernier_detail, '') as detail from surveillances_sources where actif order by emetteur, libelle`);
       break;

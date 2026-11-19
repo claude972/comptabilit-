@@ -22,6 +22,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "archivees",
+            "required": false,
+            "in": "query",
+            "description": "« 1 » : les notifications archivées (sinon les notifications courantes)",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -55,6 +64,103 @@
           }
         ],
         "summary": "Nombre de mes notifications non lues",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/v1/notifications/groupes": {
+      "get": {
+        "description": "Un groupe réunit les notifications non archivées de même type et de même dossier : la plus récente est présentée, avec leur nombre, le nombre de non lues et leurs identifiants (200 au plus) pour agir sur le groupe entier.",
+        "operationId": "NotificationsController_groupes",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mes notifications courantes, regroupées par nature et par dossier",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/v1/notifications/lot": {
+      "post": {
+        "description": "L’archivage est RÉVERSIBLE : une notification archivée sort de la liste courante, reste consultable (« archivees=1 ») et se désarchive. Rien n’est supprimé par cette route. Les identifiants qui ne sont pas à l’appelant sont ignorés.",
+        "operationId": "NotificationsController_agirEnLot",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ids": {
+                    "minItems": 1,
+                    "maxItems": 200,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    }
+                  },
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "lire",
+                      "archiver",
+                      "desarchiver"
+                    ]
+                  }
+                },
+                "required": [
+                  "ids",
+                  "action"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Marquer comme lues, archiver ou désarchiver plusieurs de mes notifications",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/v1/notifications/archiver-lues": {
+      "post": {
+        "operationId": "NotificationsController_archiverLues",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Archiver toutes mes notifications déjà lues (réversible)",
         "tags": [
           "Notifications"
         ]

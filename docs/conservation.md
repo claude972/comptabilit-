@@ -38,6 +38,18 @@ Non couvert : restitution d'un cabinet entier en une opération ; restitution de
 
 Non implémentée. La résiliation d'un abonnement ferme les dépôts à son échéance mais ne supprime aucune donnée. Le devenir de chaque catégorie (suppression, conservation obligatoire, sauvegardes, journaux) reste à définir.
 
+## Notifications internes : archivage et rétention
+
+Les notifications n'existent que dans l'application (aucun envoi extérieur) et ne portent que des identifiants et quelques valeurs non sensibles ; leur texte est composé à la lecture.
+
+| Étape | Qui | Effet | Réversible |
+|---|---|---|---|
+| Archivage par le destinataire | Chaque personne, pour ses notifications | Sort de la liste courante et du décompte ; reste consultable | Oui (désarchivage) |
+| Archivage par la politique | Éditeur, opération explicite | Notifications LUES depuis plus de 30 jours | Oui |
+| Suppression par la politique | Éditeur, opération explicite | Notifications ARCHIVÉES depuis plus de 180 jours | Non |
+
+Une notification non lue n'est jamais archivée ni supprimée par la politique. La politique s'exécute par `node scripts/editeur.mjs notifications-retention [jours avant archivage] [jours avant suppression]`, qui SIMULE par défaut ; `--appliquer` l'exécute. Aucun traitement ne la lance automatiquement, et les rôles de l'application ne peuvent ni l'appeler ni supprimer une notification. État au 2026-11-19 : appliquée uniquement sur des données temporaires de test ; simulée sur la base locale (rien à faire) ; jamais appliquée à des données conservées. Les durées de 30 et 180 jours sont des valeurs de travail, sans fondement réglementaire, à valider.
+
 ## Durées à faire valider
 
 Ce document ne propose volontairement aucune durée chiffrée : les durées applicables aux pièces comptables, aux documents fiscaux, aux dossiers de travail du cabinet et aux journaux dépendent de textes qui n'ont pas été vérifiés dans le cadre de ce lot.

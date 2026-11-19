@@ -252,3 +252,20 @@ export async function consignerAnomalieJournal(client: pg.ClientBase, cabinetId:
     throw e;
   }
 }
+
+/**
+ * Politique de rétention des notifications (docs/conservation.md) : archive les notifications LUES anciennes
+ * (réversible), puis supprime les notifications ARCHIVÉES depuis longtemps (irréversible). SIMULATION par défaut : sans
+ * `appliquer`, rien n'est modifié. Les notifications non lues ne sont jamais touchées. Aucun traitement ne l'exécute
+ * automatiquement : c'est une opération explicite de l'éditeur.
+ */
+export async function retentionNotifications(client: pg.ClientBase, options: { archiverApresJours?: number; supprimerApresJours?: number; appliquer?: boolean } = {}): Promise<Array<{ cabinetId: string; aArchiver: number; aSupprimer: number; simulation: boolean }>> {
+  const archiver = options.archiverApresJours ?? 30;
+  const supprimer = options.supprimerApresJours ?? 180;
+  if (!Number.isInteger(archiver) || !Number.isInteger(supprimer)) throw new Error('Durées de rétention : nombres entiers de jours attendus');
+  const r = await client.query<{ cabinet_id: string; a_archiver: string; a_supprimer: string; simulation: boolean }>(
+    'select * from notifications_appliquer_retention(make_interval(days => $1), make_interval(days => $2), $3)',
+    [archiver, supprimer, options.appliquer !== true],
+  );
+  return r.rows.map((l) => ({ cabinetId: l.cabinet_id, aArchiver: Number(l.a_archiver), aSupprimer: Number(l.a_supprimer), simulation: l.simulation }));
+}

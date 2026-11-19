@@ -159,6 +159,17 @@ test('correspondance : indéterminée, proposée par la collaboratrice sans effe
   // L'auteure de la proposition est prévenue de la décision, dans l'application seulement.
   await chloe.goto('/notifications');
   await expect(chloe.locator('li[data-type="regle.decidee"]').filter({ hasText: `Essai deux banques ${SEL}` })).toContainText('Votre proposition de règle a été approuvée');
+  // Archivage réversible : la notification de décision est archivée, retrouvée parmi les archivées, puis désarchivée.
+  const decision = chloe.locator('li[data-type="regle.decidee"]').filter({ hasText: `Essai deux banques ${SEL}` });
+  await decision.getByRole('button', { name: 'Archiver', exact: true }).click();
+  await expect(decision).toHaveCount(0);
+  await chloe.getByTestId('lien-archivees').click();
+  await expect(chloe.getByText('Une notification archivée n’est pas supprimée')).toBeVisible();
+  await expect(decision).toHaveCount(1);
+  await decision.getByRole('button', { name: 'Désarchiver' }).click();
+  await expect(decision).toHaveCount(0);
+  await chloe.goto('/notifications');
+  await expect(decision).toHaveCount(1);
   // Préférences internes : une famille se désactive puis se réactive (état d'origine rétabli), et le réglage est conservé.
   const preferences = chloe.getByTestId('preferences-notification');
   await expect(preferences.getByRole('checkbox')).toHaveCount(5);

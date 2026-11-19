@@ -2032,6 +2032,7 @@ function routerSuite(r: Requete, a: Acces): unknown {
   // ── Coût horaire interne et rentabilité d'une mission (calqué sur missions.controller.ts ; calcul par le vrai moteur) ──
   // Notifications internes : le simulateur n'en produit aucune (elles sont vérifiées sur la pile réelle).
   if (m === 'GET' && chemin === 'notifications/decompte') return { nonLues: 0 };
+  if (m === 'GET' && chemin === 'notifications/groupes') return { envoiExterne: false, groupes: [] };
   if (m === 'GET' && chemin === 'notifications/preferences') return { envoiExterne: false, familles: [] };
   if (m === 'GET' && chemin === 'notifications') return { page: 1, taillePage: 30, total: 0, nonLues: 0, suite: false, envoiExterne: false, notifications: [] };
   if (chemin === 'cabinet/cout-horaire' && (m === 'GET' || m === 'PUT')) {

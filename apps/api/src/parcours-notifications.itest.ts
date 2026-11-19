@@ -198,3 +198,62 @@ describe('notifications d’import, de constat affecté, et préférences', () =
     expect(lignes).toEqual([{ famille: 'constat', active: true }, { famille: 'restitution', active: false }, { famille: 'restitution_cabinet', active: false }]);
   });
 });
+
+describe('regroupement et archivage réversible', () => {
+  it('les notifications courantes se regroupent par nature et par dossier ; un groupe se lit, s’archive et se désarchive d’un coup', async () => {
+    const liste = await notifs('remi');
+    const g = (await api('remi', 'GET', '/v1/notifications/groupes')).json;
+    expect(g.envoiExterne).toBe(false);
+    // Autant de notifications dans les groupes que dans la liste, chaque notification dans un seul groupe.
+    expect(g.groupes.reduce((t: number, x: any) => t + x.nombre, 0)).toBe(liste.total);
+    expect(g.groupes.reduce((t: number, x: any) => t + x.nonLues, 0)).toBe(liste.nonLues);
+    expect(new Set(g.groupes.flatMap((x: any) => x.ids)).size).toBe(liste.total);
+    expect(new Set(g.groupes.map((x: any) => x.type)).size).toBe(g.groupes.length); // un seul dossier ici : un groupe par type
+    const echecs = g.groupes.find((x: any) => x.type === 'import.echec');
+    expect(echecs).toMatchObject({ nombre: 2, titre: 'L’import des écritures comptables a échoué', lien: `/dossiers/${dossier}/comptabilite` });
+    const constats = g.groupes.find((x: any) => x.type === 'constat.affecte');
+    expect(constats.nombre).toBe(2);
+
+    // Lire tout un groupe.
+    expect((await api('remi', 'POST', '/v1/notifications/lot', { ids: echecs.ids, action: 'lire' })).json).toEqual({ action: 'lire', modifiees: 2 });
+    expect((await notifs('remi')).nonLues).toBe(liste.nonLues - 2);
+    // Archiver le groupe : il sort de la liste courante et du décompte, sans être supprimé.
+    expect((await api('remi', 'POST', '/v1/notifications/lot', { ids: echecs.ids, action: 'archiver' })).json.modifiees).toBe(2);
+    const apres = await notifs('remi');
+    expect(apres).toMatchObject({ total: liste.total - 2, archivees: 2 });
+    expect(apres.notifications.some((n: any) => n.type === 'import.echec')).toBe(false);
+    const archivees = await notifs('remi', '?archivees=1');
+    expect(archivees.notifications.map((n: any) => n.type)).toEqual(['import.echec', 'import.echec']);
+    expect(archivees.notifications.every((n: any) => n.archiveeLe && n.lueLe)).toBe(true);
+    expect((await api('remi', 'GET', '/v1/notifications/groupes')).json.groupes.some((x: any) => x.type === 'import.echec')).toBe(false);
+    // Réversible : désarchivé, le groupe revient tel quel.
+    expect((await api('remi', 'POST', '/v1/notifications/lot', { ids: echecs.ids, action: 'desarchiver' })).json.modifiees).toBe(2);
+    expect(await notifs('remi')).toMatchObject({ total: liste.total, archivees: 0 });
+    expect((await api('remi', 'GET', '/v1/notifications/groupes')).json.groupes.find((x: any) => x.type === 'import.echec').nombre).toBe(2);
+  });
+
+  it('archiver une notification non lue la marque lue ; « archiver les lues » ne touche pas aux non lues ; on n’agit que sur les siennes', async () => {
+    const avant = await notifs('remi');
+    const nonLue = avant.notifications.find((n: any) => n.lueLe === null);
+    expect(nonLue).toBeTruthy();
+    // Identifiants d'une autre personne, ou inconnus : ignorés sans erreur ni effet.
+    const dAlice = (await notifs('alice')).notifications.map((n: any) => n.id);
+    expect((await api('remi', 'POST', '/v1/notifications/lot', { ids: [...dAlice, '00000000-0000-4000-8000-000000000000'], action: 'archiver' })).json.modifiees).toBe(0);
+    expect((await notifs('alice', '?archivees=1')).total).toBe(0);
+    for (const corps of [{ ids: [], action: 'lire' }, { ids: ['pas-un-uuid'], action: 'lire' }, { ids: [nonLue.id], action: 'supprimer' }]) {
+      expect((await api('remi', 'POST', '/v1/notifications/lot', corps)).statut).toBe(400);
+    }
+    const lues = avant.total - avant.nonLues;
+    expect((await api('remi', 'POST', '/v1/notifications/archiver-lues')).json).toEqual({ archivees: lues });
+    const milieu = await notifs('remi');
+    expect(milieu).toMatchObject({ total: avant.nonLues, nonLues: avant.nonLues, archivees: lues });
+    expect((await api('remi', 'GET', '/v1/notifications/decompte')).json).toEqual({ nonLues: avant.nonLues });
+    expect((await api('remi', 'POST', '/v1/notifications/lot', { ids: [nonLue.id], action: 'archiver' })).json.modifiees).toBe(1);
+    const fin = await notifs('remi', '?archivees=1');
+    expect(fin.notifications.find((n: any) => n.id === nonLue.id).lueLe).toBeTruthy();
+    expect((await api('remi', 'GET', '/v1/notifications/decompte')).json).toEqual({ nonLues: avant.nonLues - 1 });
+    // Aucune route ne supprime une notification.
+    for (const [m, c] of [['DELETE', `/v1/notifications/${nonLue.id}`], ['DELETE', '/v1/notifications']] as const) expect((await api('remi', m, c)).statut).toBe(404);
+    expect((await notifs('remi')).total + (await notifs('remi', '?archivees=1')).total).toBe(avant.total);
+  });
+});

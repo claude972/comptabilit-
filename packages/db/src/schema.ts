@@ -1204,6 +1204,8 @@ export const notifications = pgTable(
     donnees: jsonb('donnees').notNull().default(sql`'{}'::jsonb`),
     creeLe: creeLe(),
     lueLe: horodatage('lue_le'),
+    /** Archivage RÉVERSIBLE : une notification archivée sort de la liste courante sans être supprimée. */
+    archiveeLe: horodatage('archivee_le'),
   },
   (t) => [index('notifications_destinataire').on(t.destinataireId, t.lueLe, t.creeLe)],
 );

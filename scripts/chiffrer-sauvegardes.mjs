@@ -8,9 +8,10 @@
  *   node scripts/chiffrer-sauvegardes.mjs chiffrer --cle-publique <fichier.pem> <fichier> [<fichier>…]
  *   node scripts/chiffrer-sauvegardes.mjs chiffrer-tout --cle-publique <fichier.pem>
  *       Chiffre les sauvegardes de var/sauvegardes qui ne le sont pas encore (base, manifestes d'objets, exports Keycloak).
- *   node scripts/chiffrer-sauvegardes.mjs copie-chiffree --cle-publique <fichier.pem> --destination <dossier> <sauvegarde.dump>
+ *   node scripts/chiffrer-sauvegardes.mjs copie-chiffree --cle-publique <fichier.pem> --destination <dossier> [--keycloak <export.json>] <sauvegarde.dump>
  *       Constitue, dans un AUTRE dossier, un jeu chiffré complet d'une sauvegarde : la base, le manifeste des objets et
- *       chaque objet du manifeste (un fichier chiffré par objet, jamais refait s'il existe déjà). Les sauvegardes
+ *       chaque objet du manifeste (un fichier chiffré par objet, jamais refait s'il existe déjà) et, s'il est désigné,
+ *       l'export Keycloak (comptes, empreintes de mots de passe, secret de client). Les sauvegardes
  *       d'origine ne sont ni modifiées ni chiffrées en place.
  *   node scripts/chiffrer-sauvegardes.mjs dechiffrer-copie --cle-privee <fichier.pem> --source <dossier chiffré> --destination <dossier> <nom.dump>
  *       Reconstitue en clair, dans un dossier VIDE, la base, le manifeste et les objets d'un jeu chiffré, en vérifiant
@@ -86,7 +87,8 @@ try {
   } else if (commande === 'copie-chiffree') {
     const chemin = option('--cle-publique');
     const destination = option('--destination');
-    if (!chemin || !destination || args.length !== 1) throw new Error('Indiquer --cle-publique <pem> --destination <dossier> <sauvegarde.dump>');
+    const keycloak = option('--keycloak');
+    if (!chemin || !destination || args.length !== 1) throw new Error('Indiquer --cle-publique <pem> --destination <dossier> [--keycloak <export.json>] <sauvegarde.dump>');
     const clePubliquePem = readFileSync(chemin, 'utf8');
     if (/PRIVATE/.test(clePubliquePem)) throw new Error('Ce fichier contient une clé PRIVÉE : seule la clé publique sert à chiffrer.');
     const dump = resolve(args[0]);
@@ -96,7 +98,8 @@ try {
     if (dest === dirname(dump)) throw new Error('Refus : le jeu chiffré se constitue dans un AUTRE dossier que les sauvegardes d’origine.');
     mkdirSync(join(dest, 'objets'), { recursive: true, mode: 0o700 });
     const depot = process.env.SAUVEGARDE_DEPOT_OBJETS ?? join(dirname(dump), 'objets');
-    for (const f of [dump, manifeste]) {
+    if (keycloak && !existsSync(keycloak)) throw new Error('Export Keycloak introuvable');
+    for (const f of [dump, manifeste, ...(keycloak ? [resolve(keycloak)] : [])]) {
       const sortie = join(dest, `${basename(f)}.chiffre`);
       if (!existsSync(sortie)) await c.chiffrerFichier(f, sortie, clePubliquePem);
     }
@@ -114,7 +117,7 @@ try {
       faits++;
       octets += r.octetsClairs;
     }
-    console.log(`Jeu chiffré : base et manifeste, ${empreintes.length} objet(s) distinct(s) dont ${faits} chiffré(s) maintenant (${(octets / 1e6).toFixed(1)} Mo). Les sauvegardes d'origine n'ont pas été touchées.`);
+    console.log(`Jeu chiffré : base, manifeste${keycloak ? ', export Keycloak' : ''} et ${empreintes.length} objet(s) distinct(s) dont ${faits} chiffré(s) maintenant (${(octets / 1e6).toFixed(1)} Mo). Les sauvegardes d'origine n'ont pas été touchées.`);
   } else if (commande === 'dechiffrer-copie') {
     const chemin = option('--cle-privee');
     const source = option('--source');
@@ -139,7 +142,10 @@ try {
       if (r.sha256Clair !== sha) throw new Error(`Objet déchiffré non conforme à son empreinte : ${sha.slice(0, 12)}…`);
       octets += r.octetsClairs;
     }
-    console.log(`Jeu déchiffré : base (sha256 ${rDump.sha256Clair}), manifeste et ${empreintes.length} objet(s) (${(octets / 1e6).toFixed(1)} Mo), chacun conforme à son empreinte.`);
+    // Exports Keycloak présents dans le jeu : déchiffrés à côté de la base.
+    const exportsKeycloak = readdirSync(source).filter((f) => /^keycloak-.*\.json\.chiffre$/.test(f));
+    for (const f of exportsKeycloak) await c.dechiffrerFichier(join(source, f), join(dest, f.replace(/\.chiffre$/, '')), clePriveePem);
+    console.log(`Jeu déchiffré : base (sha256 ${rDump.sha256Clair}), manifeste${exportsKeycloak.length ? `, ${exportsKeycloak.length} export(s) Keycloak` : ''} et ${empreintes.length} objet(s) (${(octets / 1e6).toFixed(1)} Mo), chacun conforme à son empreinte.`);
   } else if (commande === 'verifier') {
     const chemin = option('--cle-privee');
     if (!chemin || !args.length) throw new Error('Indiquer --cle-privee <fichier.pem> et au moins un fichier .chiffre');

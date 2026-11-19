@@ -2,6 +2,20 @@
 
 Chaque ligne indique ce qui est attendu d'un humain, pourquoi, et ce qui en dépend. Tout le reste a été réalisé sans attendre.
 
+## En bref : ce qui exige vraiment une intervention extérieure (au 2026-11-19)
+
+Liste courte des seuls obstacles que le développement local ne peut pas lever ; le détail est dans le tableau qui suit.
+
+1. **Journal de la CI en échec** (ligne 17) — télécharger l'archive de journaux du run 44509674342 et la déposer dans `var/`, ou fournir un jeton de lecture. Sans cela, la cause de l'échec reste inconnue.
+2. **Push des commits locaux** — géré par la session GitHub ; tant qu'il n'a pas lieu, la CI corrigée et ses suites navigateur ne tournent pas.
+3. **Suite Firefox** (D-059) — à lancer depuis un terminal de l'utilisateur ou dans la CI : les protections du poste empêchent l'agent de lancer Firefox.
+4. **Garde de la clé privée des sauvegardes** (ligne 16) — décider où la conserver ; d'ici là, les sauvegardes locales restent en clair.
+5. **Destination indépendante des ancres du journal d'audit** (ligne 15) — sans elle, aucun ancrage effectif.
+6. **Accès de services** (lignes 2 à 5 et 11) — applications OAuth Google et Microsoft, jeton OVHcloud (IA et infrastructure), API Légifrance.
+7. **Corpus réel autorisé** (ligne 6) — pièces et FEC réels, pour mesurer l'extraction et l'OCR.
+8. **Validations professionnelles et juridiques** (lignes 7, 8, 12, 13) — contrôles, états, indicateurs, durées de conservation, documents RGPD, grille tarifaire.
+9. **Appareils réels et Safari** — essais sur téléphone et sur Safari lui-même, hors de portée d'un poste de développement.
+
 | # | Action attendue | Qui | Ce qui en dépend | État du code |
 |---|---|---|---|---|
 | 1 | S'authentifier auprès de GitHub sur ce poste (jeton d'accès personnel) et décider de la visibilité du dépôt `claude972/comptabilit-`, aujourd'hui public | Propriétaire du dépôt | Publication du code, exécution de l'intégration continue | Dépôt distant configuré, rien n'a été poussé |

@@ -19,7 +19,7 @@ import { chargerEnvLocal } from './env.js';
 import { type AccesBd, creerAccesBd, journaliser, notifier, notifierGestionnaires, schema as s, sql, urlBd } from './index.js';
 import { migrer } from './migrer.js';
 import { type AncreJournal, type LigneJournalExportee, empreinteAncre, empreinteLigne, etablirAncre, exporterJournal, lireEtatJournal, serialiserAncre, verifierExport } from './ancre-journal.js';
-import { consignerAnomalieJournal, ecartsJournal } from './provisionnement.js';
+import { consignerAnomalieJournal, ecartsJournal, retentionNotifications } from './provisionnement.js';
 
 chargerEnvLocal();
 const BASE = `comtaple_essai_journal_${Date.now()}`;
@@ -622,5 +622,82 @@ describe('notifications : fin d’import et préférences, au niveau de la base'
     await passer(autre, 'termine');
     expect((await recues(autre)).map((n) => n.type)).toEqual(['import.termine']);
     await expect(app.avecContexte(ctx(DEMO.cabinetA, DEMO.chloe), (tx) => tx.execute(sql`delete from preferences_notification`))).rejects.toThrow();
+  });
+});
+
+describe('rétention des notifications : uniquement sur cette base temporaire', () => {
+  // Notifications fabriquées avec des dates passées, dans un cabinet créé pour l'occasion.
+  let cabinet: string;
+  const creer = async (cible: string, lueIlYA: number | null, archiveeIlYA: number | null) => {
+    await admin.query(
+      `insert into notifications (cabinet_id, destinataire_id, type, cible_id, cree_le, lue_le, archivee_le)
+       values ($1, $2, 'essai.retention', $3, now() - interval '400 days', now() - make_interval(days => $4), now() - make_interval(days => $5))`,
+      [cabinet, DEMO.alice, cible, lueIlYA, archiveeIlYA],
+    );
+  };
+  const etat = async () =>
+    Object.fromEntries((await admin.query(`select cible_id, lue_le is not null as lue, archivee_le is not null as archivee from notifications where cabinet_id = $1 order by cible_id`, [cabinet])).rows.map((l) => [l.cible_id, `${l.lue ? 'lue' : 'non lue'}${l.archivee ? ', archivée' : ''}`]));
+
+  it('simulation par défaut : dit ce qui serait fait, ne modifie rien', async () => {
+    cabinet = (await cabinetAvecLignes('Rétention', 0)).id;
+    await creer('non-lue-ancienne', null, null);
+    await creer('lue-recente', 5, null);
+    await creer('lue-ancienne', 45, null);
+    await creer('archivee-recente', 300, 20);
+    await creer('archivee-ancienne', 300, 200);
+    const avant = await etat();
+    const simulation = (await retentionNotifications(admin)).filter((l) => l.cabinetId === cabinet);
+    expect(simulation).toEqual([{ cabinetId: cabinet, aArchiver: 1, aSupprimer: 1, simulation: true }]);
+    expect(await etat()).toEqual(avant);
+    expect(Object.keys(avant)).toHaveLength(5);
+  });
+
+  it('appliquée : archive les lues anciennes, supprime les archivées anciennes, ne touche jamais une non lue', async () => {
+    const r = (await retentionNotifications(admin, { appliquer: true })).filter((l) => l.cabinetId === cabinet);
+    expect(r).toEqual([{ cabinetId: cabinet, aArchiver: 1, aSupprimer: 1, simulation: false }]);
+    expect(await etat()).toEqual({
+      'archivee-recente': 'lue, archivée',
+      'lue-ancienne': 'lue, archivée', // archivée maintenant, donc pas supprimée par la même exécution
+      'lue-recente': 'lue',
+      'non-lue-ancienne': 'non lue', // 400 jours, jamais lue : conservée telle quelle
+    });
+    // Rejouée aussitôt : plus rien à faire (la notification tout juste archivée n'est pas supprimable avant 180 jours).
+    expect((await retentionNotifications(admin, { appliquer: true })).filter((l) => l.cabinetId === cabinet)).toEqual([]);
+    expect(Object.keys(await etat())).toHaveLength(4);
+  });
+
+  it('durées paramétrables mais bornées ; les autres cabinets ne sont pas touchés par les notifications de celui-ci', async () => {
+    await expect(retentionNotifications(admin, { archiverApresJours: 0 })).rejects.toThrow(/trop courtes/);
+    await expect(retentionNotifications(admin, { supprimerApresJours: 7 })).rejects.toThrow(/trop courtes/);
+    await expect(retentionNotifications(admin, { archiverApresJours: 1.5 })).rejects.toThrow(/entiers/);
+    const autres = await admin.query('select count(*)::int as n from notifications where cabinet_id <> $1', [cabinet]);
+    await retentionNotifications(admin, { archiverApresJours: 3, appliquer: true }); // « lue-recente » (5 jours) devient archivable
+    expect((await etat())['lue-recente']).toBe('lue, archivée');
+    // Les notifications des autres cabinets de cette base sont toutes récentes : aucune n'a été supprimée.
+    expect((await admin.query('select count(*)::int as n from notifications where cabinet_id <> $1', [cabinet])).rows[0].n).toBe(autres.rows[0].n);
+  });
+
+  it('ni l’application ni le worker ne peuvent exécuter la rétention ni supprimer une notification', async () => {
+    for (const acces of [app, worker]) {
+      await expect(acces.avecContexte(ctx(DEMO.cabinetA, DEMO.alice), (tx) => tx.execute(sql`select * from notifications_appliquer_retention()`))).rejects.toThrow();
+      await expect(acces.avecContexte(ctx(DEMO.cabinetA, DEMO.alice), (tx) => tx.execute(sql`delete from notifications`))).rejects.toThrow();
+    }
+  });
+
+  it('le droit d’exécuter la rétention n’est accordé à aucun rôle applicatif', async () => {
+    const droits = await admin.query(
+      `select r as role, has_function_privilege(r, 'notifications_appliquer_retention(interval, interval, boolean)', 'execute') as peut from unnest(array['comtaple_app', 'comtaple_worker']) r`,
+    );
+    expect(droits.rows).toEqual([{ role: 'comtaple_app', peut: false }, { role: 'comtaple_worker', peut: false }]);
+  });
+
+  it('archivage par le destinataire : réversible, et lui seul', async () => {
+    await app.avecContexte(ctx(DEMO.cabinetA, DEMO.chloe), (tx) => notifier(tx, [DEMO.alice], { type: 'essai.archivage', cibleId: 'arch-1' }));
+    const alice = (requete: ReturnType<typeof sql>) => app.avecContexte(ctx(DEMO.cabinetA, DEMO.alice), (tx) => tx.execute(requete));
+    expect((await app.avecContexte(ctx(DEMO.cabinetA, DEMO.remi), (tx) => tx.execute(sql`update notifications set archivee_le = now() where cible_id = 'arch-1'`))).rowCount).toBe(0);
+    expect((await alice(sql`update notifications set archivee_le = now() where cible_id = 'arch-1'`)).rowCount).toBe(1);
+    expect((await admin.query(`select archivee_le is not null as a from notifications where cible_id = 'arch-1'`)).rows[0].a).toBe(true);
+    expect((await alice(sql`update notifications set archivee_le = null where cible_id = 'arch-1'`)).rowCount).toBe(1);
+    expect((await admin.query(`select archivee_le is null as a, type from notifications where cible_id = 'arch-1'`)).rows[0]).toEqual({ a: true, type: 'essai.archivage' });
   });
 });

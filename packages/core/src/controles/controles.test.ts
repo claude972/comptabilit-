@@ -10,9 +10,10 @@ function un(id: string, lignes: LigneEcriture[], parametres?: Record<string, unk
 }
 
 describe('catalogue', () => {
-  it('contient les 12 contrôles prioritaires, tous documentés et sourcés', () => {
+  it('contient les 12 contrôles prioritaires et les 7 contrôles du lot 2, tous documentés et sourcés', () => {
     expect(CATALOGUE_CONTROLES.map((d) => d.id)).toEqual([
       'GEN-001', 'GEN-002', 'GEN-003', 'GEN-004', 'GEN-005', 'TRE-001', 'TRE-002', 'TIE-001', 'TIE-002', 'TIE-003', 'CAP-001', 'TVA-001',
+      'TRE-003', 'IMM-001', 'IMM-002', 'SOC-001', 'CLO-001', 'CLO-002', 'TVA-002',
     ]);
     for (const d of CATALOGUE_CONTROLES) {
       for (const texte of [d.titre, d.objectif, d.perimetre, d.logique, d.exceptions, d.resultatsAttendus, d.source.reference]) expect(texte.length).toBeGreaterThan(10);
@@ -21,7 +22,7 @@ describe('catalogue', () => {
       expect(d.schemaParametres.safeParse(d.parametresParDefaut).success).toBe(true);
       if (d.source.type === 'reglementaire') {
         expect(d.source).toMatchObject({ verification: 'verifiee', dateVerification: '2026-11-19' });
-        expect(d.source.url).toMatch(/^https:\/\/(www\.legifrance\.gouv\.fr|www\.anc\.gouv\.fr)\//);
+        expect(d.source.url).toMatch(/^https:\/\/(www\.legifrance\.gouv\.fr|www\.anc\.gouv\.fr|bofip\.impots\.gouv\.fr)\//);
         expect(d.source.periodeApplication).toBeTruthy();
       } else {
         expect(d.source).toMatchObject({ verification: 'sans_objet', url: null });
@@ -46,7 +47,7 @@ describe('executerControles', () => {
   const lignes = ecriture('OD000001', '2025-03-01', '60600000', '51200000', '10.00');
   it('sans écriture : tout est non_realise, jamais favorable', () => {
     const r = executerControles({ lignes: [], exercice: EXERCICE_2025 });
-    expect(r).toHaveLength(12);
+    expect(r).toHaveLength(19);
     for (const x of r) {
       expect(x.statut).toBe('non_realise');
       expect(x.motif).toMatch(/Aucune écriture/);
@@ -59,7 +60,7 @@ describe('executerControles', () => {
     expect(un('TIE-003', lignes, { seuilJours: -1 })).toMatchObject({ statut: 'erreur' });
     const corrompue = [{ ...lignes[0]!, debit: '12,5' }];
     const r = executerControles({ lignes: corrompue, exercice: EXERCICE_2025 });
-    expect(r).toHaveLength(12);
+    expect(r).toHaveLength(19);
     expect(r.find((x) => x.controleId === 'GEN-001')).toMatchObject({ statut: 'erreur' });
     expect(r.find((x) => x.controleId === 'GEN-001')?.motif).toMatch(/Montant invalide/);
     expect(() => executerControles({ lignes: null as unknown as LigneEcriture[], exercice: null })).not.toThrow();

@@ -43,12 +43,18 @@ export class ErreurDocumentXml extends Error {
   }
 }
 
-type Noeud = Record<string, unknown>;
+export type NoeudXml = Record<string, unknown>;
+type Noeud = NoeudXml;
 
-function analyser(xml: string): Noeud {
+/**
+ * Analyse XML sécurisée, commune aux factures et aux relevés bancaires : taille bornée,
+ * DOCTYPE/ENTITY refusés avant analyse, profondeur bornée, aucune résolution d'entité externe.
+ * Lève `ErreurDocumentXml`.
+ */
+export function analyserXmlSecurise(xml: string, tailleMax: number = TAILLE_MAX_XML_FACTURE): NoeudXml {
   if (typeof xml !== 'string') throw new ErreurDocumentXml('XML_INVALIDE', 'Document XML absent.');
-  if (xml.length > TAILLE_MAX_XML_FACTURE) {
-    throw new ErreurDocumentXml('TROP_VOLUMINEUX', `Document XML de plus de ${TAILLE_MAX_XML_FACTURE} caractères : refusé.`);
+  if (xml.length > tailleMax) {
+    throw new ErreurDocumentXml('TROP_VOLUMINEUX', `Document XML de plus de ${tailleMax} caractères : refusé.`);
   }
   if (/<!\s*(?:DOCTYPE|ENTITY)/i.test(xml)) {
     throw new ErreurDocumentXml('DOCTYPE_INTERDIT', 'Déclaration DOCTYPE ou ENTITY interdite (protection contre les entités externes).');
@@ -71,19 +77,23 @@ function analyser(xml: string): Noeud {
     maxNestedTags: 64,
   });
   try {
-    return parseur.parse(xml) as Noeud;
+    return parseur.parse(xml) as NoeudXml;
   } catch {
     throw new ErreurDocumentXml('XML_INVALIDE', 'Document XML illisible.');
   }
 }
 
-function liste(v: unknown): unknown[] {
+function analyser(xml: string): Noeud {
+  return analyserXmlSecurise(xml);
+}
+
+export function liste(v: unknown): unknown[] {
   if (v === undefined || v === null) return [];
   return Array.isArray(v) ? v : [v];
 }
 
 /** Descend le long d'un chemin ; s'arrête (undefined) dès qu'un élément est répété ou absent. */
-function noeud(racine: unknown, ...chemin: string[]): unknown {
+export function noeud(racine: unknown, ...chemin: string[]): unknown {
   let courant: unknown = racine;
   for (const nom of chemin) {
     if (courant === null || typeof courant !== 'object' || Array.isArray(courant)) return undefined;
@@ -92,7 +102,7 @@ function noeud(racine: unknown, ...chemin: string[]): unknown {
   return courant;
 }
 
-function texte(v: unknown): string | null {
+export function texte(v: unknown): string | null {
   if (typeof v === 'string') return v.trim() === '' ? null : v.trim();
   if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
     const t = (v as Noeud)['#text'];
@@ -101,7 +111,7 @@ function texte(v: unknown): string | null {
   return null;
 }
 
-function attribut(v: unknown, nom: string): string | null {
+export function attribut(v: unknown, nom: string): string | null {
   if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
     const a = (v as Noeud)[`@_${nom}`];
     if (typeof a === 'string') return a.trim();

@@ -1,4 +1,5 @@
 import type { z } from 'zod';
+import type { RapportReleve } from '../banque/types.js';
 import type { LigneFec } from '../fec/types.js';
 import type { ChaineDecimale } from '../montant.js';
 
@@ -22,6 +23,8 @@ export interface ContexteControle {
   lignes: readonly LigneEcriture[];
   exercice: { debut: string; fin: string } | null;
   exercicePrecedent?: { lignes: readonly LigneEcriture[] } | null;
+  /** Relevés bancaires lus (lireCamt053, lireOfx, lireCsvBanque). Facultatif : sans relevé, TRE-003 est `non_realise`. */
+  releves?: readonly RapportReleve[] | null;
   /** Surcharges validées par le schéma du contrôle. */
   parametres: Record<string, unknown>;
 }

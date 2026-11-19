@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 . "$HOME/.comtaple-outils/env.sh"
 mkdir -p var
 arreter() {
-  for nom in api worker; do
+  for nom in api worker web; do
     if [ -f "var/$nom.pid" ]; then
       kill "$(cat "var/$nom.pid")" 2>/dev/null || true
       rm -f "var/$nom.pid"
@@ -24,10 +24,17 @@ case "${1:-etat}" in
       i=$((i + 1)); [ "$i" -gt 40 ] && { echo "L'API ne répond pas : voir var/api.log"; exit 1; }
       sleep 0.5
     done
+    if [ -d apps/web/.next ]; then
+      (cd apps/web && exec node node_modules/next/dist/bin/next start --port 3100) > var/web.log 2>&1 &
+      echo $! > var/web.pid
+      echo "Web : http://localhost:3100"
+    else
+      echo "Web : non construit (pnpm --filter @comtaple/web run build)"
+    fi
     echo "API : http://127.0.0.1:4000 (documentation /docs) — worker démarré." ;;
   arreter) arreter; echo "Arrêtés." ;;
   etat)
-    for nom in api worker; do
+    for nom in api worker web; do
       if [ -f "var/$nom.pid" ] && kill -0 "$(cat "var/$nom.pid")" 2>/dev/null; then echo "$nom : en marche"; else echo "$nom : arrêté"; fi
     done ;;
 esac

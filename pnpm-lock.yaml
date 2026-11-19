@@ -183,6 +183,9 @@ importers:
       '@comtaple/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@comtaple/mail':
+        specifier: workspace:*
+        version: link:../../packages/mail
       '@comtaple/plateforme':
         specifier: workspace:*
         version: link:../../packages/plateforme
@@ -302,6 +305,9 @@ importers:
       '@comtaple/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@comtaple/mail':
+        specifier: workspace:*
+        version: link:../../packages/mail
       '@comtaple/plateforme':
         specifier: workspace:*
         version: link:../../packages/plateforme
@@ -402,6 +408,12 @@ importers:
       '@aws-sdk/lib-storage':
         specifier: 3.1172.0
         version: 3.1172.0(@aws-sdk/client-s3@3.1172.0)
+      '@comtaple/db':
+        specifier: workspace:*
+        version: link:../db
+      '@comtaple/mail':
+        specifier: workspace:*
+        version: link:../mail
       bullmq:
         specifier: 6.7.7
         version: 6.7.7(ioredis@6.0.0)(pg@8.23.1)

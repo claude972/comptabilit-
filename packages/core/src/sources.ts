@@ -59,4 +59,23 @@ export const SOURCES = {
     'https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000006223124',
     'L223-21 : version en vigueur depuis le 21 septembre 2000 ; L225-43 : version en vigueur depuis le 28 mars 2009 (https://www.legifrance.gouv.fr/codes/id/LEGIARTI000020465599) ; L227-12 : version en vigueur depuis le 21 septembre 2000 (https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000006227093).',
   ),
+  pcgAmortissements: reglementaire(
+    'PCG (règlement ANC n° 2014-03), plan de comptes, classe 2 : « 280 Amortissements des immobilisations incorporelles et des frais d’établissement (même ventilation que celle du compte 20) », ' +
+      '« 281 Amortissements des immobilisations corporelles (même ventilation que celle du compte 21) », 2812 ↔ 212, 2813 ↔ 213, 2814 ↔ 214, 2815 ↔ 215, 2818 ↔ 218, « 282 Amortissements des immobilisations mises en concession » ; ' +
+      'art. 1131-3, I : « le compte 28 “Amortissements des immobilisations” fonctionne comme un compte de sens contraire de celui des comptes de la classe concernée » ; art. 1212-28 : les comptes d’amortissements sont crédités par le débit des comptes 681, 686 ou 687.',
+    URL_PCG_2026,
+    PERIODE_PCG,
+  ),
+  pcgBilanOuverture: reglementaire(
+    'PCG (règlement ANC n° 2014-03), art. 112-2, dernier alinéa : « Le bilan d’ouverture d’un exercice correspond au bilan de clôture avant répartition de l’exercice précédent. »',
+    URL_PCG_2026,
+    PERIODE_PCG,
+  ),
+  bofipBiensFaibleValeur: reglementaire(
+    'BOFiP, BOI-BIC-CHG-20-30-10 « BIC - Frais et charges - Distinction entre éléments d’actif et charges - Dérogation aux principes généraux de détermination des actifs et décisions de gestion - Dépenses d’acquisition de biens de faible valeur » : ' +
+      'tolérance permettant de comprendre parmi les charges immédiatement déductibles le prix d’acquisition des matériels et outillages « d’une valeur unitaire hors taxes n’excédant pas 500 € » (§ 20), ' +
+      'des matériels de bureau et mobiliers « dont le prix d’achat unitaire hors taxes n’excède pas 500 € » (§ 30) et des logiciels « d’une valeur unitaire hors taxes n’excédant pas 500 € » (§ 40). Seuil : 500 € HORS TAXES, par bien.',
+    'https://bofip.impots.gouv.fr/bofip/2109-PGP.html',
+    'Version publiée le 01/03/2017 (identifiant BOI-BIC-CHG-20-30-10-20170301), affichée « en vigueur du 01/03/2017 à aujourd’hui » lors de la consultation du 2026-11-19.',
+  ),
 } as const satisfies Record<string, SourceRegle>;

@@ -1,0 +1,126 @@
+@import 'tailwindcss';
+
+/* Thème clair par défaut, sombre selon le système. Couples fond/texte choisis pour un contraste AA. */
+:root {
+  color-scheme: light dark;
+  --fond: #f4f6f9;
+  --surface: #ffffff;
+  --surface-2: #eef1f5;
+  --texte: #111827;
+  --texte-doux: #4b5563;
+  --bordure: #c5ccd6;
+  --primaire: #1e3a5f;
+  --primaire-survol: #16304f;
+  --sur-primaire: #ffffff;
+  --lien: #1d4ed8;
+  --anneau: #2563eb;
+  --succes-fond: #dcfce7;
+  --succes-texte: #14532d;
+  --attention-fond: #fef3c7;
+  --attention-texte: #713f12;
+  --danger-fond: #fee2e2;
+  --danger-texte: #7f1d1d;
+  --danger: #b91c1c;
+  --info-fond: #dbeafe;
+  --info-texte: #1e3a8a;
+  --neutre-fond: #e5e7eb;
+  --neutre-texte: #1f2937;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fond: #0f1620;
+    --surface: #18212d;
+    --surface-2: #212c3a;
+    --texte: #f1f5f9;
+    --texte-doux: #b6c2d1;
+    --bordure: #44546a;
+    --primaire: #9cc2f0;
+    --primaire-survol: #b7d3f5;
+    --sur-primaire: #0b1726;
+    --lien: #93c5fd;
+    --anneau: #93c5fd;
+    --succes-fond: #123222;
+    --succes-texte: #a7f3d0;
+    --attention-fond: #3a2c0b;
+    --attention-texte: #fde68a;
+    --danger-fond: #3f1717;
+    --danger-texte: #fecaca;
+    --danger: #f87171;
+    --info-fond: #172a4d;
+    --info-texte: #bfdbfe;
+    --neutre-fond: #2b3646;
+    --neutre-texte: #e2e8f0;
+  }
+}
+
+@theme inline {
+  --color-fond: var(--fond);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-texte: var(--texte);
+  --color-texte-doux: var(--texte-doux);
+  --color-bordure: var(--bordure);
+  --color-primaire: var(--primaire);
+  --color-primaire-survol: var(--primaire-survol);
+  --color-sur-primaire: var(--sur-primaire);
+  --color-lien: var(--lien);
+  --color-anneau: var(--anneau);
+  --color-succes-fond: var(--succes-fond);
+  --color-succes-texte: var(--succes-texte);
+  --color-attention-fond: var(--attention-fond);
+  --color-attention-texte: var(--attention-texte);
+  --color-danger-fond: var(--danger-fond);
+  --color-danger-texte: var(--danger-texte);
+  --color-danger: var(--danger);
+  --color-info-fond: var(--info-fond);
+  --color-info-texte: var(--info-texte);
+  --color-neutre-fond: var(--neutre-fond);
+  --color-neutre-texte: var(--neutre-texte);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background: var(--fond);
+    color: var(--texte);
+    font-family: var(--font-sans);
+    line-height: 1.5;
+  }
+  /* Focus toujours visible au clavier. */
+  :focus-visible {
+    outline: 3px solid var(--anneau);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  a {
+    color: var(--lien);
+    text-underline-offset: 2px;
+  }
+  progress {
+    appearance: none;
+    height: 0.75rem;
+    width: 100%;
+    border-radius: 9999px;
+    overflow: hidden;
+    background: var(--neutre-fond);
+    border: 1px solid var(--bordure);
+  }
+  progress::-webkit-progress-bar {
+    background: var(--neutre-fond);
+  }
+  progress::-webkit-progress-value {
+    background: var(--primaire);
+  }
+  progress::-moz-progress-bar {
+    background: var(--primaire);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

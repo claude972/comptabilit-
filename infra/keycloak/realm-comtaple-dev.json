@@ -27,14 +27,16 @@
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
       "redirectUris": [
+        "http://localhost:3100/api/auth/retour",
         "http://localhost:3000/api/auth/retour"
       ],
       "webOrigins": [
+        "http://localhost:3100",
         "http://localhost:3000"
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost:3000/*"
+        "post.logout.redirect.uris": "http://localhost:3100/*##http://localhost:3000/*"
       },
       "protocolMappers": [
         {

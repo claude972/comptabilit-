@@ -1,12 +1,18 @@
 import { CAP_001 } from './capitaux.js';
+import { CLO_001, CLO_002 } from './cloture.js';
+import { IMM_001, IMM_002 } from './immobilisations.js';
+import { TRE_003 } from './rapprochement-bancaire.js';
+import { SOC_001 } from './social.js';
 import { GEN_001, GEN_002, GEN_003, GEN_004, GEN_005 } from './general.js';
 import { TIE_001, TIE_002, TIE_003 } from './tiers.js';
 import { TRE_001, TRE_002 } from './tresorerie.js';
-import { TVA_001 } from './tva.js';
+import { TVA_001, TVA_002 } from './tva.js';
 import type { ContexteControle, DefinitionControle, ResultatControle } from './types.js';
 
 export const CATALOGUE_CONTROLES: readonly DefinitionControle[] = Object.freeze([
   GEN_001, GEN_002, GEN_003, GEN_004, GEN_005, TRE_001, TRE_002, TIE_001, TIE_002, TIE_003, CAP_001, TVA_001,
+  // Lot 2.
+  TRE_003, IMM_001, IMM_002, SOC_001, CLO_001, CLO_002, TVA_002,
 ]);
 
 function messageErreur(e: unknown): string {

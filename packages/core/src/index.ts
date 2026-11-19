@@ -31,3 +31,25 @@ export { SIREN_SYNTHETIQUE, genererFecSynthetique } from './synthetique/fec.js';
 export type { AnomalieInjectee, AnomalieSynthetique, FecSynthetique, OptionsFecSynthetique } from './synthetique/fec.js';
 export { genererTexteFactureSynthetique } from './synthetique/facture.js';
 export type { AttenduFactureSynthetique, OptionsTexteFactureSynthetique, TexteFactureSynthetique } from './synthetique/facture.js';
+
+// 7. banque (lot 2) — lecture de relevés
+export { lireCamt053 } from './banque/camt053.js';
+export { lireOfx } from './banque/ofx.js';
+export { lireCsvBanque, proposerProfilCsv, schemaProfilCsvBanque } from './banque/csv.js';
+export type { ProfilCsvBanque } from './banque/csv.js';
+export { decoderTexteReleve, detecterFormatReleve } from './banque/detection.js';
+export { LONGUEUR_MAX_LIBELLE_BANCAIRE, PLAFOND_ANOMALIES_RELEVE, TAILLE_MAX_RELEVE } from './banque/commun.js';
+export { SOURCE_CAMT053_CFONB, SOURCE_CAMT053_ISO, SOURCE_CSV_BANQUE, SOURCE_OFX, SOURCE_OFX_SGML } from './banque/sources.js';
+export type { AnomalieReleve, CompteReleve, GraviteAnomalieReleve, MouvementBancaire, OptionsLectureReleve, RapportReleve } from './banque/types.js';
+
+// 8. rapprochement (lot 2)
+export { normaliserReference, rapprocher, verifierSuggestion } from './rapprochement/rapprocher.js';
+export { elementDepuisLigneEcriture, elementDepuisMouvement, elementsBanqueDepuisEcritures } from './rapprochement/conversion.js';
+export { PARAMETRES_RAPPROCHEMENT_PAR_DEFAUT, REGLES_RAPPROCHEMENT, schemaParametresRapprochement } from './rapprochement/types.js';
+export type {
+  CritereRapprochement, DescriptionRegle, ElementRapprochable, ParametresRapprochement, Rapprochement, ResultatRapprochement,
+} from './rapprochement/types.js';
+
+// 9. synthetique (lot 2) — relevés
+export { IBAN_SYNTHETIQUE, genererReleveSynthetique } from './synthetique/releve.js';
+export type { AttenduReleveSynthetique, MouvementAttendu, OptionsReleveSynthetique, ReleveSynthetique } from './synthetique/releve.js';

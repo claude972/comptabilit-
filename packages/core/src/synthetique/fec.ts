@@ -11,7 +11,9 @@ import { validerSiren } from '../identifiants.js';
 import { creerAlea } from './alea.js';
 
 export type AnomalieSynthetique =
-  | 'desequilibre' | 'rupture_sequence' | 'hors_exercice' | 'doublon' | 'caisse_crediteur' | 'attente_non_solde' | 'client_crediteur' | 'cca_debiteur';
+  | 'desequilibre' | 'rupture_sequence' | 'hors_exercice' | 'doublon' | 'caisse_crediteur' | 'attente_non_solde' | 'client_crediteur' | 'cca_debiteur'
+  // Lot 2 : contrôles IMM-001, IMM-002, SOC-001 et CLO-001.
+  | 'amortissement_superieur_brut' | 'charge_immobilisable' | 'salaires_sans_charges' | 'piece_hors_exercice';
 
 export interface OptionsFecSynthetique {
   siren?: string;
@@ -49,6 +51,8 @@ type Journal = keyof typeof JOURNAUX;
 
 const COMPTES = {
   '10100000': 'Capital',
+  '21830000': 'Matériel de bureau et matériel informatique',
+  '28183000': 'Amortissements du matériel de bureau et matériel informatique',
   '40100000': 'Fournisseurs',
   '41100000': 'Clients',
   '42100000': 'Personnel - Rémunérations dues',
@@ -65,6 +69,7 @@ const COMPTES = {
   '62700000': 'Services bancaires et assimilés',
   '64110000': 'Salaires et appointements',
   '64510000': 'Cotisations à l\u0027URSSAF',
+  '68112000': 'Dotations aux amortissements sur immobilisations corporelles',
   '70600000': 'Prestations de services',
   '70700000': 'Ventes de marchandises',
 } as const;
@@ -73,7 +78,7 @@ type Compte = keyof typeof COMPTES;
 interface LigneSynth {
   compte: Compte; aux: string | null; auxLib: string | null; lib: string; debit: Decimal; credit: Decimal; lettre: string | null; dateLet: string | null;
 }
-interface EcritureSynth { journal: Journal; date: string; piece: string; lignes: LigneSynth[]; nature: string; num: string }
+interface EcritureSynth { journal: Journal; date: string; piece: string; lignes: LigneSynth[]; nature: string; num: string; /** Date de pièce si elle diffère de la date d'écriture. */ datePiece?: string }
 
 const ZERO = new Decimal(0);
 const euros = (centimes: number): Decimal => new Decimal(centimes).div(100);
@@ -219,7 +224,9 @@ export function genererFecSynthetique(options: OptionsFecSynthetique): FecSynthe
       planifier(jour + alea.entier(5, 40), { type: 'client', montant: ht.plus(tva), aux, auxLib, origine: [creance], piece: ref });
     } else if (choix === 1) {
       const charge: Compte = (['60700000', '60600000', '61300000'] as const)[alea.entier(0, 2)] as Compte;
-      const ht = euros(alea.entier(5_000, 120_000));
+      const tirage = alea.entier(5_000, 120_000);
+      // Les achats non stockés (606) du corpus propre restent sous le seuil des biens de faible valeur (500 € HT, contrôle IMM-002).
+      const ht = euros(charge === '60600000' ? 5_000 + ((tirage - 5_000) % 40_001) : tirage);
       const tva = tvaSur(ht, 20);
       const fournisseur = alea.entier(1, 25);
       const aux = `F${String(fournisseur).padStart(4, '0')}`;
@@ -334,6 +341,54 @@ export function genererFecSynthetique(options: OptionsFecSynthetique): FecSynthe
       ]);
       cca = cca.minus(prelevement);
       injectees.push({ type, description: 'Prélèvement de l\u0027associé rendant son compte courant débiteur de 1 500,00.', ecriture: e, controleAttendu: 'CAP-001', montantAttendu: '1500.00' });
+    } else if (type === 'amortissement_superieur_brut') {
+      const brut = euros(150_000);
+      const dotation = euros(180_000);
+      ajouter('OD', milieu, piece('OD'), 'anomalie', [
+        ligne('21830000', 'Acquisition de matériel informatique', brut, ZERO),
+        ligne('40100000', 'Acquisition de matériel informatique', ZERO, brut, 'F9001', 'Fournisseur fictif d\u0027immobilisations'),
+      ]);
+      const e = ajouter('OD', exercice.fin, piece('OD'), 'anomalie', [
+        ligne('68112000', 'Dotation aux amortissements', dotation, ZERO),
+        ligne('28183000', 'Dotation aux amortissements', ZERO, dotation),
+      ]);
+      injectees.push({ type, description: 'Amortissements cumulés (1 800,00) supérieurs de 300,00 à la valeur brute du matériel (1 500,00).', ecriture: e, controleAttendu: 'IMM-001', montantAttendu: '300.00' });
+    } else if (type === 'charge_immobilisable') {
+      const ht = euros(185_000);
+      const tva = tvaSur(ht, 20);
+      const date = isoDepuisJours(joursDepuisEpoque(exercice.fin) - 20);
+      const ref = piece('FF');
+      const e = ajouter('AC', date, ref, 'anomalie', [
+        ligne('60600000', `Ordinateur portable ${ref}`, ht, ZERO),
+        ligne('44566000', `TVA déductible ${ref}`, tva, ZERO),
+        ligne('40100000', `Facture fournisseur ${ref}`, ZERO, ht.plus(tva), 'F9002', 'Fournisseur fictif de matériel'),
+      ]);
+      injectees.push({ type, description: 'Ordinateur de 1 850,00 HT passé en charges (606) au lieu d\u0027être immobilisé.', ecriture: e, controleAttendu: 'IMM-002', montantAttendu: '1850.00' });
+    } else if (type === 'salaires_sans_charges') {
+      const paies = ecritures.filter((e) => e.nature === 'paie');
+      const premiere = paies[0];
+      if (premiere === undefined) throw new Error('Aucune paie dans le corpus : augmenter nbEcritures.');
+      let totalSalaires = ZERO;
+      for (const e of paies) {
+        for (const l of e.lignes) {
+          if (l.compte === '64510000') l.compte = '64110000';
+          if (l.compte === '64110000') totalSalaires = totalSalaires.plus(l.debit);
+        }
+      }
+      injectees.push({ type, description: 'Cotisations patronales imputées en 641 : aucun compte 645 mouvementé.', ecriture: premiere, controleAttendu: 'SOC-001', montantAttendu: totalSalaires.toFixed(2) });
+    } else if (type === 'piece_hors_exercice') {
+      const ht = euros(64_000);
+      const tva = tvaSur(ht, 20);
+      const date = isoDepuisJours(joursDepuisEpoque(exercice.fin) - 10);
+      const datePiece = isoDepuisJours(joursDepuisEpoque(exercice.fin) + 12);
+      const ref = piece('FF');
+      const e = ajouter('AC', date, ref, 'anomalie', [
+        ligne('61300000', `Loyer du mois suivant ${ref}`, ht, ZERO),
+        ligne('44566000', `TVA déductible ${ref}`, tva, ZERO),
+        ligne('40100000', `Facture fournisseur ${ref}`, ZERO, ht.plus(tva), 'F9003', 'Fournisseur fictif bailleur'),
+      ]);
+      e.datePiece = datePiece;
+      injectees.push({ type, description: `Facture datée du ${datePiece}, douze jours après la clôture, comptabilisée le ${date}.`, ecriture: e, controleAttendu: 'CLO-001', montantAttendu: '640.00' });
     } else {
       throw new Error(`Anomalie inconnue : ${String(type)}`);
     }
@@ -384,7 +439,7 @@ export function genererFecSynthetique(options: OptionsFecSynthetique): FecSynthe
         ? [montant(l.debit), montant(l.credit)]
         : l.debit.isZero() ? [montant(l.credit), 'C'] : [montant(l.debit), 'D'];
       sorties.push([
-        e.journal, JOURNAUX[e.journal], e.num, date, l.compte, COMPTES[l.compte], l.aux ?? '', l.auxLib ?? '', e.piece, date, l.lib,
+        e.journal, JOURNAUX[e.journal], e.num, date, l.compte, COMPTES[l.compte], l.aux ?? '', l.auxLib ?? '', e.piece, e.datePiece !== undefined ? compactDepuisIso(e.datePiece) : date, l.lib,
         ...montants, l.lettre ?? '', l.dateLet !== null ? compactDepuisIso(l.dateLet) : '', date, '', '',
       ].join(sep));
       nbLignes++;

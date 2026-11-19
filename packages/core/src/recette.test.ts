@@ -32,10 +32,17 @@ describe('recette — corpus propre', () => {
         expect(rapport.separateur).toBe(format.separateur);
         expect(rapport.encodage).toBe(format.encodage === 'latin9' ? 'iso-8859-15' : 'utf-8');
         const resultats = executerControles({ lignes, exercice: EXERCICE });
-        expect(resultats).toHaveLength(12);
+        expect(resultats).toHaveLength(19);
+        // Sans relevé bancaire ni exercice précédent, TRE-003 et CLO-002 ne sont pas réalisés (motivé) : jamais favorables par défaut.
+        const NON_REALISES_ATTENDUS = new Set(['TRE-003', 'CLO-002']);
         for (const r of resultats) {
           expect(r.constats, `${r.controleId} : ${JSON.stringify(r.constats[0] ?? null)}`).toEqual([]);
-          expect(['sans_anomalie', 'non_applicable'], `${r.controleId} : ${r.statut} (${r.motif ?? ''})`).toContain(r.statut);
+          if (NON_REALISES_ATTENDUS.has(r.controleId)) {
+            expect(r.statut, r.controleId).toBe('non_realise');
+            expect(r.motif, r.controleId).toBeTruthy();
+          } else {
+            expect(['sans_anomalie', 'non_applicable'], `${r.controleId} : ${r.statut} (${r.motif ?? ''})`).toContain(r.statut);
+          }
         }
         // Les contrôles portant sur des comptes présents dans le corpus sont réellement exécutés.
         const statuts = Object.fromEntries(resultats.map((r) => [r.controleId, r.statut]));
@@ -43,6 +50,8 @@ describe('recette — corpus propre', () => {
           'GEN-001': 'sans_anomalie', 'GEN-002': 'sans_anomalie', 'GEN-003': 'sans_anomalie', 'GEN-004': 'sans_anomalie',
           'GEN-005': 'non_applicable', 'TRE-001': 'sans_anomalie', 'TRE-002': 'sans_anomalie', 'TIE-001': 'sans_anomalie',
           'TIE-002': 'sans_anomalie', 'TIE-003': 'sans_anomalie', 'CAP-001': 'sans_anomalie', 'TVA-001': 'sans_anomalie',
+          'TRE-003': 'non_realise', 'IMM-001': 'non_applicable', 'IMM-002': 'sans_anomalie', 'SOC-001': 'sans_anomalie',
+          'CLO-001': 'sans_anomalie', 'CLO-002': 'non_realise', 'TVA-002': 'sans_anomalie',
         });
       });
     }
@@ -78,7 +87,10 @@ describe('recette — corpus propre', () => {
 });
 
 describe('recette — anomalies injectées', () => {
-  const TOUTES: AnomalieSynthetique[] = ['desequilibre', 'rupture_sequence', 'hors_exercice', 'doublon', 'caisse_crediteur', 'attente_non_solde', 'client_crediteur', 'cca_debiteur'];
+  const TOUTES: AnomalieSynthetique[] = [
+    'desequilibre', 'rupture_sequence', 'hors_exercice', 'doublon', 'caisse_crediteur', 'attente_non_solde', 'client_crediteur', 'cca_debiteur',
+    'amortissement_superieur_brut', 'charge_immobilisable', 'salaires_sans_charges', 'piece_hors_exercice',
+  ];
 
   for (const type of TOUTES) {
     for (const graine of [11, 314]) {

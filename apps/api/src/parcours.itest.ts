@@ -7,6 +7,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { genererFecSynthetique, genererTexteFactureSynthetique } from '@comtaple/core';
 import { DEMO } from '@comtaple/db/amorcer';
 import { chargerEnvLocal } from '@comtaple/db/env';
+import { chromium } from 'playwright';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 chargerEnvLocal();
@@ -219,6 +220,40 @@ describe('parcours 1 — dépôt depuis le téléphone, réception, extraction, 
     expect((await api('client', 'GET', `/v1/documents/${autre.fin.json.documentId}`)).statut).toBe(404);
     const liste = await api('client', 'GET', `/v1/documents?entiteId=${DEMO.dupain}`);
     expect(liste.json.documents.some((d: any) => d.id === autre.fin.json.documentId)).toBe(false);
+  });
+});
+
+describe('parcours 1 bis — photo sans couche texte : OCR local réel', () => {
+  it('une image de facture est lue par le service OCR, puis extraite par le moteur', async () => {
+    const f = genererTexteFactureSynthetique({ graine: 33, type: 'facture', qualite: 'nette' });
+    // Image produite par un rendu de navigateur : aucun texte exploitable hors OCR. Ce n'est PAS une photo réelle.
+    const navigateur = await chromium.launch();
+    let image: Buffer;
+    try {
+      const page = await navigateur.newPage({ viewport: { width: 1240, height: 1500 } });
+      const echappe = f.pages[0]!.texte.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+      await page.setContent(`<body style="margin:60px;background:#fff"><pre style="font:22px/1.7 Helvetica,Arial,sans-serif;color:#111">${echappe}\n\nRéf. essai ${SEL}</pre></body>`);
+      image = await page.screenshot({ type: 'png' });
+    } finally {
+      await navigateur.close();
+    }
+    const d = await deposer('client', DEMO.dupain, image, { nature: 'facture_achat' }, 'photo.png');
+    expect(d.fin.json.recu).toBe(true);
+    const doc = await attendre(
+      () => api('client', 'GET', `/v1/documents/${d.fin.json.documentId}`),
+      (r) => r.statut === 200 && !['recu', 'en_analyse'].includes(r.json.document.statut),
+      180_000,
+    );
+    expect(doc.json.fichier.typeMimeDetecte).toBe('image/png');
+    expect(doc.json.document.statut).toBe('a_controler');
+    expect(doc.json.extraction.methode).toBe('ocr');
+    expect(doc.json.extraction.moteur).toMatch(/paddleocr/);
+    const c = doc.json.extraction.champs;
+    expect(c.numero?.valeur).toBe(f.attendu.numero);
+    expect(c.totalHt?.valeur).toBe(f.attendu.totalHt);
+    expect(c.totalTtc?.valeur).toBe(f.attendu.totalTtc);
+    expect(c.totalTtc.page).toBe(1);
+    expect(doc.json.extraction.verifications.some((v: any) => v.statut === 'ecart')).toBe(false);
   });
 });
 

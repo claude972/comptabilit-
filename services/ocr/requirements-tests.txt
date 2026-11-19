@@ -1,0 +1,6 @@
+# Dépendances supplémentaires de l'image de test uniquement (étape `tests` du Dockerfile).
+# httpx (client de test) est déjà figé dans requirements.txt.
+pytest==9.2.0
+iniconfig==2.3.1
+pluggy==1.7.0
+Pygments==2.21.0

@@ -1,8 +1,7 @@
 import { createHash } from 'node:crypto';
-import { PassThrough } from 'node:stream';
-import { asc, eq, journaliser, or, isNull, schema as s, sql, and, inArray } from '@comtaple/db';
+import { and, asc, eq, gt, inArray, isNull, journaliser, or, schema as s, sql } from '@comtaple/db';
 import { cles, type TacheRestitution } from '@comtaple/plateforme';
-import yazl from 'yazl';
+import { COLONNES_ECRITURES, csv, objetJson, ouvrirArchive, tableauJson } from './archive.js';
 import type { Contexte } from './contexte.js';
 
 const LISEZMOI = `RESTITUTION D'UN DOSSIER — Comtaple
@@ -24,16 +23,13 @@ Non inclus : les sauvegardes, les journaux techniques, les jetons de connexion, 
 
 /** Nom de fichier sûr dans l'archive : aucun séparateur de chemin, aucun caractère de contrôle (noms d'origine non fiables). */
 const nomSur = (n: string) => n.normalize('NFC').replace(/[\\/\u0000-\u001f\u007f:*?"<>|]/g, '_').replace(/\.{2,}/g, '_').replace(/^\.+/, '_').slice(0, 120) || 'fichier';
-const csv = (v: unknown) => {
-  const t = v === null || v === undefined ? '' : String(v);
-  // Neutralise les formules de tableur et protège le séparateur.
-  const neutre = /^[=+\-@\t\r]/.test(t) && !/^-?\d+(\.\d+)?$/.test(t) ? `'${t}` : t;
-  return /[";\n\r]/.test(neutre) ? `"${neutre.replace(/"/g, '""')}"` : neutre;
-};
+const TRANCHE = 1000;
 
 /**
  * Restitution complète d'un dossier : originaux, données, liens, constats, décisions et règles applicables.
- * L'archive est construite en flux et son empreinte est enregistrée. Aucune donnée d'un autre dossier n'y entre.
+ * L'archive est construite EN FLUX : chaque table est lue par tranches et écrite au fil de l'eau, chaque original est
+ * relu du stockage sans être chargé en mémoire, et l'archive part dans le stockage pendant sa construction. Son
+ * empreinte est enregistrée. Aucune donnée d'un autre dossier n'y entre.
  */
 export async function genererRestitution(c: Contexte, t: TacheRestitution): Promise<void> {
   const ctx = { cabinetId: t.cabinetId };
@@ -45,138 +41,173 @@ export async function genererRestitution(c: Contexte, t: TacheRestitution): Prom
   });
   if (!debut) return;
   const e = debut.entiteId;
+  const cle = cles.restitution(t.cabinetId, debut.id);
+  const archive = ouvrirArchive(c, cle);
 
   try {
-    const d = await c.bd.avecContexte(ctx, async (tx) => {
-      const par = <T extends { entiteId: unknown }>(table: T) => eq((table as unknown as { entiteId: typeof s.documents.entiteId }).entiteId, e);
-      const [entite] = await tx.select().from(s.entites).where(eq(s.entites.id, e));
-      const documents = await tx.select().from(s.documents).where(par(s.documents)).orderBy(asc(s.documents.creeLe));
-      const lots = await tx.select().from(s.lotsImport).where(par(s.lotsImport)).orderBy(asc(s.lotsImport.creeLe));
-      const idsFichiers = [...new Set([...documents.map((x) => x.fichierId), ...lots.map((x) => x.fichierId).filter((x): x is string => Boolean(x))])];
-      const fichiers = idsFichiers.length ? await tx.select().from(s.fichiers).where(inArray(s.fichiers.id, idsFichiers)) : [];
-      return {
-        entite,
-        exercices: await tx.select().from(s.exercices).where(par(s.exercices)).orderBy(asc(s.exercices.debut)),
-        documents,
-        receptions: await tx.select().from(s.receptions).where(par(s.receptions)),
-        extractions: await tx.select().from(s.extractions).where(par(s.extractions)).orderBy(asc(s.extractions.version)),
-        echanges: await tx.select().from(s.echangesDocument).where(par(s.echangesDocument)),
-        lots,
-        fichiers,
-        executions: await tx.select().from(s.executionsControles).where(par(s.executionsControles)),
-        resultats: await tx.select().from(s.resultatsControles).where(par(s.resultatsControles)),
-        constats: await tx.select().from(s.constats).where(par(s.constats)),
-        decisions: await tx.select().from(s.decisions).where(par(s.decisions)).orderBy(asc(s.decisions.creeLe)),
-        releves: await tx.select().from(s.relevesBancaires).where(par(s.relevesBancaires)),
-        mouvements: await tx.select().from(s.mouvementsBancaires).where(par(s.mouvementsBancaires)).orderBy(asc(s.mouvementsBancaires.dateOperation)),
-        executionsRapprochement: await tx.select().from(s.executionsRapprochement).where(par(s.executionsRapprochement)),
-        rapprochements: await tx.select().from(s.rapprochements).where(par(s.rapprochements)),
-        regles: await tx.select().from(s.reglesCabinet).where(or(isNull(s.reglesCabinet.entiteId), eq(s.reglesCabinet.entiteId, e))),
-        audit: await tx.select().from(s.journalAudit).where(eq(s.journalAudit.entiteId, e)).orderBy(asc(s.journalAudit.id)),
-        utilisateurs: (await tx.execute(sql`select u.id, u.nom from utilisateurs u where exists (select 1 from appartenances a where a.utilisateur_id = u.id and a.cabinet_id = ${t.cabinetId}::uuid)`)).rows,
-      };
-    });
-    if (!d.entite) throw new Error('Dossier introuvable');
+    const [entite] = await c.bd.avecContexte(ctx, (tx) => tx.select().from(s.entites).where(eq(s.entites.id, e)));
+    if (!entite) throw new Error('Dossier introuvable');
+    const decomptes: Record<string, number> = {};
+    /** Lit une table du dossier par tranches, dans l'ordre de ses identifiants ; compte les lignes au passage. */
+    const lire = <T extends { id: unknown; entiteId?: unknown }>(nom: string, table: T, condition?: unknown, transformer: (ligne: Record<string, unknown>) => unknown = (l) => l) =>
+      (async function* () {
+        const tb = table as unknown as Record<string, never>;
+        let dernier: string | number | undefined;
+        decomptes[nom] ??= 0;
+        for (;;) {
+          const tranche = (await c.bd.avecContexte(ctx, (tx) =>
+            tx
+              .select()
+              .from(table as never)
+              .where(and((condition as never) ?? eq(tb.entiteId as never, e), dernier === undefined ? undefined : gt(tb.id as never, dernier as never)))
+              .orderBy(asc(tb.id as never))
+              .limit(TRANCHE),
+          )) as Array<Record<string, unknown>>;
+          if (!tranche.length) return;
+          dernier = tranche[tranche.length - 1]!.id as string | number;
+          decomptes[nom]! += tranche.length;
+          yield tranche.map(transformer);
+          if (tranche.length < TRANCHE) return;
+        }
+      })();
+    const sansBrut = ({ brut: _b, ...reste }: Record<string, unknown>) => reste;
 
-    const zip = new yazl.ZipFile();
-    const manifeste: Array<{ chemin: string; taille: number; sha256: string }> = [];
-    const ajouter = (chemin: string, contenu: Buffer) => {
-      zip.addBuffer(contenu, chemin);
-      manifeste.push({ chemin, taille: contenu.length, sha256: createHash('sha256').update(contenu).digest('hex') });
-    };
-    const json = (chemin: string, valeur: unknown) => ajouter(chemin, Buffer.from(JSON.stringify(valeur, null, 2), 'utf8'));
+    await archive.ajouterTexte('LISEZMOI.txt', LISEZMOI);
+    const [exercices, personnes] = await c.bd.avecContexte(ctx, async (tx) => [
+      await tx.select().from(s.exercices).where(eq(s.exercices.entiteId, e)).orderBy(asc(s.exercices.debut)),
+      (await tx.execute(sql`select u.id, u.nom from utilisateurs u where exists (select 1 from appartenances a where a.utilisateur_id = u.id and a.cabinet_id = ${t.cabinetId}::uuid)`)).rows,
+    ] as const);
+    await archive.ajouterTexte('donnees/dossier.json', JSON.stringify({ dossier: entite, exercices, personnes }, null, 2));
 
-    // L'archive part dans le stockage au fil de sa construction ; son empreinte est calculée au passage.
-    const hache = createHash('sha256');
-    let taille = 0;
-    const sortie = new PassThrough();
-    zip.outputStream.on('data', (m: Buffer) => {
-      hache.update(m);
-      taille += m.length;
-    });
-    zip.outputStream.pipe(sortie);
-    const cle = cles.restitution(t.cabinetId, debut.id);
-    const envoi = c.stockage.deposerFlux(cle, sortie, 'application/zip');
-
-    ajouter('LISEZMOI.txt', Buffer.from(LISEZMOI, 'utf8'));
-    json('donnees/dossier.json', { dossier: d.entite, exercices: d.exercices, personnes: d.utilisateurs });
-    json('donnees/pieces.json', {
-      documents: d.documents.map((doc) => ({
-        ...doc,
-        sha256: d.fichiers.find((f) => f.id === doc.fichierId)?.sha256 ?? null,
-        receptions: d.receptions.filter((r) => r.documentId === doc.id),
-        extractions: d.extractions.filter((x) => x.documentId === doc.id),
-        echanges: d.echanges.filter((x) => x.documentId === doc.id),
-      })),
-    });
-    json('donnees/imports.json', d.lots.map((l) => ({ ...l, sha256: d.fichiers.find((f) => f.id === l.fichierId)?.sha256 ?? null })));
-    json('donnees/revision.json', { executions: d.executions, resultats: d.resultats, constats: d.constats });
-    json('donnees/decisions.json', d.decisions);
-    json('donnees/banque.json', { releves: d.releves.map(({ brut: _b, ...r }) => r), mouvements: d.mouvements.map(({ brut: _b, ...m }) => m) });
-    json('donnees/rapprochements.json', { executions: d.executionsRapprochement, rapprochements: d.rapprochements });
-    json('donnees/regles-cabinet.json', d.regles);
-    json('donnees/journal-audit.json', d.audit);
-
-    // Écritures normalisées : un CSV par lot comptable, lu par tranches (jamais tout en mémoire).
-    const COLONNES = ['numeroLigne', 'journalCode', 'journalLib', 'ecritureNum', 'ecritureDate', 'compteNum', 'compteLib', 'compAuxNum', 'compAuxLib', 'pieceRef', 'pieceDate', 'ecritureLib', 'debit', 'credit', 'ecritureLet', 'dateLet', 'validDate', 'montantDevise', 'idevise'] as const;
-    let nbLignes = 0;
-    for (const lot of d.lots.filter((l) => l.type === 'fec')) {
-      const morceaux: Buffer[] = [Buffer.from(`${COLONNES.join(';')}\n`, 'utf8')];
-      for (let decalage = 0; ; decalage += 5000) {
-        const tranche = await c.bd.avecContexte(ctx, (tx) =>
-          tx.select().from(s.lignesEcriture).where(eq(s.lignesEcriture.lotImportId, lot.id)).orderBy(asc(s.lignesEcriture.numeroLigne)).limit(5000).offset(decalage),
-        );
-        if (!tranche.length) break;
-        morceaux.push(Buffer.from(tranche.map((l) => COLONNES.map((k) => csv(l[k])).join(';')).join('\n') + '\n', 'utf8'));
-        nbLignes += tranche.length;
+    // Pièces : par tranches de documents, chacune enrichie de ses réceptions, extractions et échanges.
+    const pieces = (async function* () {
+      for await (const documents of lire('pieces', s.documents)) {
+        const docs = documents as Array<Record<string, unknown> & { id: string; fichierId: string }>;
+        const ids = docs.map((d) => d.id);
+        const lies = await c.bd.avecContexte(ctx, async (tx) => ({
+          fichiers: await tx.select({ id: s.fichiers.id, sha256: s.fichiers.sha256 }).from(s.fichiers).where(inArray(s.fichiers.id, [...new Set(docs.map((d) => d.fichierId))])),
+          receptions: await tx.select().from(s.receptions).where(inArray(s.receptions.documentId, ids)),
+          extractions: await tx.select().from(s.extractions).where(inArray(s.extractions.documentId, ids)).orderBy(asc(s.extractions.version)),
+          echanges: await tx.select().from(s.echangesDocument).where(inArray(s.echangesDocument.documentId, ids)),
+        }));
+        const sha = new Map(lies.fichiers.map((f) => [f.id, f.sha256]));
+        yield docs.map((doc) => ({
+          ...doc,
+          sha256: sha.get(doc.fichierId) ?? null,
+          receptions: lies.receptions.filter((r) => r.documentId === doc.id),
+          extractions: lies.extractions.filter((x) => x.documentId === doc.id),
+          echanges: lies.echanges.filter((x) => x.documentId === doc.id),
+        }));
       }
-      if (morceaux.length > 1) ajouter(`donnees/ecritures/lot-v${lot.version}-${lot.id}.csv`, Buffer.concat(morceaux));
+    })();
+    await archive.ajouterFragments('donnees/pieces.json', objetJson({ documents: tableauJson(pieces) }));
+
+    const lots = await c.bd.avecContexte(ctx, (tx) =>
+      tx.select({ lot: s.lotsImport, sha256: s.fichiers.sha256 }).from(s.lotsImport).leftJoin(s.fichiers, eq(s.fichiers.id, s.lotsImport.fichierId)).where(eq(s.lotsImport.entiteId, e)).orderBy(asc(s.lotsImport.creeLe)),
+    );
+    await archive.ajouterTexte('donnees/imports.json', JSON.stringify(lots.map(({ lot, sha256 }) => ({ ...lot, sha256: sha256 ?? null })), null, 2));
+    await archive.ajouterFragments('donnees/revision.json', objetJson({
+      executions: tableauJson(lire('executions', s.executionsControles)),
+      resultats: tableauJson(lire('resultats', s.resultatsControles)),
+      constats: tableauJson(lire('constats', s.constats)),
+    }));
+    await archive.ajouterFragments('donnees/decisions.json', tableauJson(lire('decisions', s.decisions)));
+    await archive.ajouterFragments('donnees/banque.json', objetJson({
+      releves: tableauJson(lire('releves', s.relevesBancaires, undefined, sansBrut)),
+      mouvements: tableauJson(lire('mouvementsBancaires', s.mouvementsBancaires, undefined, sansBrut)),
+    }));
+    await archive.ajouterFragments('donnees/rapprochements.json', objetJson({
+      executions: tableauJson(lire('executionsRapprochement', s.executionsRapprochement)),
+      rapprochements: tableauJson(lire('rapprochements', s.rapprochements)),
+    }));
+    await archive.ajouterFragments('donnees/regles-cabinet.json', tableauJson(lire('reglesCabinet', s.reglesCabinet, or(isNull(s.reglesCabinet.entiteId), eq(s.reglesCabinet.entiteId, e)))));
+    await archive.ajouterFragments('donnees/journal-audit.json', tableauJson(lire('evenementsAudit', s.journalAudit, eq(s.journalAudit.entiteId, e))));
+
+    // Écritures normalisées : un CSV par lot comptable, lu par tranches sur le numéro de ligne.
+    let nbLignes = 0;
+    for (const { lot } of lots.filter((l) => l.lot.type === 'fec')) {
+      const tranches = (async function* () {
+        let dernier = 0;
+        for (;;) {
+          const tranche = await c.bd.avecContexte(ctx, (tx) =>
+            tx.select().from(s.lignesEcriture).where(and(eq(s.lignesEcriture.lotImportId, lot.id), gt(s.lignesEcriture.numeroLigne, dernier))).orderBy(asc(s.lignesEcriture.numeroLigne)).limit(5000),
+          );
+          if (!tranche.length) return;
+          dernier = tranche[tranche.length - 1]!.numeroLigne;
+          nbLignes += tranche.length;
+          yield tranche.map((l) => COLONNES_ECRITURES.map((k) => csv(l[k])).join(';')).join('\n') + '\n';
+        }
+      })();
+      const premiere = await tranches.next();
+      if (premiere.done) continue;
+      await archive.ajouterFragments(`donnees/ecritures/lot-v${lot.version}-${lot.id}.csv`, (async function* () {
+        yield `${COLONNES_ECRITURES.join(';')}\n`;
+        yield premiere.value;
+        yield* tranches;
+      })());
     }
 
-    // Originaux : relus du stockage, vérifiés contre leur empreinte ; ceux que l'antivirus a écartés ne sont pas restitués.
+    // Originaux : chaque fichier est d'abord relu en flux pour vérifier son empreinte, puis recopié en flux dans l'archive.
+    // Un original écarté par l'antivirus, ou dont le contenu ne correspond plus à son empreinte, n'est pas restitué.
     const exclus: Array<{ sha256: string; motif: string }> = [];
-    const noms = new Map<string, string>();
-    for (const doc of d.documents) noms.set(doc.fichierId, doc.nomOrigine);
-    for (const l of d.lots) if (l.fichierId) noms.set(l.fichierId, (l.rapport as { nomFichier?: string } | null)?.nomFichier ?? 'import');
     let nbOriginaux = 0;
-    for (const f of d.fichiers) {
-      if (f.analyseAntivirus === 'infecte') {
-        exclus.push({ sha256: f.sha256, motif: 'écarté par l’antivirus' });
-        continue;
+    let dernierFichier: string | undefined;
+    for (;;) {
+      const tranche = (
+        await c.bd.avecContexte(ctx, (tx) =>
+          tx.execute(sql`
+            select f.id, f.sha256, f.cle_stockage as "cleStockage", f.analyse_antivirus as "analyseAntivirus",
+                   (select d.nom_origine from documents d where d.fichier_id = f.id and d.entite_id = ${e}::uuid order by d.cree_le limit 1) as "nomPiece",
+                   (select coalesce(l.rapport->>'nomFichier', 'import') from lots_import l where l.fichier_id = f.id and l.entite_id = ${e}::uuid order by l.cree_le limit 1) as "nomImport"
+              from fichiers f
+             where f.cabinet_id = ${t.cabinetId}::uuid ${dernierFichier === undefined ? sql`` : sql`and f.id > ${dernierFichier}::uuid`}
+               and f.id in (select d.fichier_id from documents d where d.entite_id = ${e}::uuid
+                            union select l.fichier_id from lots_import l where l.entite_id = ${e}::uuid and l.fichier_id is not null)
+             order by f.id limit 200`),
+        )
+      ).rows as Array<{ id: string; sha256: string; cleStockage: string; analyseAntivirus: string; nomPiece: string | null; nomImport: string | null }>;
+      if (!tranche.length) break;
+      dernierFichier = tranche[tranche.length - 1]!.id;
+      for (const f of tranche) {
+        if (f.analyseAntivirus === 'infecte') {
+          exclus.push({ sha256: f.sha256, motif: 'écarté par l’antivirus' });
+          continue;
+        }
+        const h = createHash('sha256');
+        for await (const m of await c.stockage.lireFlux(f.cleStockage)) h.update(m as Uint8Array);
+        if (h.digest('hex') !== f.sha256) {
+          exclus.push({ sha256: f.sha256, motif: 'empreinte différente de celle enregistrée : fichier non restitué, à examiner' });
+          continue;
+        }
+        await archive.ajouterFlux(`originaux/${f.sha256}-${nomSur(f.nomImport ?? f.nomPiece ?? 'fichier')}`, await c.stockage.lireFlux(f.cleStockage));
+        nbOriginaux++;
       }
-      const contenu = await c.stockage.lire(f.cleStockage, 600 * 1024 * 1024);
-      if (createHash('sha256').update(contenu).digest('hex') !== f.sha256) {
-        exclus.push({ sha256: f.sha256, motif: 'empreinte différente de celle enregistrée : fichier non restitué, à examiner' });
-        continue;
-      }
-      ajouter(`originaux/${f.sha256}-${nomSur(noms.get(f.id) ?? 'fichier')}`, contenu);
-      nbOriginaux++;
+      if (tranche.length < 200) break;
     }
 
     const resume = {
       genereLe: new Date().toISOString(),
-      dossier: d.entite.raisonSociale,
-      pieces: d.documents.length,
+      dossier: entite.raisonSociale,
+      pieces: decomptes.pieces ?? 0,
       originaux: nbOriginaux,
       originauxExclus: exclus,
-      lotsImport: d.lots.length,
+      lotsImport: lots.length,
       lignesEcriture: nbLignes,
-      constats: d.constats.length,
-      decisions: d.decisions.length,
-      mouvementsBancaires: d.mouvements.length,
-      rapprochements: d.rapprochements.length,
-      reglesCabinet: d.regles.length,
-      evenementsAudit: d.audit.length,
+      constats: decomptes.constats ?? 0,
+      decisions: decomptes.decisions ?? 0,
+      mouvementsBancaires: decomptes.mouvementsBancaires ?? 0,
+      rapprochements: decomptes.rapprochements ?? 0,
+      reglesCabinet: decomptes.reglesCabinet ?? 0,
+      evenementsAudit: decomptes.evenementsAudit ?? 0,
     };
-    zip.addBuffer(Buffer.from(JSON.stringify({ format: 'comtaple.restitution/1', ...resume, fichiers: manifeste }, null, 2), 'utf8'), 'manifeste.json');
-    zip.end();
-    await envoi;
+    const { sha256, taille } = await archive.terminer({ format: 'comtaple.restitution/1', ...resume });
 
     await c.bd.avecContexte(ctx, async (tx) => {
-      await tx.update(s.restitutions).set({ statut: 'termine', cleArchive: cle, sha256: hache.digest('hex'), taille, resume, termineLe: sql`now()` }).where(and(eq(s.restitutions.id, debut.id)));
+      await tx.update(s.restitutions).set({ statut: 'termine', cleArchive: cle, sha256, taille, resume, termineLe: sql`now()` }).where(eq(s.restitutions.id, debut.id));
       await journaliser(tx, { cabinetId: t.cabinetId, acteurType: 'systeme', action: 'restitution.generee', cibleType: 'restitution', cibleId: debut.id, entiteId: e, details: { taille, originaux: nbOriginaux, exclus: exclus.length } });
     });
   } catch (err) {
+    archive.abandonner(err);
     await c.bd.avecContexte(ctx, (tx) => tx.update(s.restitutions).set({ statut: 'echec', erreur: err instanceof Error ? err.message.slice(0, 500) : 'erreur' }).where(eq(s.restitutions.id, debut.id)));
     throw err;
   }

@@ -1,7 +1,6 @@
-# Intégration continue. ÉTAT au 2026-11-19 : deuxième exécution (run 44552442181, commit a4fd3c0) en échec à l'étape
-# « Service OCR » après 180 s, toutes les étapes précédentes réussies (services de base, ClamAV, migrations, tests de
-# base). Cause non établie : les journaux exigent un compte ; le diagnostic est désormais publié en annotations.
-# Voir docs/rapport-de-tests.md.
+# Intégration continue. ÉTAT au 2026-11-19 : première exécution entièrement réussie, run 44560095560 (commit af548a9),
+# après deux corrections établies par le diagnostic publié en annotations (docs/decisions.md, D-063). L'étape Firefox a
+# été ajoutée ensuite. Voir docs/rapport-de-tests.md.
 name: ci
 on:
   push:
@@ -58,9 +57,9 @@ jobs:
         run: sh scripts/ci-etape.sh "Tests worker" pnpm --filter @comtaple/worker run test:integration
       - name: Parcours de bout en bout
         run: sh scripts/ci-etape.sh "Parcours API" pnpm --filter @comtaple/api run test:integration
-      # ── Suites navigateur (ajoutées le 2026-11-19 ; jamais exécutées sur GitHub à ce jour) ──
-      - name: Navigateurs pour les parcours (Chromium, WebKit)
-        run: pnpm --filter @comtaple/web exec playwright install --with-deps chromium webkit
+      # ── Suites navigateur (Chromium et WebKit réussies au run 44560095560 ; Firefox ajouté ensuite) ──
+      - name: Navigateurs pour les parcours (Chromium, WebKit, Firefox)
+        run: pnpm --filter @comtaple/web exec playwright install --with-deps chromium webkit firefox
       - name: Navigateur, API simulée (vrai Keycloak, simulateur d'API)
         run: sh scripts/ci-etape.sh "Navigateur simulé" pnpm --filter @comtaple/web run test:e2e
       - name: Application web sur la pile réelle
@@ -73,6 +72,9 @@ jobs:
         run: sh scripts/ci-etape.sh "Chromium réel" pnpm --filter @comtaple/web exec playwright test --config playwright.reel.config.ts
       - name: Navigateur WebKit, pile réelle
         run: sh scripts/ci-etape.sh "WebKit réel" pnpm --filter @comtaple/web exec playwright test --config playwright.navigateurs.config.ts --project=webkit
+      # Firefox ne peut pas être lancé par l'agent sur le poste de développement (D-059) : la CI est son seul lieu d'exécution.
+      - name: Navigateur Firefox, pile réelle
+        run: sh scripts/ci-etape.sh "Firefox réel" pnpm --filter @comtaple/web exec playwright test --config playwright.navigateurs.config.ts --project=firefox
       - name: Traces des parcours navigateur en cas d'échec
         if: failure()
         uses: actions/upload-artifact@v4

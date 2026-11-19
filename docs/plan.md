@@ -97,7 +97,7 @@ Critères d'acceptation et résultat :
 
 Pour reprendre le travail sans relire l'historique :
 
-- **Code** : branche `main`, travail commité en local ; le dépôt distant s'arrête au commit `07db781`. La publication (push) relève de la session GitHub, pas du développement.
+- **Code** : branche `main`, publiée sur le dépôt distant (accord de l'utilisateur du 2026-11-19, qui couvre les corrections de la CI). Intégration continue réussie au run 44560095560 (D-063) ; suivre une exécution : API publique `actions/runs` et annotations du job (pas de jeton sur ce poste).
 - **Démarrer** : `source ~/.comtaple-outils/env.sh`, `colima start` si Docker ne répond pas, `pnpm run services:up`, `pnpm run build`, `scripts/applis.sh demarrer` (API 4000, worker, web 3100). Le worker tourne avec un tas plafonné à 2 048 Mo.
 - **Vérifier** : `pnpm run typecheck`, `pnpm run test`, puis les suites d'intégration (`pnpm --filter @comtaple/db|api|worker run test:integration`) et navigateur (`rapport-de-tests.md` donne les commandes et les derniers résultats).
 - **Sauvegarder et essayer une restauration** : `scripts/sauvegarder.sh` (jeu cohérent), `scripts/essai-restauration.sh`, `scripts/essai-restauration-chiffree.sh` (clé éphémère). Ces essais sortent en code 3 sur cette base : c'est attendu (voir ci-dessous).

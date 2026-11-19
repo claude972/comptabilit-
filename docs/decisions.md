@@ -228,6 +228,16 @@ Comportement à la limite, observé : un worker qui dépasse son tas s'arrête ;
 ### D-062 — Essai de restauration du stockage par tranches (2026-11-19)
 Le stockage local sauvegardé (8 Go après les mesures) ne tient plus d'un bloc dans la machine Docker de développement : l'essai de restauration a été refusé par son pré-contrôle d'espace. Le stockage est désormais rechargé et vérifié par tranches de 2 000 Mo au plus, dans une instance d'essai neuve à chaque tranche, détruite ensuite ; chaque objet référencé par la base restaurée est vérifié dans la tranche de son objet. L'espace nécessaire ne dépend plus de la taille totale. Limite : le stockage restauré n'existe jamais en entier au même moment dans l'essai ; c'est une vérification exhaustive objet par objet, pas la remise en service d'un stockage complet.
 
+### D-063 — CI : causes établies par annotations publiques, puis corrigées (2026-11-19)
+Les journaux Actions exigent un compte autorisé, que le développement n'a pas. Le diagnostic est donc aussi publié en ANNOTATIONS de l'exécution, lisibles sur la page publique : état et fin du journal des seuls conteneurs non sains, fin de la sortie d'une étape en échec (`scripts/ci-diagnostic.sh`, `scripts/ci-etape.sh`), valeurs de `.env` masquées (elles sont de toute façon éphémères en CI). Le dépôt étant public, ces annotations le sont aussi : on n'y met ni donnée de test nominative ni secret.
+Faits établis, dans l'ordre :
+- run 44552442181 (a4fd3c0) : les services de base démarrent ; échec à « Service OCR » après 180 s. La cause de l'échec du PREMIER run (44509674342, étape unique des services) reste non établie : cette étape n'existe plus sous cette forme ; l'explication la plus probable est le même service OCR, mais rien ne le prouve.
+- runs 44554723486 et 44556483169 : le conteneur OCR tourne, sans redémarrage ni manque de mémoire, et répond 503 ; le chargement lève `NotImplementedError: ConvertPirAttribute2RuntimeAttribute not support [pir::ArrayAttribute<pir::DoubleAttribute>]` (`onednn_instruction.cc`), sur x86_64 seulement (le poste de développement est en arm64, où oneDNN n'est pas utilisé).
+- Correction : `enable_mkldnn=False` dans le moteur OCR. Le service journalise désormais le message d'un échec de CHARGEMENT (avant toute lecture de pièce ; la règle « jamais de message d'exception » reste entière pour le traitement des documents). Conséquence non mesurée : sans oneDNN, l'OCR peut être plus lent sur x86_64.
+- run 44558586387 : OCR sain en 7 s ; échec du test `limite-volume` du worker, qui supposait un import comptable déjà présent dans la base. Il crée désormais son propre import (inactif, retiré à la fin).
+- run 44560095560 (af548a9) : TOUTES les étapes réussies, y compris les suites navigateur Chromium et WebKit sur pile réelle, pour la première fois sur GitHub.
+Limite : sans les journaux, les nombres de tests exécutés en CI ne sont pas relevés ; seul le succès de chaque étape est constaté.
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

@@ -30,7 +30,7 @@ Typage : réussi pour tous les paquets. Les 27 migrations sont rejouées depuis 
 
 Les images de conteneurs, la validation OpenTofu et les tests du service OCR n'ont PAS été relancés lors de cette passe : leurs résultats datent des passes précédentes.
 
-Intégration continue GitHub : une exécution, EN ÉCHEC (run 44509674342, commit 07db781) — build, typage et tests unitaires réussis, échec au démarrage des services, cause INCONNUE faute d'accès aux journaux (D-051) ; corrections commitées en local, non réexécutées. Les suites navigateur ont été ajoutées à la CI (D-053) mais n'y ont jamais tourné. Non exécuté ; aucune analyse statique de style ; aucun test de charge ; aucun test d'intrusion ; aucune analyse de vulnérabilités des dépendances ou des images.
+Intégration continue GitHub : six exécutions le 2026-11-19 ; les cinq premières en échec, la sixième (run 44560095560, commit af548a9) ENTIÈREMENT RÉUSSIE : construction, typage, tests unitaires, services, tests de base, worker, parcours API, navigateur simulé, Chromium et WebKit sur pile réelle, validation OpenTofu. Causes des échecs établies et corrigées (D-063) : OCR inutilisable sur x86_64 (oneDNN), test du worker dépendant des données locales ; la cause du tout premier échec (run 44509674342) reste non établie. Les nombres de tests exécutés en CI ne sont pas relevés (journaux inaccessibles sans compte) : seul le succès des étapes est constaté. Firefox : étape ajoutée à la CI, résultat ci-dessous dès qu'il est connu. Non exécuté ; aucune analyse statique de style ; aucun test de charge ; aucun test d'intrusion ; aucune analyse de vulnérabilités des dépendances ou des images.
 
 ## Ce que couvrent les parcours de bout en bout (pile réelle)
 

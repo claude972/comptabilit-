@@ -6,9 +6,9 @@ Chaque ligne indique ce qui est attendu d'un humain, pourquoi, et ce qui en dép
 
 Liste courte des seuls obstacles que le développement local ne peut pas lever ; le détail est dans le tableau qui suit.
 
-1. **Journal de la CI en échec** (ligne 17) — télécharger l'archive de journaux du run 44509674342 et la déposer dans `var/`, ou fournir un jeton de lecture. Sans cela, la cause de l'échec reste inconnue.
-2. **Push des commits locaux** — géré par la session GitHub ; tant qu'il n'a pas lieu, la CI corrigée et ses suites navigateur ne tournent pas.
-3. **Suite Firefox** (D-059) — à lancer depuis un terminal de l'utilisateur ou dans la CI : les protections du poste empêchent l'agent de lancer Firefox.
+1. ~~Journal de la CI en échec~~ — levé le 2026-11-19 : causes établies par annotations publiques et corrigées, CI réussie (D-063). Un jeton de lecture des journaux resterait utile (nombres de tests, détail d'un futur échec), sans être bloquant.
+2. ~~Push des commits locaux~~ — levé le 2026-11-19 : accord de l'utilisateur, dépôt distant à jour.
+3. **Suite Firefox** (D-059) — exécutée par la CI seulement ; l'agent ne peut pas lancer Firefox sur le poste.
 4. **Garde de la clé privée des sauvegardes** (ligne 16) — décider où la conserver ; d'ici là, les sauvegardes locales restent en clair.
 5. **Destination indépendante des ancres du journal d'audit** (ligne 15) — sans elle, aucun ancrage effectif.
 6. **Accès de services** (lignes 2 à 5 et 11) — applications OAuth Google et Microsoft, jeton OVHcloud (IA et infrastructure), API Légifrance.
@@ -35,6 +35,6 @@ Liste courte des seuls obstacles que le développement local ne peut pas lever ;
 | 14 | Inscrire l'URI de redirection `<adresse du web>/connexions-mail/retour` chez Google et Microsoft | Éditeur | Retour OAuth des connexions mail | Page de retour en place, vérifiée contre simulateur |
 | 15 | Choisir une destination INDÉPENDANTE pour les ancres du journal d'audit (tiers de confiance, horodatage qualifié ou publication), en fixer la fréquence et le coût éventuel | Éditeur, avec avis juridique | Détection d'une réécriture complète de la fin du journal par un administrateur de la base | Format d'ancre, export et vérification hors base prêts et testés (D-046) ; aucun dépôt externe n'est fait, aucun service n'est appelé |
 | 16 | Décider où conserver la clé PRIVÉE des sauvegardes (hors du poste : coffre, support déconnecté), puis créer la paire de clés | Éditeur | Chiffrement des sauvegardes locales | Outil prêt, restauration depuis un jeu entièrement chiffré essayée avec une clé éphémère (D-050, D-055) ; aucune clé durable créée, sauvegardes toujours en clair |
-| 17 | Fournir le journal de la CI en échec (page du run, « Download log archive », à déposer dans `var/`) ou un jeton de lecture des journaux Actions | Utilisateur | Cause de l'échec de l'étape « Services » de la CI | Cause non établie ; CI rendue auto-explicative pour la prochaine exécution (D-051) |
+| 17 | Fournir le journal de la CI en échec (page du run, « Download log archive », à déposer dans `var/`) ou un jeton de lecture des journaux Actions | Utilisateur | Cause de l'échec de l'étape « Services » de la CI | Plus bloquant : causes des échecs suivants établies par annotations publiques et corrigées, CI réussie (D-063) ; cause du premier échec non établie |
 
 Aucune dépense n'a été engagée et aucun compte externe n'a été créé.

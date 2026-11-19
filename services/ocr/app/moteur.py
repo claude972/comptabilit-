@@ -82,6 +82,10 @@ class MoteurPaddle:
             text_det_limit_type="max",
             text_det_limit_side_len=cfg.detection_cote_max,
             device="cpu",
+            # oneDNN désactivé : sur x86_64, paddlepaddle 3.4.0 échoue dès la première inférence de ces modèles avec
+            # « NotImplementedError: ConvertPirAttribute2RuntimeAttribute not support [pir::ArrayAttribute<pir::DoubleAttribute>] »
+            # (onednn_instruction.cc ; constaté en CI, run 44556483169). Sans effet sur arm64, où oneDNN n'est pas utilisé.
+            enable_mkldnn=False,
             cpu_threads=cfg.threads_cpu,
         )
         # Inférence à blanc : charge réellement les graphes et valide les modèles avant d'annoncer « prêt ».

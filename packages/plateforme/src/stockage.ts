@@ -144,4 +144,5 @@ export const cles = {
   derive: (cabinetId: string, fichierId: string, nom: string) => `cabinets/${cabinetId}/derives/${fichierId}/${nom}`,
   export: (cabinetId: string, nom: string) => `cabinets/${cabinetId}/exports/${nom}`,
   restitution: (cabinetId: string, id: string) => `cabinets/${cabinetId}/restitutions/${id}.zip`,
+  restitutionCabinet: (cabinetId: string, id: string) => `cabinets/${cabinetId}/restitutions/cabinet-${id}.zip`,
 };

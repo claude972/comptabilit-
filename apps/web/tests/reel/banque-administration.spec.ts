@@ -241,3 +241,35 @@ test('abonnement : affiché à l’administratrice avec « montants de démonstr
   expect(await remi.evaluate(async () => [(await fetch('/api/bff/v1/abonnement')).status, (await fetch('/api/bff/v1/abonnement/situation')).status])).toEqual([403, 200]);
   await remi.context().close();
 });
+
+test('restitution du cabinet : périmètre selon les habilitations de l’administratrice, archives listées, refus au réviseur (aucune nouvelle archive demandée)', async ({ browser }) => {
+  // Lecture seule : demander une restitution du cabinet de démonstration produirait une archive de plusieurs centaines
+  // de Mo à chaque exécution. La génération, le contenu et le contrôle des habilitations sont vérifiés par l'API sur un
+  // cabinet neuf (parcours-restitution-cabinet) ; ici, l'écran est comparé à ce que renvoie la vraie API.
+  const page = await ouvrir(browser, 'alice.admin@cabinet-a.test', '/administration');
+  await page.getByRole('link', { name: 'Restitution du cabinet' }).click();
+  await expect(page.getByRole('heading', { name: 'Restitution du cabinet', level: 1 })).toBeVisible();
+  const api = await page.evaluate(async () => ({
+    perimetre: (await (await fetch('/api/bff/v1/cabinet/restitutions/perimetre')).json()) as { complet: boolean; inclus: unknown[]; ecartes: unknown[] },
+    liste: (await (await fetch('/api/bff/v1/cabinet/restitutions')).json()) as Array<{ id: string; statut: string; telechargeable: boolean; sha256: string | null; resume: { complet?: boolean } | null }>,
+  }));
+  await expect(page.getByTestId('perimetre')).toHaveAttribute('data-complet', String(api.perimetre.complet));
+  await expect(page.getByTestId('nb-inclus')).toHaveText(api.perimetre.inclus.length.toLocaleString('fr-FR'));
+  await expect(page.getByTestId('nb-ecartes')).toHaveText(api.perimetre.ecartes.length.toLocaleString('fr-FR'));
+  if (!api.perimetre.complet) await expect(page.getByTestId('perimetre-incomplet')).toContainText('faute d’habilitation « Validation » de votre part');
+  await expect(page.locator('li[data-restitution-cabinet]')).toHaveCount(api.liste.length);
+  const prete = api.liste.find((x) => x.statut === 'termine' && x.telechargeable);
+  if (prete) {
+    const carte = page.locator(`li[data-restitution-cabinet="${prete.id}"]`);
+    await expect(carte.getByTestId('empreinte')).toHaveText(prete.sha256!);
+    await expect(carte.getByTestId('telecharger-archive-cabinet')).toHaveAttribute('href', `/api/bff/v1/cabinet/restitutions/${prete.id}/archive`);
+    await expect(carte.getByTestId('completude')).toContainText(prete.resume?.complet ? 'Complète' : 'Incomplète');
+    await expect(carte.getByTestId('journal-restitution')).toContainText('Vérification stricte :');
+  }
+  await page.context().close();
+
+  const remi = await ouvrir(browser, 'remi.reviseur@cabinet-a.test', '/administration/restitution');
+  await expect(remi.getByRole('heading', { name: 'Accès refusé' })).toBeVisible();
+  expect(await remi.evaluate(async () => [(await fetch('/api/bff/v1/cabinet/restitutions')).status, (await fetch('/api/bff/v1/cabinet/restitutions', { method: 'POST' })).status])).toEqual([403, 403]);
+  await remi.context().close();
+});

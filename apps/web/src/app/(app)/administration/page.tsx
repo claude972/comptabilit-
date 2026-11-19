@@ -39,6 +39,11 @@ export default async function PageAdministration() {
               Indicateurs du cabinet
             </Link>
           </li>
+          <li>
+            <Link href="/administration/restitution" prefetch={false}>
+              Restitution du cabinet
+            </Link>
+          </li>
         </ul>
       </nav>
 

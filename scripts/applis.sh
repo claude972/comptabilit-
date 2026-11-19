@@ -46,7 +46,9 @@ case "${1:-etat}" in
     done
     echo "API et worker redémarrés." ;;
   web)
-    # Redémarre UNIQUEMENT l'application web construite (sans toucher à l'API ni au worker).
+    # Reconstruit puis redémarre UNIQUEMENT l'application web (sans toucher à l'API ni au worker). La reconstruction évite
+    # de servir un build périmé ; WEB_SANS_BUILD=1 la saute.
+    [ "${WEB_SANS_BUILD:-0}" = "1" ] || (cd apps/web && pnpm run build > ../../var/web-build.log 2>&1) || { echo "Échec de la construction du web : voir var/web-build.log"; exit 1; }
     [ -f var/web.pid ] && kill "$(cat var/web.pid)" 2>/dev/null || true
     (cd apps/web && exec node node_modules/next/dist/bin/next start --port 3100) > var/web.log 2>&1 &
     echo $! > var/web.pid

@@ -26,12 +26,20 @@ export async function ouvrirSessions(): Promise<void> {
   }
 }
 
+/** Cabinet à préciser pour un compte membre de plusieurs cabinets (en-tête X-Cabinet-Id) ; null pour revenir au cas général. */
+const cabinets: Record<string, string> = {};
+export function choisirCabinet(qui: string, cabinetId: string | null): void {
+  if (cabinetId) cabinets[qui] = cabinetId;
+  else delete cabinets[qui];
+}
+
 export async function api(qui: string, methode: string, chemin: string, corps?: unknown): Promise<{ statut: number; json: any; brut: Buffer }> {
   const binaire = Buffer.isBuffer(corps);
   const r = await fetch(`${API}${chemin}`, {
     method: methode,
     headers: {
       ...(qui ? { authorization: `Bearer ${jetons[qui]}` } : {}),
+      ...(cabinets[qui] ? { 'x-cabinet-id': cabinets[qui] } : {}),
       ...(corps !== undefined ? { 'content-type': binaire ? 'application/octet-stream' : 'application/json' } : {}),
     },
     body: corps === undefined ? undefined : binaire ? new Uint8Array(corps as Buffer) : JSON.stringify(corps),

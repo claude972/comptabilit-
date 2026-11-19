@@ -1,0 +1,249 @@
+/**
+ * Restitution d'un CABINET entier — pile réelle locale.
+ *
+ * Le parcours crée un cabinet NEUF et petit (opération d'éditeur) pour ne pas produire, à chaque exécution, une archive
+ * de plusieurs centaines de Mo du cabinet de démonstration. Les comptes de démonstration y sont rattachés pour la durée
+ * du test seulement (appartenances à expiration courte, désactivées à la fin) : tant qu'elles sont actives, ces comptes
+ * sont membres de deux cabinets et chaque appel précise le cabinet par l'en-tête X-Cabinet-Id.
+ */
+import { execFileSync } from 'node:child_process';
+import { createHash, randomBytes } from 'node:crypto';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { genererFecSynthetique, genererTexteFactureSynthetique } from '@comtaple/core';
+import { urlBd } from '@comtaple/db';
+import { DEMO } from '@comtaple/db/amorcer';
+import { ouvrirEssai } from '@comtaple/db/provisionnement';
+import pg from 'pg';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import yauzl from 'yauzl';
+import { api, attendre, attendreLot, choisirCabinet, deposer, ouvrirSessions, pdfTexte, sha } from './essais/outils.js';
+
+function ouvrirZip(contenu: Buffer): Promise<Map<string, Buffer>> {
+  return new Promise((ok, ko) => {
+    yauzl.fromBuffer(contenu, { lazyEntries: true }, (err, zip) => {
+      if (err || !zip) return ko(err);
+      const fichiers = new Map<string, Buffer>();
+      zip.on('entry', (entree) => {
+        zip.openReadStream(entree, (e, flux) => {
+          if (e || !flux) return ko(e);
+          const morceaux: Buffer[] = [];
+          flux.on('data', (m) => morceaux.push(m));
+          flux.on('end', () => {
+            fichiers.set(entree.fileName, Buffer.concat(morceaux));
+            zip.readEntry();
+          });
+        });
+      });
+      zip.on('end', () => ok(fichiers));
+      zip.on('error', ko);
+      zip.readEntry();
+    });
+  });
+}
+const lignes = (fichiers: Map<string, Buffer>, table: string): any[] =>
+  (fichiers.get(`donnees/${table}.jsonl`)?.toString('utf8') ?? '').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+
+const SEL = randomBytes(4).toString('hex');
+const COMPTES = ['alice', 'remi', 'chloe'] as const;
+const VERIFICATEUR = join(import.meta.dirname, '../../../scripts/verifier-restitution.mjs');
+let editeur: pg.Client;
+let cabinet = '';
+let dossierA = '';
+let dossierB = '';
+let pieceA: Buffer;
+let pieceB: Buffer;
+let nbLignesFec = 0;
+const dossierTravail = mkdtempSync(join(tmpdir(), 'restitution-cabinet-'));
+
+async function restituer(): Promise<{ r: any; archive: Buffer; fichiers: Map<string, Buffer>; manifeste: any }> {
+  const demande = await api('alice', 'POST', '/v1/cabinet/restitutions');
+  expect(demande.statut).toBe(202);
+  expect((await api('alice', 'POST', '/v1/cabinet/restitutions')).statut).toBe(409); // une seule à la fois
+  const liste = await attendre(() => api('alice', 'GET', '/v1/cabinet/restitutions'), (x) => ['termine', 'echec'].includes(x.json?.find((y: any) => y.id === demande.json.id)?.statut), 180_000);
+  const r = liste.json.find((y: any) => y.id === demande.json.id);
+  expect(r.statut, r.erreur).toBe('termine');
+  const t = await api('alice', 'GET', `/v1/cabinet/restitutions/${r.id}/archive`);
+  expect(t.statut).toBe(200);
+  const fichiers = await ouvrirZip(t.brut);
+  return { r, archive: t.brut, fichiers, manifeste: JSON.parse(fichiers.get('manifeste.json')!.toString('utf8')) };
+}
+
+beforeAll(async () => {
+  await ouvrirSessions();
+  editeur = new pg.Client({ connectionString: urlBd('admin') });
+  await editeur.connect();
+  cabinet = (await editeur.query(`insert into cabinets (nom) values ($1) returning id`, [`Cabinet d’essai restitution ${SEL} (fictif)`])).rows[0].id;
+  await ouvrirEssai(editeur, cabinet, 'demo-essentiel', new Date().toISOString().slice(0, 10));
+  for (const [u, role] of [[DEMO.alice, 'administrateur'], [DEMO.remi, 'associe'], [DEMO.chloe, 'collaborateur']] as const) {
+    await editeur.query(`insert into appartenances (cabinet_id, utilisateur_id, role, expire_le) values ($1, $2, $3, now() + interval '20 minutes')`, [cabinet, u, role]);
+  }
+  for (const qui of COMPTES) choisirCabinet(qui, cabinet);
+
+  dossierA = (await api('alice', 'POST', '/v1/dossiers', { raisonSociale: `Dossier A ${SEL} (fictif)`, territoireFiscal: 'metropole' })).json.id;
+  dossierB = (await api('alice', 'POST', '/v1/dossiers', { raisonSociale: `Dossier B ${SEL} (fictif)`, territoireFiscal: 'metropole' })).json.id;
+  for (const d of [dossierA, dossierB]) {
+    await api('alice', 'PUT', `/v1/dossiers/${d}/habilitations/${DEMO.alice}`, { niveau: 'validation' });
+    await api('alice', 'PUT', `/v1/dossiers/${d}/habilitations/${DEMO.chloe}`, { niveau: 'collaboration' });
+  }
+  const exerciceId = (await api('chloe', 'POST', `/v1/dossiers/${dossierA}/exercices`, { debut: '2025-01-01', fin: '2025-12-31' })).json.id;
+  pieceA = pdfTexte(genererTexteFactureSynthetique({ graine: 7 }).pages[0]!.texte.split('\n'), `A-${SEL}`);
+  pieceB = pdfTexte(genererTexteFactureSynthetique({ graine: 8 }).pages[0]!.texte.split('\n'), `B-${SEL}`);
+  const a = await deposer('chloe', dossierA, pieceA, {}, 'facture-a.pdf');
+  const b = await deposer('chloe', dossierB, pieceB, {}, 'facture-b.pdf');
+  for (const id of [a.fin.json.documentId, b.fin.json.documentId]) {
+    await attendre(() => api('chloe', 'GET', `/v1/documents/${id}`), (r) => r.statut === 200 && !['recu', 'en_analyse'].includes(r.json.document.statut));
+  }
+  const fec = genererFecSynthetique({ exercice: { debut: '2025-01-01', fin: '2025-12-31' }, nbEcritures: 80, graine: Number.parseInt(SEL.slice(0, 6), 16) });
+  nbLignesFec = fec.nbLignes;
+  const lot = await deposer('chloe', dossierA, Buffer.from(fec.contenu), { usage: 'fec', exerciceId, statutDonnees: 'fec' }, fec.nomFichier);
+  await attendreLot('chloe', lot.fin.json.lotImportId);
+  // L'administratrice n'a plus qu'un accès de lecture au dossier B : il ne doit pas entrer dans SA restitution.
+  await api('alice', 'PUT', `/v1/dossiers/${dossierB}/habilitations/${DEMO.alice}`, { niveau: 'lecture' });
+}, 240_000);
+
+afterAll(async () => {
+  for (const qui of COMPTES) choisirCabinet(qui, null);
+  await editeur.query('update appartenances set actif = false where cabinet_id = $1', [cabinet]);
+  await editeur.end();
+  rmSync(dossierTravail, { recursive: true, force: true });
+});
+
+describe('restitution d’un cabinet entier', () => {
+  it('est réservée aux gestionnaires du cabinet, et le périmètre annoncé suit les habilitations du demandeur', async () => {
+    expect((await api('chloe', 'POST', '/v1/cabinet/restitutions')).statut).toBe(403); // collaboratrice
+    expect((await api('chloe', 'GET', '/v1/cabinet/restitutions')).statut).toBe(403);
+    expect((await api('chloe', 'GET', '/v1/cabinet/restitutions/perimetre')).statut).toBe(403);
+    expect((await api('bruno', 'POST', '/v1/cabinet/restitutions')).json?.cabinetId).not.toBe(cabinet); // un autre cabinet ne demande que la sienne…
+    choisirCabinet('bruno', cabinet);
+    expect((await api('bruno', 'POST', '/v1/cabinet/restitutions')).statut).toBe(403); // …et ne peut pas viser celui-ci
+    expect((await api('bruno', 'GET', '/v1/cabinet/restitutions')).statut).toBe(403);
+    choisirCabinet('bruno', null);
+
+    const p = (await api('alice', 'GET', '/v1/cabinet/restitutions/perimetre')).json;
+    expect(p.complet).toBe(false);
+    expect(p.inclus).toEqual([{ id: dossierA, raisonSociale: `Dossier A ${SEL} (fictif)` }]);
+    expect(p.ecartes).toHaveLength(1);
+    expect(p.ecartes[0]).toMatchObject({ id: dossierB });
+    expect(p.ecartes[0].motif).toMatch(/lecture.*inférieure au niveau « validation »/);
+    // Rémi, associé sans aucune habilitation de dossier : sa restitution serait vide de dossiers, et l'API le dit.
+    const r = (await api('remi', 'GET', '/v1/cabinet/restitutions/perimetre')).json;
+    expect(r.inclus).toEqual([]);
+    expect(r.ecartes.map((e: any) => e.motif)).toEqual(['Vous n’êtes pas habilité sur ce dossier', 'Vous n’êtes pas habilité sur ce dossier']);
+  });
+
+  let premiere: Awaited<ReturnType<typeof restituer>>;
+
+  it('produit une archive incomplète et le dit : le dossier hors habilitation n’y figure nulle part', async () => {
+    premiere = await restituer();
+    const { r, archive, fichiers, manifeste } = premiere;
+    expect(archive.length).toBe(r.taille);
+    expect(sha(archive)).toBe(r.sha256);
+    expect(r.cleArchive).toBeUndefined(); // l'emplacement de stockage n'est pas exposé
+    expect(r).toMatchObject({ demandeParNom: 'Alice Admin', telechargeable: true });
+    expect(manifeste).toMatchObject({ format: 'comtaple.restitution-cabinet/1', complet: false, dossiersInclus: 1, dossiersEcartes: 1 });
+    expect(manifeste.perimetre.inclus).toEqual([dossierA]);
+    expect(manifeste.perimetre.ecartes[0]).toMatchObject({ id: dossierB });
+    // Cabinet neuf : son journal est intègre selon la vérification stricte, et il est restitué partiellement.
+    expect(manifeste.journalAudit).toMatchObject({ verificationStricte: 'intègre', partiel: true });
+
+    // Manifeste : tout fichier y est, à la bonne taille et à la bonne empreinte ; rien ne s'y ajoute.
+    expect([...fichiers.keys()].filter((n) => n !== 'manifeste.json').sort()).toEqual(manifeste.fichiers.map((f: any) => f.chemin).sort());
+    for (const f of manifeste.fichiers) {
+      expect(fichiers.get(f.chemin)!.length, f.chemin).toBe(f.taille);
+      expect(sha(fichiers.get(f.chemin)!), f.chemin).toBe(f.sha256);
+    }
+    for (const nom of fichiers.keys()) expect(nom).toMatch(/^(LISEZMOI\.txt|manifeste\.json|donnees\/[a-z_]+\.(jsonl|json)|ecritures\/[0-9a-f-]{36}\/lot-v\d+-[0-9a-f-]{36}\.csv|originaux\/[0-9a-f]{64})$/);
+
+    // Habilitations : aucune ligne d'aucune table ne porte le dossier B, ni un autre cabinet.
+    const tables = [...fichiers.keys()].filter((n) => n.endsWith('.jsonl')).map((n) => n.slice('donnees/'.length, -'.jsonl'.length));
+    expect(tables).toEqual(expect.arrayContaining(['entites', 'documents', 'fichiers', 'lots_import', 'habilitations_dossier', 'journal_audit', 'appartenances', 'abonnements', 'exercices']));
+    for (const table of tables) {
+      for (const l of lignes(fichiers, table)) {
+        expect(l.cabinetId, table).toBe(cabinet);
+        if ('entiteId' in l && l.entiteId !== null) expect(l.entiteId, table).toBe(dossierA);
+      }
+    }
+    expect(lignes(fichiers, 'entites').map((e) => e.id)).toEqual([dossierA]);
+    const horsPerimetre = [...fichiers.entries()].filter(([n, c]) => !['manifeste.json', 'donnees/cabinet.json'].includes(n) && c.includes(Buffer.from(dossierB)));
+    expect(horsPerimetre.map(([n]) => n)).toEqual([]);
+
+    // Originaux : celui du dossier A, identique à l'octet près ; celui du dossier B absent.
+    expect(fichiers.get(`originaux/${sha(pieceA)}`)?.equals(pieceA)).toBe(true);
+    expect(fichiers.has(`originaux/${sha(pieceB)}`)).toBe(false);
+    expect(lignes(fichiers, 'fichiers').some((f) => f.sha256 === sha(pieceB))).toBe(false);
+    for (const [nom, contenu] of fichiers) if (nom.startsWith('originaux/')) expect(nom.slice('originaux/'.length)).toBe(createHash('sha256').update(contenu).digest('hex'));
+    expect(manifeste.originauxNonConformes).toEqual([]);
+
+    // Écritures : toutes les lignes de l'import, en CSV, sous le dossier A.
+    const csvs = [...fichiers.entries()].filter(([n]) => n.startsWith('ecritures/'));
+    expect(csvs).toHaveLength(1);
+    expect(csvs[0]![0].startsWith(`ecritures/${dossierA}/`)).toBe(true);
+    expect(csvs[0]![1].toString('utf8').trim().split('\n').length - 1).toBe(nbLignesFec);
+    expect(manifeste.lignesEcriture).toBe(nbLignesFec);
+
+    // Aucun secret : les colonnes exclues sont nommées, et absentes des données.
+    expect(manifeste.colonnesExclues).toEqual(expect.arrayContaining(['connexions_mail.jetons_chiffres']));
+    for (const [nom, contenu] of fichiers) if (nom.startsWith('donnees/')) expect(contenu.includes(Buffer.from('jetonsChiffres')), nom).toBe(false);
+    // Personnes : uniquement les membres de ce cabinet.
+    expect(JSON.parse(fichiers.get('donnees/personnes.json')!.toString('utf8')).map((p: any) => p.id).sort()).toEqual([DEMO.alice, DEMO.remi, DEMO.chloe].sort());
+  });
+
+  it('n’est téléchargeable que par la personne qui l’a demandée, et tout est journalisé', async () => {
+    const { r } = premiere;
+    // Rémi est gestionnaire (associé) : il voit la restitution, mais ne peut pas se servir du périmètre d'Alice.
+    const vueRemi = (await api('remi', 'GET', '/v1/cabinet/restitutions')).json.find((x: any) => x.id === r.id);
+    expect(vueRemi).toMatchObject({ statut: 'termine', telechargeable: false, demandeParNom: 'Alice Admin' });
+    expect((await api('remi', 'GET', `/v1/cabinet/restitutions/${r.id}/archive`)).statut).toBe(403);
+    expect((await api('chloe', 'GET', `/v1/cabinet/restitutions/${r.id}/archive`)).statut).toBe(403);
+    expect((await api('bruno', 'GET', `/v1/cabinet/restitutions/${r.id}/archive`)).statut).toBe(404); // autre cabinet : inexistante
+    const actions = (await api('alice', 'GET', '/v1/audit?limite=60')).json.lignes.filter((l: any) => l.cibleId === r.id).map((l: any) => l.action);
+    expect(actions).toEqual(expect.arrayContaining(['restitution_cabinet.demandee', 'restitution_cabinet.generee', 'restitution_cabinet.telechargee']));
+    expect(actions.filter((a: string) => a === 'restitution_cabinet.telechargee')).toHaveLength(1); // les refus n'ont rien servi
+  });
+
+  it('se vérifie hors de l’application ; une archive altérée ou tronquée est rejetée', async () => {
+    const { r, archive } = premiere;
+    const chemin = join(dossierTravail, 'archive.zip');
+    writeFileSync(chemin, archive);
+    const sortie = execFileSync('node', [VERIFICATEUR, chemin, r.sha256], { encoding: 'utf8' });
+    expect(sortie).toMatch(/restitution INCOMPLÈTE/);
+    expect(sortie).toMatch(/CONFORME : chaque fichier correspond au manifeste/);
+    const echec = (args: string[]) => {
+      try {
+        execFileSync('node', [VERIFICATEUR, ...args], { encoding: 'utf8', stdio: 'pipe' });
+        return null;
+      } catch (e: any) {
+        return `${e.status} ${e.stdout}`;
+      }
+    };
+    // Un octet modifié au milieu de l'archive : empreinte de l'archive différente, et contenu non conforme.
+    const alteree = Buffer.from(archive);
+    alteree[Math.floor(alteree.length / 2)]! ^= 0xff;
+    writeFileSync(join(dossierTravail, 'alteree.zip'), alteree);
+    expect(echec([join(dossierTravail, 'alteree.zip'), r.sha256])).toMatch(/^1 [^]*NON CONFORME/);
+    expect(echec([join(dossierTravail, 'alteree.zip')])).toMatch(/^1 [^]*NON CONFORME/);
+    writeFileSync(join(dossierTravail, 'tronquee.zip'), archive.subarray(0, archive.length - 2000));
+    expect(echec([join(dossierTravail, 'tronquee.zip')])).toMatch(/^1 [^]*NON CONFORME/);
+    expect(echec([chemin, 'a'.repeat(64)])).toMatch(/^1 [^]*empreinte de l'archive différente/);
+  });
+
+  it('devient complète quand la demandeuse est habilitée (validation) sur tous les dossiers — habilitation journalisée', async () => {
+    expect((await api('alice', 'PUT', `/v1/dossiers/${dossierB}/habilitations/${DEMO.alice}`, { niveau: 'validation' })).statut).toBeLessThan(300);
+    expect((await api('alice', 'GET', '/v1/cabinet/restitutions/perimetre')).json).toMatchObject({ complet: true, ecartes: [] });
+    const { fichiers, manifeste } = await restituer();
+    expect(manifeste).toMatchObject({ complet: true, dossiersInclus: 2, dossiersEcartes: 0 });
+    expect(manifeste.journalAudit).toMatchObject({ verificationStricte: 'intègre', partiel: false });
+    expect(lignes(fichiers, 'entites').map((e) => e.id).sort()).toEqual([dossierA, dossierB].sort());
+    expect(fichiers.get(`originaux/${sha(pieceB)}`)?.equals(pieceB)).toBe(true);
+    // Journal complet du cabinet : les lignes restituées s'enchaînent, de la première à la dernière.
+    const journal = lignes(fichiers, 'journal_audit');
+    expect(journal.length).toBe(manifeste.journalAudit.lignesRestituees);
+    expect(journal[0].empreintePrecedente).toBeNull();
+    for (let i = 1; i < journal.length; i++) expect(journal[i].empreintePrecedente, `ligne ${journal[i].id}`).toBe(journal[i - 1].empreinte);
+    expect(journal.some((l) => l.action === 'habilitation.accordee' && l.entiteId === dossierB)).toBe(true);
+    // La première archive, incomplète, reste disponible telle quelle : une restitution n'en remplace pas une autre.
+    expect((await api('alice', 'GET', `/v1/cabinet/restitutions/${premiere.r.id}/archive`)).brut.equals(premiere.archive)).toBe(true);
+  });
+});

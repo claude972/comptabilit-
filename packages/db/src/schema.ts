@@ -1162,3 +1162,24 @@ export const anomaliesJournal = pgTable('anomalies_journal', {
   cause: text('cause').notNull(),
   consigneeLe: horodatage('consignee_le').notNull().defaultNow(),
 });
+
+/**
+ * Restitution d'un CABINET entier. Le périmètre (dossiers inclus et écartés) est figé à la demande, d'après les
+ * habilitations du demandeur : un dossier où il n'a pas le niveau « validation » n'entre pas dans l'archive.
+ * Réservée aux gestionnaires ; l'archive n'est téléchargeable que par la personne qui l'a demandée.
+ */
+export const restitutionsCabinet = pgTable('restitutions_cabinet', {
+  id: id(),
+  cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+  statut: statutLot('statut').notNull().default('en_attente'),
+  /** { inclus: uuid[], ecartes: [{ id, motif }] } — figé à la demande. */
+  perimetre: jsonb('perimetre').notNull(),
+  cleArchive: text('cle_archive'),
+  sha256: text('sha256'),
+  taille: bigint('taille', { mode: 'number' }),
+  resume: jsonb('resume'),
+  erreur: text('erreur'),
+  demandePar: uuid('demande_par').notNull().references(() => utilisateurs.id),
+  creeLe: creeLe(),
+  termineLe: horodatage('termine_le'),
+});

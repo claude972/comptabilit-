@@ -5,7 +5,7 @@ import * as schema from './schema.js';
 
 export * from './schema.js';
 export { schema };
-export { and, asc, desc, eq, inArray, isNull, ne, or, sql, count, gt, lt, gte, lte } from 'drizzle-orm';
+export { and, asc, desc, eq, inArray, isNull, ne, or, sql, count, gt, lt, gte, lte, getTableColumns, getTableName } from 'drizzle-orm';
 
 export type Bd = NodePgDatabase<typeof schema>;
 /** Transaction Drizzle dans laquelle le contexte de sécurité (cabinet, utilisateur) est posé. */

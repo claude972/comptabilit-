@@ -11,6 +11,7 @@ import { importerFec } from './import-fec.js';
 import { planifierMail, traiterTacheMail } from './mail.js';
 import { rattraper } from './rattrapage.js';
 import { genererRestitution } from './restitution.js';
+import { genererRestitutionCabinet } from './restitution-cabinet.js';
 import { verifierSources } from './veille.js';
 
 chargerEnvLocal();
@@ -38,7 +39,7 @@ const workers = [
               : executerControlesExecution(c, job.data),
     { connection: connexionRedis(cfg.REDIS_URL), concurrency: 2, prefix },
   ),
-  new Worker(FILES.exports, (job) => (job.name === 'restitution' ? genererRestitution(c, job.data) : genererDossierRevision(c, job.data)), { connection: connexionRedis(cfg.REDIS_URL), concurrency: 1, prefix }),
+  new Worker(FILES.exports, (job) => (job.name === 'restitution-cabinet' ? genererRestitutionCabinet(c, job.data) : job.name === 'restitution' ? genererRestitution(c, job.data) : genererDossierRevision(c, job.data)), { connection: connexionRedis(cfg.REDIS_URL), concurrency: 1, prefix }),
   // Collecte par mail : synchronisations sérialisées par connexion (verrou), tâches planifiées de rattrapage et d'entretien.
   new Worker(FILES.mail, (job) => (job.name.startsWith('planifier-') ? planifierMail(c, job.name) : traiterTacheMail(c, mail, job.name, job.data)), {
     connection: connexionRedis(cfg.REDIS_URL),

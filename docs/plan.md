@@ -83,7 +83,8 @@ Critères d'acceptation et résultat :
 
 1. Faire valider par un expert-comptable : catalogue des contrôles, table de correspondance des états, conventions d'indicateurs, convention de rentabilité.
 2. Obtenir les accès externes (`acces-externes.md`) : OAuth Google et Microsoft, jeton OVHcloud, API Légifrance, corpus réel autorisé, authentification GitHub pour alimenter le dépôt distant.
-3. Lacunes réalisables en local, sans accès externe : ancrage externe des empreintes du journal d'audit (D-038) ; restitution d'un cabinet entier ; pagination des rapprochements et des règles.
+3. Réalisé le 2026-11-19 : restitution d'un cabinet entier (D-043), pagination des rapprochements et des règles (D-044), essais de restauration isolés sans effet sur les services locaux (D-045), format d'ancre du journal et vérification hors base (D-046). Lacunes locales restantes : restitution d'un dossier isolé encore assemblée en mémoire (à passer en flux comme celle du cabinet) ; écran de correspondance comptes 512 ↔ comptes bancaires ; notifications ; identifiants de contrôles du simulateur d'API différents de ceux de l'API (`TIE_001` / `TIE-001`) ; chiffrement des sauvegardes locales.
+   Bloqué par un choix externe : dépôt des ancres du journal chez un tiers indépendant (`acces-externes.md`, ligne 15).
 4. Lacunes dépendant d'une validation ou d'un accès : génération assistée d'écritures d'inventaire, annexe et liasse (professionnel) ; assistant et recherche vectorielle (passerelle IA).
 5. Description complète de l'infrastructure, supervision déployée (jeton OVHcloud).
 6. Essais sur appareils réels, sur Safari et sur Firefox (non lançable sur le poste actuel), et évaluation de l'extraction sur pièces réelles.

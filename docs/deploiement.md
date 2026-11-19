@@ -70,14 +70,18 @@ Points d'attention déjà identifiés :
 **Essai de restauration de la base et du stockage objet** — `scripts/essai-restauration.sh`, sans jamais écrire dans la base ni dans le stockage de l'application :
 
 1. empreintes de la sauvegarde et du manifeste ;
-2. restauration dans une base neuve ; volumes de lignes ;
+2. restauration dans un PostgreSQL d'essai SÉPARÉ (autre conteneur, autre volume, sans port publié, ressources plafonnées) ; volumes de lignes ;
 3. journal d'audit : (a) fidélité — le résultat de la vérification stricte est identique à l'origine, cabinet par cabinet ; (b) intégrité — vérification stricte, seule référence (D-038) ;
 4. RLS activé et forcé sur toutes les tables portant `cabinet_id` ; nombre de politiques ;
 5. stockage objet : rechargement de la sauvegarde dans une instance SÉPARÉE (autre conteneur, autre volume, autres identifiants générés pour l'essai, autre port, accès anonyme refusé), puis relecture de TOUS les objets référencés par la base restaurée (originaux, exports de révision, archives de restitution) et comparaison à l'empreinte enregistrée en base ; l'instance est détruite ensuite.
 
-Codes de sortie : 0 réussi ; 3 données restaurées fidèlement mais journal d'audit non intègre ; autre : échec. Sur la base locale fictive, l'essai sort en 3 à cause de l'irrégularité historique du journal du cabinet Alpha (D-038) : c'est voulu, et il ne sortira en 0 que sur une base au journal intègre. Dernier résultat : 1 521 objets (3,6 Go) sauvegardés en 82 s et rechargés en 65 s ; 1 422 objets référencés, tous conformes.
+6. aucun service de l'application n'a redémarré pendant l'essai (instants de démarrage comparés avant et après).
 
-**Essai de restauration de Keycloak** — `scripts/essai-restauration-keycloak.sh` : export complet du royaume (comptes, empreintes de mots de passe, clients, rôles), import dans une instance d'essai séparée, puis comparaison à l'origine et à la base de l'application : mêmes comptes et mêmes identifiants (« sub »), connexion acceptée avec le mot de passe d'origine, mauvais mot de passe refusé, mêmes clients, même secret du client confidentiel, mêmes rôles (16 contrôles conformes). L'export impose d'ARRÊTER le Keycloak local quelques secondes (7 à 10 s constatées), car sa base embarquée ne se lit pas pendant qu'il tourne. Le fichier d'export contient des empreintes de mots de passe et un secret : il reste dans `var/sauvegardes/`, lisible par son seul propriétaire.
+Avant de commencer, l'essai vérifie que les services sont en bonne santé et que l'espace disque laisse 2 Go de marge ; sinon il refuse de se lancer (code 5).
+
+Codes de sortie : 0 réussi ; 3 données restaurées fidèlement mais journal d'audit non intègre ; 4 un service de l'application a redémarré pendant l'essai ; 5 essai refusé par un pré-contrôle ; autre : échec. Sur la base locale fictive, l'essai sort en 3 à cause de l'irrégularité historique du journal du cabinet Alpha (D-038) : c'est voulu, et il ne sortira en 0 que sur une base au journal intègre. Dernier résultat : base restaurée en 10 s ; 1 613 objets (4,4 Go) rechargés en 82 s ; 1 514 objets référencés, tous conformes ; aucun redémarrage de service.
+
+**Essai de restauration de Keycloak** — `scripts/essai-restauration-keycloak.sh` : export complet du royaume (comptes, empreintes de mots de passe, clients, rôles), import dans une instance d'essai séparée, puis comparaison à l'origine et à la base de l'application : mêmes comptes et mêmes identifiants (« sub »), connexion acceptée avec le mot de passe d'origine, mauvais mot de passe refusé, mêmes clients, même secret du client confidentiel, mêmes rôles (16 contrôles conformes). Le Keycloak local n'est pas arrêté : son conteneur est figé le temps de copier sa base embarquée (0,3 s constaté), puis repris ; l'export est fait à part, à partir de la copie, qui a la cohérence d'un arrêt brutal (les toutes dernières écritures peuvent manquer, d'où la comparaison à l'origine). Le fichier d'export contient des empreintes de mots de passe et un secret : il reste dans `var/sauvegardes/`, lisible par son seul propriétaire.
 
 ### Ce qui n'est pas vérifié
 

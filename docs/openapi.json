@@ -1917,13 +1917,31 @@
         ]
       },
       "get": {
-        "description": "Une ambiguïté (plusieurs solutions équivalentes) n’est jamais tranchée par le moteur. Un abandon signale une recherche interrompue par la borne de combinaisons. « obsolete » indique que les données ont changé depuis le calcul.",
+        "description": "Une ambiguïté (plusieurs solutions équivalentes) n’est jamais tranchée par le moteur. Un abandon signale une recherche interrompue par la borne de combinaisons. « obsolete » indique que les données ont changé depuis le calcul. Les propositions sont renvoyées par pages de 200, dans un ordre stable ; `pagination` donne le total et les décomptes par statut et par règle, calculés sur TOUTES les propositions (et non sur la page).",
         "operationId": "BanqueController_dernier",
         "parameters": [
           {
             "name": "id",
             "required": true,
             "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "Page de propositions (1 par défaut)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "statut",
+            "required": false,
+            "in": "query",
+            "description": "propose | valide | rejete",
             "schema": {
               "type": "string"
             }
@@ -2644,8 +2662,35 @@
     },
     "/v1/regles": {
       "get": {
+        "description": "Avec `page` : réponse paginée `{ page, taillePage, total, suite, parStatut, regles }` (50 par page, ordre stable, filtres `statut` et `controleId`). Sans `page` : ancienne forme, un tableau limité aux 500 règles les plus récentes — conservée pour compatibilité, à ne plus utiliser.",
         "operationId": "ReglesController_lister",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "statut",
+            "required": false,
+            "in": "query",
+            "description": "proposee | approuvee | retiree | refusee",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "controleId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -2960,6 +3005,96 @@
           }
         ],
         "summary": "Télécharger l’archive de restitution (journalisé)",
+        "tags": [
+          "Restitution"
+        ]
+      }
+    },
+    "/v1/cabinet/restitutions/perimetre": {
+      "get": {
+        "description": "Un dossier n’entre dans la restitution que si l’appelant y a le niveau « validation ». Les autres sont listés avec le motif : rien n’est restitué en contournant une habilitation.",
+        "operationId": "RestitutionController_apercuPerimetre",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Périmètre qu’aurait une restitution du cabinet demandée maintenant par l’appelant (gestionnaires)",
+        "tags": [
+          "Restitution"
+        ]
+      }
+    },
+    "/v1/cabinet/restitutions": {
+      "post": {
+        "description": "Archive ZIP construite en flux : données du cabinet et des dossiers du périmètre (une table par fichier, JSON Lines), écritures normalisées, originaux non modifiés, et un manifeste d’empreintes SHA-256 vérifiable sans le logiciel. Le périmètre est figé à la demande d’après les habilitations du demandeur ; les dossiers écartés sont listés avec leur motif et l’archive est alors marquée incomplète. Reste possible quand l’abonnement est suspendu ou résilié.",
+        "operationId": "RestitutionController_demanderCabinet",
+        "parameters": [],
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Demander la restitution du cabinet entier (gestionnaires)",
+        "tags": [
+          "Restitution"
+        ]
+      },
+      "get": {
+        "operationId": "RestitutionController_listerCabinet",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Restitutions du cabinet (gestionnaires), avec le nom du demandeur",
+        "tags": [
+          "Restitution"
+        ]
+      }
+    },
+    "/v1/cabinet/restitutions/{id}/archive": {
+      "get": {
+        "description": "Réservé à la personne qui a demandé la restitution : le périmètre de l’archive est celui de SES habilitations, un autre gestionnaire ne peut pas s’en servir pour lire des dossiers où il n’est pas habilité.",
+        "operationId": "RestitutionController_telechargerCabinet",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Télécharger l’archive de restitution du cabinet (journalisé)",
         "tags": [
           "Restitution"
         ]

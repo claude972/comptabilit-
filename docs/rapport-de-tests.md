@@ -1,6 +1,6 @@
 # Rapport de tests
 
-Dernière exécution complète : 2026-11-19 (sixième passe, après la révision de D-038, les restaurations isolées (stockage objet, Keycloak), WebKit (vérification stricte comme référence), l'affectation des travaux et les lots versions de pièces, aperçu CSV, pièces jointes, annulation et campagnes d'import, rentabilité), poste de développement macOS (Apple Silicon), services locaux dans une machine virtuelle Docker (4 processeurs, 6 Go). La base locale contient les données accumulées par les exécutions successives des parcours.
+Dernière exécution complète : 2026-11-19 (septième passe, après la restitution d'un cabinet, la pagination, les essais de restauration fiabilisés, les ancres du journal (vérification stricte comme référence), l'affectation des travaux et les lots versions de pièces, aperçu CSV, pièces jointes, annulation et campagnes d'import, rentabilité), poste de développement macOS (Apple Silicon), services locaux dans une machine virtuelle Docker (4 processeurs, 6 Go). La base locale contient les données accumulées par les exécutions successives des parcours.
 
 Tous les jeux de données sont SYNTHÉTIQUES. Aucun service externe réel (Google, Microsoft, OVHcloud), aucun appareil réel, aucune donnée de cabinet.
 
@@ -11,16 +11,16 @@ Tous les jeux de données sont SYNTHÉTIQUES. Aucun service externe réel (Googl
 | Moteur métier | `pnpm --filter @comtaple/core run test` | 458 réussis / 458 | Mémoire, jeux synthétiques |
 | Connecteurs mail (bibliothèque) | `pnpm --filter @comtaple/mail run test` | 57 réussis / 57 | Simulateur local des API Gmail et Graph |
 | Application web (logique) | `pnpm --filter @comtaple/web run test` | 139 réussis / 139 | Mémoire |
-| Isolation et audit | `pnpm --filter @comtaple/db run test:integration` | 32 réussis / 32 (13 sur la base locale existante, 19 sur une base neuve isolée) | PostgreSQL réel. La base neuve est créée, migrée depuis zéro, amorcée puis supprimée à chaque exécution |
+| Isolation et audit | `pnpm --filter @comtaple/db run test:integration` | 39 réussis / 39 (13 sur la base locale existante, 26 sur une base neuve isolée, dont 7 sur les ancres du journal) | PostgreSQL réel. La base neuve est créée, migrée depuis zéro, amorcée puis supprimée à chaque exécution |
 | Surveillance des sources et rattrapage | `pnpm --filter @comtaple/worker run test:integration` | 8 réussis / 8 | PostgreSQL réel, lecture HTTP injectée |
-| Parcours de bout en bout | `pnpm --filter @comtaple/api run test:integration` | 122 réussis / 122 (11 fichiers) | Pile réelle : Keycloak, API, worker, PostgreSQL, Redis, S3, ClamAV, OCR. Les 20 parcours mail utilisent en plus le simulateur de messagerie |
-| Navigateur, API simulée | `pnpm --filter @comtaple/web run test:e2e` | 108 réussis / 108 | Vrai Keycloak ; API remplacée par un simulateur de test ; Chromium ordinateur et émulation Pixel 7 |
-| Navigateur, pile réelle | `pnpm --filter @comtaple/web exec playwright test -c playwright.reel.config.ts` | 28 réussis / 28 | Tout réel en local, Chromium ordinateur et émulation Pixel 7 |
+| Parcours de bout en bout | `pnpm --filter @comtaple/api run test:integration` | 131 réussis / 131 (13 fichiers) | Pile réelle : Keycloak, API, worker, PostgreSQL, Redis, S3, ClamAV, OCR. Les 20 parcours mail utilisent en plus le simulateur de messagerie |
+| Navigateur, API simulée | `pnpm --filter @comtaple/web run test:e2e` | 109 réussis / 109 | Vrai Keycloak ; API remplacée par un simulateur de test ; Chromium ordinateur et émulation Pixel 7 |
+| Navigateur, pile réelle | `pnpm --filter @comtaple/web exec playwright test -c playwright.reel.config.ts` | 29 réussis / 29 | Tout réel en local, Chromium ordinateur et émulation Pixel 7 |
 | Service OCR | tests pytest dans l'image `comtaple-ocr:tests` | 48 réussis / 48 (exécution du développeur du service, non relancée lors des dernières passes) | Conteneur sans réseau |
-| Navigateur WebKit, pile réelle | `pnpm --filter @comtaple/web exec playwright test -c playwright.navigateurs.config.ts --project=webkit` | 28 réussis / 28 | Mêmes parcours que la ligne précédente, moteur WebKit 27.2 de Playwright (moteur de Safari, pas Safari), téléphone émulé en iPhone 15 |
+| Navigateur WebKit, pile réelle | `pnpm --filter @comtaple/web exec playwright test -c playwright.navigateurs.config.ts --project=webkit` | 29 réussis / 29 | Mêmes parcours que la ligne précédente, moteur WebKit 27.2 de Playwright (moteur de Safari, pas Safari), téléphone émulé en iPhone 15 |
 | Navigateur Firefox, pile réelle | idem `--project=firefox` | **Non exécuté** : Firefox 159 de Playwright ne se lance pas sur ce poste (« Could not find profile folder », refus du bac à sable macOS), y compris depuis le disque interne | — |
-| Sauvegarde et restauration : base et stockage objet | `scripts/sauvegarder.sh && scripts/essai-restauration.sh` | **Restauration fidèle, contrôle d'intégrité du journal EN ÉCHEC** (code de sortie 3). Base : 432 181 lignes d'écriture, 112 politiques RLS, journal identique à l'origine. Stockage objet : 1 521 objets (3,6 Go) rechargés dans une instance isolée, 1 422 objets référencés par la base restaurée tous relus et conformes. La vérification stricte désigne la ligne 7603 du cabinet Alpha fictif (état historique dégradé, D-038) : l'essai ne sortira « réussi » que sur une base au journal intègre | Base neuve et instance de stockage séparée, détruites après l'essai |
-| Sauvegarde et restauration : Keycloak | `scripts/essai-restauration-keycloak.sh` | Réussi : 16 contrôles conformes (comptes, « sub », connexions, refus d'un mauvais mot de passe, clients, secret, rôles) | Instance Keycloak d'essai séparée, détruite après l'essai ; 7 s d'arrêt du Keycloak local pour l'export |
+| Sauvegarde et restauration : base et stockage objet | `scripts/sauvegarder.sh && scripts/essai-restauration.sh` | **Restauration fidèle, contrôle d'intégrité du journal EN ÉCHEC** (code de sortie 3). Base : restaurée en 10 s dans un PostgreSQL d'essai séparé, 460 344 lignes d'écriture, 114 politiques RLS, journal identique à l'origine. Stockage objet : 1 613 objets (4,4 Go) rechargés en 82 s dans une instance isolée, 1 514 objets référencés par la base restaurée tous relus et conformes. Aucun service de l'application n'a redémarré. La vérification stricte désigne la ligne 7603 du cabinet Alpha fictif (état historique dégradé, D-038) : l'essai ne sortira « réussi » que sur une base au journal intègre | Instances d'essai séparées (PostgreSQL et stockage), ressources plafonnées, détruites après l'essai |
+| Sauvegarde et restauration : Keycloak | `scripts/essai-restauration-keycloak.sh` | Réussi : 16 contrôles conformes (comptes, « sub », connexions, refus d'un mauvais mot de passe, clients, secret, rôles) ; Keycloak local figé 0,3 s pour la copie, sans arrêt ni redémarrage | Instance Keycloak d'essai séparée, détruite après l'essai |
 | Images de conteneurs | `docker build --target api\|worker\|web` puis démarrage | Trois images construites et démarrées | Réseau des services locaux ; lecture seule, sans capacités, utilisateur non privilégié |
 | Infrastructure | `tofu validate` dans `infra/opentofu` | Valide | Schéma du fournisseur uniquement ; jamais planifiée ni appliquée |
 
@@ -46,7 +46,13 @@ Non exécuté : l'intégration continue GitHub (fichier écrit, dépôt distant 
 
 **Journal d'audit, sur base neuve isolée (non-régression)** — 240 écritures simultanées par deux rôles sur deux cabinets sans irrégularité ni prédécesseur déclaré deux fois ; modification, suppression, troncature refusées aux rôles applicatifs ; numéro, empreinte, prédécesseur et horodatage fournis par l'appelant ignorés ; écriture dans le journal d'un autre cabinet refusée ; avec les droits du propriétaire : contenu modifié, empreinte recalculée, ligne supprimée, début tronqué, prédécesseur inexistant, vidé ou emprunté à un autre cabinet — tous désignés par la vérification stricte et non consignables ; une consignation ne change jamais le résultat strict et ne masque pas une altération dans ou après sa plage ; lecture du journal réservée aux gestionnaires dans la base, écriture d'un non-gestionnaire correctement enchaînée.
 
+**Ancres du journal, sur base neuve isolée** — le calcul hors base donne les mêmes empreintes que PostgreSQL sur un journal réel ; une rupture est désignée à la même ligne en base et hors base ; ancres chaînées vérifiées ; fin du journal entièrement réécrite avec empreintes recalculées (dans l'export, puis dans la base elle-même par son propriétaire) : invisible pour la chaîne et pour la vérification stricte, révélée par l'ancre ; lignes supprimées ou retirées, ancre modifiée, manquante ou d'un autre cabinet ; aucune ancre établie sur un journal amputé.
+
 **Journal d'audit, sur la base locale existante (état historique dégradé)** — aucune conclusion d'intégrité : seulement l'absence de nouvelle irrégularité sur les lignes écrites pendant le test, et la cohérence entre l'API et la vérification stricte (rupture affichée, diagnostic à part).
+
+**Restitution d'un cabinet (cabinet neuf créé pour le test)** — réservée aux gestionnaires ; périmètre annoncé puis figé selon les habilitations du demandeur ; dossier hors habilitation absent de toutes les tables, des écritures et des originaux ; manifeste complet et exact ; aucun secret ; téléchargement refusé à un autre gestionnaire, à un collaborateur et à un autre cabinet ; vérification hors application, archive altérée ou tronquée rejetée ; restitution complète après habilitation journalisée, avec un journal d'audit dont les lignes restituées s'enchaînent.
+
+**Pagination (cabinet neuf créé pour le test)** — 57 règles et plus de 200 propositions de rapprochement parcourues page par page sans doublon ni oubli, ordre stable, décomptes sur l'ensemble, filtres, page au-delà de la fin, paramètres invalides refusés, ancienne forme conservée, une décision ne déplace aucune proposition d'une page à l'autre, cloisonnement inchangé.
 
 **Comptabilité** — import FEC en flux et idempotent ; anomalies injectées détectées ; revue des constats ; dossier de révision ; nouvelle version rendant les travaux « à revoir » ; faux FEC rejeté ; contrôles fiscaux non réalisés hors métropole ; cohérence entre deux exercices importés.
 
@@ -77,7 +83,8 @@ Vérifié contre le simulateur d'API seulement : service fermé et actions d'abo
 | Rapprochement de 8 800 × 8 800 éléments | 81 ms au cas nominal, environ 1 s en données dégradées | Moteur seul |
 | Campagne d'import sur 200 dossiers (`scripts/mesure-campagne.mjs`) | 192 imports réussis, 8 échecs (les 8 fichiers volontairement illisibles), aucun échec propagé ; 76 635 lignes importées et contrôlées ; 13,4 s de dépôt séquentiel, 1,3 s de plus pour la fin des imports, 14,8 s du premier dépôt à la fin des contrôles | Fichiers de 150 écritures (≈ 54 Ko), un seul utilisateur, worker à 2 traitements simultanés, poste local au repos |
 | Annulation d'un import en cours | Fichier de 291 567 lignes interrompu pendant le traitement, aucune ligne conservée, lot actif inchangé | Parcours de bout en bout |
-| Restauration de la base | 6 s pour une sauvegarde de 24 Mo (402 800 lignes d'écriture) | Base locale d'essai ; 1 à 2 s pour 364 à 412 Ko lors des premières passes |
+| Restitution du cabinet de démonstration (`scripts/mesure-restitution-cabinet.mjs`) | 235 dossiers inclus et 114 écartés (habilitations de la demandeuse), 844 originaux (719 Mo), 311 032 lignes d'écriture : archive de 359 Mo générée en 18 s, téléchargée en 6 s, vérifiée conforme hors application. Mémoire résidente du worker : 151 Mo au repos, 486 Mo au plus haut (relevé toutes les 0,5 s) | Poste local au repos ; une seule mesure ; le plus gros original fait quelques dizaines de Mo |
+| Restauration de la base | 10 s pour une sauvegarde de 28 Mo (460 344 lignes d'écriture), dans un PostgreSQL d'essai séparé | Base locale d'essai ; 1 à 2 s pour 364 à 412 Ko lors des premières passes |
 
 Ces chiffres décrivent ce poste et ces jeux. Ils ne sont pas des engagements de performance. La campagne de 200 dossiers porte sur de PETITS fichiers et un seul cabinet : ni des fichiers de 100 000 lignes par dossier, ni plusieurs cabinets simultanés n'ont été mesurés. L'import complet d'un FEC de 100 000 lignes à travers l'API, le worker et la base n'a pas été chronométré (seul le moteur l'a été).
 
@@ -89,11 +96,15 @@ Aucune mesure sur des pièces réelles. Sur les gabarits synthétiques, numéro,
 
 | Sujet | État |
 |---|---|
+| Export du journal et lecture de son état triés sur le numéro lu comme du texte (100 rangé avant 99) | Trouvé par les tests des ancres et par un essai sur les journaux locaux, corrigé avant toute utilisation |
+| Simulateur d'API des tests navigateur : identifiants de contrôles écrits `TIE_001` au lieu de `TIE-001` | Ouvert (sans effet sur l'API réelle ; les parcours réels utilisent les vrais identifiants) |
+| Restitution d'un cabinet : mémoire du worker montée à 486 Mo pour une archive de 359 Mo | À surveiller : la construction est en flux, mais ce pic n'a pas été décomposé (compression, envoi par morceaux, tranches de 5 000 lignes) ni mesuré sur un cabinet plus gros |
+| Deux archives de restitution du cabinet de démonstration (718 Mo) ajoutées au stockage local par la mesure, dont une par erreur de manipulation | Laissées en place (aucune suppression de données) ; elles alourdissent d'autant les sauvegardes locales |
 | **PostgreSQL redémarré pendant un essai de restauration** (sonde de santé expirée sous charge disque, processus orphelin recueilli par le serveur) | Corrigé dans `compose.yaml` (processus d'init, sonde sans shell). Aucune donnée perdue ; essai rejoué sans redémarrage. Détail : `deploiement.md` |
 | Firefox impossible à lancer sur ce poste | Ouvert (cause non élucidée ; la configuration du projet Firefox est en place) |
 | **Journal d'audit : bifurcation de la chaîne sous écritures simultanées** (numéro attribué avant le verrou). Constaté une fois en local, reproduit sur une copie | Défaut corrigé (migration 0025) et couvert par des tests sur base neuve. La base locale fictive reste dans un état historique dégradé : la vérification stricte y échoue et l'écran, l'API et l'essai de restauration le disent ; la consignation n'est qu'un diagnostic (D-038 révisée). Aucun ancrage externe des empreintes |
 | Lecture du journal d'audit protégée par l'API seulement, pas par la base | Corrigé (migration 0026) |
-| `scripts/applis.sh web` relance l'application sans la reconstruire : un build périmé a fait échouer un parcours réel | Contournement : `pnpm --filter @comtaple/web run build` avant de relancer |
+| `scripts/applis.sh web` relançait l'application sans la reconstruire : un build périmé a fait échouer un parcours réel | Corrigé : le script reconstruit avant de relancer |
 | Lignes d'un constat dans un format incohérent ; contrôles fiscaux exécutés quel que soit le territoire | Corrigés |
 | Membres d'un dossier, cabinets d'un compte, pagination des documents et des anomalies, abandon et purge d'un téléversement, doublon à la clôture rejouée | Corrigés |
 | Caractère nul dans un nom de fichier provoquant une erreur serveur | Corrigé (refus 400) |
@@ -105,7 +116,7 @@ Aucune mesure sur des pièces réelles. Sur les gabarits synthétiques, numéro,
 | Horodatages de formes différentes selon les routes | Ouvert (l'interface gère les deux) |
 | `referentielComptable` et effacement d'un champ facultatif non modifiables sur un dossier | Ouvert |
 | Jonction de pièces à un conseil, une écriture d'inventaire, une lettre | Corrigé (formulaires livrés ; conseil et écriture vérifiés au navigateur sur pile réelle, lettre contre simulateur et par l'API) |
-| Listes sans total | Corrigé pour les pièces (total, pagination, recherche). Ouvert pour les rapprochements au-delà de 2 000 et les règles au-delà de 500 |
+| Listes sans total | Corrigé : pièces, rapprochements et règles paginés avec total (D-044) |
 | Aperçu d'un CSV bancaire avant confirmation du profil | Corrigé. Limite : aucun profil n'est pré-proposé (`profilPropose` toujours vide), l'utilisateur choisit toutes les colonnes |
 | Correspondance comptes 512 ↔ comptes bancaires : possible par une règle de cabinet sur `TRE-003`, sans écran dédié | Ouvert |
 | Progression d'import sans total | Ouvert |

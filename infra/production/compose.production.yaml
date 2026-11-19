@@ -1,0 +1,455 @@
+# Composition de PRODUCTION (une instance OVHcloud, Docker Compose, pas de Kubernetes).
+#
+# ÉTAT : validée par `docker compose config` avec infra/production/exemple.env ; JAMAIS démarrée sur un hôte de
+# production (aucune instance n'existe). Voir docs/deploiement.md et docs/exploitation.md.
+#
+# Principes :
+# - seul le proxy (Caddy) publie des ports : 80 et 443 vers Internet, et un port de collecte des métriques lié à
+#   l'adresse PRIVÉE de l'instance (jamais à Internet) ;
+# - la base PostgreSQL (managée) et le stockage objet (S3 OVHcloud) sont EXTERNES à cette composition ;
+# - conteneurs en lecture seule, sans capacités, sans élévation de privilèges, ressources plafonnées — sauf exceptions
+#   signalées (antivirus) ;
+# - toute variable sans valeur fait échouer la commande avec son nom : aucun secret n'a de valeur par défaut ;
+# - aucun montage de dossier de l'hôte (sauf la sonde de l'hôte, en lecture seule) : configuration passée par
+#   l'environnement, données dans des volumes Docker.
+#
+# Usage sur l'hôte (par scripts/deployer.sh) :
+#   docker compose --env-file production.env -f compose.production.yaml up -d --wait
+name: comtaple-production
+
+x-durcissement: &durcissement
+  read_only: true
+  cap_drop: ["ALL"]
+  security_opt: ["no-new-privileges:true"]
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: { max-size: "20m", max-file: "5" }
+
+# Variables communes à l'API et au worker (packages/plateforme/src/config.ts, packages/db).
+x-environnement-serveur: &environnement-serveur
+  NODE_ENV: production
+  PG_HOST: ${PG_HOST:?définir PG_HOST (hôte de la base managée)}
+  PG_PORT: ${PG_PORT:?définir PG_PORT}
+  PG_DATABASE: ${PG_DATABASE:-comtaple}
+  # Chiffrement de la connexion à la base : lu par le pilote `pg`. `require` vérifie le certificat du serveur (autorité
+  # à fournir par NODE_EXTRA_CA_CERTS si elle n'est pas publique) ; `no-verify` chiffre sans authentifier le serveur.
+  PGSSLMODE: ${PGSSLMODE:?définir PGSSLMODE (require recommandé)}
+  NODE_EXTRA_CA_CERTS: /tmp/ac-base.pem
+  # Autorité de certification de la base managée (PEM public, pas un secret). Vide = autorités publiques seules.
+  PG_AC_PEM: ${PG_AC_PEM:-}
+  REDIS_URL: redis://:${REDIS_PASSWORD:?définir REDIS_PASSWORD}@redis:6379
+  S3_ENDPOINT: ${S3_ENDPOINT:?définir S3_ENDPOINT (point d'accès S3 OVHcloud de la région française)}
+  S3_REGION: ${S3_REGION:?définir S3_REGION}
+  S3_BUCKET: ${S3_BUCKET:?définir S3_BUCKET}
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:?définir S3_ACCESS_KEY}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:?définir S3_SECRET_KEY}
+  OIDC_ISSUER: https://${DOMAINE_AUTH:?définir DOMAINE_AUTH}/realms/comtaple
+  OIDC_AUDIENCE: comtaple-api
+  CLAMAV_HOST: clamav
+  CLAMAV_PORT: "3310"
+  ANTIVIRUS_OBLIGATOIRE: "true"
+  OCR_URL: http://ocr:8500
+  WEB_URL: https://${DOMAINE_WEB:?définir DOMAINE_WEB}
+  METRIQUES_HOTE: 0.0.0.0
+  # Passerelle IA : vide = « non connectée », aucun appel sortant.
+  IA_OVH_ENDPOINT: ${IA_OVH_ENDPOINT:-}
+  IA_OVH_JETON: ${IA_OVH_JETON:-}
+  # Collecte par mail : identifiants vides = connecteurs « non connectés ». MAIL_SIMULATEUR_URL n'est jamais transmis.
+  JETONS_CLE_CHIFFREMENT: ${JETONS_CLE_CHIFFREMENT:?définir JETONS_CLE_CHIFFREMENT (43 caractères aléatoires au moins)}
+  JETONS_CLES_ANCIENNES: ${JETONS_CLES_ANCIENNES:-}
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+  GOOGLE_SUJET_PUBSUB: ${GOOGLE_SUJET_PUBSUB:-}
+  GOOGLE_PUSH_AUDIENCE: ${GOOGLE_PUSH_AUDIENCE:-}
+  GOOGLE_PUSH_COMPTE_SERVICE: ${GOOGLE_PUSH_COMPTE_SERVICE:-}
+  MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
+  MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET:-}
+  MICROSOFT_LOCATAIRE: ${MICROSOFT_LOCATAIRE:-common}
+  MAIL_URI_REDIRECTION: ${MAIL_URI_REDIRECTION:-}
+  MAIL_URL_PUBLIQUE_API: ${MAIL_URL_PUBLIQUE_API:-}
+  MAIL_PERIODE_RATTRAPAGE_S: ${MAIL_PERIODE_RATTRAPAGE_S:-900}
+  # Traces OpenTelemetry : non instrumentées à ce jour (docs/exploitation.md) ; la variable est réservée.
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+
+services:
+  # ── Entrée unique : TLS (certificats obtenus automatiquement), en-têtes de sécurité, routage par nom d'hôte ──
+  proxy:
+    image: caddy:2.11.9
+    <<: *durcissement
+    cap_add: ["NET_BIND_SERVICE"]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+      # Collecte des métriques par l'instance de supervision : adresse PRIVÉE uniquement.
+      - "${ADRESSE_PRIVEE:?définir ADRESSE_PRIVEE (adresse de l'instance dans le réseau privé)}:9100:9100"
+    # `configs` en ligne est refusé par Compose pour un service en lecture seule : le Caddyfile est passé par
+    # l'environnement et écrit dans un système de fichiers en mémoire au démarrage.
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["printf '%s' \"$$CADDYFILE\" > /tmp/Caddyfile && exec caddy run --config /tmp/Caddyfile --adapter caddyfile"]
+    environment:
+      CADDYFILE: |
+        {
+          email ${ACME_COURRIEL:?définir ACME_COURRIEL (contact des certificats)}
+          admin off
+          # Aucun proxy amont déclaré : l'adresse du client est celle de la connexion, et les en-têtes de transfert
+          # reçus d'Internet sont remplacés avant d'atteindre les services.
+        }
+
+        (securite) {
+          encode zstd gzip
+          header {
+            Strict-Transport-Security "max-age=31536000; includeSubDomains"
+            X-Content-Type-Options "nosniff"
+            Referrer-Policy "strict-origin-when-cross-origin"
+            -Server
+          }
+        }
+
+        # Application web (le navigateur ne parle qu'à elle ; elle relaie vers l'API sur le réseau interne).
+        # L'API n'est jamais publique, sauf les deux points de notification des fournisseurs de messagerie, authentifiés
+        # par l'API elle-même (MAIL_URL_PUBLIQUE_API = https://<DOMAINE_WEB> si la collecte par mail est activée).
+        ${DOMAINE_WEB} {
+          import securite
+          @notifications {
+            method POST
+            path /v1/mail/notifications/gmail /v1/mail/notifications/microsoft
+          }
+          handle @notifications {
+            reverse_proxy api:4000
+          }
+          handle {
+            reverse_proxy web:3100
+          }
+        }
+
+        # Keycloak : seuls les chemins nécessaires aux utilisateurs sont publics ; la console et l'API d'administration
+        # ne sont servies qu'aux adresses d'administration ; métriques et santé ne passent jamais par ici.
+        ${DOMAINE_AUTH} {
+          import securite
+          @admin path /admin /admin/*
+          @administrateurs remote_ip ${ADMIN_PLAGES_AUTORISEES:?définir ADMIN_PLAGES_AUTORISEES (plages CIDR séparées par des espaces)}
+          @public path /realms/* /resources/* /.well-known/* /robots.txt
+          handle @admin {
+            handle @administrateurs {
+              reverse_proxy keycloak:8080
+            }
+            respond 403
+          }
+          handle @public {
+            reverse_proxy keycloak:8080
+          }
+          respond 404
+        }
+
+        # Collecte des métriques : HTTP simple, publié sur l'adresse PRIVÉE seulement (voir `ports`).
+        :9100 {
+          handle /sante {
+            respond "ok" 200
+          }
+          handle /api/metrics {
+            rewrite * /metrics
+            reverse_proxy api:9464
+          }
+          handle /worker/metrics {
+            rewrite * /metrics
+            reverse_proxy worker:9465
+          }
+          handle /redis/metrics {
+            rewrite * /metrics
+            reverse_proxy sonde-redis:9121
+          }
+          handle /hote/metrics {
+            rewrite * /metrics
+            reverse_proxy sonde-hote:9100
+          }
+          handle /keycloak/metrics {
+            rewrite * /metrics
+            reverse_proxy keycloak:9000
+          }
+          respond 404
+        }
+    volumes:
+      - proxy_donnees:/data
+      - proxy_config:/config
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=16m"]
+    networks:
+      entree:
+        # Les conteneurs joignent l'émetteur OIDC par son nom public, servi par le proxy avec son certificat.
+        aliases: ["${DOMAINE_AUTH}"]
+      metriques: {}
+    depends_on:
+      web: { condition: service_healthy }
+      api: { condition: service_healthy }
+      keycloak: { condition: service_healthy }
+    mem_limit: 256m
+    cpus: 1.0
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9100/sante"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  web:
+    image: ${REGISTRE:?définir REGISTRE (adresse du registre et projet, sans barre finale)}/comtaple-web:${VERSION:?définir VERSION (empreinte de commit des images)}
+    <<: *durcissement
+    environment:
+      NODE_ENV: production
+      OIDC_ISSUER: https://${DOMAINE_AUTH}/realms/comtaple
+      OIDC_CLIENT_ID: comtaple-web
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:?définir OIDC_CLIENT_SECRET}
+      SESSION_SECRET: ${SESSION_SECRET:?définir SESSION_SECRET (48 caractères aléatoires au moins)}
+      API_URL: http://api:4000
+      WEB_URL: https://${DOMAINE_WEB}
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+      - /app/apps/web/.next/cache:rw,noexec,nosuid,size=256m,uid=1000,gid=1000
+    networks: [entree]
+    depends_on:
+      api: { condition: service_healthy }
+    mem_limit: 1g
+    cpus: 1.0
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3100/connexion').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  api:
+    image: ${REGISTRE}/comtaple-api:${VERSION}
+    <<: *durcissement
+    environment:
+      <<: *environnement-serveur
+      API_HOTE: 0.0.0.0
+      API_PORT: "4000"
+      # Rôle applicatif SANS BYPASSRLS. Le mot de passe du rôle de migration n'est JAMAIS donné à ce service.
+      PG_APP_PASSWORD: ${PG_APP_PASSWORD:?définir PG_APP_PASSWORD}
+    # Écrit l'autorité de certification de la base (PG_AC_PEM, texte public) en mémoire, puis lance le service.
+    command: ["sh", "-c", "printf '%s\\n' \"$$PG_AC_PEM\" > /tmp/ac-base.pem && exec node apps/api/dist/main.js"]
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=256m"]
+    networks: [entree, interne, ocr, metriques]
+    depends_on:
+      redis: { condition: service_healthy }
+    mem_limit: 1g
+    cpus: 2.0
+    pids_limit: 512
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/v1/sante').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  # Migration de la base : lancée par scripts/deployer.sh AVANT la bascule, jamais avec les services
+  # (`docker compose --env-file production.env --env-file migration.env … --profile migration run --rm migration`).
+  # Seule commande à recevoir le rôle de migration (migration.env) ; elle crée ou met à jour les rôles applicatifs
+  # sans BYPASSRLS, l'extension vector et le schéma (packages/db/src/migrer.ts).
+  migration:
+    profiles: ["migration"]
+    image: ${REGISTRE}/comtaple-api:${VERSION}
+    <<: *durcissement
+    restart: "no"
+    command: ["sh", "-c", "printf '%s\\n' \"$$PG_AC_PEM\" > /tmp/ac-base.pem && exec node packages/db/dist/migrer.js"]
+    environment:
+      NODE_ENV: production
+      PG_HOST: ${PG_HOST}
+      PG_PORT: ${PG_PORT}
+      PG_DATABASE: ${PG_DATABASE:-comtaple}
+      PGSSLMODE: ${PGSSLMODE}
+      NODE_EXTRA_CA_CERTS: /tmp/ac-base.pem
+      PG_AC_PEM: ${PG_AC_PEM:-}
+      # Vides hors de la commande de migration : celle-ci échoue alors avec un message explicite.
+      PG_ADMIN_USER: ${PG_ADMIN_USER:-comtaple_admin}
+      PG_ADMIN_PASSWORD: ${PG_ADMIN_PASSWORD:-}
+      PG_APP_PASSWORD: ${PG_APP_PASSWORD}
+      PG_WORKER_PASSWORD: ${PG_WORKER_PASSWORD}
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=16m"]
+    networks: [interne]
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 128
+
+  worker:
+    image: ${REGISTRE}/comtaple-worker:${VERSION}
+    <<: *durcissement
+    environment:
+      <<: *environnement-serveur
+      PG_WORKER_PASSWORD: ${PG_WORKER_PASSWORD:?définir PG_WORKER_PASSWORD}
+      # Plafond de tas et limite de volume vont ENSEMBLE (docs/decisions.md, D-061).
+      NODE_OPTIONS: --max-old-space-size=2048
+      LIGNES_MAX_PAR_TRAITEMENT: ${LIGNES_MAX_PAR_TRAITEMENT:-500000}
+    # Écrit l'autorité de certification de la base (PG_AC_PEM, texte public) en mémoire, puis lance le service.
+    command: ["sh", "-c", "printf '%s\\n' \"$$PG_AC_PEM\" > /tmp/ac-base.pem && exec node apps/worker/dist/main.js"]
+    # Chromium (rendu PDF hors ligne) écrit son profil et ses fichiers temporaires dans /tmp.
+    tmpfs: ["/tmp:rw,nosuid,size=1g"]
+    shm_size: 512m
+    networks: [interne, ocr, metriques]
+    depends_on:
+      redis: { condition: service_healthy }
+    # Tas de 2 048 Mo + Chromium + mémoire hors tas.
+    mem_limit: 3g
+    cpus: 2.0
+    pids_limit: 1024
+    # Laisse aux traitements en cours le temps de se terminer avant l'arrêt.
+    stop_grace_period: 120s
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:9465/metrics').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
+
+  # Files BullMQ. Sur l'instance et non managé : justification dans infra/opentofu/main.tf. Pas d'éviction (exigence de
+  # BullMQ), persistance AOF. Les files sont reconstructibles depuis la base (rattrapage du worker).
+  redis:
+    image: redis:8.8.4-alpine
+    <<: *durcissement
+    # Utilisateur `redis` de l'image, posé explicitement : sans capacités, le changement d'utilisateur que fait l'image
+    # au démarrage échoue (constaté en local : « Can't open or create append-only dir »).
+    user: "999:1000"
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "384mb", "--maxmemory-policy", "noeviction", "--requirepass", "${REDIS_PASSWORD}"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    volumes: ["redis_donnees:/data"]
+    networks: [interne]
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD --no-auth-warning ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # OCR local (PaddleOCR). Réseau `ocr` interne : AUCUN accès sortant.
+  ocr:
+    image: ${REGISTRE}/comtaple-ocr:${VERSION}
+    <<: *durcissement
+    environment:
+      OCR_TAILLE_MAX_OCTETS: ${OCR_TAILLE_MAX_OCTETS:-26214400}
+      OCR_PAGES_MAX: ${OCR_PAGES_MAX:-30}
+      OCR_DELAI_REQUETE_S: ${OCR_DELAI_REQUETE_S:-300}
+      OCR_FILE_ATTENTE_MAX: ${OCR_FILE_ATTENTE_MAX:-4}
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=64m"]
+    networks: [ocr]
+    mem_limit: 2g
+    cpus: 2.0
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8500/sante', timeout=4).status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+  # Antivirus. EXCEPTION au durcissement : l'image officielle démarre en root pour préparer ses dossiers puis change
+  # d'utilisateur, et met à jour ses signatures (accès sortant nécessaire). Lecture seule et retrait des capacités non
+  # essayés : seule l'interdiction d'élévation de privilèges est posée.
+  clamav:
+    image: clamav/clamav-debian:1.5.4
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    volumes: ["clamav_signatures:/var/lib/clamav"]
+    networks: [interne]
+    mem_limit: 3g
+    cpus: 1.0
+    pids_limit: 256
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+    healthcheck:
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 15s
+      timeout: 10s
+      retries: 60
+      start_period: 180s
+
+  # Identités : image optimisée (infra/keycloak/Dockerfile.production), adossée à la base PostgreSQL managée (base
+  # `keycloak` distincte). TLS terminé par le proxy ; la console d'administration est filtrée par adresse dans le proxy.
+  keycloak:
+    image: ${REGISTRE}/comtaple-keycloak:${VERSION}
+    <<: *durcissement
+    command: ["start", "--optimized", "--import-realm"]
+    environment:
+      KC_DB_URL: jdbc:postgresql://${KC_DB_HOST:?définir KC_DB_HOST}:${KC_DB_PORT:?définir KC_DB_PORT}/${KC_DB_NAME:-keycloak}?sslmode=${KC_DB_SSLMODE:?définir KC_DB_SSLMODE (require au minimum)}
+      KC_DB_USERNAME: ${KC_DB_USERNAME:?définir KC_DB_USERNAME}
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD:?définir KC_DB_PASSWORD}
+      KC_HOSTNAME: https://${DOMAINE_AUTH}
+      KC_HTTP_ENABLED: "true"
+      KC_HTTP_PORT: "8080"
+      KC_PROXY_HEADERS: xforwarded
+      # Compte d'amorçage TEMPORAIRE (premier démarrage sur une base vide) : ces deux variables ne sont transmises
+      # que si elles EXISTENT dans production.env. Les y SUPPRIMER (et non les vider : Keycloak refuse de démarrer
+      # avec des valeurs vides, constaté en local) dès qu'un administrateur nominatif avec second facteur existe.
+      KC_BOOTSTRAP_ADMIN_USERNAME:
+      KC_BOOTSTRAP_ADMIN_PASSWORD:
+      # Valeurs substituées dans le gabarit du royaume à l'import (aucun secret dans le fichier).
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
+      WEB_URL: https://${DOMAINE_WEB}
+      JAVA_OPTS_KC_HEAP: "-XX:MaxRAMPercentage=65"
+    tmpfs:
+      - /tmp:rw,nosuid,size=128m
+      - /opt/keycloak/data/tmp:rw,nosuid,size=128m,uid=1000,gid=0,mode=0770
+      - /opt/keycloak/data/transaction-logs:rw,nosuid,size=64m,uid=1000,gid=0,mode=0770
+    networks: [entree, metriques]
+    mem_limit: 1536m
+    cpus: 2.0
+    pids_limit: 512
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '\"UP\"' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 60s
+
+  # ── Sondes pour la supervision (collectées à travers le port privé du proxy) ──
+  sonde-redis:
+    image: oliver006/redis_exporter:v1.97.0
+    <<: *durcissement
+    environment:
+      REDIS_ADDR: redis://redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      # Longueur des files BullMQ (préfixe par défaut « bull ») : en attente, en cours, différées.
+      REDIS_EXPORTER_CHECK_SINGLE_KEYS: "bull:documents:wait,bull:comptabilite:wait,bull:exports:wait,bull:mail:wait,bull:documents:active,bull:comptabilite:active,bull:exports:active,bull:mail:active,bull:documents:delayed,bull:comptabilite:delayed,bull:exports:delayed,bull:mail:delayed"
+    networks: [interne, metriques]
+    depends_on:
+      redis: { condition: service_healthy }
+    mem_limit: 64m
+    cpus: 0.25
+    pids_limit: 64
+
+  # Seule sonde qui lit l'hôte (espace disque, mémoire, processeur) : montages en lecture seule de chemins de l'hôte
+  # de PRODUCTION (un hôte Linux ordinaire ; la règle D-006 ne vise que le poste de développement).
+  sonde-hote:
+    image: prom/node-exporter:v1.12.1
+    <<: *durcissement
+    command: ["--path.rootfs=/hote", "--path.procfs=/hote/proc", "--path.sysfs=/hote/sys", "--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker/.+)($$|/)"]
+    volumes: ["/:/hote:ro,rslave"]
+    pid: host
+    networks: [metriques]
+    mem_limit: 128m
+    cpus: 0.25
+    pids_limit: 64
+
+networks:
+  # Proxy ↔ web, API, Keycloak.
+  entree: {}
+  # API, worker ↔ Redis, antivirus. Sortie Internet possible (base managée, S3, signatures antivirus, fournisseurs).
+  interne: {}
+  # Service OCR : réseau interne, sans passerelle vers l'extérieur.
+  ocr:
+    internal: true
+  # Points de collecte des métriques ↔ proxy (port privé). Sans sortie.
+  metriques:
+    internal: true
+
+volumes:
+  proxy_donnees:
+  proxy_config:
+  redis_donnees:
+  clamav_signatures:
+

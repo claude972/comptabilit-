@@ -1,0 +1,4 @@
+# Fichiers d'environnement réels : jamais versionnés. Seuls les exemples (valeurs factices) le sont.
+*.env
+!exemple.env
+!exemple.migration.env

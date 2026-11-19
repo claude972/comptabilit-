@@ -1,0 +1,158 @@
+{
+  "realm": "comtaple",
+  "enabled": true,
+  "displayName": "Comtaple",
+  "sslRequired": "all",
+  "registrationAllowed": false,
+  "registrationEmailAsUsername": true,
+  "editUsernameAllowed": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
+  "verifyEmail": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "internationalizationEnabled": true,
+  "supportedLocales": ["fr"],
+  "defaultLocale": "fr",
+
+  "passwordPolicy": "length(12) and upperCase(1) and lowerCase(1) and digits(1) and notUsername(undefined) and notEmail(undefined) and passwordHistory(5)",
+
+  "otpPolicyType": "totp",
+  "otpPolicyAlgorithm": "HmacSHA1",
+  "otpPolicyDigits": 6,
+  "otpPolicyPeriod": 30,
+  "otpPolicyLookAheadWindow": 1,
+  "otpPolicyCodeReusable": false,
+
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 5,
+  "waitIncrementSeconds": 60,
+  "maxFailureWaitSeconds": 900,
+  "maxDeltaTimeSeconds": 43200,
+  "minimumQuickLoginWaitSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "offlineSessionIdleTimeout": 86400,
+  "offlineSessionMaxLifespanEnabled": true,
+  "offlineSessionMaxLifespan": 86400,
+  "accessCodeLifespan": 60,
+  "accessCodeLifespanLogin": 900,
+  "accessCodeLifespanUserAction": 300,
+  "actionTokenGeneratedByUserLifespan": 300,
+  "actionTokenGeneratedByAdminLifespan": 43200,
+  "revokeRefreshToken": false,
+  "refreshTokenMaxReuse": 0,
+
+  "eventsEnabled": true,
+  "eventsExpiration": 7776000,
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": false,
+
+  "browserSecurityHeaders": {
+    "contentSecurityPolicy": "frame-src 'self'; frame-ancestors 'self'; object-src 'none';",
+    "xFrameOptions": "SAMEORIGIN",
+    "xContentTypeOptions": "nosniff",
+    "referrerPolicy": "no-referrer",
+    "strictTransportSecurity": "max-age=31536000; includeSubDomains"
+  },
+
+  "roles": {
+    "realm": [
+      {
+        "name": "dispense-second-facteur",
+        "description": "EXCEPTION : dispense le compte du second facteur à la connexion. Ne JAMAIS l'attribuer à un compte du cabinet. Sans ce rôle, le second facteur (TOTP) est exigé."
+      }
+    ]
+  },
+
+  "browserFlow": "navigateur comtaple",
+  "authenticationFlows": [
+    {
+      "alias": "navigateur comtaple",
+      "description": "Connexion par navigateur : session existante, fournisseur d'identité du cabinet (SSO), ou mot de passe suivi du second facteur.",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "auth-cookie", "authenticatorFlow": false, "requirement": "ALTERNATIVE", "priority": 10, "userSetupAllowed": false },
+        { "authenticator": "identity-provider-redirector", "authenticatorFlow": false, "requirement": "ALTERNATIVE", "priority": 20, "userSetupAllowed": false },
+        { "authenticatorFlow": true, "flowAlias": "navigateur comtaple - formulaires", "requirement": "ALTERNATIVE", "priority": 30, "userSetupAllowed": false }
+      ]
+    },
+    {
+      "alias": "navigateur comtaple - formulaires",
+      "description": "Identifiant et mot de passe, puis second facteur.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "auth-username-password-form", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 10, "userSetupAllowed": false },
+        { "authenticatorFlow": true, "flowAlias": "navigateur comtaple - second facteur", "requirement": "CONDITIONAL", "priority": 20, "userSetupAllowed": false }
+      ]
+    },
+    {
+      "alias": "navigateur comtaple - second facteur",
+      "description": "TOTP OBLIGATOIRE pour tout compte qui ne porte pas le rôle dispense-second-facteur ; un compte sans TOTP doit l'enrôler avant d'entrer.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "conditional-user-role", "authenticatorConfig": "sauf dispense", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 10, "userSetupAllowed": false },
+        { "authenticator": "auth-otp-form", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 20, "userSetupAllowed": false }
+      ]
+    }
+  ],
+  "authenticatorConfig": [
+    {
+      "alias": "sauf dispense",
+      "config": { "condUserRole": "dispense-second-facteur", "negate": "true" }
+    }
+  ],
+
+  "identityProviders": [],
+  "identityProviderMappers": [],
+
+  "clients": [
+    {
+      "clientId": "comtaple-web",
+      "name": "Application web Comtaple",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${OIDC_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "consentRequired": false,
+      "frontchannelLogout": false,
+      "rootUrl": "${WEB_URL}",
+      "baseUrl": "${WEB_URL}",
+      "redirectUris": ["${WEB_URL}/api/auth/retour"],
+      "webOrigins": ["${WEB_URL}"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "${WEB_URL}/*"
+      },
+      "protocolMappers": [
+        {
+          "name": "audience-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "comtaple-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+
+  "users": []
+}

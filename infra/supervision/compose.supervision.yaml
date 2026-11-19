@@ -1,0 +1,170 @@
+# Supervision : Prometheus, Grafana, collecteur OpenTelemetry. Hébergée dans le même périmètre que l'application
+# (instance de supervision du réseau privé) ; tous les ports sont liés à 127.0.0.1 : accès par tunnel SSH seulement.
+#
+# ÉTAT : essayée EN LOCAL (collecte de l'API et du worker du poste, règles et tableaux chargés), jamais déployée.
+#
+#   Production : docker compose --env-file supervision.env -f compose.supervision.yaml up -d --wait
+#   Essai local : docker compose --env-file local.env -f compose.supervision.yaml --profile essai-local up -d --build --wait
+#
+# Aucun montage de dossier de l'hôte (D-006) : règles et tableaux sont dans des images construites, la configuration de
+# collecte dans l'environnement des conteneurs. Les cibles viennent de l'environnement : voir exemple.env (production) et local.env.
+name: comtaple-supervision
+
+x-durcissement: &durcissement
+  read_only: true
+  cap_drop: ["ALL"]
+  security_opt: ["no-new-privileges:true"]
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+
+services:
+  prometheus:
+    build: ./prometheus
+    image: ${REGISTRE:-comtaple}/comtaple-prometheus:${VERSION:-local}
+    <<: *durcissement
+    # `configs` en ligne est refusé par Compose pour un service en lecture seule : la configuration est donc passée par
+    # l'environnement et écrite dans un système de fichiers en mémoire au démarrage.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        printf '%s' "$$CONFIGURATION" > /tmp/prometheus.yml &&
+        exec /bin/prometheus --config.file=/tmp/prometheus.yml --storage.tsdb.path=/prometheus
+        --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-30d} --web.listen-address=0.0.0.0:9090
+    environment:
+      CONFIGURATION: |
+        global:
+          scrape_interval: 30s
+          evaluation_interval: 30s
+          external_labels:
+            environnement: ${ENVIRONNEMENT:?définir ENVIRONNEMENT}
+        rule_files:
+          - /etc/prometheus/regles/*.yml
+        scrape_configs:
+          - job_name: prometheus
+            static_configs: [{ targets: ["127.0.0.1:9090"] }]
+          - job_name: collecteur
+            static_configs: [{ targets: ["collecteur:8888"] }]
+          - job_name: api
+            metrics_path: ${CHEMIN_API:?définir CHEMIN_API}
+            static_configs: [{ targets: ["${CIBLE_API:?définir CIBLE_API}"] }]
+          - job_name: worker
+            metrics_path: ${CHEMIN_WORKER:?définir CHEMIN_WORKER}
+            static_configs: [{ targets: ["${CIBLE_WORKER:?définir CIBLE_WORKER}"] }]
+          - job_name: redis
+            metrics_path: ${CHEMIN_REDIS:?définir CHEMIN_REDIS}
+            static_configs: [{ targets: ["${CIBLE_REDIS:?définir CIBLE_REDIS}"] }]
+          - job_name: hote
+            metrics_path: ${CHEMIN_HOTE:?définir CHEMIN_HOTE}
+            static_configs: [{ targets: ["${CIBLE_HOTE:?définir CIBLE_HOTE}"] }]
+          - job_name: keycloak
+            metrics_path: ${CHEMIN_KEYCLOAK:?définir CHEMIN_KEYCLOAK}
+            static_configs: [{ targets: ["${CIBLE_KEYCLOAK:?définir CIBLE_KEYCLOAK}"] }]
+    ports: ["127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"]
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=8m,mode=1777"]
+    volumes: ["prometheus_donnees:/prometheus"]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/-/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  grafana:
+    build: ./grafana
+    image: ${REGISTRE:-comtaple}/comtaple-grafana:${VERSION:-local}
+    <<: *durcissement
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_MDP_ADMIN:?définir GRAFANA_MDP_ADMIN}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_DEFAULT_LANGUAGE: fr-FR
+      # Aucun appel sortant : pas de télémétrie, pas de recherche de mises à jour, pas de fil d'actualités.
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_PLUGINS_PLUGIN_ADMIN_ENABLED: "false"
+    ports: ["127.0.0.1:${GRAFANA_PORT:-3300}:3000"]
+    volumes: ["grafana_donnees:/var/lib/grafana"]
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=64m"]
+    depends_on:
+      prometheus: { condition: service_healthy }
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 40
+
+  # Collecteur OpenTelemetry : point d'entrée OTLP des traces (et métriques OTLP) de l'application. AUCUN service
+  # n'émet de trace aujourd'hui (docs/exploitation.md) et aucun entrepôt de traces n'est choisi : les traces reçues
+  # sont comptées et un échantillon est journalisé, rien n'est conservé.
+  collecteur:
+    image: otel/opentelemetry-collector:0.165.0
+    <<: *durcissement
+    # Configuration lue dans l'environnement (fournisseur `env:` du collecteur) : l'image n'a pas de shell.
+    command: ["--config=env:CONFIGURATION"]
+    environment:
+      CONFIGURATION: |
+        receivers:
+          otlp:
+            protocols:
+              grpc: { endpoint: 0.0.0.0:4317 }
+              http: { endpoint: 0.0.0.0:4318 }
+        processors:
+          memory_limiter: { check_interval: 5s, limit_mib: 192 }
+          batch: {}
+        exporters:
+          debug: { verbosity: basic, sampling_initial: 2, sampling_thereafter: 500 }
+        service:
+          telemetry:
+            metrics:
+              readers:
+                - pull:
+                    exporter:
+                      prometheus: { host: 0.0.0.0, port: 8888 }
+          pipelines:
+            traces: { receivers: [otlp], processors: [memory_limiter, batch], exporters: [debug] }
+            metrics: { receivers: [otlp], processors: [memory_limiter, batch], exporters: [debug] }
+    ports:
+      - "127.0.0.1:${OTLP_PORT_GRPC:-4317}:4317"
+      - "127.0.0.1:${OTLP_PORT_HTTP:-4318}:4318"
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 128
+
+  # ── Essai local uniquement : sondes qui, en production, tournent sur l'instance applicative ──
+  sonde-redis:
+    profiles: ["essai-local"]
+    image: oliver006/redis_exporter:v1.97.0
+    <<: *durcissement
+    environment:
+      REDIS_ADDR: ${ESSAI_REDIS_ADRESSE:-redis://host.docker.internal:6379}
+      REDIS_PASSWORD: ${ESSAI_REDIS_MDP:-}
+      REDIS_EXPORTER_CHECK_SINGLE_KEYS: "bull:documents:wait,bull:comptabilite:wait,bull:exports:wait,bull:mail:wait,bull:documents:active,bull:comptabilite:active,bull:exports:active,bull:mail:active,bull:documents:delayed,bull:comptabilite:delayed,bull:exports:delayed,bull:mail:delayed"
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    mem_limit: 64m
+    pids_limit: 64
+
+  sonde-hote:
+    profiles: ["essai-local"]
+    image: prom/node-exporter:v1.12.1
+    <<: *durcissement
+    command: ["--path.rootfs=/hote", "--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker/.+)($$|/)"]
+    # Chemin de la machine Docker elle-même (pas un dossier du poste) : lecture seule.
+    volumes: ["/:/hote:ro"]
+    mem_limit: 128m
+    pids_limit: 64
+
+volumes:
+  prometheus_donnees:
+  grafana_donnees:
+

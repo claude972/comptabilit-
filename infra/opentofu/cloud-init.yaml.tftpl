@@ -1,0 +1,42 @@
+#cloud-config
+# Préparation minimale d'une instance (rôle : ${role}). JAMAIS exécuté : à relire et à essayer sur une instance de
+# recette avant tout usage. Suppose une image Debian ou Ubuntu récente.
+package_update: true
+package_upgrade: true
+packages:
+  - docker.io
+  - docker-compose-v2
+  - ufw
+  - unattended-upgrades
+users:
+  - default
+  - name: deploiement
+    groups: [docker]
+    shell: /bin/bash
+    lock_passwd: true
+write_files:
+  - path: /etc/ssh/sshd_config.d/10-comtaple.conf
+    permissions: "0644"
+    content: |
+      PasswordAuthentication no
+      PermitRootLogin no
+  - path: /etc/docker/daemon.json
+    permissions: "0644"
+    content: |
+      { "log-driver": "json-file", "log-opts": { "max-size": "20m", "max-file": "5" }, "live-restore": true }
+runcmd:
+  # La clé du compte par défaut est reprise pour le compte de déploiement.
+  - install -d -m 700 -o deploiement -g deploiement /home/deploiement/.ssh
+  - sh -c 'cat /home/*/.ssh/authorized_keys | sort -u > /home/deploiement/.ssh/authorized_keys'
+  - chown deploiement:deploiement /home/deploiement/.ssh/authorized_keys && chmod 600 /home/deploiement/.ssh/authorized_keys
+  - install -d -m 750 -o deploiement -g deploiement /srv/comtaple
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 22/tcp
+%{ if role == "applications" ~}
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw allow 443/udp
+%{ endif ~}
+  - ufw --force enable
+  - systemctl restart ssh docker

@@ -29,8 +29,8 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (troisi
 | Files de traitements différés, reprise | Testé | Rattrapage automatique pour les pièces seulement |
 | Sauvegarde et restauration | Testé en local | Base (PostgreSQL d'essai séparé), stockage objet (instance isolée, tous les objets référencés relus) et Keycloak (instance isolée, export sans arrêt du service) : essais réalisés, avec contrôle qu'aucun service local n'a redémarré. Chiffrement : jeu chiffré complet et restauration depuis des copies chiffrées essayés avec une clé éphémère, mais non activé faute de décision sur la garde de la clé privée (D-050, D-055). Restauration à un instant donné, conservation hors du poste, mécanismes de l'hébergeur : non couverts. Sur la base locale, l'essai signale le journal d'audit non intègre (D-038) |
 | Intégration continue | Partiel | Une exécution sur GitHub, en échec au démarrage des services (cause inconnue, D-051) ; étapes séparées, diagnostic corrigé et suites navigateur ajoutées depuis, non réexécutées |
-| Supervision (OpenTelemetry, Prometheus, Grafana) | Partiel | Métriques Prometheus exposées par l'API et le worker ; pas de collecte déployée ni de traces |
-| Infrastructure cible (OpenTofu, OVHcloud) | Partiel | Ébauche validée syntaxiquement (base managée, buckets) ; jamais appliquée |
+| Supervision (OpenTelemetry, Prometheus, Grafana) | Partiel | Métriques exposées par l'API et le worker ; pile Prometheus, Grafana et collecteur préparée (`infra/supervision`) et essayée en local (cibles collectées, 9 règles d'alerte, 2 tableaux) ; non déployée, alertes sans acheminement, traces non instrumentées (`exploitation.md`) |
+| Infrastructure cible (OpenTofu, OVHcloud) | Partiel | Description complète (réseau privé, instances, base managée, buckets dont archives avec Object Lock armé sans rétention, registre) validée syntaxiquement ; composition de production, royaume Keycloak de production et script de déploiement préparés ; jamais planifiée ni appliquée (D-069) |
 
 ## Lot 1 — Collecte et première révision
 
@@ -98,9 +98,9 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (troisi
 | Pagination des rapprochements et des règles du cabinet | Testé | Par décalage ; ancienne forme des règles conservée sans paramètre (D-044) |
 | Ancres du journal d'audit | En attente de connexion | Format, export et vérification hors base testés ; aucun dépôt chez un tiers indépendant, donc aucun ancrage effectif (D-046) |
 | Purge des téléversements abandonnés ; rattrapage des traitements en attente | Testé | Purge exercée sur le stockage réel ; rattrapage exercé pour une restitution, par construction identique pour les autres natures |
-| Métriques techniques (Prometheus) | Partiel | Points de collecte vérifiés ; ni Prometheus ni Grafana déployés ; pas de traces OpenTelemetry |
-| Images de conteneurs | Partiel | API, worker et web construites et démarrées en local (lecture seule, sans privilèges) ; non optimisées, jamais poussées vers un registre, aucun parcours complet à travers les trois conteneurs |
-| Description d'infrastructure OpenTofu | Partiel | Base managée et buckets seulement ; validée syntaxiquement, jamais planifiée ni appliquée |
+| Métriques techniques (Prometheus) | Partiel | Points de collecte vérifiés ; collecte, alertes et tableaux essayés en local, non déployés ; pas de traces OpenTelemetry |
+| Images de conteneurs | Partiel | API, worker et web construites et démarrées en local (lecture seule, sans privilèges) ; non optimisées, jamais poussées vers un registre, aucun parcours complet à travers les trois conteneurs ; image Keycloak de production construite et essayée en local ; composition de production validée par `docker compose config`, jamais démarrée dans son ensemble |
+| Description d'infrastructure OpenTofu | Partiel | Réseau, groupes de sécurité, instances, base, buckets, utilisateur S3, registre ; validée syntaxiquement, jamais planifiée ni appliquée |
 
 ## Lot 3 — Veille et assistant
 

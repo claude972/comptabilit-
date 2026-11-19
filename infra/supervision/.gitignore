@@ -1,0 +1,4 @@
+# Fichiers d'environnement réels : jamais versionnés. Seuls l'exemple et l'essai local (sans secret) le sont.
+*.env
+!exemple.env
+!local.env

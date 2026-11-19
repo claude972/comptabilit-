@@ -1,0 +1,26 @@
+{
+  "alias": "sso-cabinet-exemple",
+  "displayName": "Connexion du cabinet (exemple)",
+  "providerId": "oidc",
+  "enabled": false,
+  "trustEmail": false,
+  "storeToken": false,
+  "linkOnly": true,
+  "hideOnLogin": true,
+  "firstBrokerLoginFlowAlias": "first broker login",
+  "config": {
+    "issuer": "https://idp.cabinet.exemple.test",
+    "authorizationUrl": "https://idp.cabinet.exemple.test/oauth2/authorize",
+    "tokenUrl": "https://idp.cabinet.exemple.test/oauth2/token",
+    "jwksUrl": "https://idp.cabinet.exemple.test/oauth2/keys",
+    "useJwksUrl": "true",
+    "validateSignature": "true",
+    "clientId": "comtaple",
+    "clientSecret": "A-SAISIR-DANS-LA-CONSOLE-JAMAIS-DANS-UN-FICHIER",
+    "clientAuthMethod": "client_secret_post",
+    "defaultScope": "openid email profile",
+    "pkceEnabled": "true",
+    "pkceMethod": "S256",
+    "syncMode": "FORCE"
+  }
+}

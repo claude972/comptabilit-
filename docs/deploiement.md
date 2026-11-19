@@ -1,6 +1,6 @@
 # Déploiement, sauvegarde et restauration
 
-État : seul l'environnement LOCAL existe et a été vérifié. La cible de production décrite ici est un plan ; aucune ressource OVHcloud n'a été créée. Les images de conteneurs sont construites et démarrées en local ; la description OpenTofu est une ébauche validée syntaxiquement.
+État au 2026-11-19 : seul l'environnement LOCAL existe et a été vérifié. La cible de production est **préparée et validée syntaxiquement, jamais appliquée** : aucune ressource OVHcloud n'a été créée, aucun jeton n'est disponible, aucune dépense n'a été engagée. Les procédures d'exploitation (mise en service pas à pas, sauvegardes de production, objectifs de reprise, incidents, rotation des secrets, fonctionnement dégradé, montée de version, checklist, tableau « préparé / essayé en local / jamais exécuté ») sont dans **`docs/exploitation.md`**.
 
 ## Environnement local (vérifié)
 
@@ -30,36 +30,62 @@ Limites : tailles non optimisées (1,1 à 2,6 Go : dépendances de développemen
 
 Variables propres aux conteneurs : `API_HOTE=0.0.0.0`, `METRIQUES_HOTE=0.0.0.0` (déjà posées dans l'image), et les adresses des services (`PG_HOST`, `REDIS_URL`, `S3_ENDPOINT`, `CLAMAV_HOST`, `OCR_URL`, `OIDC_ISSUER`, `API_URL`, `WEB_URL`).
 
-## Métriques
+## Cible de production (préparée, jamais appliquée)
 
-L'API (port 9464) et le worker (port 9465) exposent `/metrics` au format Prometheus sur une adresse locale : requêtes par gabarit de route et code, durées, tâches par file et issue, métriques du processus. Aucune étiquette ne porte d'identifiant de cabinet, de dossier ou de personne. Ces ports ne doivent jamais être exposés publiquement. Ni Prometheus ni Grafana ne sont déployés ; les traces OpenTelemetry ne sont pas instrumentées.
+OVHcloud Public Cloud, région française ; OpenTofu et scripts ; Docker Compose, pas de Kubernetes ; supervision dans le même périmètre.
 
-## Description d'infrastructure
+| Élément | Choix | Fichiers | État |
+|---|---|---|---|
+| Réseau | Réseau privé (vRack), sous-réseau, passerelle de sortie, groupes de sécurité (web public ; SSH limité aux adresses d'administration ; supervision sans entrée d'Internet) | `infra/opentofu/main.tf` | Validé syntaxiquement |
+| Instances | Une instance applicative (adresse publique), une instance de supervision (réseau privé seulement) | `infra/opentofu/main.tf`, `cloud-init.yaml.tftpl` | Validé syntaxiquement ; cloud-init jamais exécuté |
+| Base | PostgreSQL managé dans le réseau privé ; bases `comtaple` et `keycloak` ; rôle de migration et utilisateur Keycloak | `infra/opentofu/main.tf` | Validé syntaxiquement ; `vector`, création de rôles et `BYPASSRLS` à vérifier chez l'hébergeur |
+| Files | **Redis sur l'instance applicative**, pas de service managé par défaut (Valkey managé descriptible par `valkey_manage = true`) | `infra/production/compose.production.yaml` | Conteneur durci essayé en local |
+| Stockage | Trois buckets S3 versionnés et chiffrés : documents, archives, sauvegardes ; utilisateur S3 restreint | `infra/opentofu/main.tf` | Validé syntaxiquement |
+| Registre | Registre privé managé | `infra/opentofu/main.tf` | Validé syntaxiquement |
+| Applications | Proxy TLS Caddy, web, API, worker, OCR, antivirus, Keycloak, Redis, deux sondes | `infra/production/compose.production.yaml` | `docker compose config` réussi ; jamais démarré dans son ensemble |
+| Identités | Keycloak `start --optimized` sur PostgreSQL ; royaume de production avec TOTP exigé | `infra/keycloak/` | Essayé en local (26 contrôles) |
+| Supervision | Prometheus, Grafana, collecteur OpenTelemetry, liés à 127.0.0.1 | `infra/supervision/` | Essayée en local |
+| Déploiement | Images étiquetées par commit, migration avant bascule, vérification, retour arrière | `scripts/deployer.sh` | Mode à blanc essayé seulement |
+| Secrets | Fichiers d'environnement sur les hôtes (`chmod 600`), jamais versionnés | `infra/production/exemple.env` (valeurs factices) | Gestionnaire de secrets de l'hébergeur non utilisé : à décider |
 
-`infra/opentofu/` : ébauche pour OVHcloud (fournisseur `ovh/ovh` 2.25.0) couvrant la base PostgreSQL managée et deux buckets, dont un verrouillé par Object Lock dès sa création. `tofu validate` réussit. Elle n'a jamais été planifiée ni appliquée : aucun identifiant OVHcloud, aucune ressource créée. La région n'a pas de valeur par défaut et doit être française ; la durée de rétention immuable n'a pas de valeur par défaut.
+### Description OpenTofu (`infra/opentofu`)
 
-## Cible de production (à réaliser)
+Fournisseur `ovh/ovh` 2.25.0, figé. `tofu init -backend=false && tofu validate` et la commande de la CI (`tofu init -input=false && tofu validate`) réussissent sans avertissement. **Jamais planifiée ni appliquée.**
 
-| Élément | Choix prévu | À faire |
-|---|---|---|
-| Hébergement | OVHcloud Public Cloud, région française | Ouvrir le projet, choisir la région |
-| Description | OpenTofu + scripts de déploiement | Ébauche partielle (`infra/opentofu`) ; scripts de déploiement à écrire |
-| Base | PostgreSQL managé avec pgvector, sauvegardes de l'hébergeur | Vérifier la disponibilité de pgvector et des rôles sans `BYPASSRLS` |
-| Files | Valkey/Redis managé, politique `noeviction` | Vérifier la compatibilité BullMQ |
-| Stockage | Object Storage S3, buckets séparés ; bucket verrouillé créé avec Object Lock dès l'origine | Voir `conservation.md` |
-| Identités | Keycloak auto-hébergé, base dédiée, MFA imposé, SSO | Royaume de production à définir |
-| Applications | Conteneurs API, worker, web, OCR ; pas de Kubernetes au lancement | Images construites ; orchestration et registre à définir |
-| Supervision | OpenTelemetry, Prometheus, Grafana | Métriques exposées ; collecte, tableaux de bord et traces à mettre en place |
-| Secrets | Gestionnaire de secrets de l'hébergeur | Aujourd'hui : fichier `.env` local |
-| Réseau | TLS partout, services internes non exposés | — |
+- Les noms de ressources et d'attributs ont été vérifiés contre le schéma du fournisseur installé (`tofu providers schema -json`) et contre sa documentation officielle. La première rédaction utilisait `ovh_cloud_project_network_private`, `_instance` et `_ssh_key` : le fournisseur les signale dépréciées ; la description utilise donc `ovh_cloud_network_private_vrack`, `ovh_cloud_network_private_vrack_subnet`, `ovh_cloud_gateway`, `ovh_cloud_security_group`, `ovh_cloud_instance`, `ovh_cloud_ssh_key` et `ovh_cloud_storage_object_bucket`. La base, ses utilisateurs, l'utilisateur S3 et le registre restent sous `ovh_cloud_project_*` (seule forme existante).
+- **Bucket d'archives et Object Lock.** Object Lock ne s'arme qu'à la création du bucket (le changer ensuite recrée le bucket) et exige les versions. Le bucket est donc créé avec Object Lock ARMÉ mais **sans règle de rétention** (`archives_retention_defaut = null`) : dans cet état, aucun objet n'est retenu et rien n'est irréversible. Une rétention ne s'applique que si l'éditeur renseigne explicitement un mode et une durée, une fois les durées arrêtées (`conservation.md`). En mode COMPLIANCE, la décision est irréversible pour chaque objet verrouillé.
+- **Redis sur instance plutôt que Valkey managé** : BullMQ exige `maxmemory-policy noeviction`, maîtrisé dans la composition et non constaté sur le service managé ; les files ne portent que des identifiants et sont reconstructibles ; API, worker et Redis étant sur la même instance, un service managé n'ajouterait pas de disponibilité. À réévaluer si l'application passe sur plusieurs instances.
+- Variables sans valeur par défaut, donc décisions explicites : région, adresses autorisées en SSH (`0.0.0.0/0` refusé), clé publique, image, gabarits, version et plan de la base.
+- L'état OpenTofu contient des secrets (clé S3, mots de passe initiaux) : à placer dans un stockage chiffré avant toute application (`versions.tf`).
+- Non décrit : DNS, sauvegarde logique indépendante, réplication hors région, utilisateur S3 des sauvegardes, comptes du registre.
+- À constater au premier `tofu plan` (jamais vérifié) : identifiant de réseau attendu par les nœuds de la base, région des nœuds de base face à celle des instances, plans et gabarits disponibles, règles implicites des groupes de sécurité.
 
-Points d'attention déjà identifiés :
+### Composition de production (`infra/production`)
 
-- Le rôle qui exécute les migrations doit posséder `BYPASSRLS` (ou être superutilisateur) et ne doit être utilisé par aucun service en fonctionnement normal. Les services se connectent avec `comtaple_app` et `comtaple_worker`.
+`docker compose --env-file infra/production/exemple.env -f infra/production/compose.production.yaml config` réussit ; sans fichier d'environnement, la commande échoue en nommant la variable manquante. **Jamais démarrée dans son ensemble.**
+
+- Seul le proxy publie des ports : 80 et 443 vers Internet, et 9100 sur l'adresse PRIVÉE de l'instance (collecte des métriques). L'API n'est pas publique : le navigateur ne parle qu'au web, sauf les deux points de notification des fournisseurs de messagerie, routés par le proxy.
+- Keycloak : seuls `/realms`, `/resources` et `/.well-known` sont publics ; `/admin` n'est servi qu'aux adresses d'administration ; santé et métriques ne sortent pas.
+- Conteneurs en lecture seule, sans capacités (le proxy garde `NET_BIND_SERVICE`), sans élévation de privilèges, mémoire, processeur et nombre de processus plafonnés (environ 12 Go de plafonds mémoire au total). Exception documentée : l'antivirus (image officielle démarrant en root), seulement « sans élévation de privilèges ».
+- Le service OCR est sur un réseau interne sans sortie ; les points de métriques aussi.
+- Le rôle de migration de la base n'est donné à aucun service : il vit dans un fichier séparé (`migration.env`) lu par la seule commande de migration.
+- Constats faits en préparant, et leurs corrections : Compose refuse `configs` en ligne pour un service en lecture seule (la configuration du proxy, de Prometheus et l'autorité de certification de la base passent par l'environnement et un système de fichiers en mémoire) ; Redis sans capacités doit recevoir explicitement l'utilisateur de son image ; Keycloak refuse de démarrer avec des variables d'amorçage vides (elles ne sont transmises que si elles existent).
+
+### Royaume Keycloak de production, supervision, déploiement
+
+Voir `docs/exploitation.md` (§ 3, § 9, § 2 et § 10).
+
+### Points d'attention
+
+- Le rôle qui exécute les migrations doit posséder `BYPASSRLS` (ou être superutilisateur) et ne doit être utilisé par aucun service en fonctionnement normal. Les services se connectent avec `comtaple_app` et `comtaple_worker`. Sur une base managée, ce droit n'est pas acquis : c'est le premier point à vérifier.
 - Les opérations de l'éditeur (ouverture d'un cabinet, grille tarifaire, échéances, virements, sources de veille, qualification des évolutions) utilisent le rôle de migration via `packages/db/src/provisionnement.ts` : il n'existe pas encore d'outil d'exploitation, et ce rôle doit rester hors des services.
 - Toute migration qui ajoute une table portant `cabinet_id` doit appeler `SELECT securite_appliquer_rls();`. Un test d'intégration échoue si une telle table n'a pas RLS activé et forcé.
-- Le worker a besoin de Chromium (Playwright) pour le rendu PDF, et d'un accès réseau limité à PostgreSQL, Redis, S3, ClamAV et OCR.
-- Le service OCR ne doit avoir aucun accès réseau sortant.
+- Le worker a besoin de Chromium (Playwright) pour le rendu PDF, et d'un accès réseau limité à PostgreSQL, Redis, S3, ClamAV et OCR. Dans la composition, sa sortie vers Internet n'est pas filtrée au-delà du groupe de sécurité : à restreindre si l'hébergeur le permet.
+- La connexion à la base managée est chiffrée (`PGSSLMODE`, lu par le pilote) ; l'autorité de certification se fournit par `PG_AC_PEM`. Jamais essayé contre une base managée.
+
+## Métriques
+
+L'API (port 9464) et le worker (port 9465) exposent `/metrics` au format Prometheus : requêtes par gabarit de route et code, durées, tâches par file et issue, métriques du processus. Aucune étiquette ne porte d'identifiant de cabinet, de dossier ou de personne. Ces ports ne doivent jamais être exposés publiquement. La collecte (Prometheus), les alertes et les tableaux de bord (Grafana) sont préparés dans `infra/supervision/` et ont été essayés en local ; ils ne sont pas déployés. Les traces OpenTelemetry ne sont pas instrumentées (`docs/exploitation.md`, § 9).
 
 ## Sauvegarde et restauration
 
@@ -92,7 +118,7 @@ Codes de sortie : 0 réussi ; 3 données restaurées fidèlement mais journal d'
 - Chiffrement des sauvegardes : l'outil existe (`scripts/chiffrer-sauvegardes.mjs`, D-050 et D-055) et la restauration à partir d'un jeu entièrement chiffré a été essayée de bout en bout avec une clé éphémère (`scripts/essai-restauration-chiffree.sh`), mais AUCUNE clé durable n'est configurée : les sauvegardes locales sont toujours en clair, et `scripts/sauvegarder.sh` le dit à chaque exécution. Pour l'activer, après décision sur la garde de la clé privée : `node scripts/chiffrer-sauvegardes.mjs generer-cles <dossier extérieur au dépôt>`, mettre la clé privée en lieu sûr, puis `node scripts/chiffrer-sauvegardes.mjs copie-chiffree --cle-publique <clé publique> --destination <autre dossier> <sauvegarde.dump>`. Rien n'est chiffré en place ni supprimé : retirer les copies en clair reste une décision humaine.
 - Conservation hors du poste : non faite (dossier local seulement).
 - Restauration de Redis : les files sont reconstructibles ; le rattrapage du worker remet en file les traitements confirmés en base restés en attente (D-035). Aucun essai avec un arrêt réel de Redis.
-- Objectifs de perte de données admissible et de délai de reprise : non définis. Ils dépendent des mécanismes de l'hébergeur et sont à fixer avec lui.
+- Objectifs de perte de données admissible et de délai de reprise : PROPOSÉS dans `docs/exploitation.md` (§ 5), non mesurés et non engagés. Ils dépendent des mécanismes de l'hébergeur et sont à fixer avec lui.
 - Les jetons émis par l'instance Keycloak d'essai n'ont pas été présentés à l'API (émetteur différent) : l'essai compare les comptes et les secrets, il ne rejoue pas un parcours applicatif sur l'instance restaurée.
 
 **Essai de restauration depuis des copies chiffrées** — `scripts/essai-restauration-chiffree.sh`. Le jeu chiffré comprend aussi le dernier export Keycloak des sauvegardes, déchiffré puis restauré dans une instance Keycloak d'essai (16 contrôles conformes au dernier essai). Résultat pour la base et les objets (2026-11-19) : 1 823 objets distincts (4,5 Go) chiffrés en 149 s dans un dossier temporaire, aucun fichier en clair, base et manifeste illisibles sans la clé, autre clé et objet altéré refusés ; déchiffrement en 161 s à partir des seules copies chiffrées, base identique à l'originale ; restauration isolée : 1 724 objets référencés tous conformes, aucun service redémarré ; dossiers temporaires et clé éphémère détruits, sauvegardes d'origine inchangées (1 854 fichiers avant et après, aucun chiffré). Code de sortie 3, comme l'essai en clair, à cause du journal historique (D-038).
@@ -103,13 +129,4 @@ Pendant le premier rechargement de 3,6 Go, PostgreSQL a redémarré de lui-même
 
 ## Mode dégradé
 
-| Panne | Comportement |
-|---|---|
-| IA indisponible | Sans effet : aucun traitement livré ne dépend de l'IA |
-| OCR indisponible | La pièce est reçue et conservée, puis passe « à contrôler » avec le motif « saisie manuelle nécessaire ». Les PDF à couche texte et les factures structurées sont traités normalement |
-| Antivirus indisponible | La pièce est reçue et conservée ; l'analyse est retentée ; le contenu n'est pas servi sans verdict |
-| Redis indisponible | Le dépôt aboutit (réception confirmée) ; l'analyse est rattrapée au retour de Redis |
-| Worker arrêté | Les dépôts et la consultation fonctionnent ; les tâches attendent |
-| Stockage objet indisponible | Les dépôts échouent explicitement ; aucun « reçu » n'est affiché |
-
-Les cas OCR et antivirus indisponibles découlent du code mais n'ont pas fait l'objet d'un test automatisé de panne.
+Tableau complet dans `docs/exploitation.md` (§ 8). Les cas OCR et antivirus indisponibles découlent du code mais n'ont pas fait l'objet d'un test automatisé de panne.

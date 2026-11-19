@@ -27,7 +27,7 @@ Liste courte des seuls obstacles que le développement local ne peut pas lever ;
 | 7 | Valider les contrôles, leurs seuils et leurs formulations | Expert-comptable habilité | Usage professionnel des constats | Catalogue documenté, en attente de validation métier |
 | 8 | Valider les documents RGPD, le contrat de sous-traitance, l'analyse AI Act et les clauses de responsabilité | Avocat / DPO | Commercialisation | Non rédigés (voir `risques.md`) |
 | 9 | Choisir et contractualiser un prestataire d'agrégation bancaire autorisé | Éditeur | Connexion bancaire directe | Non développé ; les imports de fichiers bancaires ne dépendent pas de ce choix |
-| 10 | Imposer le second facteur et configurer la fédération SSO dans le royaume Keycloak de production | Éditeur | Sécurité des comptes du cabinet | Royaume de développement sans MFA (décision D-016) |
+| 10 | Mettre en service le royaume Keycloak de production (second facteur exigé par le gabarit) et déclarer le fournisseur d'identité de chaque cabinet pour la fédération SSO | Éditeur | Sécurité des comptes du cabinet | Gabarit de production préparé et essayé en local (TOTP exigé, D-069) ; aucun fournisseur d'identité réel raccordé ; royaume de développement sans MFA (D-016) |
 
 | 11 | Demander l'accès à l'API officielle de Légifrance (portail PISTE) | Éditeur | Surveillance des textes de Légifrance : le site refuse l'accès automatisé (403 constaté), ces sources sont donc affichées « indisponibles » | Surveillance en place, lecture par page uniquement |
 | 12 | Désigner la personne qui qualifie les évolutions réglementaires détectées | Éditeur, avec un professionnel compétent | Contenu réel de la veille par dossier | Détection et parcours de qualification en place ; aucune évolution réelle qualifiée |

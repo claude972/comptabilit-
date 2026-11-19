@@ -107,6 +107,7 @@ Résultats de la dernière exécution : [docs/rapport-de-tests.md](docs/rapport-
 - [API (OpenAPI)](docs/openapi.json) — aussi servie par l'API sur `/docs`
 - [Rapport de tests](docs/rapport-de-tests.md)
 - [Déploiement, sauvegarde et restauration](docs/deploiement.md)
+- [Guide d'exploitation (mise en service, sauvegardes, incidents, rotation des secrets)](docs/exploitation.md)
 - [Conservation, restitution, suppression](docs/conservation.md)
 - [Risques et validations professionnelles attendues](docs/risques.md)
 - [Coûts](docs/couts.md)

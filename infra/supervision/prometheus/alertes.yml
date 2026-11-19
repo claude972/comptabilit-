@@ -1,0 +1,81 @@
+# Règles d'alerte de base. Elles ne portent que sur des métriques RÉELLEMENT exposées :
+#   - `up` (Prometheus) ;
+#   - `comtaple_http_*`, `comtaple_taches_*`, `nodejs_*` (packages/plateforme/src/metriques.ts) ;
+#   - `redis_key_size` (sonde Redis : longueur des files BullMQ) ;
+#   - `node_filesystem_*` (sonde de l'hôte).
+# Les SEUILS sont des propositions de départ, jamais calibrées sur une charge réelle : à ajuster après observation.
+# Aucun acheminement des alertes n'est configuré (pas d'Alertmanager) : elles sont visibles dans Prometheus et Grafana
+# seulement, tant que le canal de notification n'est pas décidé (docs/exploitation.md).
+groups:
+  - name: comtaple-disponibilite
+    rules:
+      - alert: ServiceInjoignable
+        expr: up == 0
+        for: 2m
+        labels: { gravite: critique }
+        annotations:
+          summary: "{{ $labels.job }} injoignable"
+          description: "Prometheus ne parvient plus à collecter {{ $labels.job }} ({{ $labels.instance }}) depuis 2 minutes : service arrêté, ou collecte coupée."
+      - alert: ErreursServeurApi
+        expr: sum(rate(comtaple_http_requetes_total{code=~"5.."}[5m])) / sum(rate(comtaple_http_requetes_total[5m])) > 0.05
+        for: 10m
+        labels: { gravite: avertissement }
+        annotations:
+          summary: "Plus de 5 % de réponses 5xx de l'API"
+          description: "Part des réponses 5xx sur 5 minutes : {{ $value | humanizePercentage }}."
+
+  - name: comtaple-files
+    rules:
+      - alert: FileEnRetard
+        expr: redis_key_size{key=~"bull:.+:wait"} > 100
+        for: 15m
+        labels: { gravite: avertissement }
+        annotations:
+          summary: "File en retard : {{ $labels.key }}"
+          description: "{{ $value }} tâches en attente depuis plus de 15 minutes."
+      - alert: FileSansProgression
+        expr: |
+          label_replace(redis_key_size{key=~"bull:.+:wait"}, "file", "$1", "key", "bull:(.+):wait") > 0
+          unless on (file) (sum by (file) (increase(comtaple_taches_total[15m])) > 0)
+        for: 15m
+        labels: { gravite: critique }
+        annotations:
+          summary: "File {{ $labels.file }} sans progression"
+          description: "Des tâches attendent et aucune ne s'est terminée (succès ou échec) depuis 15 minutes : worker arrêté ou bloqué."
+      - alert: EchecsImport
+        expr: sum by (file, tache) (increase(comtaple_taches_total{issue="echec", tache=~"importer-.+"}[30m])) > 0
+        labels: { gravite: avertissement }
+        annotations:
+          summary: "Échec d'import ({{ $labels.tache }})"
+          description: "{{ $value | humanize }} échec(s) d'import sur 30 minutes. Un import refusé pour un fichier non conforme n'est pas un échec technique : consulter le journal du worker."
+      - alert: TachesEnEchec
+        expr: sum by (file) (increase(comtaple_taches_total{issue="echec"}[30m])) > 5
+        labels: { gravite: avertissement }
+        annotations:
+          summary: "Tâches en échec sur la file {{ $labels.file }}"
+          description: "{{ $value | humanize }} tâches en échec sur 30 minutes."
+
+  - name: comtaple-ressources
+    rules:
+      - alert: EspaceDisqueFaible
+        expr: node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|ramfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs|ramfs"} < 0.15
+        for: 10m
+        labels: { gravite: avertissement }
+        annotations:
+          summary: "Moins de 15 % d'espace libre sur {{ $labels.mountpoint }}"
+          description: "Espace libre : {{ $value | humanizePercentage }} ({{ $labels.instance }})."
+      - alert: EspaceDisqueCritique
+        expr: node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|ramfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs|ramfs"} < 0.05
+        for: 5m
+        labels: { gravite: critique }
+        annotations:
+          summary: "Moins de 5 % d'espace libre sur {{ $labels.mountpoint }}"
+          description: "Espace libre : {{ $value | humanizePercentage }} ({{ $labels.instance }})."
+      # Le tas du worker est plafonné à 2 048 Mo (D-061) : au-delà, il s'arrête et reprend ses traitements.
+      - alert: TasWorkerProcheDuPlafond
+        expr: nodejs_heap_size_used_bytes{service="worker"} > 0.85 * 2048 * 1024 * 1024
+        for: 5m
+        labels: { gravite: avertissement }
+        annotations:
+          summary: "Tas du worker au-delà de 85 % de son plafond"
+          description: "Tas utilisé : {{ $value | humanize1024 }}o."

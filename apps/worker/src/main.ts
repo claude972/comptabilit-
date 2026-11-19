@@ -10,6 +10,7 @@ import { genererDossierRevision } from './dossier-revision.js';
 import { importerFec } from './import-fec.js';
 import { planifierMail, traiterTacheMail } from './mail.js';
 import { genererRestitution } from './restitution.js';
+import { verifierSources } from './veille.js';
 
 chargerEnvLocal();
 const cfg = lireConfig();
@@ -31,7 +32,9 @@ const workers = [
           ? importerReleve(c, job.data)
           : job.name === 'rapprochement'
             ? executerRapprochement(c, job.data)
-            : executerControlesExecution(c, job.data),
+            : job.name === 'veille'
+              ? verifierSources(c.bd).then((b) => console.log(`veille : ${b.verifiees} source(s), ${b.changements} changement(s), ${b.indisponibles} indisponible(s)`))
+              : executerControlesExecution(c, job.data),
     { connection: connexionRedis(cfg.REDIS_URL), concurrency: 2, prefix },
   ),
   new Worker(FILES.exports, (job) => (job.name === 'restitution' ? genererRestitution(c, job.data) : genererDossierRevision(c, job.data)), { connection: connexionRedis(cfg.REDIS_URL), concurrency: 1, prefix }),
@@ -80,6 +83,9 @@ async function purgerTeleversements(): Promise<void> {
   if (rows.length) console.log(`purge : ${rows.length} téléversement(s) abandonné(s)`);
 }
 const minuterie = setInterval(() => void rattraper().catch((e) => console.error(`rattrapage : ${e.message}`)), 5 * 60_000);
+
+// Veille réglementaire : une passe par jour sur les sources officielles surveillées.
+await c.taches.comptabilite.upsertJobScheduler('veille-quotidienne', { every: 24 * 3600 * 1000 }, { name: 'veille', data: {} });
 
 console.log('Worker Comtaple démarré (files : documents, comptabilite, exports, mail).');
 

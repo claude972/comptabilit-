@@ -11,6 +11,7 @@ import { ComptabiliteController } from './comptabilite.controller.js';
 import { ConseilsController } from './conseils.controller.js';
 import { DocumentsController } from './documents.controller.js';
 import { IntegrationsController } from './integrations.controller.js';
+import { VeilleController } from './veille.controller.js';
 import { BD, CONFIG, MAIL, STOCKAGE, TACHES } from './jetons.js';
 import { MailController } from './mail.controller.js';
 import { MissionsController } from './missions.controller.js';
@@ -21,7 +22,7 @@ import { RestitutionController } from './restitution.controller.js';
 import { TeleversementsController } from './televersements.controller.js';
 
 @Module({
-  controllers: [ProfilController, TeleversementsController, DocumentsController, ComptabiliteController, ReferenceController, AuditController, IntegrationsController, MailController, BanqueController, AdministrationController, AbonnementController, ReglesController, RestitutionController, MissionsController, ConseilsController],
+  controllers: [ProfilController, TeleversementsController, DocumentsController, ComptabiliteController, ReferenceController, AuditController, IntegrationsController, MailController, BanqueController, AdministrationController, AbonnementController, ReglesController, RestitutionController, MissionsController, ConseilsController, VeilleController],
   providers: [
     { provide: CONFIG, useFactory: () => lireConfig() },
     // Le serveur interactif se connecte avec le rôle comtaple_app : jamais propriétaire, jamais BYPASSRLS.

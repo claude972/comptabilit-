@@ -3,7 +3,7 @@
  * Exécutées avec le rôle d'administration, hors de l'application : un cabinet ne peut ni s'ouvrir un essai, ni
  * modifier un tarif, ni se déclarer payé. Les calculs viennent du moteur déterministe (@comtaple/core).
  */
-import { calculerEcheance, type Offre, schemaOffre, verifierOffre } from '@comtaple/core';
+import { calculerEcheance, type CriteresEvolution, type Offre, schemaCriteresEvolution, schemaOffre, verifierOffre } from '@comtaple/core';
 import type pg from 'pg';
 
 /** Grille de DÉMONSTRATION : montants fictifs, sans valeur commerciale. */
@@ -120,4 +120,58 @@ export async function enregistrerVirement(client: pg.ClientBase, echeanceId: str
 export async function suspendre(client: pg.ClientBase, cabinetId: string, motif: string): Promise<void> {
   const a = await client.query<{ id: string }>(`update abonnements set statut = 'suspendu' where cabinet_id = $1 returning id`, [cabinetId]);
   if (a.rowCount) await client.query(`insert into evenements_facturation (cabinet_id, abonnement_id, type, detail) values ($1, $2, 'suspension', $3)`, [cabinetId, a.rows[0]!.id, JSON.stringify({ motif })]);
+}
+
+// ───────────────────────────── Veille réglementaire (opérations de l'éditeur) ─────────────────────────────
+
+/** Domaines officiels admis pour une surveillance : aucune autre origine n'est interrogée. */
+export const DOMAINES_OFFICIELS = ['legifrance.gouv.fr', 'bofip.impots.gouv.fr', 'impots.gouv.fr', 'anc.gouv.fr', 'cnil.fr', 'eur-lex.europa.eu', 'boss.gouv.fr', 'urssaf.fr'] as const;
+
+export function domaineOfficiel(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' && DOMAINES_OFFICIELS.some((d) => u.hostname === d || u.hostname.endsWith(`.${d}`));
+  } catch {
+    return false;
+  }
+}
+
+/** Sources de départ : pages déjà citées par les règles du moteur (vérifiées le 2026-11-19 lors de leur développement). */
+export const SURVEILLANCES_INITIALES = [
+  { emetteur: 'Légifrance', libelle: 'LPF, article A47 A-1 (fichier des écritures comptables)', url: 'https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000027804775' },
+  { emetteur: 'BOFiP', libelle: 'BOI-CF-IOR-60-40-20 (format du FEC)', url: 'https://bofip.impots.gouv.fr/bofip/9028-PGP.html' },
+  { emetteur: 'BOFiP', libelle: 'BOI-BIC-CHG-20-30-10 (biens de faible valeur)', url: 'https://bofip.impots.gouv.fr/bofip/2109-PGP.html' },
+  { emetteur: 'Légifrance', libelle: 'Code de commerce, article L223-21 (comptes courants d’associés, SARL)', url: 'https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000006223124' },
+] as const;
+
+export async function enregistrerSurveillance(client: pg.ClientBase, source: { emetteur: string; libelle: string; url: string }, options: { autoriserHorsDomaines?: boolean } = {}): Promise<string> {
+  if (!options.autoriserHorsDomaines && !domaineOfficiel(source.url)) throw new Error(`Source refusée : ${source.url} n'est pas une page https d'un domaine officiel admis.`);
+  const r = await client.query<{ id: string }>(
+    `insert into surveillances_sources (emetteur, libelle, url) values ($1, $2, $3)
+     on conflict (url) do update set emetteur = excluded.emetteur, libelle = excluded.libelle returning id`,
+    [source.emetteur, source.libelle, source.url],
+  );
+  return r.rows[0]!.id;
+}
+
+/**
+ * Qualification d'une évolution par une personne de l'éditeur, après lecture de la source : résumé, dates, conditions
+ * et critères d'applicabilité. C'est la seule façon de rendre une évolution visible des cabinets comme « vérifiée ».
+ */
+export async function qualifierEvolution(
+  client: pg.ClientBase,
+  evolutionId: string,
+  q: { reference: string; resume: string; passage?: string; datePublication?: string; dateEffet?: string; conditions?: string; criteres: CriteresEvolution; dateVerification: string },
+): Promise<void> {
+  const criteres = schemaCriteresEvolution.parse(q.criteres);
+  const r = await client.query(
+    `update evolutions_reglementaires set reference = $2, resume = $3, passage = $4, date_publication = $5, date_effet = $6, conditions = $7,
+       criteres = $8, etat_verification = 'verifiee', verifiee_le = $9 where id = $1`,
+    [evolutionId, q.reference, q.resume, q.passage ?? null, q.datePublication ?? null, q.dateEffet ?? null, q.conditions ?? null, JSON.stringify(criteres), q.dateVerification],
+  );
+  if (!r.rowCount) throw new Error('Évolution introuvable');
+}
+
+export async function ecarterEvolution(client: pg.ClientBase, evolutionId: string): Promise<void> {
+  await client.query(`update evolutions_reglementaires set etat_verification = 'ecartee' where id = $1`, [evolutionId]);
 }

@@ -7,7 +7,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import { chargerEnvLocal } from './env.js';
 import { urlBd } from './index.js';
-import { definirOffre, OFFRES_DEMO, ouvrirEssai } from './provisionnement.js';
+import { definirOffre, enregistrerSurveillance, OFFRES_DEMO, ouvrirEssai, SURVEILLANCES_INITIALES } from './provisionnement.js';
 import * as s from './schema.js';
 
 export const DEMO = {
@@ -113,6 +113,7 @@ export async function amorcer(): Promise<void> {
     });
     // Grille tarifaire FICTIVE et période d'essai des cabinets de démonstration (prolongée à chaque amorçage, sans
     // toucher à un abonnement qui aurait évolué : seuls les cabinets sans abonnement ou encore en essai sont concernés).
+    for (const source of SURVEILLANCES_INITIALES) await enregistrerSurveillance(client, source);
     for (const offre of OFFRES_DEMO) await definirOffre(client, offre);
     const aujourdhui = new Date().toISOString().slice(0, 10);
     for (const cabinet of [DEMO.cabinetA, DEMO.cabinetB]) {

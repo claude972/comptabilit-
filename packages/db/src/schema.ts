@@ -787,6 +787,60 @@ export const sourcesReglementaires = pgTable('sources_reglementaires', {
   creeLe: creeLe(),
 });
 
+/** Pages officielles surveillées (référentiel de l'éditeur). Le suivi dit quand une source est indisponible. */
+export const surveillancesSources = pgTable('surveillances_sources', {
+  id: id(),
+  emetteur: text('emetteur').notNull(),
+  libelle: text('libelle').notNull(),
+  url: text('url').notNull().unique(),
+  actif: boolean('actif').notNull().default(true),
+  dernierEssaiLe: horodatage('dernier_essai_le'),
+  /** Dernière vérification RÉUSSIE : au-delà d'un certain délai, la veille sur cette source n'est plus assurée. */
+  dernierSuccesLe: horodatage('dernier_succes_le'),
+  dernierStatut: text('dernier_statut').notNull().default('jamais_verifiee'), // jamais_verifiee | inchangee | changement_detecte | indisponible
+  dernierDetail: text('dernier_detail'),
+  empreinteContenu: text('empreinte_contenu'),
+  creeLe: creeLe(),
+});
+
+/**
+ * Évolutions réglementaires. Une détection automatique crée une ligne « detectee_a_qualifier » SANS résumé :
+ * le résumé, les dates, les conditions et les critères sont saisis par une personne, après lecture de la source.
+ * Aucune évolution ne modifie une règle de production.
+ */
+export const evolutionsReglementaires = pgTable('evolutions_reglementaires', {
+  id: id(),
+  surveillanceId: uuid('surveillance_id').references(() => surveillancesSources.id),
+  emetteur: text('emetteur').notNull(),
+  reference: text('reference').notNull(),
+  url: text('url').notNull(),
+  passage: text('passage'),
+  datePublication: date('date_publication', { mode: 'string' }),
+  dateEffet: date('date_effet', { mode: 'string' }),
+  conditions: text('conditions'),
+  resume: text('resume'),
+  criteres: jsonb('criteres').notNull().default(sql`'{}'::jsonb`),
+  etatVerification: text('etat_verification').notNull().default('detectee_a_qualifier'), // detectee_a_qualifier | verifiee | ecartee
+  verifieeLe: date('verifiee_le', { mode: 'string' }),
+  detecteeLe: horodatage('detectee_le').notNull().defaultNow(),
+});
+
+/** Suivi d'une évolution par un cabinet pour un dossier (propre au cabinet, jamais mutualisé). */
+export const suivisEvolution = pgTable(
+  'suivis_evolution',
+  {
+    id: id(),
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    entiteId: uuid('entite_id').notNull().references(() => entites.id),
+    evolutionId: uuid('evolution_id').notNull().references(() => evolutionsReglementaires.id),
+    statut: text('statut').notNull(), // a_examiner | pris_en_compte | sans_objet
+    note: text('note'),
+    auteurId: uuid('auteur_id').notNull().references(() => utilisateurs.id),
+    majLe: horodatage('maj_le').notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('suivis_evolution_unique').on(t.entiteId, t.evolutionId)],
+);
+
 // ───────────────────────────── Connexions mail ─────────────────────────────
 
 export const connexionsMail = pgTable('connexions_mail', {

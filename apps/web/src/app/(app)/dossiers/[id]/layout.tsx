@@ -26,12 +26,13 @@ export default async function MiseEnPageDossier({ children, params }: { children
           <Titre>{ctx.dossier.raisonSociale}</Titre>
           <Etiquette ton="info">Habilitation : {LIBELLE_NIVEAU[ctx.niveau]}</Etiquette>
           {/* Recherche dans le dossier : formulaire GET, fonctionne sans JavaScript ; la requête est dans l'URL de la page de résultats. */}
-          <form method="get" action={`${base}/recherche`} role="search" aria-label="Rechercher dans ce dossier" className="ml-auto flex items-end gap-2">
-            <div>
+          <form method="get" action={`${base}/recherche`} role="search" aria-label="Rechercher dans ce dossier" className="ml-auto flex max-w-full flex-wrap items-end gap-2">
+            {/* Sur un écran étroit, le champ se réduit et le bouton passe à la ligne : jamais de débordement horizontal. */}
+            <div className="min-w-0 flex-1">
               <Libelle htmlFor="recherche-dossier" className="sr-only">
                 Rechercher dans ce dossier (pièces, écritures, constats)
               </Libelle>
-              <Saisie id="recherche-dossier" type="search" name="q" minLength={2} maxLength={200} placeholder="Rechercher dans ce dossier" className="min-w-72" required />
+              <Saisie id="recherche-dossier" type="search" name="q" minLength={2} maxLength={200} placeholder="Rechercher dans ce dossier" className="w-full min-w-0 sm:min-w-72" required />
             </div>
             <Bouton type="submit" variante="secondaire">
               Chercher dans le dossier

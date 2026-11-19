@@ -13,7 +13,7 @@ permissions:
 jobs:
   verifier:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -54,6 +54,31 @@ jobs:
         run: pnpm --filter @comtaple/worker run test:integration
       - name: Parcours de bout en bout
         run: pnpm --filter @comtaple/api run test:integration
+      # ── Suites navigateur (ajoutées le 2026-11-19 ; jamais exécutées sur GitHub à ce jour) ──
+      - name: Navigateurs pour les parcours (Chromium, WebKit)
+        run: pnpm --filter @comtaple/web exec playwright install --with-deps chromium webkit
+      - name: Navigateur, API simulée (vrai Keycloak, simulateur d'API)
+        run: pnpm --filter @comtaple/web run test:e2e
+      - name: Application web sur la pile réelle
+        run: |
+          pnpm --filter @comtaple/web run build
+          (cd apps/web && nohup node node_modules/next/dist/bin/next start --port 3100 > ../../var/web.log 2>&1 &)
+          for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:3100/connexion && break; sleep 1; done
+          curl -sf -o /dev/null http://localhost:3100/connexion
+      - name: Navigateur Chromium, pile réelle
+        run: pnpm --filter @comtaple/web exec playwright test --config playwright.reel.config.ts
+      - name: Navigateur WebKit, pile réelle
+        run: pnpm --filter @comtaple/web exec playwright test --config playwright.navigateurs.config.ts --project=webkit
+      - name: Traces des parcours navigateur en cas d'échec
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: traces-navigateur
+          path: |
+            apps/web/test-results/
+            var/*.log
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Journaux en cas d'échec
         if: failure()
         # Aucune commande ne doit interrompre ce diagnostic : la première exécution (run 44509674342) s'est arrêtée sur
@@ -73,7 +98,7 @@ jobs:
           echo "::group::Ressources de la machine"
           df -h / | tail -n 1; free -m | head -n 2
           echo "::endgroup::"
-          for f in var/api.log var/worker.log; do
+          for f in var/api.log var/worker.log var/web.log; do
             if [ -f "$f" ]; then echo "::group::$f"; tail -n 100 "$f"; echo "::endgroup::"; else echo "$f : absent (étape non atteinte)"; fi
           done
           exit 0

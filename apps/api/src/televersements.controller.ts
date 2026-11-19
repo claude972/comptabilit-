@@ -22,6 +22,7 @@ import { type AccesBd, and, desc, eq, journaliser, schema as s, sql } from '@com
 import { assurerFichierOriginal, cles, type Config, enregistrerReception, type Files, type Stockage } from '@comtaple/plateforme';
 import { z } from 'zod';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
+import { exigerServiceOuvert } from './abonnement.controller.js';
 import { BD, CONFIG, STOCKAGE, TACHES } from './jetons.js';
 import { schemaOpenApi, uuid, valider } from './validation.js';
 
@@ -81,6 +82,7 @@ export class TeleversementsController {
     }
     return this.bd.avecContexte(acces, async (tx) => {
       await exigerNiveau(tx, d.entiteId, d.usage === 'piece' ? 'depot' : 'collaboration');
+      await exigerServiceOuvert(tx);
       if (d.exerciceId) {
         const [ex] = await tx.select().from(s.exercices).where(and(eq(s.exercices.id, d.exerciceId), eq(s.exercices.entiteId, d.entiteId)));
         if (!ex) throw new NotFoundException('Exercice introuvable pour ce dossier');

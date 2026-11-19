@@ -57,6 +57,20 @@
       "when": 1795068754779,
       "tag": "0007_administration",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795069076811,
+      "tag": "0008_abonnements",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795069078143,
+      "tag": "0009_abonnements_securite",
+      "breakpoints": true
     }
   ]
 }

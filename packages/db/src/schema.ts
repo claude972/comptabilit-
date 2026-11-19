@@ -800,17 +800,60 @@ export const messagesMail = pgTable(
 
 // ───────────────────────────── Abonnements ─────────────────────────────
 
-export const abonnements = pgTable('abonnements', {
-  id: id(),
-  cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
-  offre: text('offre').notNull(),
-  statut: text('statut').notNull(), // essai | actif | suspendu | resilie
-  debut: date('debut', { mode: 'string' }).notNull(),
-  finEssai: date('fin_essai', { mode: 'string' }),
-  fin: date('fin', { mode: 'string' }),
-  quotas: jsonb('quotas').notNull(),
+/**
+ * Grille tarifaire de l'éditeur (référentiel partagé, sans donnée de cabinet ; lecture seule pour l'application).
+ * Les grilles de démonstration portent `fictif = true` : leurs montants ne sont pas des tarifs commerciaux.
+ */
+export const offresAbonnement = pgTable('offres_abonnement', {
+  code: text('code').primaryKey(),
+  /** Définition complète de l'offre (forfait, tranches, quotas, jours d'essai), validée par le moteur. */
+  definition: jsonb('definition').notNull(),
+  fictif: boolean('fictif').notNull().default(true),
+  proposee: boolean('proposee').notNull().default(true),
   creeLe: creeLe(),
 });
+
+export const abonnements = pgTable(
+  'abonnements',
+  {
+    id: id(),
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    offre: text('offre').notNull().references(() => offresAbonnement.code),
+    statut: text('statut').notNull(), // essai | actif | suspendu | resilie
+    debut: date('debut', { mode: 'string' }).notNull(),
+    finEssai: date('fin_essai', { mode: 'string' }),
+    fin: date('fin', { mode: 'string' }),
+    /** Changement d'offre demandé, appliqué à la prochaine échéance par l'éditeur. */
+    offreDemandee: text('offre_demandee').references(() => offresAbonnement.code),
+    motifResiliation: text('motif_resiliation'),
+    quotas: jsonb('quotas').notNull(),
+    creeLe: creeLe(),
+  },
+  (t) => [uniqueIndex('abonnements_cabinet').on(t.cabinetId)],
+);
+
+/** Échéance mensuelle : lignes calculées par le moteur, paiement par virement suivi et rapproché par l'éditeur. */
+export const echeancesAbonnement = pgTable(
+  'echeances_abonnement',
+  {
+    id: id(),
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    abonnementId: uuid('abonnement_id').notNull().references(() => abonnements.id),
+    periodeDebut: date('periode_debut', { mode: 'string' }).notNull(),
+    periodeFin: date('periode_fin', { mode: 'string' }).notNull(),
+    offre: text('offre').notNull(),
+    dossiersActifs: integer('dossiers_actifs').notNull(),
+    lignes: jsonb('lignes').notNull(),
+    totalHt: montant('total_ht').notNull(),
+    fictif: boolean('fictif').notNull(),
+    /** en_attente_virement | paye | en_retard | annulee */
+    statutPaiement: text('statut_paiement').notNull().default('en_attente_virement'),
+    referenceVirement: text('reference_virement').notNull(),
+    payeLe: date('paye_le', { mode: 'string' }),
+    creeLe: creeLe(),
+  },
+  (t) => [uniqueIndex('echeances_periode').on(t.cabinetId, t.periodeDebut)],
+);
 
 export const evenementsFacturation = pgTable('evenements_facturation', {
   id: id(),

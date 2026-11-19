@@ -15,6 +15,10 @@
     "./amorcer": {
       "types": "./dist/amorcer.d.ts",
       "default": "./dist/amorcer.js"
+    },
+    "./provisionnement": {
+      "types": "./dist/provisionnement.d.ts",
+      "default": "./dist/provisionnement.js"
     }
   },
   "scripts": {
@@ -27,6 +31,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
+    "@comtaple/core": "workspace:*",
     "drizzle-orm": "0.45.4",
     "pg": "8.23.1"
   },

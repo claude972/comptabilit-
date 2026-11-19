@@ -53,3 +53,7 @@ export type {
 // 9. synthetique (lot 2) — relevés
 export { IBAN_SYNTHETIQUE, genererReleveSynthetique } from './synthetique/releve.js';
 export type { AttenduReleveSynthetique, MouvementAttendu, OptionsReleveSynthetique, ReleveSynthetique } from './synthetique/releve.js';
+
+// 9. abonnement
+export { calculerEcheance, etatQuota, schemaOffre, serviceOuvert, situationAbonnement, verifierOffre } from './abonnement.js';
+export type { CalculEcheance, EtatAbonnement, EtatQuota, LigneEcheance, Offre, SituationAbonnement, StatutAbonnement } from './abonnement.js';

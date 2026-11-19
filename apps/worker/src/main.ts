@@ -1,6 +1,6 @@
-import { creerAccesBd, urlBd } from '@comtaple/db';
+import { and, creerAccesBd, eq, schema as s, urlBd } from '@comtaple/db';
 import { chargerEnvLocal } from '@comtaple/db/env';
-import { connecteursMail, connexionRedis, FILES, Files, lireConfig, Stockage } from '@comtaple/plateforme';
+import { cles, connecteursMail, connexionRedis, FILES, Files, lireConfig, Stockage } from '@comtaple/plateforme';
 import { Worker } from 'bullmq';
 import { analyserDocument } from './analyse-document.js';
 import { executerRapprochement, importerReleve } from './banque.js';
@@ -64,6 +64,19 @@ for (const w of workers) {
 async function rattraper(): Promise<void> {
   const { rows } = await c.bd.pool.query<{ cabinet_id: string; document_id: string }>('select * from worker_documents_en_retard(10, 500)');
   for (const r of rows) await c.taches.analyserDocument({ cabinetId: r.cabinet_id, documentId: r.document_id });
+  await purgerTeleversements();
+}
+
+/** Téléversements jamais terminés et expirés : leurs morceaux temporaires sont supprimés du stockage. */
+async function purgerTeleversements(): Promise<void> {
+  const { rows } = await c.bd.pool.query<{ cabinet_id: string; televersement_id: string }>('select * from worker_televersements_expires(200)');
+  for (const r of rows) {
+    await c.stockage.supprimer(await c.stockage.lister(cles.prefixeMorceaux(r.cabinet_id, r.televersement_id)));
+    await c.bd.avecContexte({ cabinetId: r.cabinet_id }, (tx) =>
+      tx.update(s.televersements).set({ statut: 'abandonne' }).where(and(eq(s.televersements.id, r.televersement_id), eq(s.televersements.statut, 'ouvert'))),
+    );
+  }
+  if (rows.length) console.log(`purge : ${rows.length} téléversement(s) abandonné(s)`);
 }
 const minuterie = setInterval(() => void rattraper().catch((e) => console.error(`rattrapage : ${e.message}`)), 5 * 60_000);
 

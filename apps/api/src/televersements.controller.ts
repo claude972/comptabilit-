@@ -3,6 +3,7 @@ import {
   Body,
   ConflictException,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   HttpCode,
@@ -176,7 +177,16 @@ export class TeleversementsController {
     exigerUuid(id);
     const resultat = await this.bd.avecContexte(acces, async (tx) => {
       const t = await this.charger(tx, acces, id, true);
-      if (t.statut === 'complet') return { t, nouveau: false as const };
+      if (t.statut === 'complet') {
+        // Clôture rejouée (réponse perdue) : on restitue l'information de doublon de la réception d'origine.
+        const [reception] = t.documentId
+          ? await tx
+              .select({ doublon: s.receptions.doublonBinaire })
+              .from(s.receptions)
+              .where(and(eq(s.receptions.documentId, t.documentId), sql`${s.receptions.provenance}->>'televersementId' = ${t.id}`))
+          : [];
+        return { t, nouveau: false as const, doublonBinaire: reception?.doublon ?? false };
+      }
       if (t.statut !== 'ouvert') throw new ConflictException({ message: 'Téléversement clos', statut: t.statut });
       if (t.octetsRecus !== t.tailleAttendue) {
         throw new ConflictException({ message: 'Téléversement incomplet', octetsRecus: t.octetsRecus, tailleAttendue: t.tailleAttendue });
@@ -314,6 +324,21 @@ export class TeleversementsController {
       doublonBinaire: 'doublonBinaire' in resultat ? resultat.doublonBinaire : false,
       dejaImporte: 'lotImportId' in resultat ? !resultat.nouveau : false,
     };
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Abandonner un téléversement non terminé : les morceaux déjà reçus sont supprimés' })
+  async abandonner(@AccesCourant() acces: Acces, @Param('id') id: string) {
+    exigerUuid(id);
+    await this.bd.avecContexte(acces, async (tx) => {
+      const t = await this.charger(tx, acces, id, true);
+      if (t.statut === 'complet') throw new ConflictException('Ce téléversement est terminé : la pièce a été reçue et ne peut pas être retirée ici');
+      if (t.statut === 'ouvert') {
+        await this.stockage.supprimer(await this.stockage.lister(cles.prefixeMorceaux(acces.cabinetId, t.id)));
+        await tx.update(s.televersements).set({ statut: 'abandonne' }).where(eq(s.televersements.id, t.id));
+      }
+    });
   }
 
   private async charger(tx: Parameters<Parameters<AccesBd['avecContexte']>[1]>[0], acces: Acces, id: string, verrou = false) {

@@ -50,6 +50,13 @@
       "when": 1795068386563,
       "tag": "0006_banque_securite",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795068754779,
+      "tag": "0007_administration",
+      "breakpoints": true
     }
   ]
 }

@@ -10,6 +10,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Res,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -79,6 +80,23 @@ export class ComptabiliteController {
       const [lot] = await tx.select().from(s.lotsImport).where(eq(s.lotsImport.id, id));
       if (!lot) throw new NotFoundException('Import introuvable');
       return lot;
+    });
+  }
+
+  @Get('imports/:id/anomalies')
+  @ApiOperation({
+    summary: 'Anomalies ligne par ligne d’un import, paginées',
+    description: 'Le détail est plafonné par le moteur (voir « nbAnomaliesParCode » du rapport pour le décompte complet).',
+  })
+  async anomalies(@AccesCourant() acces: Acces, @Param('id') id: string, @Query('page') pageBrute?: string, @Query('code') code?: string) {
+    exigerUuid(id);
+    const page = Math.max(Number(pageBrute) || 1, 1);
+    const TAILLE = 100;
+    return this.bd.avecContexte(acces, async (tx) => {
+      const [lot] = await tx.select().from(s.lotsImport).where(eq(s.lotsImport.id, id));
+      if (!lot) throw new NotFoundException('Import introuvable');
+      const toutes = ((lot.rapport as { anomalies?: Array<{ code: string }> } | null)?.anomalies ?? []).filter((a) => !code || a.code === code);
+      return { page, taillePage: TAILLE, total: toutes.length, suite: page * TAILLE < toutes.length, anomalies: toutes.slice((page - 1) * TAILLE, page * TAILLE) };
     });
   }
 

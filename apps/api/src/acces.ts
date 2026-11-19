@@ -30,6 +30,8 @@ export interface Acces {
 }
 
 export const Public = () => SetMetadata('public', true);
+/** Route utilisable avant le choix du cabinet (liste des cabinets d'un compte qui en a plusieurs). */
+export const SansCabinet = () => SetMetadata('sans_cabinet', true);
 export const AccesCourant = createParamDecorator((_: unknown, ctx: ExecutionContext): Acces => ctx.switchToHttp().getRequest().acces);
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -96,7 +98,14 @@ export class GardeAcces implements CanActivate {
       choisie = appartenances.find((a) => a.cabinetId === demande);
       if (!choisie) throw new ForbiddenException('Cabinet non autorisé');
     }
-    if (!choisie) throw new BadRequestException('Plusieurs cabinets : préciser l’en-tête X-Cabinet-Id');
+    if (!choisie) {
+      if (this.reflector.getAllAndOverride<boolean>('sans_cabinet', [ctx.getHandler(), ctx.getClass()])) {
+        // Aucun cabinet dans le contexte : les politiques RLS ne laissent voir que les appartenances de l'utilisateur.
+        req.acces = { cabinetId: '', utilisateurId: utilisateur.id, sujet, role: 'client_lecture', email: utilisateur.email, nom: utilisateur.nom } satisfies Acces;
+        return true;
+      }
+      throw new BadRequestException('Plusieurs cabinets : préciser l’en-tête X-Cabinet-Id');
+    }
 
     const acces: Acces = {
       cabinetId: choisie.cabinetId,

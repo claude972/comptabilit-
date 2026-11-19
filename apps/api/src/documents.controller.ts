@@ -84,14 +84,24 @@ export class DocumentsController {
   @ApiOperation({ summary: 'Liste des documents d’un dossier (un déposant ne voit que ses propres dépôts)' })
   @ApiQuery({ name: 'entiteId', required: true })
   @ApiQuery({ name: 'statut', required: false })
-  async lister(@AccesCourant() acces: Acces, @Query('entiteId') entiteId: string, @Query('statut') statut?: string) {
+  @ApiQuery({ name: 'deposant', required: false, description: '« moi » : seulement mes propres dépôts (toujours appliqué au niveau dépôt)' })
+  @ApiQuery({ name: 'page', required: false })
+  async lister(
+    @AccesCourant() acces: Acces,
+    @Query('entiteId') entiteId: string,
+    @Query('statut') statut?: string,
+    @Query('deposant') deposant?: string,
+    @Query('page') pageBrute?: string,
+  ) {
+    const page = Math.max(Number(pageBrute) || 1, 1);
+    const TAILLE = 100;
     exigerUuid(entiteId, 'entiteId');
     if (statut && !(s.statutDocument.enumValues as readonly string[]).includes(statut)) throw new BadRequestException('statut inconnu');
     return this.bd.avecContexte(acces, async (tx) => {
       const niveau = await exigerNiveau(tx, entiteId, 'depot');
       const conditions = [eq(s.documents.entiteId, entiteId)];
       if (statut) conditions.push(eq(s.documents.statut, statut as (typeof s.statutDocument.enumValues)[number]));
-      if (niveau === 'depot') {
+      if (niveau === 'depot' || deposant === 'moi') {
         conditions.push(
           sql`exists (select 1 from receptions r where r.document_id = ${s.documents.id} and r.deposant_id = ${acces.utilisateurId}::uuid)`,
         );
@@ -111,8 +121,9 @@ export class DocumentsController {
         .from(s.documents)
         .where(and(...conditions))
         .orderBy(desc(s.documents.creeLe))
-        .limit(500);
-      return { niveau, documents: lignes };
+        .limit(TAILLE + 1)
+        .offset((page - 1) * TAILLE);
+      return { niveau, page, taillePage: TAILLE, suite: lignes.length > TAILLE, documents: lignes.slice(0, TAILLE) };
     });
   }
 

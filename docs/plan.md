@@ -83,7 +83,7 @@ Critères d'acceptation et résultat :
 
 1. Faire valider par un expert-comptable : catalogue des contrôles, table de correspondance des états, conventions d'indicateurs, convention de rentabilité.
 2. Obtenir les accès externes (`acces-externes.md`) : OAuth Google et Microsoft, jeton OVHcloud, API Légifrance, corpus réel autorisé, authentification GitHub pour alimenter le dépôt distant.
-3. Lacunes réalisables en local, sans accès externe : ancrage externe des empreintes du journal d'audit et procédure à deux personnes pour consigner une anomalie (D-038) ; restitution d'un cabinet entier ; limitation de débit des points d'entrée de notification mail ; pagination des rapprochements et des règles ; rejeu complet des 26 migrations sur une base vide.
+3. Lacunes réalisables en local, sans accès externe : ancrage externe des empreintes du journal d'audit (D-038) ; restitution d'un cabinet entier ; limitation de débit des points d'entrée de notification mail ; pagination des rapprochements et des règles.
 4. Lacunes dépendant d'une validation ou d'un accès : génération assistée d'écritures d'inventaire, annexe et liasse (professionnel) ; assistant et recherche vectorielle (passerelle IA).
 5. Description complète de l'infrastructure, supervision déployée (jeton OVHcloud).
 6. Essais sur appareils réels et évaluation de l'extraction sur pièces réelles.

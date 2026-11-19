@@ -4,9 +4,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DEMO } from './amorcer.js';
-import pg from 'pg';
 import { chargerEnvLocal } from './env.js';
-import { consignerAnomalieJournal } from './provisionnement.js';
 import { type AccesBd, creerAccesBd, eq, journaliser, schema as s, sql, urlBd } from './index.js';
 
 chargerEnvLocal();
@@ -121,9 +119,21 @@ describe('habilitation par dossier', () => {
   });
 });
 
-describe('journal d’audit', () => {
-  it('reste une chaîne linéaire sous écritures simultanées (numéro attribué sous le verrou du cabinet)', async () => {
-    // 80 écritures lancées en parallèle sur plusieurs connexions, chacune dans sa transaction, plus des écritures groupées.
+/**
+ * Ces tests tournent sur la base LOCALE existante, dont le journal du cabinet Alpha fictif porte une irrégularité
+ * d'ordre HISTORIQUE (D-038) : ils ne concluent donc pas à l'intégrité de ce journal et ne s'appuient pas sur la
+ * consignation. Ils vérifient seulement que les lignes écrites MAINTENANT s'enchaînent sans nouvelle irrégularité.
+ * Les tests de non-régression de la chaîne (concurrence, altérations, prédécesseurs invalides, isolation) sont dans
+ * `journal.itest.ts`, sur une base neuve et isolée où la vérification stricte doit réussir.
+ */
+describe('journal d’audit (base locale existante)', () => {
+  const dernierNumero = async (cabinet: string, acteur: string) =>
+    Number((await app.avecContexte(ctx(cabinet, acteur), (tx) => tx.execute(sql`select coalesce(max(id), 0) as n from journal_audit`))).rows[0]!.n);
+  const ecartsApres = async (cabinet: string, acteur: string, numero: number) =>
+    (await app.avecContexte(ctx(cabinet, acteur), (tx) => tx.execute(sql`select ligne from journal_audit_ecarts(${cabinet}::uuid) where ligne > ${numero}`))).rows;
+
+  it('les écritures simultanées d’aujourd’hui n’ajoutent aucune irrégularité', async () => {
+    const avant = await dernierNumero(DEMO.cabinetB, DEMO.bruno);
     await Promise.all(
       Array.from({ length: 80 }, (_, i) =>
         app.avecContexte(ctx(DEMO.cabinetB, DEMO.bruno), async (tx) => {
@@ -132,42 +142,17 @@ describe('journal d’audit', () => {
         }),
       ),
     );
-    const r = await app.avecContexte(ctx(DEMO.cabinetB, DEMO.bruno), (tx) =>
-      tx.execute(sql`select journal_audit_verifier(${DEMO.cabinetB}::uuid) as stricte, (select count(*)::int from journal_audit_ecarts(${DEMO.cabinetB}::uuid)) as ecarts`),
-    );
-    expect(r.rows[0]).toEqual({ stricte: null, ecarts: 0 });
+    expect(await ecartsApres(DEMO.cabinetB, DEMO.bruno, avant)).toEqual([]);
   });
 
-  it('une anomalie ne se consigne que par l’éditeur, sur une irrégularité réelle et décrite ; jamais par l’application', async () => {
-    const editeur = new pg.Client({ connectionString: urlBd('admin') });
-    await editeur.connect();
-    try {
-      const cause = 'Essai automatisé : cette plage ne contient aucune irrégularité.';
-      await expect(consignerAnomalieJournal(editeur, DEMO.cabinetB, 1, 1, cause)).rejects.toThrow(/Aucune irrégularité/);
-      await expect(consignerAnomalieJournal(editeur, DEMO.cabinetB, 5, 1, cause)).rejects.toThrow(/invalide/);
-      await expect(consignerAnomalieJournal(editeur, DEMO.cabinetB, 1, 500, cause)).rejects.toThrow(/trop large/);
-      await expect(consignerAnomalieJournal(editeur, DEMO.cabinetB, 1, 1, 'trop court')).rejects.toThrow(/cause/);
-    } finally {
-      await editeur.end();
-    }
-    await expect(
-      app.avecContexte(ctx(DEMO.cabinetB, DEMO.bruno), (tx) => tx.execute(sql`insert into anomalies_journal (cabinet_id, premiere_ligne, derniere_ligne, cause) values (${DEMO.cabinetB}::uuid, 1, 2, 'x')`)),
-    ).rejects.toThrow();
-    // Cloisonnement : un cabinet ne voit que ses propres anomalies consignées.
-    const vues = await app.avecContexte(ctx(DEMO.cabinetB, DEMO.bruno), (tx) => tx.select().from(s.anomaliesJournal));
-    expect(vues.every((a) => a.cabinetId === DEMO.cabinetB)).toBe(true);
-  });
-
-  it('est chaîné, vérifiable, et refuse modification et suppression', async () => {
+  it('les nouvelles lignes s’enchaînent ; modification et suppression sont refusées', async () => {
+    const avant = await dernierNumero(DEMO.cabinetA, DEMO.alice);
     await app.avecContexte(ctx(DEMO.cabinetA, DEMO.alice), async (tx) => {
       await journaliser(tx, { cabinetId: DEMO.cabinetA, acteurId: DEMO.alice, action: 'test.audit', details: { n: 1 } });
       await journaliser(tx, { cabinetId: DEMO.cabinetA, acteurId: DEMO.alice, action: 'test.audit', details: { n: 2 } });
     });
-    const verif = await app.avecContexte(ctx(DEMO.cabinetA, DEMO.alice), (tx) =>
-      tx.execute(sql`select journal_audit_verifier_hors_anomalies(${DEMO.cabinetA}::uuid) as rupture, (select count(*)::int from journal_audit) as n`),
-    );
-    expect(verif.rows[0]!.rupture).toBeNull();
-    expect(Number(verif.rows[0]!.n)).toBeGreaterThanOrEqual(2);
+    expect(await dernierNumero(DEMO.cabinetA, DEMO.alice)).toBeGreaterThan(avant);
+    expect(await ecartsApres(DEMO.cabinetA, DEMO.alice, avant)).toEqual([]);
     await expect(
       app.avecContexte(ctx(DEMO.cabinetA, DEMO.alice), (tx) => tx.execute(sql`update journal_audit set action = 'falsifie'`)),
     ).rejects.toThrow();

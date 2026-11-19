@@ -134,24 +134,30 @@ export default async function PageAdministration() {
           <Alerte ton="attention">Le journal d’audit est indisponible. {audit.message}</Alerte>
         ) : (
           <>
-            {audit.donnees.integrite.rupture === null && (audit.donnees.integrite.anomaliesConsignees?.length ?? 0) > 0 ? (
-              <Alerte ton="attention" titre="Chaîne vérifiée, avec une irrégularité d’ordre consignée" data-testid="integrite-audit">
-                Le contenu de chaque ligne est vérifié par son empreinte. L’ordre d’enchaînement est irrégulier sur les lignes ci-dessous, pour une cause consignée par l’éditeur ; aucune autre rupture.
-                <ul className="mt-1 list-disc pl-5">
-                  {audit.donnees.integrite.anomaliesConsignees!.map((a) => (
-                    <li key={a.premiereLigne}>
-                      Lignes n° {a.premiereLigne} à {a.derniereLigne} — {a.cause}
-                    </li>
-                  ))}
-                </ul>
-              </Alerte>
-            ) : audit.donnees.integrite.rupture === null ? (
+            {audit.donnees.integrite.rupture === null ? (
               <Alerte ton="succes" data-testid="integrite-audit">
                 Chaîne intacte : les empreintes du journal se suivent sans rupture.
               </Alerte>
             ) : (
               <Alerte ton="danger" role="alert" titre="Rupture de la chaîne d’audit" data-testid="integrite-audit">
                 Première ligne incohérente : n° {String(audit.donnees.integrite.rupture)}. Le journal a pu être altéré ; signalez-le sans délai.
+                {(audit.donnees.integrite.diagnostic?.anomaliesConsignees.length ?? 0) > 0 ? (
+                  <div className="mt-2" data-testid="diagnostic-audit">
+                    <p className="font-medium">Diagnostic consigné par l’éditeur (il ne rétablit pas l’intégrité de la chaîne) :</p>
+                    <ul className="list-disc pl-5">
+                      {audit.donnees.integrite.diagnostic!.anomaliesConsignees.map((a) => (
+                        <li key={a.premiereLigne}>
+                          Lignes n° {a.premiereLigne} à {a.derniereLigne} — {a.cause}
+                        </li>
+                      ))}
+                    </ul>
+                    <p>
+                      {audit.donnees.integrite.diagnostic!.ruptureNonExpliquee === null
+                        ? 'En dehors de ces lignes, aucune autre incohérence n’est relevée ; l’empreinte de chaque ligne reste vérifiée.'
+                        : `Ce diagnostic n’explique pas tout : la ligne n° ${String(audit.donnees.integrite.diagnostic!.ruptureNonExpliquee)} reste incohérente.`}
+                    </p>
+                  </div>
+                ) : null}
               </Alerte>
             )}
             <Tableau legende="Dernières lignes du journal d’audit">

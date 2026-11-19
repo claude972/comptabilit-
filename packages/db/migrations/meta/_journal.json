@@ -183,6 +183,13 @@
       "when": 1795078944018,
       "tag": "0025_journal_chainage",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1795080140025,
+      "tag": "0026_journal_lecture",
+      "breakpoints": true
     }
   ]
 }

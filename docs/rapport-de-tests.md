@@ -1,6 +1,6 @@
 # Rapport de tests
 
-Dernière exécution complète : 2026-11-19 (quatrième passe, après le correctif du journal d'audit, l'affectation des travaux et les lots versions de pièces, aperçu CSV, pièces jointes, annulation et campagnes d'import, rentabilité), poste de développement macOS (Apple Silicon), services locaux dans une machine virtuelle Docker (4 processeurs, 6 Go). La base locale contient les données accumulées par les exécutions successives des parcours.
+Dernière exécution complète : 2026-11-19 (cinquième passe, après la révision de D-038 (vérification stricte comme référence), l'affectation des travaux et les lots versions de pièces, aperçu CSV, pièces jointes, annulation et campagnes d'import, rentabilité), poste de développement macOS (Apple Silicon), services locaux dans une machine virtuelle Docker (4 processeurs, 6 Go). La base locale contient les données accumulées par les exécutions successives des parcours.
 
 Tous les jeux de données sont SYNTHÉTIQUES. Aucun service externe réel (Google, Microsoft, OVHcloud), aucun appareil réel, aucune donnée de cabinet.
 
@@ -11,17 +11,17 @@ Tous les jeux de données sont SYNTHÉTIQUES. Aucun service externe réel (Googl
 | Moteur métier | `pnpm --filter @comtaple/core run test` | 458 réussis / 458 | Mémoire, jeux synthétiques |
 | Connecteurs mail (bibliothèque) | `pnpm --filter @comtaple/mail run test` | 57 réussis / 57 | Simulateur local des API Gmail et Graph |
 | Application web (logique) | `pnpm --filter @comtaple/web run test` | 139 réussis / 139 | Mémoire |
-| Isolation et audit | `pnpm --filter @comtaple/db run test:integration` | 14 réussis / 14 | PostgreSQL réel |
+| Isolation et audit | `pnpm --filter @comtaple/db run test:integration` | 32 réussis / 32 (13 sur la base locale existante, 19 sur une base neuve isolée) | PostgreSQL réel. La base neuve est créée, migrée depuis zéro, amorcée puis supprimée à chaque exécution |
 | Surveillance des sources et rattrapage | `pnpm --filter @comtaple/worker run test:integration` | 8 réussis / 8 | PostgreSQL réel, lecture HTTP injectée |
 | Parcours de bout en bout | `pnpm --filter @comtaple/api run test:integration` | 122 réussis / 122 (11 fichiers) | Pile réelle : Keycloak, API, worker, PostgreSQL, Redis, S3, ClamAV, OCR. Les 20 parcours mail utilisent en plus le simulateur de messagerie |
 | Navigateur, API simulée | `pnpm --filter @comtaple/web run test:e2e` | 108 réussis / 108 | Vrai Keycloak ; API remplacée par un simulateur de test ; Chromium ordinateur et émulation Pixel 7 |
 | Navigateur, pile réelle | `pnpm --filter @comtaple/web exec playwright test -c playwright.reel.config.ts` | 28 réussis / 28 | Tout réel en local, Chromium ordinateur et émulation Pixel 7 |
 | Service OCR | tests pytest dans l'image `comtaple-ocr:tests` | 48 réussis / 48 (exécution du développeur du service, non relancée lors des dernières passes) | Conteneur sans réseau |
-| Sauvegarde et restauration | `scripts/sauvegarder.sh && scripts/essai-restauration.sh` | Réussi (419 757 lignes d'écriture, 8 364 événements d'audit, 514 pièces, 110 politiques RLS, 20 originaux relus sur 20 ; journal : aucune rupture inexpliquée, 1 anomalie d'enchaînement consignée) | Base locale restaurée dans une base neuve |
+| Sauvegarde et restauration | `scripts/sauvegarder.sh && scripts/essai-restauration.sh` | **Restauration fidèle, contrôle d'intégrité du journal EN ÉCHEC** (code de sortie 3) : 428 580 lignes d'écriture, 112 politiques RLS, 20 originaux relus sur 20, journal restauré identique à l'origine ; la vérification stricte désigne la ligne 7603 du cabinet Alpha fictif (état historique dégradé de cette base, D-038). L'essai ne redeviendra « réussi » que sur une base au journal intègre | Base locale restaurée dans une base neuve |
 | Images de conteneurs | `docker build --target api\|worker\|web` puis démarrage | Trois images construites et démarrées | Réseau des services locaux ; lecture seule, sans capacités, utilisateur non privilégié |
 | Infrastructure | `tofu validate` dans `infra/opentofu` | Valide | Schéma du fournisseur uniquement ; jamais planifiée ni appliquée |
 
-Typage : réussi pour tous les paquets. 18 migrations rejouées depuis zéro au moins une fois ; les huit suivantes (26 au total) n'ont été appliquées que de façon incrémentale sur la base locale, jamais rejouées depuis une base vide.
+Typage : réussi pour tous les paquets. Les 27 migrations sont rejouées depuis une base vide à chaque exécution de la suite « Isolation et audit » (base neuve isolée), avec vérification que RLS est activé et forcé sur toute table portant `cabinet_id`.
 
 Les images de conteneurs, la validation OpenTofu et les tests du service OCR n'ont PAS été relancés lors de cette passe : leurs résultats datent des passes précédentes.
 
@@ -41,7 +41,9 @@ Non exécuté : l'intégration continue GitHub (fichier écrit, dépôt distant 
 
 **Annulation et campagnes d'import** — annulation motivée par un réviseur, lot précédent réactivé, rétablissement, annulation pendant le traitement sans ligne conservée, reprise d'un import en échec, campagne sur plusieurs dossiers avec échec isolé, décompte en dossiers distincts, dossiers hors habilitation comptés sans être révélés, nom de l'auteur d'une annulation.
 
-**Journal d'audit** — chaîne linéaire sous 80 écritures parallèles ; consignation d'une anomalie refusée sans irrégularité réelle, sans cause décrite ou sur une plage large, et impossible avec le rôle applicatif ; une irrégularité n'est tolérée par l'API que consignée avec sa cause.
+**Journal d'audit, sur base neuve isolée (non-régression)** — 240 écritures simultanées par deux rôles sur deux cabinets sans irrégularité ni prédécesseur déclaré deux fois ; modification, suppression, troncature refusées aux rôles applicatifs ; numéro, empreinte, prédécesseur et horodatage fournis par l'appelant ignorés ; écriture dans le journal d'un autre cabinet refusée ; avec les droits du propriétaire : contenu modifié, empreinte recalculée, ligne supprimée, début tronqué, prédécesseur inexistant, vidé ou emprunté à un autre cabinet — tous désignés par la vérification stricte et non consignables ; une consignation ne change jamais le résultat strict et ne masque pas une altération dans ou après sa plage ; lecture du journal réservée aux gestionnaires dans la base, écriture d'un non-gestionnaire correctement enchaînée.
+
+**Journal d'audit, sur la base locale existante (état historique dégradé)** — aucune conclusion d'intégrité : seulement l'absence de nouvelle irrégularité sur les lignes écrites pendant le test, et la cohérence entre l'API et la vérification stricte (rupture affichée, diagnostic à part).
 
 **Comptabilité** — import FEC en flux et idempotent ; anomalies injectées détectées ; revue des constats ; dossier de révision ; nouvelle version rendant les travaux « à revoir » ; faux FEC rejeté ; contrôles fiscaux non réalisés hors métropole ; cohérence entre deux exercices importés.
 
@@ -84,7 +86,9 @@ Aucune mesure sur des pièces réelles. Sur les gabarits synthétiques, numéro,
 
 | Sujet | État |
 |---|---|
-| **Journal d'audit : bifurcation de la chaîne sous écritures simultanées** (numéro attribué avant le verrou). Constaté une fois en local, reproduit sur une copie | Corrigé (migration 0025, D-038). L'irrégularité passée du cabinet Alpha fictif est consignée, non effacée. L'affichage d'une anomalie consignée n'est vérifié au navigateur que sur la base locale qui en porte une, pas contre le simulateur. Aucun ancrage externe des empreintes |
+| **Journal d'audit : bifurcation de la chaîne sous écritures simultanées** (numéro attribué avant le verrou). Constaté une fois en local, reproduit sur une copie | Défaut corrigé (migration 0025) et couvert par des tests sur base neuve. La base locale fictive reste dans un état historique dégradé : la vérification stricte y échoue et l'écran, l'API et l'essai de restauration le disent ; la consignation n'est qu'un diagnostic (D-038 révisée). Aucun ancrage externe des empreintes |
+| Lecture du journal d'audit protégée par l'API seulement, pas par la base | Corrigé (migration 0026) |
+| `scripts/applis.sh web` relance l'application sans la reconstruire : un build périmé a fait échouer un parcours réel | Contournement : `pnpm --filter @comtaple/web run build` avant de relancer |
 | Lignes d'un constat dans un format incohérent ; contrôles fiscaux exécutés quel que soit le territoire | Corrigés |
 | Membres d'un dossier, cabinets d'un compte, pagination des documents et des anomalies, abandon et purge d'un téléversement, doublon à la clôture rejouée | Corrigés |
 | Caractère nul dans un nom de fichier provoquant une erreur serveur | Corrigé (refus 400) |

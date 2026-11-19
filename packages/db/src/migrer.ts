@@ -10,15 +10,15 @@ import pg from 'pg';
 import { chargerEnvLocal } from './env.js';
 import { urlBd } from './index.js';
 
-export async function migrer(): Promise<void> {
-  const client = new pg.Client({ connectionString: urlBd('admin') });
+export async function migrer(env: NodeJS.ProcessEnv = process.env): Promise<void> {
+  const client = new pg.Client({ connectionString: urlBd('admin', env) });
   await client.connect();
   try {
     for (const [role, variable] of [
       ['comtaple_app', 'PG_APP_PASSWORD'],
       ['comtaple_worker', 'PG_WORKER_PASSWORD'],
     ] as const) {
-      const motDePasse = process.env[variable];
+      const motDePasse = env[variable];
       if (!motDePasse) throw new Error(`${variable} manquant`);
       const existe = await client.query('select 1 from pg_roles where rolname = $1', [role]);
       const verbe = existe.rowCount ? 'ALTER' : 'CREATE';

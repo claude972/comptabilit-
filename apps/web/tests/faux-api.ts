@@ -1314,6 +1314,7 @@ const PLAFOND_NIVEAUX: Record<string, readonly string[]> = {
 const TERRITOIRES = ['metropole', 'guadeloupe', 'martinique', 'guyane', 'reunion', 'mayotte', 'autre', 'a_confirmer'];
 let audit: Enr[] = [];
 let ruptureAudit: number | null = null;
+let diagnosticAudit: Array<{ premiereLigne: number; derniereLigne: number; cause: string; consigneeLe: string }> = [];
 function tracerAudit(a: { cabinetId: string; utilisateurId?: string }, action: string, cibleType: string, cibleId: string, entiteId: string | null, details: Enr = {}): void {
   audit.push({ id: audit.length + 1, cabinetId: a.cabinetId, acteurId: a.utilisateurId ?? null, acteurType: a.utilisateurId ? 'utilisateur' : 'systeme', action, cibleType, cibleId, entiteId, details, horodatage: instant(), empreintePrecedente: null, empreinte: sha256(`${audit.length}`) });
 }
@@ -1432,7 +1433,7 @@ function routerAdministration(r: Requete, a: Acces): unknown {
   if (m === 'GET' && s[0] === 'audit' && s.length === 1) {
     exigerGestion();
     const limite = Math.min(Math.max(Number(r.query.get('limite')) || 100, 1), 500);
-    return { integrite: { rupture: ruptureAudit }, lignes: audit.filter((l) => l.cabinetId === a.cabinetId).reverse().slice(0, limite) };
+    return { integrite: { rupture: ruptureAudit, integre: ruptureAudit === null, diagnostic: ruptureAudit === null ? null : { anomaliesConsignees: diagnosticAudit, ruptureNonExpliquee: diagnosticAudit.length ? null : ruptureAudit, mention: 'Un diagnostic consigné explique une irrégularité ; il ne rétablit pas l’intégrité de la chaîne.' } }, lignes: audit.filter((l) => l.cabinetId === a.cabinetId).reverse().slice(0, limite) };
   }
   if (s[0] !== 'dossiers') return undefined;
   if (m === 'POST' && s.length === 1) {
@@ -2663,6 +2664,7 @@ const serveur = http.createServer(async (req, res) => {
         APPARTENANCES_EN_PLUS = [];
         audit = [];
         ruptureAudit = null;
+        diagnosticAudit = [];
         abo = aboInitial();
         etat = etatInitial();
         tracerAudit({ cabinetId: DEMO.cabinetA }, 'import.fec.termine', 'lot_import', etat.lots[0]!.id, DEMO.dupain, { lignes: 1250, lisible: true, anomalies: { CHAMP_VIDE: 60 } });
@@ -2682,6 +2684,7 @@ const serveur = http.createServer(async (req, res) => {
         const d = json();
         if (d.appartenance) APPARTENANCES_EN_PLUS.push(d.appartenance);
         if (d.rupture !== undefined) ruptureAudit = d.rupture;
+        if (d.diagnostic !== undefined) diagnosticAudit = d.diagnostic;
         if (typeof d.documents === 'number') {
           const modele: Enr = etat.documents[0]!;
           for (let i = 0; i < d.documents; i++) {

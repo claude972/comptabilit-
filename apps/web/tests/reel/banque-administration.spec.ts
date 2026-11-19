@@ -50,12 +50,17 @@ test('administration : création d’un dossier, habilitations et ouverture de l
   const page = await ouvrir(browser, 'alice.admin@cabinet-a.test', '/administration');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Administration du cabinet');
   await expect(page.locator('tr[data-membre]').filter({ hasText: 'Rémi Réviseur' })).toContainText('Réviseur');
-  // Aucune rupture inexpliquée. La base locale d'essai porte une irrégularité d'ordre CONSIGNÉE (défaut de chaînage
-  // concurrent corrigé par la migration 0025) : l'écran doit alors le dire, avec sa cause, et non afficher « intacte ».
-  await expect(page.getByTestId('integrite-audit')).not.toContainText('Rupture');
-  await expect(page.getByTestId('integrite-audit')).toContainText(/Chaîne intacte|Chaîne vérifiée, avec une irrégularité d’ordre consignée/);
-  if (await page.getByTestId('integrite-audit').getByText('irrégularité d’ordre consignée').count()) {
-    await expect(page.getByTestId('integrite-audit').getByRole('listitem').first()).toContainText(/Lignes n° \d+ à \d+ — .{30,}/);
+  // L'écran affiche le résultat de la vérification STRICTE. La base locale existante porte une irrégularité d'ordre
+  // historique (D-038) : l'écran doit alors afficher la rupture, avec le diagnostic consigné présenté comme tel — jamais
+  // « intacte ». Sur une base neuve, il affiche « Chaîne intacte ».
+  const integrite = await page.evaluate(async () => ((await (await fetch('/api/bff/v1/audit?limite=1')).json()) as { integrite: { rupture: number | string | null } }).integrite);
+  if (integrite.rupture === null) {
+    await expect(page.getByTestId('integrite-audit')).toContainText('Chaîne intacte');
+  } else {
+    await expect(page.getByTestId('integrite-audit')).toContainText(`Première ligne incohérente : n° ${integrite.rupture}`);
+    await expect(page.getByTestId('integrite-audit')).not.toContainText('intacte');
+    await expect(page.getByTestId('diagnostic-audit')).toContainText('il ne rétablit pas l’intégrité de la chaîne');
+    await expect(page.getByTestId('diagnostic-audit').getByRole('listitem').first()).toContainText(/Lignes n° \d+ à \d+ — .{30,}/);
   }
 
   const creation = page.locator('form[data-formulaire="creer-dossier"]');

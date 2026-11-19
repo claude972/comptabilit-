@@ -29,8 +29,8 @@ export const DEMO = {
   exBellevue2025: 'aaaaaaaa-0000-4000-8000-0000000000f3',
 } as const;
 
-export async function amorcer(): Promise<void> {
-  const client = new pg.Client({ connectionString: urlBd('admin') });
+export async function amorcer(env: NodeJS.ProcessEnv = process.env): Promise<void> {
+  const client = new pg.Client({ connectionString: urlBd('admin', env) });
   await client.connect();
   const db = drizzle(client);
   try {

@@ -128,6 +128,15 @@ test.describe('administration — administratrice', () => {
     await simulateur('administration', { rupture: 3 });
     await page.reload();
     await expect(page.getByTestId('integrite-audit')).toContainText('Première ligne incohérente : n° 3');
+    await expect(page.getByTestId('diagnostic-audit')).toHaveCount(0);
+    // Un diagnostic consigné par l'éditeur s'affiche DANS l'alerte de rupture : il ne la remplace pas et ne la rend pas verte.
+    await simulateur('administration', { rupture: 3, diagnostic: [{ premiereLigne: 3, derniereLigne: 4, cause: 'Défaut de chaînage concurrent corrigé depuis (cas simulé).', consigneeLe: '2026-11-19T09:00:00.000Z' }] });
+    await page.reload();
+    await expect(page.getByTestId('integrite-audit')).toContainText('Rupture de la chaîne d’audit');
+    await expect(page.getByTestId('integrite-audit')).toContainText('Première ligne incohérente : n° 3');
+    await expect(page.getByTestId('integrite-audit')).not.toContainText('intacte');
+    await expect(page.getByTestId('diagnostic-audit')).toContainText('il ne rétablit pas l’intégrité de la chaîne');
+    await expect(page.getByTestId('diagnostic-audit')).toContainText('Lignes n° 3 à 4 — Défaut de chaînage concurrent corrigé depuis (cas simulé).');
     expect(erreurs).toEqual([]);
   });
 });

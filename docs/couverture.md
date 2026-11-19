@@ -25,7 +25,7 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (troisi
 | Rôle « support » à accès temporaire | Testé | Ouvert par l'éditeur (ligne de commande), 72 h au plus, lecture seule, chaque consultation tracée ; le compte du support doit exister dans le fournisseur d'identité |
 | Moteur décimal, montants en chaînes dans les API | Testé | — |
 | Stockage documentaire par empreinte | Testé | S3 local de développement ; Object Lock non testé |
-| Journal d'audit en ajout seul, chaîné, consultable | Testé | Défaut de chaînage sous écritures simultanées trouvé et corrigé le 2026-11-19 (D-038) ; une irrégularité d'ordre passée est consignée sur la base locale, non effacée. Pas d'ancrage ni d'archivage externe protégé |
+| Journal d'audit en ajout seul, chaîné, consultable | Testé sur base neuve isolée | Défaut de chaînage sous écritures simultanées trouvé et corrigé le 2026-11-19 (D-038). La base locale fictive garde une irrégularité d'ordre historique : la vérification stricte, seule référence, y échoue et c'est affiché. Lecture réservée aux gestionnaires dans la base. Pas d'ancrage ni d'archivage externe protégé |
 | Files de traitements différés, reprise | Testé | Rattrapage automatique pour les pièces seulement |
 | Sauvegarde et restauration | Partiel | Base : essai réussi en local. Stockage objet, Keycloak et restauration à un instant donné : non couverts |
 | Intégration continue | Partiel | Fichier écrit, jamais exécuté sur GitHub |
@@ -135,7 +135,7 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (troisi
 
 Tous les domaines ci-dessus ont leurs écrans : collecte (téléphone et ordinateur), revue de pièce, comptabilité, révision, banque et rapprochements, analyse (balance, projets d'états, indicateurs), inventaire, missions et conseils, veille, recherche, restitution, messagerie, règles du cabinet, administration (dossiers, habilitations, membres, audit, abonnement, indicateurs du cabinet). Détail de ce qui est vérifié sur la pile réelle et de ce qui ne l'est que contre un simulateur : `rapport-de-tests.md`.
 
-S'y ajoutent : nouvelle version d'une pièce (historique des versions, validation invalidée affichée), aperçu d'un CSV bancaire avant confirmation du profil, jonction de pièces à un conseil, une lettre ou une écriture d'inventaire, annulation motivée, rétablissement et reprise d'un import, campagnes d'import, rentabilité par mission, affectation d'un travail à une mission, affichage d'une anomalie consignée du journal d'audit.
+S'y ajoutent : nouvelle version d'une pièce (historique des versions, validation invalidée affichée), aperçu d'un CSV bancaire avant confirmation du profil, jonction de pièces à un conseil, une lettre ou une écriture d'inventaire, annulation motivée, rétablissement et reprise d'un import, campagnes d'import, rentabilité par mission, affectation d'un travail à une mission, diagnostic consigné affiché dans l'alerte de rupture du journal d'audit.
 
 Non faits côté interface : pagination des rapprochements et des règles au-delà des plafonds de liste ; notifications ; écran de correspondance comptes 512 ↔ comptes bancaires ; aucune vérification sur appareil réel, sur Safari ou Firefox, ni au lecteur d'écran.
 

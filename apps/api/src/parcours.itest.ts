@@ -169,14 +169,20 @@ describe('territoire fiscal', () => {
 });
 
 describe('journal d’audit', () => {
-  it('est consultable par l’administratrice avec une chaîne intacte, et refusé aux autres rôles', async () => {
+  it('est consultable par l’administratrice avec le résultat de la vérification stricte, et refusé aux autres rôles', async () => {
     const r = await api('alice', 'GET', '/v1/audit?limite=5');
     expect(r.statut).toBe(200);
-    expect(r.json.integrite.rupture).toBeNull();
-    // Une irrégularité d'ordre n'est tolérée que si elle est consignée par l'éditeur, avec sa cause, et visible du cabinet.
-    const { premiereIrregularite, anomaliesConsignees } = r.json.integrite;
-    if (premiereIrregularite !== null) {
-      expect(anomaliesConsignees.some((a: any) => Number(premiereIrregularite) >= a.premiereLigne && Number(premiereIrregularite) <= a.derniereLigne && a.cause.length >= 30)).toBe(true);
+    // `rupture` est le résultat de la vérification STRICTE, seule référence. La base locale existante porte, pour ce
+    // cabinet fictif, une irrégularité d'ordre historique (D-038) : l'API doit alors le dire (jamais « intègre »), avec le
+    // diagnostic consigné à part. Sur une base neuve, la chaîne est intègre et il n'y a pas de diagnostic.
+    const { rupture, integre, diagnostic } = r.json.integrite;
+    expect(integre).toBe(rupture === null);
+    if (rupture === null) {
+      expect(diagnostic).toBeNull();
+    } else {
+      expect(diagnostic.mention).toMatch(/ne rétablit pas l’intégrité/);
+      expect(diagnostic.ruptureNonExpliquee).toBeNull(); // aucune incohérence hors de l'irrégularité historique consignée
+      expect(diagnostic.anomaliesConsignees.some((a: any) => Number(rupture) >= a.premiereLigne && Number(rupture) <= a.derniereLigne && a.cause.length >= 30)).toBe(true);
     }
     expect(r.json.lignes.every((l: any) => l.cabinetId === DEMO.cabinetA && l.empreinte)).toBe(true);
     expect(r.json.lignes.some((l: any) => typeof l.acteurNom === 'string')).toBe(true);

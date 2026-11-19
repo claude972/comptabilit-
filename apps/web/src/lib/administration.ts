@@ -46,9 +46,13 @@ export interface LigneAudit {
 }
 export interface JournalAudit {
   integrite: {
+    /** Vérification stricte : null = chaîne intègre. Seul résultat de référence. */
     rupture: number | string | null;
-    premiereIrregularite?: number | string | null;
-    anomaliesConsignees?: Array<{ premiereLigne: number; derniereLigne: number; cause: string; consigneeLe: string }>;
+    diagnostic?: {
+      anomaliesConsignees: Array<{ premiereLigne: number; derniereLigne: number; cause: string; consigneeLe: string }>;
+      ruptureNonExpliquee: number | string | null;
+      mention: string;
+    } | null;
   };
   lignes: LigneAudit[];
 }

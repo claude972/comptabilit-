@@ -1,6 +1,6 @@
 # Rapport de tests
 
-Dernière exécution complète : 2026-11-19 (cinquième passe, après la révision de D-038 (vérification stricte comme référence), l'affectation des travaux et les lots versions de pièces, aperçu CSV, pièces jointes, annulation et campagnes d'import, rentabilité), poste de développement macOS (Apple Silicon), services locaux dans une machine virtuelle Docker (4 processeurs, 6 Go). La base locale contient les données accumulées par les exécutions successives des parcours.
+Dernière exécution complète : 2026-11-19 (sixième passe, après la révision de D-038, les restaurations isolées (stockage objet, Keycloak), WebKit (vérification stricte comme référence), l'affectation des travaux et les lots versions de pièces, aperçu CSV, pièces jointes, annulation et campagnes d'import, rentabilité), poste de développement macOS (Apple Silicon), services locaux dans une machine virtuelle Docker (4 processeurs, 6 Go). La base locale contient les données accumulées par les exécutions successives des parcours.
 
 Tous les jeux de données sont SYNTHÉTIQUES. Aucun service externe réel (Google, Microsoft, OVHcloud), aucun appareil réel, aucune donnée de cabinet.
 
@@ -17,7 +17,10 @@ Tous les jeux de données sont SYNTHÉTIQUES. Aucun service externe réel (Googl
 | Navigateur, API simulée | `pnpm --filter @comtaple/web run test:e2e` | 108 réussis / 108 | Vrai Keycloak ; API remplacée par un simulateur de test ; Chromium ordinateur et émulation Pixel 7 |
 | Navigateur, pile réelle | `pnpm --filter @comtaple/web exec playwright test -c playwright.reel.config.ts` | 28 réussis / 28 | Tout réel en local, Chromium ordinateur et émulation Pixel 7 |
 | Service OCR | tests pytest dans l'image `comtaple-ocr:tests` | 48 réussis / 48 (exécution du développeur du service, non relancée lors des dernières passes) | Conteneur sans réseau |
-| Sauvegarde et restauration | `scripts/sauvegarder.sh && scripts/essai-restauration.sh` | **Restauration fidèle, contrôle d'intégrité du journal EN ÉCHEC** (code de sortie 3) : 428 580 lignes d'écriture, 112 politiques RLS, 20 originaux relus sur 20, journal restauré identique à l'origine ; la vérification stricte désigne la ligne 7603 du cabinet Alpha fictif (état historique dégradé de cette base, D-038). L'essai ne redeviendra « réussi » que sur une base au journal intègre | Base locale restaurée dans une base neuve |
+| Navigateur WebKit, pile réelle | `pnpm --filter @comtaple/web exec playwright test -c playwright.navigateurs.config.ts --project=webkit` | 28 réussis / 28 | Mêmes parcours que la ligne précédente, moteur WebKit 27.2 de Playwright (moteur de Safari, pas Safari), téléphone émulé en iPhone 15 |
+| Navigateur Firefox, pile réelle | idem `--project=firefox` | **Non exécuté** : Firefox 159 de Playwright ne se lance pas sur ce poste (« Could not find profile folder », refus du bac à sable macOS), y compris depuis le disque interne | — |
+| Sauvegarde et restauration : base et stockage objet | `scripts/sauvegarder.sh && scripts/essai-restauration.sh` | **Restauration fidèle, contrôle d'intégrité du journal EN ÉCHEC** (code de sortie 3). Base : 432 181 lignes d'écriture, 112 politiques RLS, journal identique à l'origine. Stockage objet : 1 521 objets (3,6 Go) rechargés dans une instance isolée, 1 422 objets référencés par la base restaurée tous relus et conformes. La vérification stricte désigne la ligne 7603 du cabinet Alpha fictif (état historique dégradé, D-038) : l'essai ne sortira « réussi » que sur une base au journal intègre | Base neuve et instance de stockage séparée, détruites après l'essai |
+| Sauvegarde et restauration : Keycloak | `scripts/essai-restauration-keycloak.sh` | Réussi : 16 contrôles conformes (comptes, « sub », connexions, refus d'un mauvais mot de passe, clients, secret, rôles) | Instance Keycloak d'essai séparée, détruite après l'essai ; 7 s d'arrêt du Keycloak local pour l'export |
 | Images de conteneurs | `docker build --target api\|worker\|web` puis démarrage | Trois images construites et démarrées | Réseau des services locaux ; lecture seule, sans capacités, utilisateur non privilégié |
 | Infrastructure | `tofu validate` dans `infra/opentofu` | Valide | Schéma du fournisseur uniquement ; jamais planifiée ni appliquée |
 
@@ -86,6 +89,8 @@ Aucune mesure sur des pièces réelles. Sur les gabarits synthétiques, numéro,
 
 | Sujet | État |
 |---|---|
+| **PostgreSQL redémarré pendant un essai de restauration** (sonde de santé expirée sous charge disque, processus orphelin recueilli par le serveur) | Corrigé dans `compose.yaml` (processus d'init, sonde sans shell). Aucune donnée perdue ; essai rejoué sans redémarrage. Détail : `deploiement.md` |
+| Firefox impossible à lancer sur ce poste | Ouvert (cause non élucidée ; la configuration du projet Firefox est en place) |
 | **Journal d'audit : bifurcation de la chaîne sous écritures simultanées** (numéro attribué avant le verrou). Constaté une fois en local, reproduit sur une copie | Défaut corrigé (migration 0025) et couvert par des tests sur base neuve. La base locale fictive reste dans un état historique dégradé : la vérification stricte y échoue et l'écran, l'API et l'essai de restauration le disent ; la consignation n'est qu'un diagnostic (D-038 révisée). Aucun ancrage externe des empreintes |
 | Lecture du journal d'audit protégée par l'API seulement, pas par la base | Corrigé (migration 0026) |
 | `scripts/applis.sh web` relance l'application sans la reconstruire : un build périmé a fait échouer un parcours réel | Contournement : `pnpm --filter @comtaple/web run build` avant de relancer |

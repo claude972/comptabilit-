@@ -153,6 +153,15 @@ Le stockage S3 local de développement était plafonné à 20 volumes de 256 Mo.
 ### D-039 — Affectation explicite des travaux à une mission (2026-11-19)
 Un travail peut être affecté à une mission de son dossier, à la saisie ou après coup, par un membre du cabinet (niveau collaboration) ; le changement est journalisé. L'affectation n'est jamais déduite de la prestation ou de la date. Un travail affecté est situé par rapport aux seules lettres de sa mission et n'est compté que dans la rentabilité de celle-ci ; un travail non affecté reste compté dans chaque mission du dossier, et la rentabilité le dit et le dénombre quand le dossier a plusieurs missions.
 
+### D-040 — Sauvegarde et essais de restauration isolés, en local (2026-11-19)
+La sauvegarde locale couvre la base puis tous les objets du stockage (dans cet ordre) ; Keycloak est exporté à part. Un essai de restauration ne lit ni n'écrit jamais dans les services de l'application : la base est restaurée dans une base neuve, les objets dans une instance de stockage créée pour l'essai avec ses propres identifiants, Keycloak dans une instance séparée ; toutes sont détruites ensuite. Le script de rechargement refuse d'écrire dans le stockage de l'application. Le contrôle porte sur TOUS les objets référencés par la base restaurée, comparés à l'empreinte enregistrée en base, et non plus sur un échantillon lu dans le stockage d'origine. L'essai échoue (code 3) quand la vérification stricte du journal d'audit échoue, même si la restauration est fidèle. Ces essais valident la démarche en local ; ils ne valent pas pour la production, dont les sauvegardes relèveront de l'hébergeur.
+
+### D-041 — PostgreSQL en conteneur : processus d'init obligatoire (2026-11-19)
+Depuis PostgreSQL 17, le serveur redémarre quand un processus enfant qu'il ne connaît pas se termine anormalement. Dans un conteneur où il est le premier processus, il recueille les orphelins des sondes et des commandes lancées de l'extérieur : une sonde de santé expirée a suffi à le faire redémarrer pendant un essai. Le conteneur local a désormais un processus d'init et une sonde sans shell. Même précaution à prévoir partout où PostgreSQL tournerait en conteneur.
+
+### D-042 — Essais multi-navigateurs (2026-11-19)
+Les parcours sur pile réelle choisissent leur profil d'après le moteur réellement lancé (plus d'agent utilisateur Chrome annoncé par un autre moteur) et sont rejoués sous WebKit. Les parcours contre le simulateur d'API restent propres à Chromium : ils dépendent d'une option de résolution d'hôte que seul Chromium accepte. Firefox est configuré mais n'a pas pu être lancé sur ce poste. WebKit n'est pas Safari, et une émulation n'est pas un appareil.
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

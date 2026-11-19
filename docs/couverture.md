@@ -27,7 +27,7 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (troisi
 | Stockage documentaire par empreinte | Testé | S3 local de développement ; Object Lock non testé |
 | Journal d'audit en ajout seul, chaîné, consultable | Testé sur base neuve isolée | Défaut de chaînage sous écritures simultanées trouvé et corrigé le 2026-11-19 (D-038). La base locale fictive garde une irrégularité d'ordre historique : la vérification stricte, seule référence, y échoue et c'est affiché. Lecture réservée aux gestionnaires dans la base. Pas d'ancrage ni d'archivage externe protégé |
 | Files de traitements différés, reprise | Testé | Rattrapage automatique pour les pièces seulement |
-| Sauvegarde et restauration | Partiel | Base : essai réussi en local. Stockage objet, Keycloak et restauration à un instant donné : non couverts |
+| Sauvegarde et restauration | Testé en local | Base, stockage objet (instance isolée, tous les objets référencés relus) et Keycloak (instance isolée) : essais réalisés. Restauration à un instant donné, chiffrement et conservation hors du poste, mécanismes de l'hébergeur : non couverts. Sur la base locale, l'essai signale le journal d'audit non intègre (D-038) |
 | Intégration continue | Partiel | Fichier écrit, jamais exécuté sur GitHub |
 | Supervision (OpenTelemetry, Prometheus, Grafana) | Partiel | Métriques Prometheus exposées par l'API et le worker ; pas de collecte déployée ni de traces |
 | Infrastructure cible (OpenTofu, OVHcloud) | Partiel | Ébauche validée syntaxiquement (base managée, buckets) ; jamais appliquée |
@@ -137,7 +137,7 @@ Tous les domaines ci-dessus ont leurs écrans : collecte (téléphone et ordinat
 
 S'y ajoutent : nouvelle version d'une pièce (historique des versions, validation invalidée affichée), aperçu d'un CSV bancaire avant confirmation du profil, jonction de pièces à un conseil, une lettre ou une écriture d'inventaire, annulation motivée, rétablissement et reprise d'un import, campagnes d'import, rentabilité par mission, affectation d'un travail à une mission, diagnostic consigné affiché dans l'alerte de rupture du journal d'audit.
 
-Non faits côté interface : pagination des rapprochements et des règles au-delà des plafonds de liste ; notifications ; écran de correspondance comptes 512 ↔ comptes bancaires ; aucune vérification sur appareil réel, sur Safari ou Firefox, ni au lecteur d'écran.
+Non faits côté interface : pagination des rapprochements et des règles au-delà des plafonds de liste ; notifications ; écran de correspondance comptes 512 ↔ comptes bancaires ; aucune vérification sur appareil réel, sur Safari lui-même ou sur Firefox, ni au lecteur d'écran.
 
 ## Couverture par type de dossier
 
@@ -164,6 +164,6 @@ Le territoire fiscal est une donnée explicite du dossier. Hors métropole, ou t
 | 7 | Jeton mail révoqué | Testé contre simulateur de messagerie uniquement |
 | 8 | Accès à un autre cabinet ou dossier | Testé (base, API, interface) |
 | 9 | Pièce contenant des instructions malveillantes | Testé — sachant qu'aucune IA ne lit les pièces à ce jour |
-| 10 | Restauration après incident | Partiel : base restaurée et vérifiée ; voir `deploiement.md` |
+| 10 | Restauration après incident | Testé en local : base, stockage objet et Keycloak restaurés dans des instances isolées et vérifiés ; limites dans `deploiement.md` |
 
-Environnements réellement utilisés : Chromium (ordinateur et émulation Pixel 7) sur macOS. Aucun appareil réel, ni Safari, ni Firefox.
+Environnements réellement utilisés : Chromium (ordinateur et émulation Pixel 7) et WebKit (ordinateur et émulation iPhone 15, parcours sur pile réelle seulement) sur macOS. WebKit est le moteur de Safari, pas Safari. Firefox n'a pas pu être lancé sur ce poste. Aucun appareil réel, aucun lecteur d'écran.

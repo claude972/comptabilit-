@@ -9,7 +9,8 @@ import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { genererFecSynthetique } from '@comtaple/core';
-import { type Browser, type Page, devices, expect, test } from '@playwright/test';
+import { type Browser, type Page, expect, test } from '@playwright/test';
+import { ordinateur } from './profils';
 
 function motDePasse(): string {
   const fichier = path.resolve(import.meta.dirname, '../../../../.env');
@@ -19,7 +20,7 @@ function motDePasse(): string {
   return m[1]!.trim();
 }
 async function ouvrir(browser: Browser, email: string, destination: string): Promise<Page> {
-  const contexte = await browser.newContext({ ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 }, acceptDownloads: true });
+  const contexte = await browser.newContext({ ...ordinateur(browser), viewport: { width: 1440, height: 900 }, acceptDownloads: true });
   const page = await contexte.newPage();
   await page.goto(destination);
   await page.getByRole('link', { name: 'Se connecter' }).click();

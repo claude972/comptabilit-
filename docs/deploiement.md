@@ -63,27 +63,35 @@ Points d'attention déjà identifiés :
 
 ## Sauvegarde et restauration
 
-### Ce qui est vérifié (local)
+### Ce qui est vérifié (local, 2026-11-19)
 
-`scripts/sauvegarder.sh` produit une sauvegarde logique (`pg_dump`, format personnalisé) et son empreinte dans `var/sauvegardes/`.
+**Sauvegarde** — `scripts/sauvegarder.sh` produit dans `var/sauvegardes/` (hors dépôt) : la base (`pg_dump`, format personnalisé) puis TOUS les objets du stockage (fichiers adressés par empreinte SHA-256, jamais dupliqués d'une sauvegarde à l'autre, et un manifeste clé / taille / empreinte), chacun avec son empreinte. L'ordre compte : les originaux n'étant jamais réécrits ni supprimés, un stockage copié après la base contient tout ce qu'elle référence.
 
-`scripts/essai-restauration.sh` restaure la dernière sauvegarde dans une base neuve, sans toucher à la base courante, puis vérifie :
+**Essai de restauration de la base et du stockage objet** — `scripts/essai-restauration.sh`, sans jamais écrire dans la base ni dans le stockage de l'application :
 
-1. l'empreinte de la sauvegarde ;
-2. les volumes de lignes restaurés ;
-3. l'intégrité de la chaîne du journal d'audit pour chaque cabinet ;
-4. que RLS est toujours activé et forcé sur toutes les tables concernées, et le nombre de politiques ;
-5. qu'un échantillon d'originaux du stockage objet correspond aux empreintes enregistrées en base.
+1. empreintes de la sauvegarde et du manifeste ;
+2. restauration dans une base neuve ; volumes de lignes ;
+3. journal d'audit : (a) fidélité — le résultat de la vérification stricte est identique à l'origine, cabinet par cabinet ; (b) intégrité — vérification stricte, seule référence (D-038) ;
+4. RLS activé et forcé sur toutes les tables portant `cabinet_id` ; nombre de politiques ;
+5. stockage objet : rechargement de la sauvegarde dans une instance SÉPARÉE (autre conteneur, autre volume, autres identifiants générés pour l'essai, autre port, accès anonyme refusé), puis relecture de TOUS les objets référencés par la base restaurée (originaux, exports de révision, archives de restitution) et comparaison à l'empreinte enregistrée en base ; l'instance est détruite ensuite.
 
-Dernier essai : voir `rapport-de-tests.md`.
+Codes de sortie : 0 réussi ; 3 données restaurées fidèlement mais journal d'audit non intègre ; autre : échec. Sur la base locale fictive, l'essai sort en 3 à cause de l'irrégularité historique du journal du cabinet Alpha (D-038) : c'est voulu, et il ne sortira en 0 que sur une base au journal intègre. Dernier résultat : 1 521 objets (3,6 Go) sauvegardés en 82 s et rechargés en 65 s ; 1 422 objets référencés, tous conformes.
+
+**Essai de restauration de Keycloak** — `scripts/essai-restauration-keycloak.sh` : export complet du royaume (comptes, empreintes de mots de passe, clients, rôles), import dans une instance d'essai séparée, puis comparaison à l'origine et à la base de l'application : mêmes comptes et mêmes identifiants (« sub »), connexion acceptée avec le mot de passe d'origine, mauvais mot de passe refusé, mêmes clients, même secret du client confidentiel, mêmes rôles (16 contrôles conformes). L'export impose d'ARRÊTER le Keycloak local quelques secondes (7 à 10 s constatées), car sa base embarquée ne se lit pas pendant qu'il tourne. Le fichier d'export contient des empreintes de mots de passe et un secret : il reste dans `var/sauvegardes/`, lisible par son seul propriétaire.
 
 ### Ce qui n'est pas vérifié
 
-- Restauration du stockage objet lui-même (seule la cohérence base ↔ objets est contrôlée).
+- Tout ce qui précède vaut pour l'environnement LOCAL. En production, la base et Keycloak (adossé à PostgreSQL, et non à une base embarquée) relèveront des sauvegardes de l'hébergeur, et le stockage objet de ses mécanismes (versions, réplication, verrouillage) : aucun n'a été essayé.
 - Restauration à un instant donné (journaux de transactions).
-- Restauration de Redis : les files sont reconstructibles. Les pièces confirmées « reçues » mais non traitées sont remises en file par le rattrapage du worker ; les imports comptables, les imports de relevés, les rapprochements, les exports et les restitutions en attente ne le sont pas encore.
-- Restauration de Keycloak.
-- Objectifs de perte de données admissible et de délai de reprise : non définis. Ils dépendent des mécanismes de l'hébergeur et sont à fixer avec lui.
+- Cohérence d'une sauvegarde prise pendant une forte activité d'écriture : la base et le stockage ne sont pas figés ensemble ; seul le sens « tout objet référencé est présent » est garanti par l'ordre des copies.
+- Objets du stockage non référencés par la base (dépôts interrompus, anciennes archives) : sauvegardés et rechargés, mais non contrôlés un par un.
+- Chiffrement des sauvegardes et conservation hors du poste : non faits (dossier local seulement).
+- Restauration de Redis : les files sont reconstructibles ; le rattrapage du worker remet en file les traitements confirmés en base restés en attente (D-035). Aucun essai avec un arrêt réel de Redis.
+- Les jetons émis par l'instance Keycloak d'essai n'ont pas été présentés à l'API (émetteur différent) : l'essai compare les comptes et les secrets, il ne rejoue pas un parcours applicatif sur l'instance restaurée.
+
+### Incident constaté pendant l'essai, et correction
+
+Pendant le premier rechargement de 3,6 Go, PostgreSQL a redémarré de lui-même. Cause : la sonde de santé (`pg_isready` lancée par un shell) a expiré sous la charge disque ; son processus, devenu orphelin, a été recueilli par PostgreSQL, qui est le premier processus de son conteneur et qui, depuis la version 17, traite la fin anormale d'un enfant inconnu comme un crash. La reprise automatique a rejoué les journaux : aucune donnée perdue (volumes identiques avant et après). Correction dans `compose.yaml` : un processus d'init dans le conteneur et une sonde sans shell intermédiaire ; l'essai rejoué ensuite n'a provoqué aucun redémarrage. À reprendre pour la production si PostgreSQL y est exécuté en conteneur.
 
 ## Mode dégradé
 

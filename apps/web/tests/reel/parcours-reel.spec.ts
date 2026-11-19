@@ -1,7 +1,8 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { type Browser, type Page, devices, expect, test } from '@playwright/test';
+import { type Browser, type Page, expect, test } from '@playwright/test';
+import { ordinateur, telephone } from './profils';
 
 /** Mot de passe des comptes du royaume de développement, lu dans le .env local (jamais affiché). */
 function motDePasse(): string {
@@ -52,7 +53,7 @@ let urlPiece = '';
 
 test('téléphone (émulation) : photo → envoi → « Reçu » confirmé par le serveur → OCR → champs visibles par le déposant', async ({ browser }) => {
   const image = await imageFacture(browser);
-  const contexte = await browser.newContext({ ...devices['Pixel 7'] });
+  const contexte = await browser.newContext({ ...telephone(browser) });
   const page = await contexte.newPage();
   await seConnecter(page, 'client.depot@client-a.test', '/deposer');
 
@@ -90,7 +91,7 @@ test('téléphone (émulation) : photo → envoi → « Reçu » confirmé par l
 
 test('ordinateur : le réviseur retrouve la pièce, voit l’aperçu et les vérifications, puis valide la version affichée', async ({ browser }) => {
   test.skip(!urlPiece, 'dépend du dépôt précédent');
-  const contexte = await browser.newContext({ ...devices['Desktop Chrome'] });
+  const contexte = await browser.newContext({ ...ordinateur(browser) });
   const page = await contexte.newPage();
   await seConnecter(page, 'remi.reviseur@cabinet-a.test', '/dossiers');
   await page.getByRole('link', { name: /Boulangerie Dupain/ }).first().click();
@@ -111,7 +112,7 @@ test('ordinateur : le réviseur retrouve la pièce, voit l’aperçu et les vér
 });
 
 test('ordinateur : révision — contrôles avec statuts distincts et catalogue, sur les données réellement importées', async ({ browser }) => {
-  const contexte = await browser.newContext({ ...devices['Desktop Chrome'] });
+  const contexte = await browser.newContext({ ...ordinateur(browser) });
   const page = await contexte.newPage();
   await seConnecter(page, 'remi.reviseur@cabinet-a.test', '/dossiers');
   await page.getByRole('link', { name: /Boulangerie Dupain/ }).first().click();
@@ -129,7 +130,7 @@ test('ordinateur : révision — contrôles avec statuts distincts et catalogue,
 });
 
 test('cloisonnement dans l’interface : l’administratrice ne peut pas ouvrir le dossier où elle n’est pas habilitée', async ({ browser }) => {
-  const contexte = await browser.newContext({ ...devices['Desktop Chrome'] });
+  const contexte = await browser.newContext({ ...ordinateur(browser) });
   const page = await contexte.newPage();
   await seConnecter(page, 'alice.admin@cabinet-a.test', '/dossiers');
   const martin = page.getByRole('main').getByText('Garage Martin SARL (fictif)');
@@ -146,7 +147,7 @@ test('cloisonnement dans l’interface : l’administratrice ne peut pas ouvrir 
 
 test('messagerie : « non connecté » et « connecteur non configuré » pour l’administratrice ; refus pour le réviseur et le déposant', async ({ browser }) => {
   // État RÉEL de l'installation : sans application OAuth configurée, aucune boîte ne peut être connectée.
-  const admin = await browser.newContext({ ...devices['Desktop Chrome'] });
+  const admin = await browser.newContext({ ...ordinateur(browser) });
   const page = await admin.newPage();
   await seConnecter(page, 'alice.admin@cabinet-a.test', '/messagerie');
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Messagerie');
@@ -172,7 +173,7 @@ test('messagerie : « non connecté » et « connecteur non configuré » pour l
   await admin.close();
 
   for (const email of ['remi.reviseur@cabinet-a.test', 'client.depot@client-a.test']) {
-    const contexte = await browser.newContext({ ...devices['Desktop Chrome'] });
+    const contexte = await browser.newContext({ ...ordinateur(browser) });
     const p = await contexte.newPage();
     await seConnecter(p, email, '/messagerie');
     await expect(p.getByRole('heading', { name: 'Accès refusé' })).toBeVisible();

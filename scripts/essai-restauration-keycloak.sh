@@ -1,9 +1,11 @@
 #!/bin/sh
 # Sauvegarde puis essai de restauration ISOLÉE du Keycloak LOCAL (royaume, clients, comptes, empreintes de mots de passe).
 #
-#  1) Export complet du royaume. Le Keycloak local garde ses données dans une base embarquée que l'on ne peut pas lire
-#     pendant qu'il tourne : il est ARRÊTÉ une à deux minutes, son état est figé dans une image temporaire, puis il est
-#     relancé tel quel ; l'export est fait à partir de l'image, supprimée ensuite.
+#  1) Export complet du royaume, SANS arrêter le Keycloak local. Sa base embarquée ne se lit pas pendant qu'il tourne :
+#     le conteneur est FIGÉ le temps de copier les fichiers de cette base (environ une seconde ; les requêtes en cours
+#     attendent, aucune session n'est perdue), puis repris. L'export est fait à partir de la copie, dans un conteneur
+#     temporaire. La copie a la cohérence d'un arrêt brutal : les toutes dernières écritures peuvent manquer, et c'est
+#     pourquoi l'étape 3 compare le résultat au Keycloak d'origine.
 #  2) L'export est importé dans une instance d'essai SÉPARÉE (autre conteneur, autre port, autre administrateur),
 #     sans aucune donnée du Keycloak d'origine.
 #  3) Vérifications sur l'instance d'essai : mêmes comptes et mêmes identifiants (« sub ») que l'origine et que la base
@@ -20,37 +22,33 @@ cd "$(dirname "$0")/.."
 set -a; . ./.env; set +a
 ROYAUME="comtaple"
 SOURCE="comtaple-keycloak-1"
-IMAGE_TMP="comtaple-essai-kc-export:tmp"
 PORT="${ESSAI_KC_PORT:-8081}"
 mkdir -p var/sauvegardes
 EXPORT="var/sauvegardes/keycloak-$(date +%Y%m%d-%H%M%S).json"
 
 nettoyer() {
   docker rm -f comtaple-essai-kc-export comtaple-essai-keycloak >/dev/null 2>&1 || true
-  docker image rm "$IMAGE_TMP" >/dev/null 2>&1 || true
   rm -rf var/sauvegardes/.kc-import
 }
-relancer_source() {
-  docker compose start keycloak >/dev/null 2>&1 || true
-  i=0; until curl -sf -m 3 -o /dev/null "$OIDC_ISSUER/.well-known/openid-configuration"; do
-    i=$((i + 1)); [ "$i" -gt 120 ] && { echo "ATTENTION : le Keycloak local ne répond pas après relance (docker compose up -d keycloak)"; return 1; }; sleep 2
-  done
-}
+reprendre_source() { docker unpause "$SOURCE" >/dev/null 2>&1 || true; }
 nettoyer
-trap 'relancer_source; nettoyer' EXIT INT TERM
+trap 'reprendre_source; nettoyer' EXIT INT TERM
+DEMARRE_AVANT="$(docker inspect -f '{{.State.StartedAt}}' "$SOURCE")"
 
-echo "--- 1) export complet du royaume ---"
-ARRET=$(date +%s)
-docker compose stop keycloak >/dev/null 2>&1
-docker commit "$SOURCE" "$IMAGE_TMP" >/dev/null
-relancer_source
-echo "Keycloak local arrêté puis relancé : $(( $(date +%s) - ARRET )) s d'interruption"
-docker run --name comtaple-essai-kc-export "$IMAGE_TMP" export --dir /opt/keycloak/data/export --realm "$ROYAUME" --users realm_file > var/sauvegardes/.kc-export.log 2>&1 \
+echo "--- 1) export complet du royaume, sans arrêt du service ---"
+docker create --name comtaple-essai-kc-export "$(docker inspect -f '{{.Config.Image}}' "$SOURCE")" export --dir /opt/keycloak/data/export --realm "$ROYAUME" --users realm_file >/dev/null
+GEL=$(node -e 'console.log(Date.now())')
+docker pause "$SOURCE" >/dev/null
+# Copie de conteneur à conteneur, sans passer par le disque de l'hôte : les propriétaires des fichiers sont conservés.
+docker cp "$SOURCE:/opt/keycloak/data/h2" - | docker cp - comtaple-essai-kc-export:/opt/keycloak/data/
+docker unpause "$SOURCE" >/dev/null
+echo "Keycloak local figé $(( $(node -e 'console.log(Date.now())') - GEL )) ms pour la copie de sa base, puis repris (aucun arrêt)"
+docker start -a comtaple-essai-kc-export > var/sauvegardes/.kc-export.log 2>&1 \
   || { echo "ÉCHEC de l'export (voir var/sauvegardes/.kc-export.log)"; exit 1; }
 ( umask 077; docker cp "comtaple-essai-kc-export:/opt/keycloak/data/export/$ROYAUME-realm.json" "$EXPORT" )
 chmod 600 "$EXPORT"
 shasum -a 256 "$EXPORT" > "$EXPORT.sha256"
-docker rm -f comtaple-essai-kc-export >/dev/null; docker image rm "$IMAGE_TMP" >/dev/null; rm -f var/sauvegardes/.kc-export.log
+docker rm -f comtaple-essai-kc-export >/dev/null; rm -f var/sauvegardes/.kc-export.log
 echo "Export : $EXPORT ($(du -h "$EXPORT" | cut -f1 | tr -d ' '))"
 
 echo "--- 2) import dans une instance d'essai isolée (port $PORT) ---"
@@ -76,4 +74,9 @@ rm -f var/sauvegardes/.sujets
 echo "--- 4) nettoyage ---"
 docker rm -f comtaple-essai-keycloak >/dev/null
 echo "Instance d'essai détruite."
+trap - EXIT INT TERM
+if [ "$(docker inspect -f '{{.State.StartedAt}}' "$SOURCE")" != "$DEMARRE_AVANT" ] || ! curl -sf -m 5 -o /dev/null "$OIDC_ISSUER/.well-known/openid-configuration"; then
+  echo "ATTENTION : le Keycloak local a redémarré ou ne répond plus après l'essai."; exit 4
+fi
+echo "Keycloak local : aucun redémarrage, service joignable"
 [ "$RESULTAT" = "0" ] && echo "Essai de restauration de Keycloak : RÉUSSI" || { echo "Essai de restauration de Keycloak : ÉCHEC"; exit 1; }

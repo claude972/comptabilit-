@@ -148,6 +148,13 @@
       "when": 1795074979755,
       "tag": "0020_campagne_decompte",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1795075497710,
+      "tag": "0021_parametres_cabinet",
+      "breakpoints": true
     }
   ]
 }

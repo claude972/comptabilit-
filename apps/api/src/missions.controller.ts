@@ -1,6 +1,6 @@
-import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post, Put } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { type ContenuLettre, estimerTemps, type LettreDatee, PRESTATIONS, schemaContenuLettre, situerTravail } from '@comtaple/core';
+import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post, Put, Query } from '@nestjs/common';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { calculerRentabiliteMission, type ContenuLettre, estimerTemps, type LettreDatee, PRESTATIONS, schemaChaineDecimale, schemaContenuLettre, situerTravail } from '@comtaple/core';
 import { type AccesBd, and, asc, desc, eq, inArray, journaliser, schema as s, sql, type Tx } from '@comtaple/db';
 import { z } from 'zod';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
@@ -13,6 +13,7 @@ const mission = z.object({ libelle: z.string().min(1).max(200), debut: dateIso.o
 const lettre = z.object({ dateEffet: dateIso, contenu: schemaContenuLettre, avenantDe: uuid.optional(), documentId: uuid.optional() });
 const travail = z.object({ dateTravail: dateIso, prestation, description: z.string().min(1).max(2000), tempsObserveMinutes: z.number().int().positive().max(100_000).optional() });
 const bareme = z.object({ minutesReference: z.number().int().positive().max(100_000) });
+const cout = z.object({ coutHoraireInterneHt: schemaChaineDecimale.nullable() });
 
 @ApiTags('Missions')
 @ApiBearerAuth()
@@ -180,6 +181,71 @@ export class MissionsController {
         .returning();
       await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'avenant.propose', cibleType: 'lettre_mission', cibleId: projet!.id, entiteId: t.entiteId, details: { travailId: id, prestation: t.prestation } });
       return { avenant: projet, motif: situation.motif, estimation, mention: 'Projet d’avenant préparé par le logiciel : à relire, compléter (honoraires) et valider par une personne habilitée.' };
+    });
+  }
+
+  @Get('cabinet/cout-horaire')
+  @ApiOperation({ summary: 'Coût horaire interne du cabinet (gestionnaires) — null tant qu’il n’a pas été saisi' })
+  async coutHoraire(@AccesCourant() acces: Acces) {
+    return this.bd.avecContexte(acces, async (tx) => {
+      if (!(await tx.execute(sql`select app_est_gestionnaire() as ok`)).rows[0]?.ok) throw new ForbiddenException('Réservé aux administrateurs et associés du cabinet');
+      const [p] = await tx.select().from(s.parametresCabinet).where(eq(s.parametresCabinet.cabinetId, acces.cabinetId));
+      return { coutHoraireInterneHt: p?.coutHoraireInterneHt ?? null, majLe: p?.majLe ?? null };
+    });
+  }
+
+  @Put('cabinet/cout-horaire')
+  @ApiOperation({
+    summary: 'Saisir ou effacer le coût horaire interne du cabinet (gestionnaires)',
+    description: 'Sert uniquement au calcul de marge des missions. Aucune valeur par défaut n’existe : sans saisie, aucune marge n’est calculée.',
+  })
+  @ApiBody({ schema: schemaOpenApi(cout) })
+  async definirCoutHoraire(@AccesCourant() acces: Acces, @Body() corps: unknown) {
+    const d = valider(cout, corps);
+    if (d.coutHoraireInterneHt !== null && !(Number(d.coutHoraireInterneHt) > 0)) throw new BadRequestException('Le coût horaire doit être strictement positif');
+    return this.bd.avecContexte(acces, async (tx) => {
+      if (!(await tx.execute(sql`select app_est_gestionnaire() as ok`)).rows[0]?.ok) throw new ForbiddenException('Réservé aux administrateurs et associés du cabinet');
+      const [p] = await tx
+        .insert(s.parametresCabinet)
+        .values({ cabinetId: acces.cabinetId, coutHoraireInterneHt: d.coutHoraireInterneHt, majPar: acces.utilisateurId })
+        .onConflictDoUpdate({ target: s.parametresCabinet.cabinetId, set: { coutHoraireInterneHt: d.coutHoraireInterneHt, majPar: acces.utilisateurId, majLe: sql`now()` } })
+        .returning();
+      await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'cabinet.cout_horaire_defini', cibleType: 'cabinet', cibleId: acces.cabinetId, details: { renseigne: d.coutHoraireInterneHt !== null } });
+      return { coutHoraireInterneHt: p!.coutHoraireInterneHt, majLe: p!.majLe };
+    });
+  }
+
+  @Get('missions/:id/rentabilite')
+  @ApiOperation({
+    summary: 'Rentabilité d’une mission sur une période (réviseur habilité)',
+    description:
+      'Calcul du moteur à partir des seules données saisies : honoraires des lettres validées (forfait au prorata, ou temps passé au taux de la lettre) et temps OBSERVÉS des travaux. Rien n’est supposé : un montant ou un taux manquant rend les honoraires non calculables ; des temps non saisis rendent les ratios partiels. Le coût et la marge ne sont calculés que si le coût horaire interne a été saisi, et ne sont montrés qu’aux gestionnaires.',
+  })
+  @ApiQuery({ name: 'du', required: true })
+  @ApiQuery({ name: 'au', required: true })
+  async rentabilite(@AccesCourant() acces: Acces, @Param('id') id: string, @Query('du') du: string, @Query('au') au: string) {
+    exigerUuid(id);
+    const iso = /^\d{4}-\d{2}-\d{2}$/;
+    if (!iso.test(du ?? '') || !iso.test(au ?? '') || du > au) throw new BadRequestException('Période invalide (du, au : AAAA-MM-JJ)');
+    return this.bd.avecContexte(acces, async (tx) => {
+      const [m] = await tx.select().from(s.missions).where(eq(s.missions.id, id));
+      if (!m) throw new NotFoundException('Mission introuvable');
+      await exigerNiveau(tx, m.entiteId, 'revision');
+      const lettres = await tx.select().from(s.lettresMission).where(eq(s.lettresMission.missionId, id));
+      const travaux = await tx.select().from(s.travaux).where(and(eq(s.travaux.entiteId, m.entiteId), sql`${s.travaux.dateTravail} between ${du}::date and ${au}::date`));
+      const autresMissions = Number((await tx.execute(sql`select count(*)::int as n from missions where entite_id = ${m.entiteId}::uuid and id <> ${id}::uuid`)).rows[0]?.n ?? 0);
+      const gestionnaire = Boolean((await tx.execute(sql`select app_est_gestionnaire() as ok`)).rows[0]?.ok);
+      // Le coût horaire n'est lisible que par un gestionnaire (politique de la base) : sinon il reste null.
+      const [p] = gestionnaire ? await tx.select().from(s.parametresCabinet).where(eq(s.parametresCabinet.cabinetId, acces.cabinetId)) : [];
+      const r = calculerRentabiliteMission({
+        periode: { debut: du, fin: au },
+        lettres: lettres.map((l) => ({ id: l.id, dateEffet: l.dateEffet, statut: l.statut, version: l.version, contenu: l.contenu as ContenuLettre })),
+        travaux: travaux.map((t) => ({ date: t.dateTravail, prestation: t.prestation, minutes: t.tempsObserveMinutes })),
+        coutHoraire: p?.coutHoraireInterneHt ?? null,
+      });
+      if (!gestionnaire) r.marge = { ...r.marge, motif: 'Le coût et la marge sont réservés aux administrateurs et associés du cabinet.' };
+      if (autresMissions > 0) r.mentions.push(`Ce dossier a ${autresMissions} autre(s) mission(s) : les travaux ne sont pas affectés à une mission, ceux hors du périmètre de celle-ci peuvent relever d’une autre.`);
+      return { mission: m, mention: 'Aide à la gestion, calculée sur les saisies du cabinet ; ni une facturation, ni une comptabilité analytique.', ...r };
     });
   }
 

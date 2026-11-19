@@ -265,6 +265,17 @@ export const baremesTemps = pgTable(
   (t) => [uniqueIndex('baremes_unique').on(t.cabinetId, t.prestation)],
 );
 
+/**
+ * Paramètres internes du cabinet. Le coût horaire interne sert au calcul de marge des missions ; il n'a aucune valeur
+ * par défaut : tant qu'il n'est pas saisi, aucune marge n'est calculée.
+ */
+export const parametresCabinet = pgTable('parametres_cabinet', {
+  cabinetId: uuid('cabinet_id').primaryKey().references(() => cabinets.id),
+  coutHoraireInterneHt: montant('cout_horaire_interne_ht'),
+  majPar: uuid('maj_par').references(() => utilisateurs.id),
+  majLe: horodatage('maj_le').notNull().defaultNow(),
+});
+
 /** Registre des conseils : un conseil reste un projet jusqu'à sa validation, puis exige une autorisation d'envoi. */
 export const conseils = pgTable('conseils', {
   id: id(),

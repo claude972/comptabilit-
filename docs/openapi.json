@@ -214,6 +214,14 @@
                     },
                     "additionalProperties": {}
                   },
+                  "remplaceDocumentId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                  },
+                  "campagneId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                  },
                   "nature": {
                     "default": "a_qualifier",
                     "type": "string",
@@ -1700,6 +1708,36 @@
           }
         ],
         "summary": "Mouvements bancaires importés (paginés), filtrables par période",
+        "tags": [
+          "Banque et rapprochements"
+        ]
+      }
+    },
+    "/v1/imports/{id}/apercu": {
+      "get": {
+        "description": "Lit seulement le début du fichier original. Les cellules sont un contenu non fiable, renvoyé en texte brut et tronqué. Le profil proposé est une aide : c’est l’utilisateur qui le confirme.",
+        "operationId": "BanqueController_apercu",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Aperçu des premières lignes d’un relevé importé et profil de colonnes proposé (pour confirmer un CSV)",
         "tags": [
           "Banque et rapprochements"
         ]
@@ -3352,6 +3390,118 @@
         ]
       }
     },
+    "/v1/cabinet/cout-horaire": {
+      "get": {
+        "operationId": "MissionsController_coutHoraire",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Coût horaire interne du cabinet (gestionnaires) — null tant qu’il n’a pas été saisi",
+        "tags": [
+          "Missions"
+        ]
+      },
+      "put": {
+        "description": "Sert uniquement au calcul de marge des missions. Aucune valeur par défaut n’existe : sans saisie, aucune marge n’est calculée.",
+        "operationId": "MissionsController_definirCoutHoraire",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "coutHoraireInterneHt": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^-?\\d{1,13}(\\.\\d{1,6})?$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "coutHoraireInterneHt"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Saisir ou effacer le coût horaire interne du cabinet (gestionnaires)",
+        "tags": [
+          "Missions"
+        ]
+      }
+    },
+    "/v1/missions/{id}/rentabilite": {
+      "get": {
+        "description": "Calcul du moteur à partir des seules données saisies : honoraires des lettres validées (forfait au prorata, ou temps passé au taux de la lettre) et temps OBSERVÉS des travaux. Rien n’est supposé : un montant ou un taux manquant rend les honoraires non calculables ; des temps non saisis rendent les ratios partiels. Le coût et la marge ne sont calculés que si le coût horaire interne a été saisi, et ne sont montrés qu’aux gestionnaires.",
+        "operationId": "MissionsController_rentabilite",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "du",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "au",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Rentabilité d’une mission sur une période (réviseur habilité)",
+        "tags": [
+          "Missions"
+        ]
+      }
+    },
     "/v1/cabinet/baremes": {
       "get": {
         "operationId": "MissionsController_baremes",
@@ -4281,6 +4431,345 @@
         "summary": "Exporter les écritures approuvées (CSV) et les marquer « exportées »",
         "tags": [
           "Écritures d’inventaire"
+        ]
+      }
+    },
+    "/v1/imports/{id}/annulation": {
+      "post": {
+        "description": "Rien n’est supprimé : le fichier original et les données lues sont conservés, seulement écartés. Import comptable actif : le lot précédent redevient actif et les travaux qui dépendaient des données sont marqués obsolètes ou « à revoir ». Relevé bancaire : ses mouvements ne sont plus pris en compte, sauf ceux présents dans un autre relevé actif. Import en attente ou en cours : il est interrompu sans laisser de données partielles.",
+        "operationId": "ImportsController_annuler",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "motif": {
+                    "type": "string",
+                    "minLength": 5,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "motif"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Annuler un import (réviseur habilité, motif requis) — réversible",
+        "tags": [
+          "Imports : annulation, reprise, campagnes"
+        ]
+      }
+    },
+    "/v1/imports/{id}/retablissement": {
+      "post": {
+        "description": "Seul un import qui avait abouti peut être rétabli tel quel ; un import annulé avant la fin se relance par « reprise ». Import comptable : il redevient le lot actif de son exercice, à la place de l’actuel.",
+        "operationId": "ImportsController_retablir",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "motif": {
+                    "type": "string",
+                    "minLength": 5,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "motif"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Rétablir un import annulé (réviseur habilité, motif requis)",
+        "tags": [
+          "Imports : annulation, reprise, campagnes"
+        ]
+      }
+    },
+    "/v1/imports/{id}/reprise": {
+      "post": {
+        "description": "Le même fichier original est retraité ; la reprise ne duplique rien.",
+        "operationId": "ImportsController_reprise",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Reprendre un import en échec ou annulé avant d’aboutir (collaborateur habilité)",
+        "tags": [
+          "Imports : annulation, reprise, campagnes"
+        ]
+      }
+    },
+    "/v1/campagnes": {
+      "post": {
+        "description": "Chaque fichier est ensuite déposé pour son dossier par le téléversement habituel, avec l’identifiant de la campagne. Chaque dossier est traité isolément.",
+        "operationId": "ImportsController_creerCampagne",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "libelle": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "fec",
+                      "releve_bancaire"
+                    ]
+                  }
+                },
+                "required": [
+                  "libelle",
+                  "type"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Ouvrir une campagne d’import (plusieurs dossiers)",
+        "tags": [
+          "Imports : annulation, reprise, campagnes"
+        ]
+      },
+      "get": {
+        "operationId": "ImportsController_campagnes",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Campagnes d’import du cabinet",
+        "tags": [
+          "Imports : annulation, reprise, campagnes"
+        ]
+      }
+    },
+    "/v1/campagnes/{id}": {
+      "get": {
+        "description": "Seuls les dossiers où l’appelant est habilité sont détaillés ; « dossiersHorsHabilitation » compte les autres, sans rien en révéler.",
+        "operationId": "ImportsController_campagneDetail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Suivi d’une campagne : progression et rapport par dossier",
+        "tags": [
+          "Imports : annulation, reprise, campagnes"
+        ]
+      }
+    },
+    "/v1/campagnes/{id}/cloture": {
+      "post": {
+        "operationId": "ImportsController_clore",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Clore une campagne : elle n’accepte plus de fichiers (ses imports restent en place)",
+        "tags": [
+          "Imports : annulation, reprise, campagnes"
+        ]
+      }
+    },
+    "/v1/campagnes/{id}/reprise-echecs": {
+      "post": {
+        "operationId": "ImportsController_reprendreEchecs",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Reprendre tous les imports en échec de la campagne (dossiers où l’appelant est habilité en collaboration)",
+        "tags": [
+          "Imports : annulation, reprise, campagnes"
+        ]
+      }
+    },
+    "/v1/campagnes/{id}/annulation": {
+      "post": {
+        "description": "N’annule que les imports des dossiers où l’appelant est habilité en révision ; les autres sont laissés en place et comptés. Chaque import reste rétablissable individuellement.",
+        "operationId": "ImportsController_annulerCampagne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "motif": {
+                    "type": "string",
+                    "minLength": 5,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "motif"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Annuler une campagne : chacun de ses imports est annulé (réversible, dossier par dossier)",
+        "tags": [
+          "Imports : annulation, reprise, campagnes"
         ]
       }
     }

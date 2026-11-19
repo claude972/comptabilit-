@@ -190,3 +190,54 @@ function contenu2() {
     obligationsCabinet: '', obligationsClient: '', livrables: [], mandats: [], limites: '',
   };
 }
+
+describe('rentabilité d’une mission', () => {
+  const url = (du = '2025-01-01', au = '2025-12-31') => `/v1/missions/${missionId}/rentabilite?du=${du}&au=${au}`;
+
+  it('est calculée sur les honoraires saisis et les temps observés ; aucune marge sans coût horaire saisi', async () => {
+    expect((await api('chloe', 'GET', url())).statut).toBe(403); // révision requise
+    expect((await api('client', 'GET', url())).statut).toBe(404); // un déposant ne voit même pas l'existence de la mission
+    expect((await api('bruno', 'GET', url())).statut).toBe(404);
+    expect((await api('remi', 'GET', `/v1/missions/${missionId}/rentabilite?du=2025-12-31&au=2025-01-01`)).statut).toBe(400);
+    // État de départ connu : aucun coût horaire saisi pour le cabinet.
+    expect((await api('alice', 'PUT', '/v1/cabinet/cout-horaire', { coutHoraireInterneHt: null })).json.coutHoraireInterneHt).toBeNull();
+    const r = (await api('alice', 'GET', url())).json;
+    expect(r.mention).toMatch(/ni une facturation/);
+    // Lettre initiale (effet au 01/01, 3 600 €/an) puis avenant validé (effet au 05/03, même forfait) : prorata sur 365 jours.
+    expect(r.honoraires.statut).toBe('calcule');
+    expect(r.honoraires.total).toBe('3600.00');
+    expect(r.honoraires.detail.map((x: any) => x.jours)).toEqual([63, 302]);
+    // Temps observés : 120 min de tenue + 45 min de TVA (entrée dans le périmètre par l'avenant du même jour).
+    expect(r.temps.minutesDansPerimetre).toBe(165);
+    expect(r.temps.travauxSansTemps).toBeGreaterThanOrEqual(1); // le travail juridique sans temps saisi
+    expect(r.tauxHoraireRealise.statut).toBe('partiel');
+    expect(r.tauxHoraireRealise.valeur).toBe('1309.09'); // 3 600 / 2,75 h
+    expect(r.marge).toMatchObject({ statut: 'non_calculable', valeur: null, coutHoraire: null });
+    expect(r.marge.motif).toMatch(/non renseigné/);
+  });
+
+  it('le coût horaire est saisi par un gestionnaire ; la marge n’est montrée qu’aux gestionnaires', async () => {
+    expect((await api('remi', 'PUT', '/v1/cabinet/cout-horaire', { coutHoraireInterneHt: '60.00' })).statut).toBe(403);
+    expect((await api('remi', 'GET', '/v1/cabinet/cout-horaire')).statut).toBe(403);
+    expect((await api('alice', 'PUT', '/v1/cabinet/cout-horaire', { coutHoraireInterneHt: 60 })).statut).toBe(400); // un nombre n'est pas un montant
+    expect((await api('alice', 'PUT', '/v1/cabinet/cout-horaire', { coutHoraireInterneHt: '-5.00' })).statut).toBe(400);
+    expect((await api('alice', 'PUT', '/v1/cabinet/cout-horaire', { coutHoraireInterneHt: '60.00' })).json.coutHoraireInterneHt).toBe('60.00');
+    const gestion = (await api('alice', 'GET', url())).json;
+    // Coût : 2,75 h observées × 60 € = 165 € ; marge = 3 600 − 165, partielle car un travail n'a pas de temps saisi.
+    expect(gestion.marge).toMatchObject({ statut: 'partiel', coutHoraire: '60.00', cout: '165.00', valeur: '3435.00' });
+    const revision = (await api('remi', 'GET', url())).json;
+    expect(revision.honoraires.total).toBe('3600.00');
+    expect(revision.marge).toMatchObject({ valeur: null, cout: null, coutHoraire: null });
+    expect(revision.marge.motif).toMatch(/réservés aux administrateurs/);
+    // Remise à l'état initial : aucun coût horaire, donc plus aucune marge.
+    await api('alice', 'PUT', '/v1/cabinet/cout-horaire', { coutHoraireInterneHt: null });
+    expect((await api('alice', 'GET', url())).json.marge.valeur).toBeNull();
+  });
+
+  it('hors des dates couvertes par une lettre validée, aucun honoraire n’est supposé', async () => {
+    const r = (await api('remi', 'GET', url('2024-01-01', '2024-12-31'))).json;
+    expect(r.honoraires).toMatchObject({ statut: 'non_calculable', total: null });
+    expect(r.honoraires.motif).toMatch(/Aucune lettre/);
+    expect(r.tauxHoraireRealise.valeur).toBeNull();
+  });
+});

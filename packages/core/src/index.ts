@@ -80,3 +80,7 @@ export {
   CATALOGUE_INDICATEURS, SEUIL_HAUSSE_DETTES_FISCALES_SOCIALES_PAR_DEFAUT, SEUIL_JOURS_SANS_ECRITURE_AVANT_CLOTURE, calculerIndicateurs, genererCatalogueIndicateursMarkdown,
 } from './indicateurs/calcul.js';
 export type { ComposanteIndicateur, ContexteIndicateurs, DefinitionIndicateur, OptionsIndicateurs, ValeurIndicateur } from './indicateurs/types.js';
+
+// 14. rentabilité des missions
+export { calculerRentabiliteMission } from './rentabilite.js';
+export type { RentabiliteMission, TravailObserve } from './rentabilite.js';

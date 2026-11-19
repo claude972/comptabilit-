@@ -1213,6 +1213,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "avant",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1975,6 +1983,64 @@
           }
         ],
         "summary": "Membres du cabinet et leur rôle (gestionnaires)",
+        "tags": [
+          "Administration du cabinet"
+        ]
+      }
+    },
+    "/v1/cabinet/membres/{utilisateurId}": {
+      "patch": {
+        "description": "Garde-fous : on ne modifie pas sa propre appartenance ; le cabinet garde toujours au moins un administrateur actif ; un changement de rôle retire les habilitations de dossier qui dépassent le plafond du nouveau rôle ; une désactivation ferme immédiatement tous les accès. L’invitation d’un nouvel utilisateur n’existe pas (création de compte par l’éditeur).",
+        "operationId": "AdministrationController_modifierMembre",
+        "parameters": [
+          {
+            "name": "utilisateurId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "administrateur",
+                      "associe",
+                      "reviseur",
+                      "collaborateur",
+                      "client_deposant",
+                      "client_lecture",
+                      "support"
+                    ]
+                  },
+                  "actif": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Changer le rôle d’un membre ou le désactiver (gestionnaires)",
         "tags": [
           "Administration du cabinet"
         ]
@@ -3958,6 +4024,263 @@
         "summary": "Catalogue des indicateurs : formule, convention, unité, entrées, règle en cas de donnée manquante, source",
         "tags": [
           "États de travail et indicateurs"
+        ]
+      }
+    },
+    "/v1/exercices/{id}/ecritures-inventaire": {
+      "post": {
+        "description": "L’écriture doit être équilibrée (vérifié par le moteur, en décimal exact), datée dans l’exercice, justifiée, avec le détail de son calcul. Elle reste séparée des écritures importées et n’a aucun effet tant qu’elle n’est pas approuvée.",
+        "operationId": "InventaireController_proposer",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "dateEcriture": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "libelle": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "justification": {
+                    "type": "string",
+                    "minLength": 10,
+                    "maxLength": 4000
+                  },
+                  "calcul": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 4000
+                  },
+                  "pieces": {
+                    "default": [],
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                    }
+                  },
+                  "lignes": {
+                    "minItems": 2,
+                    "maxItems": 200,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "compteNum": {
+                          "type": "string",
+                          "pattern": "^[1-7]\\d{2,11}$"
+                        },
+                        "compteLib": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "debit": {
+                          "type": "string",
+                          "pattern": "^-?\\d{1,13}(\\.\\d{1,6})?$"
+                        },
+                        "credit": {
+                          "type": "string",
+                          "pattern": "^-?\\d{1,13}(\\.\\d{1,6})?$"
+                        }
+                      },
+                      "required": [
+                        "compteNum",
+                        "compteLib",
+                        "debit",
+                        "credit"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "dateEcriture",
+                  "libelle",
+                  "justification",
+                  "calcul",
+                  "pieces",
+                  "lignes"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Proposer une écriture d’inventaire (projet)",
+        "tags": [
+          "Écritures d’inventaire"
+        ]
+      },
+      "get": {
+        "operationId": "InventaireController_lister",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Écritures d’inventaire proposées pour un exercice, avec leur statut (proposée, approuvée, rejetée, exportée)",
+        "tags": [
+          "Écritures d’inventaire"
+        ]
+      }
+    },
+    "/v1/ecritures-inventaire/{id}/decision": {
+      "post": {
+        "operationId": "InventaireController_decider",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "decision": {
+                    "type": "string",
+                    "enum": [
+                      "approuver",
+                      "rejeter"
+                    ]
+                  },
+                  "motif": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "decision"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Approuver ou rejeter une écriture proposée (réviseur habilité, autre que son auteur ; motif requis pour un rejet)",
+        "tags": [
+          "Écritures d’inventaire"
+        ]
+      }
+    },
+    "/v1/exercices/{id}/balance-ajustee": {
+      "get": {
+        "description": "Les deux balances sont restituées côte à côte, avec la liste des écritures prises en compte et l’impact sur le résultat. Les écritures seulement proposées ou rejetées ne comptent pas. Document de travail, non validé.",
+        "operationId": "InventaireController_balanceAjustee",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Balance ajustée de TRAVAIL : écritures importées + écritures d’inventaire approuvées",
+        "tags": [
+          "Écritures d’inventaire"
+        ]
+      }
+    },
+    "/v1/exercices/{id}/ecritures-inventaire/export": {
+      "post": {
+        "description": "Exporter n’est pas intégrer : le fichier est remis à l’utilisateur, qui l’importe lui-même dans son logiciel comptable. Aucune transmission automatique.",
+        "operationId": "InventaireController_exporter",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Exporter les écritures approuvées (CSV) et les marquer « exportées »",
+        "tags": [
+          "Écritures d’inventaire"
         ]
       }
     }

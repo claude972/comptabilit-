@@ -134,7 +134,9 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (second
 
 ## Écrans
 
-L'état ci-dessus décrit l'API et les traitements. Côté interface : collecte, revue, comptabilité, révision, banque, rapprochements, administration et messagerie ont leurs écrans, testés (voir `rapport-de-tests.md`). Les écrans d'abonnement, de règles, de missions et conseils, de veille, de recherche, d'états et d'indicateurs, et de restitution sont décrits dans `rapport-de-tests.md` selon leur état réel à la date du rapport.
+Tous les domaines ci-dessus ont leurs écrans : collecte (téléphone et ordinateur), revue de pièce, comptabilité, révision, banque et rapprochements, analyse (balance, projets d'états, indicateurs), inventaire, missions et conseils, veille, recherche, restitution, messagerie, règles du cabinet, administration (dossiers, habilitations, membres, audit, abonnement, indicateurs du cabinet). Détail de ce qui est vérifié sur la pile réelle et de ce qui ne l'est que contre un simulateur : `rapport-de-tests.md`.
+
+Non faits côté interface : jonction de pièces à un conseil, une écriture d'inventaire ou une lettre ; aperçu d'un CSV bancaire ; pagination de certaines listes longues ; notifications ; aucune vérification sur appareil réel, sur Safari ou Firefox, ni au lecteur d'écran.
 
 ## Couverture par type de dossier
 

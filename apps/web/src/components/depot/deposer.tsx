@@ -345,7 +345,7 @@ export function Deposer({ utilisateurId, dossiers, serviceFerme = null }: { util
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {NATURES_DEPOT.map((n) => (
                   <label key={n.valeur} className={cn('flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-bordure px-3', nature === n.valeur && 'border-primaire bg-surface-2')}>
-                    <input type="radio" name={`${idBase}-nature`} value={n.valeur} checked={nature === n.valeur} onChange={() => setNature(n.valeur)} className="size-5" />
+                    <input autoComplete="off" type="radio" name={`${idBase}-nature`} value={n.valeur} checked={nature === n.valeur} onChange={() => setNature(n.valeur)} className="size-5" />
                     {n.libelle}
                   </label>
                 ))}

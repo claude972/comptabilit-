@@ -60,14 +60,20 @@ export function MentionProjet({ className, children }: { className?: string; chi
 const styleChamp =
   'block w-full min-h-11 rounded-lg border border-bordure bg-surface px-3 py-2 text-base text-texte placeholder:text-texte-doux disabled:opacity-60';
 
+/*
+ * `autoComplete="off"` par défaut sur les trois champs : Firefox rétablit, au rechargement d'une page, l'état qu'avaient
+ * ses champs avant de la quitter, par-dessus les valeurs rendues par le serveur — une liste ou une case pouvait alors
+ * afficher autre chose que la valeur enregistrée (constaté deux fois en CI, D-063 et D-073). Un champ qui a besoin de
+ * la saisie semi-automatique du navigateur passe sa propre valeur, qui l'emporte.
+ */
 export function Saisie({ className, ...reste }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={cn(styleChamp, className)} {...reste} />;
+  return <input autoComplete="off" className={cn(styleChamp, className)} {...reste} />;
 }
 export function ZoneTexte({ className, ...reste }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea className={cn(styleChamp, 'min-h-24', className)} {...reste} />;
+  return <textarea autoComplete="off" className={cn(styleChamp, 'min-h-24', className)} {...reste} />;
 }
 export function Liste({ className, ...reste }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className={cn(styleChamp, className)} {...reste} />;
+  return <select autoComplete="off" className={cn(styleChamp, className)} {...reste} />;
 }
 export function Libelle({ className, ...reste }: LabelHTMLAttributes<HTMLLabelElement>) {
   return <label className={cn('mb-1 block text-sm font-medium text-texte', className)} {...reste} />;

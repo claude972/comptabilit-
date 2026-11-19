@@ -270,6 +270,9 @@ Liasse : tableaux 2050 à 2053 et 2033-A/B déduits de la balance, pour une soci
 ### D-072 — Un échange avec l'assistant s'enregistre dès le niveau « lecture » (2026-11-19)
 La politique générale d'écriture par dossier exige « collaboration ». Un échange avec l'assistant est un écrit personnel, visible de son seul auteur, qui ne modifie rien du dossier : la politique de cette table est ramenée à « lecture » (migration 0035). Les tâches IA qui créent une proposition restent au niveau « collaboration ».
 
+### D-073 — Firefox et l'état des champs au rechargement : traité à la racine (2026-11-19)
+Deuxième occurrence en CI (run 44600510682, liste « Mission de ce travail ») du défaut déjà rencontré sur une case à cocher (D-063) : au rechargement, Firefox rétablit l'état antérieur d'un champ par-dessus la valeur rendue par le serveur, et l'écran peut afficher autre chose que la valeur enregistrée. Plutôt que de corriger champ par champ, `autoComplete="off"` est désormais posé par défaut par les trois composants de saisie de base et sur les champs natifs restants (21 occurrences). Conséquence assumée : le navigateur ne propose plus de saisie semi-automatique dans les formulaires de l'application (la connexion, elle, se fait sur la page de Keycloak, non concernée). Vérifiable seulement par la CI, Firefox ne pouvant pas être lancé sur le poste.
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

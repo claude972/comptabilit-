@@ -79,7 +79,7 @@ export function SelecteurPieces({
               <Saisie id={`${id}-recherche`} type="search" value={recherche} onChange={(e) => setRecherche(e.target.value)} maxLength={200} autoComplete="off" />
             </div>
             <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
-              <input type="checkbox" className="size-5" checked={inclureRemplacees} onChange={(e) => setInclureRemplacees(e.target.checked)} />
+              <input autoComplete="off" type="checkbox" className="size-5" checked={inclureRemplacees} onChange={(e) => setInclureRemplacees(e.target.checked)} />
               Inclure les versions remplacées
             </label>
           </div>
@@ -101,7 +101,7 @@ export function SelecteurPieces({
                 return (
                   <li key={d.id}>
                     <label className="flex min-h-11 cursor-pointer flex-wrap items-center gap-2 rounded-lg border border-bordure bg-surface px-3 py-1 text-sm">
-                      <input
+                      <input autoComplete="off"
                         type={multiple ? 'checkbox' : 'radio'}
                         name={`${id}-piece`}
                         className="size-5"

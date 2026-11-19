@@ -43,7 +43,7 @@ export function CreerCampagne() {
         <div className="flex flex-wrap gap-2">
           {TYPES.map((t) => (
             <label key={t} className={cn('flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-bordure px-3', type === t && 'border-primaire bg-surface-2')}>
-              <input type="radio" name={`${id}-type`} value={t} checked={type === t} onChange={() => setType(t)} className="size-5" />
+              <input autoComplete="off" type="radio" name={`${id}-type`} value={t} checked={type === t} onChange={() => setType(t)} className="size-5" />
               {LIBELLE_TYPE_CAMPAGNE[t]}
             </label>
           ))}
@@ -160,7 +160,7 @@ export function DepotCampagne({ campagneId, type, dossiers }: { campagneId: stri
             <div className="flex flex-wrap gap-2">
               {STATUTS.map((s) => (
                 <label key={s} className={cn('flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-bordure px-3', statut === s && 'border-primaire bg-surface-2')}>
-                  <input type="radio" name={`${id}-statut`} value={s} checked={statut === s} onChange={() => setStatut(s)} className="size-5" />
+                  <input autoComplete="off" type="radio" name={`${id}-statut`} value={s} checked={statut === s} onChange={() => setStatut(s)} className="size-5" />
                   {LIBELLE_STATUT_DONNEES[s]}
                 </label>
               ))}

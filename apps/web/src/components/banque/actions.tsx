@@ -246,10 +246,10 @@ export function LancerRapprochement({ exerciceId, defauts }: { exerciceId: strin
             <Saisie id={`${id}-fr`} inputMode="numeric" value={f.fenetreJoursRegles} onChange={(e) => maj({ fenetreJoursRegles: e.target.value })} />
           </div>
           <label className="flex min-h-11 items-center gap-2">
-            <input type="checkbox" className="size-5" checked={f.autoriserPartiels} onChange={(e) => maj({ autoriserPartiels: e.target.checked })} /> Paiements partiels
+            <input autoComplete="off" type="checkbox" className="size-5" checked={f.autoriserPartiels} onChange={(e) => maj({ autoriserPartiels: e.target.checked })} /> Paiements partiels
           </label>
           <label className="flex min-h-11 items-center gap-2">
-            <input type="checkbox" className="size-5" checked={f.autoriserCompensations} onChange={(e) => maj({ autoriserCompensations: e.target.checked })} /> Compensations facture / avoir
+            <input autoComplete="off" type="checkbox" className="size-5" checked={f.autoriserCompensations} onChange={(e) => maj({ autoriserCompensations: e.target.checked })} /> Compensations facture / avoir
           </label>
         </div>
         <p className="mt-2 text-sm text-texte-doux">Les valeurs affichées sont celles du moteur par défaut. Une tolérance nulle désactive la règle d’écart de règlement.</p>

@@ -172,7 +172,7 @@ export default async function PageRevision({ params, searchParams }: { params: P
                 </Liste>
               </div>
               <label className="flex min-h-11 items-center gap-2">
-                <input type="checkbox" name="arevoir" value="1" defaultChecked={fARevoir} className="size-5" /> À revoir uniquement
+                <input autoComplete="off" type="checkbox" name="arevoir" value="1" defaultChecked={fARevoir} className="size-5" /> À revoir uniquement
               </label>
               <Bouton type="submit" variante="secondaire">
                 Filtrer

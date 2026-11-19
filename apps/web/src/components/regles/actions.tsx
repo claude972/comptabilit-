@@ -90,11 +90,11 @@ export function ProposerRegle({ controles, dossiers, cabinetPossible }: { contro
           <fieldset className="space-y-2">
             <legend className="mb-1 font-medium">Portée</legend>
             <label className="flex min-h-11 items-center gap-2">
-              <input type="radio" name={`${id}-portee`} className="size-5" checked={portee === 'cabinet'} disabled={!cabinetPossible} onChange={() => setPortee('cabinet')} /> Tout le cabinet
+              <input autoComplete="off" type="radio" name={`${id}-portee`} className="size-5" checked={portee === 'cabinet'} disabled={!cabinetPossible} onChange={() => setPortee('cabinet')} /> Tout le cabinet
             </label>
             {!cabinetPossible ? <p className="text-sm text-texte-doux">Une préférence de tout le cabinet se propose à partir du rôle de réviseur.</p> : null}
             <label className="flex min-h-11 items-center gap-2">
-              <input type="radio" name={`${id}-portee`} className="size-5" checked={portee === 'dossier'} onChange={() => setPortee('dossier')} /> Un dossier
+              <input autoComplete="off" type="radio" name={`${id}-portee`} className="size-5" checked={portee === 'dossier'} onChange={() => setPortee('dossier')} /> Un dossier
             </label>
             {portee === 'dossier' ? (
               <div>
@@ -121,7 +121,7 @@ export function ProposerRegle({ controles, dossiers, cabinetPossible }: { contro
                   </p>
                 ) : c.genre === 'booleen' ? (
                   <label key={c.cle} className="flex min-h-11 items-center gap-2">
-                    <input type="checkbox" className="size-5" checked={saisies[c.cle] === true} onChange={(e) => setSaisies((v) => ({ ...v, [c.cle]: e.target.checked }))} />
+                    <input autoComplete="off" type="checkbox" className="size-5" checked={saisies[c.cle] === true} onChange={(e) => setSaisies((v) => ({ ...v, [c.cle]: e.target.checked }))} />
                     <span>
                       {libelleTotal(c.cle)} (<code>{c.cle}</code>)
                     </span>

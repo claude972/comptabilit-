@@ -137,7 +137,7 @@ export function RedigerLettre({ missionId, dossierId, prestations, lettres }: { 
             return (
               <li key={p.code} className="flex flex-wrap items-center gap-2">
                 <label className="flex min-h-11 items-center gap-2">
-                  <input type="checkbox" className="size-5" checked={v.cochee} onChange={(e) => maj({ prestations: { ...f.prestations, [p.code]: { ...v, cochee: e.target.checked } } })} /> {p.libelle}
+                  <input autoComplete="off" type="checkbox" className="size-5" checked={v.cochee} onChange={(e) => maj({ prestations: { ...f.prestations, [p.code]: { ...v, cochee: e.target.checked } } })} /> {p.libelle}
                 </label>
                 {v.cochee ? (
                   <>
@@ -163,7 +163,7 @@ export function RedigerLettre({ missionId, dossierId, prestations, lettres }: { 
           <Saisie id={`${id}-fin`} type="date" value={f.fin} onChange={(e) => maj({ fin: e.target.value })} />
         </div>
         <label className="flex min-h-11 items-center gap-2 self-end">
-          <input type="checkbox" className="size-5" checked={f.taciteReconduction} onChange={(e) => maj({ taciteReconduction: e.target.checked })} /> Tacite reconduction
+          <input autoComplete="off" type="checkbox" className="size-5" checked={f.taciteReconduction} onChange={(e) => maj({ taciteReconduction: e.target.checked })} /> Tacite reconduction
         </label>
       </fieldset>
       <fieldset className="grid grid-cols-1 gap-3 sm:grid-cols-3">

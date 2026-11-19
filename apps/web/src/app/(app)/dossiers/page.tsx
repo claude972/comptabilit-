@@ -36,7 +36,7 @@ export default async function PageDossiers({ searchParams }: { searchParams: Pro
           <Saisie id="recherche-dossier" name="q" type="search" defaultValue={q} maxLength={80} className="min-w-64" />
         </div>
         <label className="flex min-h-11 items-center gap-2">
-          <input type="checkbox" name="habilites" value="1" defaultChecked={seulementHabilites} />
+          <input autoComplete="off" type="checkbox" name="habilites" value="1" defaultChecked={seulementHabilites} />
           <span>Seulement ceux où je suis habilité</span>
         </label>
         <Bouton type="submit" variante="secondaire">

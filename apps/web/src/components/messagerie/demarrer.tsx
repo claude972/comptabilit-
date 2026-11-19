@@ -109,7 +109,7 @@ export function DemarrerConnexion({ connecteurs, dateParDefaut }: { connecteurs:
         <div className="flex flex-wrap gap-2">
           {FOURNISSEURS.map((f) => (
             <label key={f} className={cn('flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-bordure px-3', fournisseur === f && 'border-primaire bg-surface-2')}>
-              <input
+              <input autoComplete="off"
                 type="radio"
                 name={`${id}-fournisseur`}
                 value={f}
@@ -129,7 +129,7 @@ export function DemarrerConnexion({ connecteurs, dateParDefaut }: { connecteurs:
       {fournisseur === 'microsoft' ? (
         <div className="space-y-2">
           <label className="flex min-h-11 items-center gap-2">
-            <input type="checkbox" checked={partagee} onChange={(e) => setPartagee(e.target.checked)} className="size-5" /> Il s’agit d’une boîte partagée
+            <input autoComplete="off" type="checkbox" checked={partagee} onChange={(e) => setPartagee(e.target.checked)} className="size-5" /> Il s’agit d’une boîte partagée
           </label>
           {partagee ? (
             <>

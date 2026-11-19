@@ -82,7 +82,7 @@ export function Resilier() {
         <ZoneTexte id={`${id}-motif`} value={motif} maxLength={2000} onChange={(e) => setMotif(e.target.value)} />
       </div>
       <label className="flex min-h-11 items-center gap-2">
-        <input type="checkbox" className="size-5" checked={confirme} onChange={(e) => setConfirme(e.target.checked)} /> Je confirme vouloir résilier l’abonnement du cabinet
+        <input autoComplete="off" type="checkbox" className="size-5" checked={confirme} onChange={(e) => setConfirme(e.target.checked)} /> Je confirme vouloir résilier l’abonnement du cabinet
       </label>
       <div className="flex flex-wrap gap-2">
         <Bouton type="submit" variante="danger" disabled={appel.occupe}>

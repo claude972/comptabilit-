@@ -208,7 +208,7 @@ export function ImportComptable({ entiteId, exerciceId, cheminRetour }: { entite
           <div className="flex flex-wrap gap-2">
             {STATUTS.map((s) => (
               <label key={s} className={cn('flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-bordure px-3', statut === s && 'border-primaire bg-surface-2')}>
-                <input type="radio" name={`${id}-statut`} value={s} checked={statut === s} onChange={() => setStatut(s)} required className="size-5" />
+                <input autoComplete="off" type="radio" name={`${id}-statut`} value={s} checked={statut === s} onChange={() => setStatut(s)} required className="size-5" />
                 {LIBELLE_STATUT_DONNEES[s]}
               </label>
             ))}

@@ -63,7 +63,7 @@ export function FormulaireConfigurationMail({
         </div>
       </div>
       <label className="flex min-h-11 items-center gap-2">
-        <input type="checkbox" checked={f.avecPieceJointe} onChange={(e) => maj({ avecPieceJointe: e.target.checked })} className="size-5" />
+        <input autoComplete="off" type="checkbox" checked={f.avecPieceJointe} onChange={(e) => maj({ avecPieceJointe: e.target.checked })} className="size-5" />
         N’examiner que les messages avec pièce jointe
       </label>
 
@@ -84,7 +84,7 @@ export function FormulaireConfigurationMail({
         <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
           {dossiers.map((d) => (
             <label key={d.id} className="flex min-h-11 items-center gap-2">
-              <input
+              <input autoComplete="off"
                 type="checkbox"
                 className="size-5"
                 checked={f.dossiersComptables.includes(d.id)}

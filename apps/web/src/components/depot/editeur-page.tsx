@@ -148,7 +148,7 @@ export function EditeurPage({
             <Libelle htmlFor={`rogner-${k.nom}`}>
               {k.libelle} : {pourcent(k.valeur)} %
             </Libelle>
-            <input
+            <input autoComplete="off"
               id={`rogner-${k.nom}`}
               type="range"
               min={0}

@@ -5,12 +5,14 @@ import { DEMO } from '@comtaple/db/amorcer';
 import { qualifierEvolution } from '@comtaple/db/provisionnement';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { api, ouvrirSessions } from './essais/outils.js';
+import { genererFecSynthetique } from '@comtaple/core';
+import { api, attendreLot, deposer, ouvrirSessions } from './essais/outils.js';
 
 const SEL = randomBytes(4).toString('hex');
 let editeur: pg.Client;
 let evMetropole = '';
 let evBrute = '';
+let evTaille = '';
 
 beforeAll(async () => {
   await ouvrirSessions();
@@ -27,10 +29,17 @@ beforeAll(async () => {
     criteres: { territoires: ['metropole'], regimesFiscaux: ['IS'], exercicesOuvertsAPartirDu: '2025-01-01' },
     dateVerification: new Date().toISOString().slice(0, 10),
   });
+  evTaille = await creer(`Essai ${SEL} — taille et opérations`);
+  await qualifierEvolution(editeur, evTaille, {
+    reference: `Texte d'essai ${SEL} sur les seuils (fictif)`,
+    resume: 'Évolution fictive servant au test : obligation visant les sociétés employant au moins onze salariés et réalisant un chiffre d’affaires.',
+    criteres: { taille: { effectifMin: 11, chiffreAffairesMin: '1.00' }, operations: ['salaries', 'credit_bail'] },
+    dateVerification: new Date().toISOString().slice(0, 10),
+  });
 });
 afterAll(async () => {
-  await editeur.query('delete from suivis_evolution where evolution_id = any($1)', [[evMetropole, evBrute]]);
-  await editeur.query('delete from evolutions_reglementaires where id = any($1)', [[evMetropole, evBrute]]);
+  await editeur.query('delete from suivis_evolution where evolution_id = any($1)', [[evMetropole, evBrute, evTaille]]);
+  await editeur.query('delete from evolutions_reglementaires where id = any($1)', [[evMetropole, evBrute, evTaille]]);
   await editeur.end();
 });
 
@@ -57,6 +66,38 @@ describe('veille par dossier', () => {
     expect(e.applicabilite.statut).toBe('a_confirmer');
     expect(e.applicabilite.manquants).toEqual(expect.arrayContaining(['Territoire fiscal', 'Régime fiscal', 'Exercices']));
   });
+
+  it('taille et opérations : « à confirmer » sans données ni effectif, puis tranché d’après la comptabilité importée et l’effectif saisi', async () => {
+    const d = await api('alice', 'POST', '/v1/dossiers', { raisonSociale: `Essai veille taille ${SEL} (fictif)`, territoireFiscal: 'metropole' });
+    const dossier = d.json.id;
+    await api('alice', 'PUT', `/v1/dossiers/${dossier}/habilitations/${DEMO.alice}`, { niveau: 'validation' });
+    const lire = async () => (await api('alice', 'GET', `/v1/dossiers/${dossier}/veille`)).json.find((x: any) => x.id === evTaille).applicabilite;
+    // 1) Rien n'est connu : ni effectif, ni comptabilité.
+    const vide = await lire();
+    expect(vide.statut).toBe('a_confirmer');
+    expect(vide.manquants).toEqual(expect.arrayContaining(['Chiffre d’affaires', 'Effectif', 'Données comptables']));
+    // 2) Comptabilité importée (le jeu synthétique a des ventes et des salaires) : seul l'effectif manque encore.
+    const exercice = (await api('alice', 'POST', `/v1/dossiers/${dossier}/exercices`, { debut: '2025-01-01', fin: '2025-12-31' })).json.id;
+    const fec = genererFecSynthetique({ exercice: { debut: '2025-01-01', fin: '2025-12-31' }, nbEcritures: 150, graine: Number.parseInt(SEL.slice(0, 6), 16) });
+    const depot = await deposer('alice', dossier, Buffer.from(fec.contenu), { usage: 'fec', exerciceId: exercice, statutDonnees: 'travail_avant_cloture' }, fec.nomFichier);
+    await attendreLot('alice', depot.fin.json.lotImportId);
+    const avecCompta = await lire();
+    expect(avecCompta.statut).toBe('a_confirmer');
+    expect(avecCompta.manquants).toEqual(['Effectif']);
+    expect(avecCompta.raisons.join(' ')).toMatch(/Chiffre d’affaires du dossier \(\d+\.\d{2} €\) dans la tranche visée/);
+    expect(avecCompta.raisons.join(' ')).toMatch(/rémunérations du personnel \(compte 641\)/);
+    expect(avecCompta.raisons.join(' ')).toContain('avant écritures d’inventaire');
+    // 3) Effectif saisi sur la fiche : sous le seuil → non concerné ; au seuil → concerné ; effacé → de nouveau à confirmer.
+    expect((await api('alice', 'PATCH', `/v1/dossiers/${dossier}`, { effectifMoyen: -1 })).statut).toBe(400);
+    expect((await api('alice', 'PATCH', `/v1/dossiers/${dossier}`, { effectifMoyen: 10 })).statut).toBe(200);
+    expect((await lire()).statut).toBe('non_concerne');
+    expect((await api('alice', 'PATCH', `/v1/dossiers/${dossier}`, { effectifMoyen: 11 })).statut).toBe(200);
+    expect((await lire()).statut).toBe('concerne');
+    expect((await api('alice', 'PATCH', `/v1/dossiers/${dossier}`, { effectifMoyen: null })).statut).toBe(200);
+    expect((await lire()).statut).toBe('a_confirmer');
+    // Un collaborateur non gestionnaire ne modifie pas la fiche.
+    expect((await api('chloe', 'PATCH', `/v1/dossiers/${dossier}`, { effectifMoyen: 500 })).statut).toBeGreaterThanOrEqual(403);
+  }, 120_000);
 
   it('le suivi est propre au dossier et au cabinet ; il ne modifie aucune règle', async () => {
     expect((await api('client', 'GET', `/v1/dossiers/${DEMO.dupain}/veille`)).statut).toBe(403);

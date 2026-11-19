@@ -26,6 +26,8 @@ const modificationDossier = z
     regimeFiscal: z.string().max(50).nullable(),
     territoireFiscal: z.enum(s.territoireFiscal.enumValues),
     codeNaf: z.string().max(10).nullable(),
+    /** Effectif moyen saisi par le cabinet ; null = non renseigné (la veille dit alors « à confirmer »). */
+    effectifMoyen: z.number().int().min(0).max(1_000_000).nullable(),
     referentielComptable: z.string().min(1).max(50),
   })
   .partial();

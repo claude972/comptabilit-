@@ -2,6 +2,7 @@ import { Body, Controller, ForbiddenException, Get, Inject, NotFoundException, P
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { evaluerApplicabilite, schemaCriteresEvolution } from '@comtaple/core';
 import { type AccesBd, asc, desc, eq, journaliser, schema as s, sql } from '@comtaple/db';
+import { tailleEtOperationsDuDossier } from '@comtaple/plateforme';
 import { z } from 'zod';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
 import { BD } from './jetons.js';
@@ -48,9 +49,15 @@ export class VeilleController {
       const [e] = await tx.select().from(s.entites).where(eq(s.entites.id, id));
       if (!e) throw new NotFoundException('Dossier introuvable');
       const exercices = await tx.select({ debut: s.exercices.debut, fin: s.exercices.fin }).from(s.exercices).where(eq(s.exercices.entiteId, id));
-      const profil = { territoireFiscal: e.territoireFiscal, regimeFiscal: e.regimeFiscal, formeJuridique: e.formeJuridique, codeNaf: e.codeNaf, referentielComptable: e.referentielComptable, exercices };
+      // Taille et opérations : calculées seulement si une évolution vérifiée en a besoin (agrégation en base).
+      const profilDeBase = { territoireFiscal: e.territoireFiscal, regimeFiscal: e.regimeFiscal, formeJuridique: e.formeJuridique, codeNaf: e.codeNaf, referentielComptable: e.referentielComptable, exercices };
       const evolutions = await tx.select().from(s.evolutionsReglementaires).where(eq(s.evolutionsReglementaires.etatVerification, 'verifiee')).orderBy(desc(s.evolutionsReglementaires.dateEffet)).limit(500);
       const suivis = await tx.select().from(s.suivisEvolution).where(eq(s.suivisEvolution.entiteId, id));
+      const besoin = evolutions.some((ev) => {
+        const c = schemaCriteresEvolution.safeParse(ev.criteres);
+        return c.success && (c.data.taille !== undefined || (c.data.operations?.length ?? 0) > 0);
+      });
+      const profil = besoin ? { ...profilDeBase, ...(await tailleEtOperationsDuDossier(tx, id, e.effectifMoyen)) } : profilDeBase;
       return evolutions.map((ev) => {
         const criteres = schemaCriteresEvolution.safeParse(ev.criteres);
         const applicabilite = criteres.success

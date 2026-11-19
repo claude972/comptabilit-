@@ -1,0 +1,1 @@
+ALTER TABLE "entites" ADD COLUMN "effectif_moyen" integer;

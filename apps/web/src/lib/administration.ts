@@ -30,6 +30,7 @@ export interface FicheDossier {
   regimeFiscal: string | null;
   territoireFiscal: string;
   codeNaf: string | null;
+  effectifMoyen?: number | null;
   actif: boolean;
   niveau: Niveau | null;
 }

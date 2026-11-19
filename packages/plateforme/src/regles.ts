@@ -1,5 +1,5 @@
-import type { LigneEcriture, MouvementBancaire, RapportReleve } from '@comtaple/core';
-import { and, asc, eq, isNull, or, schema as s, type Tx } from '@comtaple/db';
+import { correspondancePour, dec, identifierOperations, type LigneEcriture, type MouvementBancaire, type OperationIdentifiable, type ProfilDossier, projeterBilan, type RapportReleve, versChaine } from '@comtaple/core';
+import { and, asc, eq, isNull, or, schema as s, sql, type Tx } from '@comtaple/db';
 
 /** Lignes normalisées d'un lot comptable, dans l'ordre du fichier d'origine. */
 export async function lignesDuLot(tx: Tx, lotImportId: string): Promise<LigneEcriture[]> {
@@ -85,4 +85,51 @@ export async function relevesDuDossier(tx: Tx, entiteId: string): Promise<Rappor
     for (const lotId of lotsDe.get(m.id) ?? []) if (parLot.has(lotId)) parLot.get(lotId)!.mouvements.push(m.brut as MouvementBancaire);
   }
   return [...parLot.values()];
+}
+
+/**
+ * Taille et opérations d'un dossier pour la veille (critères de taille et d'opérations d'une évolution).
+ * Tirées du DERNIER exercice qui a un lot comptable actif, par agrégation en base (aucune ligne chargée en mémoire) :
+ *  - chiffre d'affaires : crédits − débits des comptes 70 (ventes nettes des rabais, remises et ristournes accordés) ;
+ *  - total du bilan : total de l'actif du projet de bilan, seulement s'il est équilibré et complet ; sinon inconnu ;
+ *  - opérations : repérées aux racines des comptes mouvementés.
+ * Tout ce qui n'est pas calculable vaut null : l'applicabilité est alors « à confirmer ».
+ */
+export async function tailleEtOperationsDuDossier(tx: Tx, entiteId: string, effectifMoyen: number | null): Promise<{ taille: NonNullable<ProfilDossier['taille']>; operations: OperationIdentifiable[] | null }> {
+  const r = await tx.execute(sql`
+    select l.id as lot, e.debut::text as debut, e.fin::text as fin
+      from lots_import l join exercices e on e.id = l.exercice_id
+     where l.entite_id = ${entiteId}::uuid and l.type = 'fec' and l.actif
+     order by e.fin desc limit 1`);
+  const dernier = r.rows[0] as { lot: string; debut: string; fin: string } | undefined;
+  if (!dernier) return { taille: { chiffreAffaires: null, totalBilan: null, effectif: effectifMoyen, exercice: null }, operations: null };
+  const comptes = (
+    await tx.execute(sql`
+      select compte_num as "compteNum", min(compte_lib) as "compteLib", sum(debit)::text as debit, sum(credit)::text as credit, count(*)::int as n
+        from lignes_ecriture where lot_import_id = ${dernier.lot}::uuid group by compte_num order by compte_num`)
+  ).rows as Array<{ compteNum: string; compteLib: string; debit: string; credit: string; n: number }>;
+  let totalDebit = dec('0');
+  let totalCredit = dec('0');
+  let ca = dec('0');
+  const lignes = comptes.map((c) => {
+    const d = dec(c.debit);
+    const cr = dec(c.credit);
+    totalDebit = totalDebit.plus(d);
+    totalCredit = totalCredit.plus(cr);
+    if (c.compteNum.startsWith('70')) ca = ca.plus(cr).minus(d);
+    const solde = d.minus(cr);
+    return { compteNum: c.compteNum, compteLib: c.compteLib, totalDebit: versChaine(d), totalCredit: versChaine(cr), soldeDebiteur: versChaine(solde.isPositive() ? solde : dec('0')), soldeCrediteur: versChaine(solde.isNegative() ? solde.negated() : dec('0')), nbLignes: c.n };
+  });
+  const balance = { lignes, totalDebit: versChaine(totalDebit), totalCredit: versChaine(totalCredit), equilibree: totalDebit.equals(totalCredit), ecart: versChaine(totalDebit.minus(totalCredit)) };
+  const correspondance = correspondancePour(dernier.debut);
+  let totalBilan: string | null = null;
+  if (correspondance && balance.equilibree) {
+    const bilan = projeterBilan(balance, correspondance);
+    const egal = bilan.controles.find((c) => c.code === 'total_actif_egal_total_passif');
+    if (bilan.complet && egal?.statut === 'ok') totalBilan = bilan.totaux['total_actif'] ?? null;
+  }
+  return {
+    taille: { chiffreAffaires: lignes.some((l) => l.compteNum.startsWith('70')) ? versChaine(ca) : lignes.length ? '0.00' : null, totalBilan, effectif: effectifMoyen, exercice: { debut: dernier.debut, fin: dernier.fin } },
+    operations: identifierOperations(lignes.filter((l) => l.totalDebit !== '0.00' || l.totalCredit !== '0.00').map((l) => l.compteNum)),
+  };
 }

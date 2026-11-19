@@ -17,6 +17,7 @@ interface ChampsDossier {
   regimeFiscal: string;
   codeNaf: string;
   territoireFiscal: string;
+  effectif: string;
 }
 
 /** Création (`POST v1/dossiers`) ou modification (`PATCH v1/dossiers/:id`) d'un dossier. Le territoire fiscal n'est jamais présélectionné. */
@@ -28,6 +29,7 @@ export function FormulaireDossier({ dossier }: { dossier?: FicheDossier }) {
     regimeFiscal: dossier?.regimeFiscal ?? '',
     codeNaf: dossier?.codeNaf ?? '',
     territoireFiscal: dossier?.territoireFiscal ?? '',
+    effectif: dossier?.effectifMoyen != null ? String(dossier.effectifMoyen) : '',
   };
   const [f, setF] = useState(initial);
   const [cree, setCree] = useState<{ id: string; raisonSociale: string } | null>(null);
@@ -43,7 +45,10 @@ export function FormulaireDossier({ dossier }: { dossier?: FicheDossier }) {
     if (!f.territoireFiscal) return appel.setErreur('Choisissez le territoire fiscal (« À confirmer » si vous ne le connaissez pas encore).');
     if (siren && !sirenPlausible(siren)) return appel.setErreur('SIREN invalide : 9 chiffres avec une clé de contrôle correcte.');
     if (dossier) {
-      const corps: Record<string, string> = {};
+      const corps: Record<string, string | number | null> = {};
+      const effectif = f.effectif.trim() === '' ? null : Number(f.effectif);
+      if (effectif !== null && (!Number.isInteger(effectif) || effectif < 0)) return appel.setErreur('Effectif moyen : un nombre entier positif, ou vide si vous ne le connaissez pas.');
+      if (effectif !== (dossier.effectifMoyen ?? null)) corps.effectifMoyen = effectif;
       if (f.raisonSociale.trim() !== dossier.raisonSociale) corps.raisonSociale = f.raisonSociale.trim();
       if (siren && siren !== (dossier.siren ?? '')) corps.siren = siren;
       if (f.formeJuridique.trim() !== (dossier.formeJuridique ?? '')) corps.formeJuridique = f.formeJuridique.trim();
@@ -67,7 +72,7 @@ export function FormulaireDossier({ dossier }: { dossier?: FicheDossier }) {
     });
     if (r) {
       setCree({ id: r.id, raisonSociale: r.raisonSociale });
-      setF({ raisonSociale: '', siren: '', formeJuridique: '', regimeFiscal: '', codeNaf: '', territoireFiscal: '' });
+      setF({ raisonSociale: '', siren: '', formeJuridique: '', regimeFiscal: '', codeNaf: '', territoireFiscal: '', effectif: '' });
     }
   }
 
@@ -94,6 +99,15 @@ export function FormulaireDossier({ dossier }: { dossier?: FicheDossier }) {
           <Libelle htmlFor={`${id}-naf`}>Code NAF (facultatif)</Libelle>
           <Saisie id={`${id}-naf`} value={f.codeNaf} maxLength={10} onChange={(e) => maj({ codeNaf: e.target.value })} autoComplete="off" />
         </div>
+        {dossier ? (
+          <div>
+            <Libelle htmlFor={`${id}-effectif`}>Effectif moyen (facultatif)</Libelle>
+            <Saisie id={`${id}-effectif`} inputMode="numeric" pattern="[0-9]*" value={f.effectif} maxLength={7} onChange={(e) => maj({ effectif: e.target.value })} autoComplete="off" aria-describedby={`${id}-effectif-aide`} />
+            <p id={`${id}-effectif-aide`} className="text-sm text-texte-doux">
+              Saisi par le cabinet : aucune donnée importée ne le fournit. Sert à apprécier si une évolution réglementaire vise le dossier.
+            </p>
+          </div>
+        ) : null}
         <div>
           <Libelle htmlFor={`${id}-territoire`}>Territoire fiscal (obligatoire)</Libelle>
           <Liste id={`${id}-territoire`} value={f.territoireFiscal} onChange={(e) => maj({ territoireFiscal: e.target.value })} required>

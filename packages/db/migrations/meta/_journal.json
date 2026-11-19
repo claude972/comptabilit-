@@ -225,6 +225,13 @@
       "when": 1795111488835,
       "tag": "0031_invitations",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1795112886287,
+      "tag": "0032_effectif",
+      "breakpoints": true
     }
   ]
 }

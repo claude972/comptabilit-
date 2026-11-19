@@ -155,6 +155,8 @@ export const entites = pgTable(
     referentielComptable: text('referentiel_comptable').notNull().default('PCG'),
     territoireFiscal: territoireFiscal('territoire_fiscal').notNull().default('a_confirmer'),
     codeNaf: text('code_naf'),
+    /** Effectif moyen SAISI par le cabinet (aucune donnée importée ne le fournit) ; null = non renseigné. Sert à la veille. */
+    effectifMoyen: integer('effectif_moyen'),
     devise: text('devise').notNull().default('EUR'),
     actif: boolean('actif').notNull().default(true),
     creeLe: creeLe(),

@@ -24,6 +24,9 @@
  *   node scripts/editeur.mjs surveiller "<émetteur>" "<libellé>" <url https d'un domaine officiel>
  *   node scripts/editeur.mjs evolutions [a_qualifier|verifiee|ecartee]
  *   node scripts/editeur.mjs qualifier <evolutionId> <fichier.json>   (reference, resume, criteres, dateEffet?, conditions?, passage?, datePublication?)
+ *       criteres : territoires, regimesFiscaux, formesJuridiques, prefixesNaf, referentiels, exercicesOuvertsAPartirDu, exercicesClosAPartirDu,
+ *                  taille { chiffreAffairesMin/Max, totalBilanMin/Max (chaînes décimales), effectifMin/Max }, operations [immobilisations, emprunts,
+ *                  stocks, salaries, credit_bail, subventions, comptes_courants_associes, tva_collectee]
  *   node scripts/editeur.mjs ecarter <evolutionId>
  */
 import { readFileSync } from 'node:fs';

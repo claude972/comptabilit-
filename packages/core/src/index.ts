@@ -66,8 +66,8 @@ export { PRESTATIONS, estimerTemps, lettreApplicable, schemaContenuLettre, situe
 export type { CodePrestation, ContenuLettre, EstimationTemps, LettreDatee, SituationTravail } from './missions.js';
 
 // 11. veille
-export { evaluerApplicabilite, schemaCriteresEvolution, texteComparable } from './veille.js';
-export type { Applicabilite, CriteresEvolution, ProfilDossier } from './veille.js';
+export { evaluerApplicabilite, identifierOperations, OPERATIONS_IDENTIFIABLES, RACINES_OPERATIONS, schemaCriteresEvolution, texteComparable } from './veille.js';
+export type { Applicabilite, CriteresEvolution, OperationIdentifiable, ProfilDossier } from './veille.js';
 
 // 12. etats — balance, projets de compte de résultat et de bilan (états de travail, jamais des comptes annuels)
 export { calculerBalance } from './etats/balance.js';
@@ -87,3 +87,22 @@ export type { ComposanteIndicateur, ContexteIndicateurs, DefinitionIndicateur, O
 // 14. rentabilité des missions
 export { calculerRentabiliteMission } from './rentabilite.js';
 export type { RentabiliteMission, TravailObserve } from './rentabilite.js';
+
+// 15. états et fiscalité (lot 5) — liasse fiscale, projet d'annexe, propositions d'écritures d'inventaire : toujours des PROJETS
+export {
+  DERNIERE_CLOTURE_COUVERTE_LIASSE_2026, PERIMETRE_LIASSE, TABLES_LIASSE, TABLE_LIASSE_REEL_NORMAL_2026, TABLE_LIASSE_REEL_SIMPLIFIE_2026, preparerLiasse, tableLiassePour, verifierTableLiasse,
+} from './etats/liasse.js';
+export type {
+  CaseLiasse, CodeTableauLiasse, CompteContributeur, DemandeLiasse, ImpotSurLeResultat, LiasseAbstention, LiasseProjet, LigneLiasseDefinition, MotifAbstention, RegimeLiasse, ResultatLiasse, TableLiasse,
+  TableauNonCouvert, TerritoireFiscal,
+} from './etats/liasse.js';
+export { ARTICLES_ANNEXE, MODELE_ANNEXE, SEUILS_TAILLE_PAR_DEFAUT, articlesRequisPourCategorie, evaluerCategorieTaille, preparerAnnexe } from './etats/annexe.js';
+export type {
+  AnnexeAbstention, AnnexeProjet, CategorieEntiteAnnexe, DemandeAnnexe, EvaluationTaille, LigneTableauAnnexe, ResultatAnnexe, RubriqueAnnexe, SeuilsCategorie, SeuilsTaille, StatutRubriqueAnnexe, TableauAnnexe,
+} from './etats/annexe.js';
+export { CONVENTIONS_INVENTAIRE, REGLES_INVENTAIRE, lirePeriodeDansLibelle, proposerEcrituresInventaire } from './etats/inventaire.js';
+export type {
+  AbstentionInventaire, ComptesInventaire, ConventionJoursAmortissement, DemandeInventaire, ImmobilisationAAmortir, LignePropositionInventaire, PeriodeCouverte, PropositionEcritureInventaire, RegleInventaire,
+  ResultatInventaire, TypePropositionInventaire,
+} from './etats/inventaire.js';
+export { MENTION_PROJET, SOURCES_FISCALES } from './etats/sources-fiscales.js';

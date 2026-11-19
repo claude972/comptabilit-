@@ -20,6 +20,14 @@ const schema = z.object({
   /** Passerelle IA : vide = non connecté (aucun appel sortant). */
   IA_OVH_ENDPOINT: z.string().optional().default(''),
   IA_OVH_JETON: z.string().optional().default(''),
+  /**
+   * Agrégation bancaire : vide = non connecté. Aucun prestataire n'est choisi à ce jour (voir agregation-bancaire.ts).
+   * AGREGATION_SIMULATEUR_URL : tests uniquement, refusé en production.
+   */
+  AGREGATION_PRESTATAIRE: z.string().optional().default(''),
+  AGREGATION_URL: z.string().optional().default(''),
+  AGREGATION_JETON: z.string().optional().default(''),
+  AGREGATION_SIMULATEUR_URL: z.string().optional().default(''),
   TAILLE_MAX_PIECE: z.coerce.number().int().default(50 * 1024 * 1024),
   TAILLE_MAX_FEC: z.coerce.number().int().default(500 * 1024 * 1024),
   /**

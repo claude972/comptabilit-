@@ -55,7 +55,8 @@ export interface CompteReleve {
 }
 
 export interface RapportReleve {
-  format: 'camt.053' | 'ofx' | 'csv';
+  /** `agregation` : document pivot d'un prestataire d'agrégation (voir agregation.ts). */
+  format: 'camt.053' | 'ofx' | 'csv' | 'agregation';
   version: string | null;
   comptes: CompteReleve[];
   mouvements: MouvementBancaire[];

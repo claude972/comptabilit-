@@ -36,6 +36,8 @@ export type { AttenduFactureSynthetique, OptionsTexteFactureSynthetique, TexteFa
 // 7. banque (lot 2) — lecture de relevés
 export { lireCamt053 } from './banque/camt053.js';
 export { lireOfx } from './banque/ofx.js';
+export { FORMAT_RELEVE_AGREGATION, lireReleveAgregation, schemaReleveAgregation, SOURCE_RELEVE_AGREGATION } from './banque/agregation.js';
+export type { ReleveAgregation } from './banque/agregation.js';
 export { lireCsvBanque, proposerProfilCsv, schemaProfilCsvBanque } from './banque/csv.js';
 export type { ProfilCsvBanque } from './banque/csv.js';
 export { decoderTexteReleve, detecterFormatReleve } from './banque/detection.js';

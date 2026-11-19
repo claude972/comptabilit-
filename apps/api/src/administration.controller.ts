@@ -1,7 +1,7 @@
 import { BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { validerSiren } from '@comtaple/core';
-import { type AccesBd, and, asc, eq, journaliser, schema as s, sql, type Tx } from '@comtaple/db';
+import { type AccesBd, and, asc, desc, eq, journaliser, schema as s, sql, type Tx } from '@comtaple/db';
 import { z } from 'zod';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid, niveauSur, SansCabinet } from './acces.js';
 import { BD } from './jetons.js';
@@ -32,6 +32,14 @@ const modificationDossier = z
 const exercice = z.object({ debut: dateIso, fin: dateIso }).refine((e) => e.debut < e.fin, 'la fin doit suivre le début');
 const habilitation = z.object({ niveau: z.enum(s.niveauHabilitation.enumValues) });
 const membre = z.object({ role: z.enum(s.roleCabinet.enumValues).optional(), actif: z.boolean().optional() }).refine((m) => m.role !== undefined || m.actif !== undefined, 'aucune modification');
+
+/** Invitation : le rôle « support » ne s'obtient jamais ainsi ; durée de validité bornée. */
+const invitation = z.object({
+  email: z.string().trim().toLowerCase().email().max(254),
+  nom: z.string().trim().min(1).max(120),
+  role: z.enum(s.roleCabinet.enumValues).refine((r) => r !== 'support', 'le rôle support ne s’obtient pas par invitation'),
+  validiteJours: z.number().int().min(1).max(30).optional(),
+});
 
 async function exigerGestionnaire(tx: Tx): Promise<void> {
   const ok = (await tx.execute(sql`select app_est_gestionnaire() as ok`)).rows[0]?.ok;
@@ -87,7 +95,7 @@ export class AdministrationController {
   @ApiOperation({
     summary: 'Changer le rôle d’un membre ou le désactiver (gestionnaires)',
     description:
-      'Garde-fous : on ne modifie pas sa propre appartenance ; le cabinet garde toujours au moins un administrateur actif ; un changement de rôle retire les habilitations de dossier qui dépassent le plafond du nouveau rôle ; une désactivation ferme immédiatement tous les accès. L’invitation d’un nouvel utilisateur n’existe pas (création de compte par l’éditeur).',
+      'Garde-fous : on ne modifie pas sa propre appartenance ; le cabinet garde toujours au moins un administrateur actif ; un changement de rôle retire les habilitations de dossier qui dépassent le plafond du nouveau rôle ; une désactivation ferme immédiatement tous les accès. Pour faire entrer une personne : voir les invitations.',
   })
   @ApiBody({ schema: schemaOpenApi(membre) })
   async modifierMembre(@AccesCourant() acces: Acces, @Param('utilisateurId') utilisateurId: string, @Body() corps: unknown) {
@@ -120,6 +128,62 @@ export class AdministrationController {
       }
       await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'membre.modifie', cibleType: 'utilisateur', cibleId: utilisateurId, details: { roleAvant: a.role, roleApres: role, actifAvant: a.actif, actifApres: actif, habilitationsRetirees: retirees } });
       return { ...maj, habilitationsRetirees: retirees };
+    });
+  }
+
+  @Get('cabinet/invitations')
+  @ApiOperation({ summary: 'Invitations du cabinet (gestionnaires)', description: 'Une invitation dont la date de validité est passée est renvoyée avec « expiree: true » ; elle ne peut plus être acceptée.' })
+  async invitations(@AccesCourant() acces: Acces) {
+    return this.bd.avecContexte(acces, async (tx) => {
+      await exigerGestionnaire(tx);
+      const lignes = await tx.select().from(s.invitations).where(eq(s.invitations.cabinetId, acces.cabinetId)).orderBy(desc(s.invitations.creeLe)).limit(200);
+      return lignes.map((i) => ({ id: i.id, email: i.email, nom: i.nom, role: i.role, statut: i.statut, expireLe: i.expireLe, expiree: i.statut === 'en_attente' && new Date(i.expireLe).getTime() <= Date.now(), accepteeLe: i.accepteeLe, creeLe: i.creeLe }));
+    });
+  }
+
+  @Post('cabinet/invitations')
+  @ApiOperation({
+    summary: 'Inviter une personne à rejoindre le cabinet (gestionnaires)',
+    description:
+      'L’application n’envoie AUCUN courriel : l’invitation autorise l’entrée du compte dont le fournisseur d’identité atteste cette adresse, à sa première connexion. Le compte lui-même est créé dans le fournisseur d’identité (Keycloak ou SSO du cabinet). Aucune habilitation de dossier n’est accordée par l’invitation. Seul un administrateur peut inviter un administrateur.',
+  })
+  @ApiBody({ schema: schemaOpenApi(invitation) })
+  async inviter(@AccesCourant() acces: Acces, @Body() corps: unknown) {
+    const d = valider(invitation, corps);
+    return this.bd.avecContexte(acces, async (tx) => {
+      await exigerGestionnaire(tx);
+      if (d.role === 'administrateur' && acces.role !== 'administrateur') throw new ForbiddenException('Seul un administrateur peut inviter un administrateur');
+      const [dejaMembre] = await tx
+        .select({ id: s.utilisateurs.id })
+        .from(s.appartenances)
+        .innerJoin(s.utilisateurs, eq(s.utilisateurs.id, s.appartenances.utilisateurId))
+        .where(and(eq(s.appartenances.cabinetId, acces.cabinetId), sql`lower(${s.utilisateurs.email}) = ${d.email}`));
+      if (dejaMembre) throw new ConflictException('Cette adresse est déjà celle d’un membre du cabinet');
+      // Une invitation en attente mais périmée est annulée pour laisser place à la nouvelle.
+      await tx.update(s.invitations).set({ statut: 'annulee' }).where(and(eq(s.invitations.cabinetId, acces.cabinetId), eq(s.invitations.email, d.email), eq(s.invitations.statut, 'en_attente'), sql`${s.invitations.expireLe} <= now()`));
+      const [enAttente] = await tx.select({ id: s.invitations.id }).from(s.invitations).where(and(eq(s.invitations.cabinetId, acces.cabinetId), eq(s.invitations.email, d.email), eq(s.invitations.statut, 'en_attente')));
+      if (enAttente) throw new ConflictException('Une invitation est déjà en attente pour cette adresse');
+      const [cree] = await tx
+        .insert(s.invitations)
+        .values({ cabinetId: acces.cabinetId, email: d.email, nom: d.nom, role: d.role, inviteePar: acces.utilisateurId, expireLe: sql`now() + make_interval(days => ${d.validiteJours ?? 14})` })
+        .returning();
+      if (!cree) throw new ConflictException('Invitation non créée');
+      // Le journal ne reçoit pas l'adresse : l'identifiant de l'invitation suffit à la retrouver.
+      await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'invitation.creee', cibleType: 'invitation', cibleId: cree.id, details: { role: d.role } });
+      return { id: cree.id, email: cree.email, nom: cree.nom, role: cree.role, statut: cree.statut, expireLe: cree.expireLe, courrielEnvoye: false };
+    });
+  }
+
+  @Delete('cabinet/invitations/:id')
+  @ApiOperation({ summary: 'Annuler une invitation en attente (gestionnaires)', description: 'L’invitation est conservée avec le statut « annulee ».' })
+  async annulerInvitation(@AccesCourant() acces: Acces, @Param('id') id: string) {
+    exigerUuid(id);
+    return this.bd.avecContexte(acces, async (tx) => {
+      await exigerGestionnaire(tx);
+      const [maj] = await tx.update(s.invitations).set({ statut: 'annulee' }).where(and(eq(s.invitations.id, id), eq(s.invitations.cabinetId, acces.cabinetId), eq(s.invitations.statut, 'en_attente'))).returning({ id: s.invitations.id });
+      if (!maj) throw new NotFoundException('Invitation en attente introuvable');
+      await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'invitation.annulee', cibleType: 'invitation', cibleId: id });
+      return { id, statut: 'annulee' };
     });
   }
 

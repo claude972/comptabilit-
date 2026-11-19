@@ -5,6 +5,10 @@
  * personnes habilitées de l'éditeur. Aucune de ces opérations n'est accessible à un cabinet.
  *
  *   node scripts/editeur.mjs cabinets
+ *   node scripts/editeur.mjs cabinet-creer "<nom du cabinet>" <adresse de l'administrateur> "<nom de l'administrateur>" [jours de validité=14]
+ *       Ouvre le cabinet et INVITE son administrateur (aucun courriel envoyé ; le compte se crée dans le fournisseur d'identité).
+ *   node scripts/editeur.mjs facturation-export <AAAA-MM-JJ début> <AAAA-MM-JJ fin> [fichier.csv]
+ *       Éléments de facturation des échéances de la période, pour l'outil de facturation de l'éditeur (ce n'est pas une facture).
  *   node scripts/editeur.mjs abonnement <cabinetId>
  *   node scripts/editeur.mjs essai <cabinetId> <codeOffre>
  *   node scripts/editeur.mjs echeance <cabinetId> <AAAA-MM-01>
@@ -50,6 +54,23 @@ try {
       await table(`select c.id, c.nom, a.offre, a.statut, a.fin_essai::text, (select count(*) from entites e where e.cabinet_id = c.id and e.actif) as dossiers_actifs
                    from cabinets c left join abonnements a on a.cabinet_id = c.id order by c.nom`);
       break;
+    case 'cabinet-creer': {
+      exiger(3, 'cabinet-creer "<nom>" <adresse administrateur> "<nom administrateur>" [jours]');
+      const r = await p.creerCabinet(client, { nom: args[0], emailAdministrateur: args[1], nomAdministrateur: args[2], validiteJours: args[3] ? Number(args[3]) : undefined });
+      console.log(`Cabinet ouvert : ${r.cabinetId}`);
+      console.log(`Invitation de l'administrateur : ${r.invitationId}, valable jusqu'au ${r.expireLe}.`);
+      console.log('Aucun courriel envoyé. Créer le compte dans le fournisseur d’identité (adresse vérifiée), puis ouvrir un essai : editeur.mjs essai <cabinetId> <codeOffre>.');
+      break;
+    }
+    case 'facturation-export': {
+      exiger(2, 'facturation-export <AAAA-MM-JJ début> <AAAA-MM-JJ fin> [fichier.csv]');
+      const r = await p.exporterElementsFacturation(client, args[0], args[1]);
+      if (args[2]) {
+        (await import('node:fs')).writeFileSync(args[2], r.csv, { mode: 0o600 });
+        console.log(`${r.lignes} échéance(s) exportée(s) dans ${args[2]}. Ce fichier n'est pas une facture.`);
+      } else process.stdout.write(r.csv);
+      break;
+    }
     case 'abonnement':
       exiger(1, 'abonnement <cabinetId>');
       await table(`select offre, statut, debut::text, fin_essai::text, fin::text, offre_demandee from abonnements where cabinet_id = $1`, [args[0]]);

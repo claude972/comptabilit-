@@ -3,11 +3,11 @@ import { BadRequestException, Body, ConflictException, Controller, ForbiddenExce
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { CATALOGUE_CONTROLES, cleCompteBancaire, type Correspondance, decoderTexteReleve, detecterFormatReleve, etatCorrespondanceBanque, masquerCompteBancaire, verifierCorrespondances, PARAMETRES_RAPPROCHEMENT_PAR_DEFAUT, proposerProfilCsv, REGLES_RAPPROCHEMENT, schemaParametresRapprochement } from '@comtaple/core';
 import { type AccesBd, and, asc, count, desc, eq, gte, inArray, journaliser, lte, notifierGestionnaires, schema as s, sql, type Tx } from '@comtaple/db';
-import { type Files, parametresApprouves, type Stockage } from '@comtaple/plateforme';
+import { assurerFichierOriginal, cles, documentReleveAgregation, ErreurAgregation, type EtatAgregation, type Files, parametresApprouves, type Stockage } from '@comtaple/plateforme';
 import { z } from 'zod';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
 import { avecNomsAnnulation } from './comptabilite.controller.js';
-import { BD, STOCKAGE, TACHES } from './jetons.js';
+import { AGREGATION, BD, STOCKAGE, TACHES } from './jetons.js';
 import { schemaOpenApi, valider } from './validation.js';
 
 const lancement = z.object({ parametres: schemaParametresRapprochement.partial().optional() });
@@ -18,6 +18,8 @@ const propositionCorrespondance = z.object({
 const decision = z.object({ decision: z.enum(['valider', 'rejeter', 'remettre_en_proposition']), motif: z.string().min(1).max(2000).optional() });
 const relance = z.object({ profilCsv: z.record(z.string(), z.unknown()) });
 const dateIso = /^\d{4}-\d{2}-\d{2}$/;
+const MOUVEMENTS_MAX_AGREGATION = 20_000;
+const synchronisation = z.object({ compte: z.string().min(1).max(140), depuis: z.string().regex(dateIso) });
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 @ApiTags('Banque et rapprochements')
@@ -28,7 +30,80 @@ export class BanqueController {
     @Inject(BD) private readonly bd: AccesBd,
     @Inject(TACHES) private readonly taches: Files,
     @Inject(STOCKAGE) private readonly stockage: Stockage,
+    @Inject(AGREGATION) private readonly agregation: EtatAgregation,
   ) {}
+
+  // ───────────────────────────── Agrégation bancaire (prestataire) ─────────────────────────────
+
+  private prestataire() {
+    if (!this.agregation.prestataire) throw new ConflictException(`Agrégation bancaire non connectée. ${this.agregation.detail}`);
+    return this.agregation.prestataire;
+  }
+  private erreurAgregation(e: unknown): never {
+    if (e instanceof ErreurAgregation) throw new ConflictException(e.message);
+    throw e;
+  }
+
+  @Get('dossiers/:entiteId/banque/agregation')
+  @ApiOperation({
+    summary: 'État de l’agrégation bancaire et comptes proposés par le prestataire',
+    description:
+      'Statut « non_connecte » tant qu’aucun prestataire n’est choisi (c’est le cas à ce jour) ; « simule » contre le simulateur de test ; jamais « connecte ». Les IBAN sont masqués. Le consentement du client auprès de sa banque se recueille chez le prestataire.',
+  })
+  async etatAgregation(@AccesCourant() acces: Acces, @Param('entiteId') entiteId: string) {
+    exigerUuid(entiteId);
+    await this.bd.avecContexte(acces, (tx) => exigerNiveau(tx, entiteId, 'collaboration'));
+    const base = { statut: this.agregation.statut, detail: this.agregation.detail, prestataire: this.agregation.prestataire?.id ?? null };
+    if (!this.agregation.prestataire) return { ...base, comptes: [] };
+    const comptes = await this.agregation.prestataire.listerComptes().catch((e) => this.erreurAgregation(e));
+    return { ...base, comptes: comptes.map((c) => ({ identifiant: c.identifiant, libelle: c.libelle, iban: c.iban ? masquerCompteBancaire(c.iban.replace(/\s/g, '')) : null, devise: c.devise })) };
+  }
+
+  @Post('dossiers/:entiteId/banque/agregation/synchroniser')
+  @HttpCode(202)
+  @ApiOperation({
+    summary: 'Récupérer les mouvements d’un compte auprès du prestataire et les importer comme un relevé',
+    description:
+      'Refusé (409) si l’agrégation n’est pas connectée. Les données reçues sont converties en un document pivot conservé comme ORIGINAL de l’import (provenance : prestataire, identifiants de compte et d’opération), puis suivent la même chaîne que les fichiers : idempotence, cadrage (« non vérifiable » si le prestataire ne donne pas de solde d’ouverture), annulation. Lecture seule : aucun ordre n’est transmis à la banque.',
+  })
+  @ApiBody({ schema: schemaOpenApi(synchronisation) })
+  async synchroniserAgregation(@AccesCourant() acces: Acces, @Param('entiteId') entiteId: string, @Body() corps: unknown) {
+    exigerUuid(entiteId);
+    const d = valider(synchronisation, corps);
+    await this.bd.avecContexte(acces, (tx) => exigerNiveau(tx, entiteId, 'collaboration'));
+    const prestataire = this.prestataire();
+    const comptes = await prestataire.listerComptes().catch((e) => this.erreurAgregation(e));
+    const compte = comptes.find((c) => c.identifiant === d.compte);
+    if (!compte) throw new NotFoundException('Compte inconnu du prestataire d’agrégation');
+    const { mouvements, tronque } = await prestataire.listerMouvements(compte.identifiant, d.depuis, MOUVEMENTS_MAX_AGREGATION).catch((e) => this.erreurAgregation(e));
+    if (tronque) throw new ConflictException(`Plus de ${MOUVEMENTS_MAX_AGREGATION} mouvements depuis le ${d.depuis} : réduire la période. Rien n’a été importé (un relevé partiel ne serait pas présenté comme complet).`);
+    let octets: Buffer;
+    try {
+      ({ octets } = documentReleveAgregation(prestataire.id, compte, mouvements, new Date().toISOString().slice(0, 10)));
+    } catch (e) {
+      this.erreurAgregation(e);
+    }
+    const sha256 = createHash('sha256').update(octets).digest('hex');
+    const cleStockage = cles.original(acces.cabinetId, sha256);
+    if (!(await this.stockage.existe(cleStockage))) await this.stockage.deposer(cleStockage, octets, 'application/json');
+    const r = await this.bd.avecContexte(acces, async (tx) => {
+      await exigerNiveau(tx, entiteId, 'collaboration');
+      const fichier = await assurerFichierOriginal(tx, { cabinetId: acces.cabinetId, sha256, taille: octets.length, typeMimeDeclare: 'application/json', cleStockage });
+      const cle = `banque:${entiteId}:${sha256}`;
+      let [lot] = await tx.select().from(s.lotsImport).where(eq(s.lotsImport.cleIdempotence, cle));
+      const cree = !lot;
+      if (!lot) {
+        [lot] = await tx
+          .insert(s.lotsImport)
+          .values({ cabinetId: acces.cabinetId, entiteId, type: 'releve_bancaire', fichierId: fichier.id, cleIdempotence: cle, actif: false, lancePar: acces.utilisateurId, rapport: { nomFichier: `agregation-${prestataire.id}-${d.depuis}.json`, origine: 'agregation', prestataire: prestataire.id, simulateur: this.agregation.statut === 'simule' } })
+          .returning();
+      }
+      await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: cree ? 'import.releve.recu' : 'import.releve.deja_importe', cibleType: 'lot_import', cibleId: lot!.id, entiteId, details: { sha256, taille: octets.length, origine: 'agregation', prestataire: prestataire.id, mouvements: mouvements.length } });
+      return { lotImportId: lot!.id, nouveau: cree };
+    });
+    if (r.nouveau) await this.taches.importerReleve({ cabinetId: acces.cabinetId, lotImportId: r.lotImportId });
+    return { ...r, mouvementsRecus: mouvements.length, statutAgregation: this.agregation.statut };
+  }
 
   @Get('dossiers/:entiteId/banque')
   @ApiOperation({

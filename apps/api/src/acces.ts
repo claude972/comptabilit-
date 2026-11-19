@@ -57,6 +57,9 @@ export class GardeAcces implements CanActivate {
     if (!entete?.startsWith('Bearer ')) throw new UnauthorizedException('Jeton manquant');
 
     let sujet: string;
+    // Adresse du jeton, retenue seulement si le fournisseur d'identité la déclare vérifiée (acceptation d'invitation).
+    let emailAtteste: string | null = null;
+    let nomJeton = '';
     try {
       this.jwks ??= createRemoteJWKSet(new URL(`${this.cfg.OIDC_ISSUER}/protocol/openid-connect/certs`));
       const { payload } = await jwtVerify(entete.slice(7), this.jwks, {
@@ -66,29 +69,47 @@ export class GardeAcces implements CanActivate {
       });
       if (!payload.sub) throw new Error('sub absent');
       sujet = payload.sub;
+      if (payload.email_verified === true && typeof payload.email === 'string') emailAtteste = payload.email;
+      if (typeof payload.name === 'string') nomJeton = payload.name;
     } catch {
       throw new UnauthorizedException('Jeton invalide ou expiré');
     }
 
     // 1) L'utilisateur est retrouvé par le sujet du jeton ; 2) ses appartenances actives sont lues avec son identité.
-    const utilisateur = await this.bd.avecContexte({ sujet }, async (tx) => {
-      const [u] = await tx.select().from(s.utilisateurs).where(eq(s.utilisateurs.sujetOidc, sujet));
-      return u;
-    });
+    const chercher = () =>
+      this.bd.avecContexte({ sujet }, async (tx) => {
+        const [u] = await tx.select().from(s.utilisateurs).where(eq(s.utilisateurs.sujetOidc, sujet));
+        return u;
+      });
+    // Invitations en attente pour l'adresse attestée du compte : acceptées par une fonction étroite de la base
+    // (le sujet vient du contexte). Tentée quand le compte n'a pas de fiche ou pas de cabinet actif, et à la demande
+    // des routes « sans cabinet » (un compte déjà membre invité dans un autre cabinet).
+    const accepterInvitations = async (): Promise<number> => {
+      if (!emailAtteste) return 0;
+      const r = await this.bd.avecContexte({ sujet }, (tx) => tx.execute(sql`select invitations_accepter(${emailAtteste}, ${nomJeton}) as n`));
+      return Number(r.rows[0]?.n ?? 0);
+    };
+    const sansCabinet = this.reflector.getAllAndOverride<boolean>('sans_cabinet', [ctx.getHandler(), ctx.getClass()]);
+    let utilisateur = await chercher();
+    if (!utilisateur && (await accepterInvitations()) > 0) utilisateur = await chercher();
     if (!utilisateur) throw new ForbiddenException('Compte non rattaché à un cabinet');
+    const idUtilisateur = utilisateur.id;
 
-    const appartenances = await this.bd.avecContexte({ sujet, utilisateurId: utilisateur.id }, (tx) =>
-      tx
-        .select()
-        .from(s.appartenances)
-        .where(
-          and(
-            eq(s.appartenances.utilisateurId, utilisateur.id),
-            eq(s.appartenances.actif, true),
-            sql`(${s.appartenances.expireLe} is null or ${s.appartenances.expireLe} > now())`,
+    const lireAppartenances = () =>
+      this.bd.avecContexte({ sujet, utilisateurId: idUtilisateur }, (tx) =>
+        tx
+          .select()
+          .from(s.appartenances)
+          .where(
+            and(
+              eq(s.appartenances.utilisateurId, idUtilisateur),
+              eq(s.appartenances.actif, true),
+              sql`(${s.appartenances.expireLe} is null or ${s.appartenances.expireLe} > now())`,
+            ),
           ),
-        ),
-    );
+      );
+    let appartenances = await lireAppartenances();
+    if ((appartenances.length === 0 || sansCabinet) && (await accepterInvitations()) > 0) appartenances = await lireAppartenances();
     if (appartenances.length === 0) throw new ForbiddenException('Aucun cabinet actif pour ce compte');
 
     // Le cabinet demandé doit faire partie des appartenances vérifiées : il n'est jamais accepté tel quel.
@@ -99,7 +120,7 @@ export class GardeAcces implements CanActivate {
       if (!choisie) throw new ForbiddenException('Cabinet non autorisé');
     }
     if (!choisie) {
-      if (this.reflector.getAllAndOverride<boolean>('sans_cabinet', [ctx.getHandler(), ctx.getClass()])) {
+      if (sansCabinet) {
         // Aucun cabinet dans le contexte : les politiques RLS ne laissent voir que les appartenances de l'utilisateur.
         req.acces = { cabinetId: '', utilisateurId: utilisateur.id, sujet, role: 'client_lecture', email: utilisateur.email, nom: utilisateur.nom } satisfies Acces;
         return true;

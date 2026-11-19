@@ -15,7 +15,7 @@ import { creerAccesBd, urlBd } from '@comtaple/db';
 import { DEMO } from '@comtaple/db/amorcer';
 import { chargerEnvLocal } from '@comtaple/db/env';
 import { COMPTE_SERVICE_PUBSUB_SIMULE, demarrerSimulateur, type SimulateurMail } from '@comtaple/mail/simulateur';
-import { connexionRedis, Files } from '@comtaple/plateforme';
+import { connexionRedis, demarrerSimulateurAgregation, Files, type SimulateurAgregation } from '@comtaple/plateforme';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 chargerEnvLocal();
@@ -28,6 +28,7 @@ const racineApi = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SEL = randomBytes(5).toString('hex');
 const jetons: Record<string, string> = {};
 let sim: SimulateurMail;
+let simAgregation: SimulateurAgregation;
 const processus: ChildProcess[] = [];
 const journaux: string[] = [];
 
@@ -155,6 +156,7 @@ function envEssai(): NodeJS.ProcessEnv {
     API_PORT: String(PORT),
     FILES_PREFIXE: PREFIXE,
     MAIL_SIMULATEUR_URL: sim.origine,
+    AGREGATION_SIMULATEUR_URL: simAgregation.origine,
     GOOGLE_CLIENT_ID: 'client-google-essai',
     GOOGLE_CLIENT_SECRET: 'secret-google-essai',
     GOOGLE_SUJET_PUBSUB: 'projects/projet-simule/topics/gmail',
@@ -169,6 +171,20 @@ function envEssai(): NodeJS.ProcessEnv {
 
 beforeAll(async () => {
   sim = await demarrerSimulateur();
+  simAgregation = await demarrerSimulateurAgregation([
+    {
+      identifiant: `cpt-${SEL}`,
+      libelle: 'Compte courant (simulé)',
+      iban: 'FR7630006000011234567890189',
+      devise: 'EUR',
+      solde: { montant: '5230.10', date: '2026-03-31' },
+      mouvements: [
+        { identifiant: `op-${SEL}-1`, dateOperation: '2026-03-02', dateValeur: '2026-03-03', montant: '-120.50', libelle: 'PRLV FOURNISSEUR SA', contrepartie: 'Fournisseur SA' },
+        { identifiant: `op-${SEL}-2`, dateOperation: '2026-03-05', dateValeur: null, montant: '2400.00', libelle: 'VIR CLIENT DURAND', contrepartie: null },
+        { identifiant: `op-${SEL}-3`, dateOperation: '2026-03-09', dateValeur: null, montant: '-10.00', libelle: 'FRAIS DE TENUE DE COMPTE', contrepartie: null },
+      ],
+    },
+  ]);
   // Restes d'une exécution interrompue : connexions établies contre un simulateur disparu, files de l'essai.
   const admin = creerAccesBd(urlBd('admin'), { max: 1 });
   await admin.pool.query(`update connexions_mail set statut = 'supprimee', jetons_chiffres = null where statut = 'active' and preuve ->> 'reponseSimulateur' = 'true'`);
@@ -211,6 +227,7 @@ afterAll(async () => {
   for (const f of [files.mail, files.documents, files.comptabilite, files.exports]) await f.obliterate({ force: true }).catch(() => undefined);
   await files.fermer();
   await sim?.arreter();
+  await simAgregation?.arreter();
 });
 
 describe('configuration des connecteurs', () => {
@@ -560,6 +577,70 @@ describe('Microsoft 365 — notifications Graph, pièce ambiguë, déconnexion',
     const { rows } = await admin.pool.query('select jetons_chiffres, statut from connexions_mail where id = $1', [connexionId]);
     await admin.fermer();
     expect(rows[0]).toEqual({ jetons_chiffres: null, statut: 'supprimee' });
+  });
+});
+
+describe('agrégation bancaire — contre le SIMULATEUR (aucun prestataire réel n’est choisi)', () => {
+  let dossier = '';
+  let lot = '';
+
+  it('pile normale : « non connecté », synchronisation refusée clairement', async () => {
+    const etat = await api('alice', 'GET', '/v1/integrations', undefined, API_NORMALE);
+    expect(etat.json.agregationBancaire).toMatchObject({ statut: 'non_connecte' });
+    dossier = DEMO.dupain;
+    const r = await api('alice', 'POST', `/v1/dossiers/${dossier}/banque/agregation/synchroniser`, { compte: 'x', depuis: '2026-01-01' }, API_NORMALE);
+    expect(r.statut).toBe(409);
+    expect(r.json.message).toContain('non connectée');
+    expect((await api('alice', 'GET', `/v1/dossiers/${dossier}/banque/agregation`, undefined, API_NORMALE)).json).toMatchObject({ statut: 'non_connecte', comptes: [] });
+  });
+
+  it('pile d’essai : statut « simule », jamais « connecte » ; comptes listés avec IBAN masqué ; droits vérifiés', async () => {
+    expect((await api('alice', 'GET', '/v1/integrations')).json.agregationBancaire).toMatchObject({ statut: 'simule' });
+    const etat = await api('chloe', 'GET', `/v1/dossiers/${dossier}/banque/agregation`);
+    expect(etat.statut).toBe(200);
+    expect(etat.json).toMatchObject({ statut: 'simule', prestataire: 'simulateur' });
+    expect(etat.json.comptes).toHaveLength(1);
+    expect(etat.json.comptes[0].iban).toMatch(/^•+0189$/);
+    expect(JSON.stringify(etat.json)).not.toContain('FR7630006000011234567890189');
+    // Le client déposant n'a pas le niveau requis ; un autre cabinet ne voit pas le dossier.
+    expect((await api('client', 'GET', `/v1/dossiers/${dossier}/banque/agregation`)).statut).toBe(403);
+    expect((await api('bruno', 'POST', `/v1/dossiers/${dossier}/banque/agregation/synchroniser`, { compte: `cpt-${SEL}`, depuis: '2026-03-01' })).statut).toBe(404);
+  });
+
+  it('synchronisation : pages lues, document pivot conservé comme original, relevé importé par la chaîne des fichiers, cadrage non vérifiable', async () => {
+    expect((await api('chloe', 'POST', `/v1/dossiers/${dossier}/banque/agregation/synchroniser`, { compte: 'inconnu', depuis: '2026-03-01' })).statut).toBe(404);
+    expect((await api('chloe', 'POST', `/v1/dossiers/${dossier}/banque/agregation/synchroniser`, { compte: `cpt-${SEL}`, depuis: 'mars' })).statut).toBe(400);
+    const r = await api('chloe', 'POST', `/v1/dossiers/${dossier}/banque/agregation/synchroniser`, { compte: `cpt-${SEL}`, depuis: '2026-03-01' });
+    expect(r.statut).toBe(202);
+    expect(r.json).toMatchObject({ nouveau: true, mouvementsRecus: 3, statutAgregation: 'simule' });
+    lot = r.json.lotImportId;
+    expect(simAgregation.requetes.filter((q) => q.includes('/mouvements')).length).toBeGreaterThanOrEqual(2); // 3 mouvements, 2 par page
+    const fini = await attendre(() => api('chloe', 'GET', `/v1/imports/${lot}`), (x) => x.statut === 200 && !['en_attente', 'en_cours'].includes(x.json.statut));
+    // « Terminé avec remarques » : le cadrage non vérifiable est signalé, il n'est pas passé sous silence.
+    expect(fini.json.statut).toBe('termine_avec_erreurs');
+    const banque = (await api('chloe', 'GET', `/v1/dossiers/${dossier}/banque`)).json;
+    const releve = banque.releves.find((x: any) => x.lotImportId === lot);
+    expect(releve).toMatchObject({ format: 'agregation', nbMouvements: 3, totalMouvements: '2269.50', cadrage: 'non_verifiable', soldeCloture: '5230.10' });
+    const importLu = banque.imports.find((x: any) => x.id === lot);
+    expect(importLu.rapport).toMatchObject({ origine: 'agregation', prestataire: 'simulateur', simulateur: true });
+  });
+
+  it('relancer la même synchronisation ne duplique rien ; consentement expiré chez le prestataire → refus explicite, rien d’importé', async () => {
+    const r = await api('chloe', 'POST', `/v1/dossiers/${dossier}/banque/agregation/synchroniser`, { compte: `cpt-${SEL}`, depuis: '2026-03-01' });
+    expect(r.statut).toBe(202);
+    expect(r.json).toMatchObject({ nouveau: false, lotImportId: lot });
+    simAgregation.forcer(401);
+    const refus = await api('chloe', 'POST', `/v1/dossiers/${dossier}/banque/agregation/synchroniser`, { compte: `cpt-${SEL}`, depuis: '2026-03-01' });
+    expect(refus.statut).toBe(409);
+    expect(refus.json.message).toMatch(/jeton ou consentement expiré/);
+    // L'import d'essai est annulé (réversible) : ses mouvements ne comptent plus pour le dossier de démonstration.
+    expect((await api('alice', 'POST', `/v1/imports/${lot}/annulation`, { motif: 'Import d’essai contre le simulateur d’agrégation' })).statut).toBeLessThan(300);
+  });
+
+  it('NODE_ENV=production avec le simulateur d’agrégation : démarrage refusé', () => {
+    const r = spawnSync(process.execPath, ['dist/main.js'], { cwd: racineApi, env: { ...envEssai(), MAIL_SIMULATEUR_URL: '', NODE_ENV: 'production', API_PORT: '4101' }, timeout: 30_000 });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr.toString() + r.stdout.toString()).toMatch(/AGREGATION_SIMULATEUR_URL/);
   });
 });
 

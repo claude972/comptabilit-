@@ -27,7 +27,23 @@ test.describe('administration — administratrice', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Administration du cabinet');
     await expect(page.locator('tr[data-membre]')).toHaveCount(4);
     await expect(page.locator(`tr[data-membre="${CHLOE}"]`)).toContainText('Collaborateur');
-    await expect(page.getByTestId('sans-invitation')).toContainText('l’invitation de nouveaux utilisateurs');
+    // Invitation : aucun courriel n'est envoyé (c'est dit), rôle support absent, doublon refusé, annulation.
+    const invitations = page.getByTestId('invitations');
+    await expect(invitations.getByTestId('invitation-explication')).toContainText('n’envoie aucun courriel');
+    await expect(invitations.getByLabel('Rôle dans le cabinet').locator('option')).not.toContainText(['Support']);
+    await invitations.getByLabel('Adresse de la personne').fill('Nouvelle.Recrue@cabinet-a.test');
+    await invitations.getByLabel('Nom').fill('Nouvelle Recrue');
+    await invitations.getByRole('button', { name: 'Inviter' }).click();
+    await expect(invitations.getByText('Aucun courriel n’a été envoyé')).toBeVisible();
+    await expect(invitations.locator('tr[data-invitation]')).toHaveCount(1);
+    await expect(invitations.locator('tr[data-invitation]')).toContainText('nouvelle.recrue@cabinet-a.test');
+    await expect(invitations.locator('tr[data-invitation]')).toContainText('En attente');
+    await invitations.getByLabel('Adresse de la personne').fill('nouvelle.recrue@cabinet-a.test');
+    await invitations.getByLabel('Nom').fill('Encore');
+    await invitations.getByRole('button', { name: 'Inviter' }).click();
+    await expect(invitations.getByRole('alert')).toContainText('déjà en attente');
+    await invitations.getByRole('button', { name: 'Annuler l’invitation de nouvelle.recrue@cabinet-a.test' }).click();
+    await expect(invitations.locator('tr[data-invitation]')).toContainText('Annulée');
     await expect(page.getByText('Bruno Admin')).toHaveCount(0); // autre cabinet
 
     const creation = page.locator('form[data-formulaire="creer-dossier"]');

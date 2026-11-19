@@ -3,9 +3,9 @@ import { Controller, Get, Inject } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { type AccesBd, sql } from '@comtaple/db';
 import { evaluerStatutIntegration, type IdFournisseur, type PreuveConnexion } from '@comtaple/mail';
-import { type Config, type ConnecteursMail, fournisseurDepuisBd, type FournisseurBd, PasserelleIa } from '@comtaple/plateforme';
+import { type Config, type ConnecteursMail, type EtatAgregation, fournisseurDepuisBd, type FournisseurBd, PasserelleIa } from '@comtaple/plateforme';
 import { type Acces, AccesCourant } from './acces.js';
-import { BD, CONFIG, MAIL } from './jetons.js';
+import { AGREGATION, BD, CONFIG, MAIL } from './jetons.js';
 
 function clamdRepond(hote: string, port: number): Promise<boolean> {
   return new Promise((resoudre) => {
@@ -33,6 +33,7 @@ export class IntegrationsController {
     @Inject(CONFIG) private readonly cfg: Config,
     @Inject(BD) private readonly bd: AccesBd,
     @Inject(MAIL) private readonly mail: ConnecteursMail,
+    @Inject(AGREGATION) private readonly agregation: EtatAgregation,
   ) {}
 
   /**
@@ -65,7 +66,7 @@ export class IntegrationsController {
       ocr,
       ia: { statut: new PasserelleIa(this.cfg).statut(), detail: 'Aucun traitement n’appelle l’IA à ce jour.' },
       messagerie: { gmail: this.messagerie('gmail', preuves), microsoft365: this.messagerie('microsoft', preuves) },
-      agregationBancaire: { statut: 'non_implemente', detail: 'Aucun prestataire choisi. Les imports de fichiers bancaires n’en dépendent pas.' },
+      agregationBancaire: { statut: this.agregation.statut, detail: this.agregation.detail },
     };
   }
 }

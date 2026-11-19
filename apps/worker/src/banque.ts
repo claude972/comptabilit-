@@ -7,6 +7,7 @@ import {
   lireCamt053,
   lireCsvBanque,
   lireOfx,
+  lireReleveAgregation,
   type MouvementBancaire,
   proposerProfilCsv,
   rapprocher,
@@ -59,6 +60,7 @@ export async function importerReleve(c: Contexte, t: TacheImportReleve): Promise
   let profilUtilise: unknown = null;
   if (format === 'camt.053') rapport = lireCamt053(texte);
   else if (format === 'ofx') rapport = lireOfx(texte);
+  else if (format === 'agregation') rapport = lireReleveAgregation(texte);
   else if (format === 'csv') {
     // Un profil de colonnes confirmé par un humain l'emporte ; sinon proposition prudente, abstention si ambiguë.
     let profil = demande.profilCsv ? schemaProfilCsvBanque.safeParse(demande.profilCsv) : null;
@@ -72,7 +74,7 @@ export async function importerReleve(c: Contexte, t: TacheImportReleve): Promise
       profilUtilise = { ...proposition.profil, origine: 'propose_automatiquement', raisons: proposition.raisons };
     } else profilUtilise = { ...profil.data, origine: 'confirme' };
     rapport = lireCsvBanque(texte, (profil as { data: Parameters<typeof lireCsvBanque>[1] }).data);
-  } else return void (await echec('Format de relevé non reconnu (camt.053, OFX ou CSV attendus)', { format }));
+  } else return void (await echec('Format de relevé non reconnu (camt.053, OFX, CSV ou document d’agrégation attendus)', { format }));
 
   if (!rapport.lisible) {
     return void (await echec('Relevé illisible', { format: rapport.format, version: rapport.version, anomalies: rapport.anomalies.slice(0, 200) }));

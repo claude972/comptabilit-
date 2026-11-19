@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { creerAccesBd, urlBd } from '@comtaple/db';
-import { connecteursMail, connexionRedis, Files, lireConfig, Stockage } from '@comtaple/plateforme';
+import { agregationBancaire, connecteursMail, connexionRedis, Files, lireConfig, Stockage } from '@comtaple/plateforme';
 import { GardeAcces } from './acces.js';
 import { AbonnementController } from './abonnement.controller.js';
 import { AdministrationController } from './administration.controller.js';
@@ -16,7 +16,7 @@ import { IntegrationsController } from './integrations.controller.js';
 import { RechercheController } from './recherche.controller.js';
 import { VeilleController } from './veille.controller.js';
 import { InventaireController } from './inventaire.controller.js';
-import { BD, CONFIG, MAIL, STOCKAGE, TACHES } from './jetons.js';
+import { AGREGATION, BD, CONFIG, MAIL, STOCKAGE, TACHES } from './jetons.js';
 import { MailController } from './mail.controller.js';
 import { MissionsController } from './missions.controller.js';
 import { ProfilController } from './profil.controller.js';
@@ -43,6 +43,7 @@ import { TeleversementsController } from './televersements.controller.js';
     },
     { provide: TACHES, inject: [CONFIG], useFactory: (cfg: ReturnType<typeof lireConfig>) => new Files(connexionRedis(cfg.REDIS_URL), cfg.FILES_PREFIXE) },
     { provide: MAIL, inject: [CONFIG], useFactory: (cfg: ReturnType<typeof lireConfig>) => connecteursMail(cfg) },
+    { provide: AGREGATION, inject: [CONFIG], useFactory: (cfg: ReturnType<typeof lireConfig>) => agregationBancaire(cfg) },
     { provide: APP_GUARD, useClass: GardeAcces },
   ],
 })

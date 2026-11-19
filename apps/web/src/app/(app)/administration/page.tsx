@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { FormulaireDossier } from '@/components/administration';
 import { CoutHoraireInterne } from '@/components/administration-cout';
+import { type Invitation, Invitations } from '@/components/administration-invitations';
 import { GestionMembre } from '@/components/administration-membres';
 import { ErreurAcces } from '@/components/erreurs';
 import { Alerte, Carte, Etiquette, SousTitre, Tableau, Titre } from '@/components/ui/base';
@@ -19,7 +20,13 @@ export default async function PageAdministration() {
   // Même règle que la messagerie : gestionnaires du cabinet (administrateur, associé) uniquement.
   const acces = await accesMessagerie();
   if (!acces.ok) return <ErreurAcces statut={acces.statut} message={acces.statut === 403 ? 'L’administration du cabinet est réservée aux administrateurs et associés.' : acces.message} />;
-  const [membres, dossiers, audit, cout] = await Promise.all([tenter<MembreCabinet[]>('v1/cabinet/membres'), lireDossiers(), tenter<JournalAudit>('v1/audit?limite=100'), tenter<CoutHoraire>('v1/cabinet/cout-horaire')]);
+  const [membres, dossiers, audit, cout, invitations] = await Promise.all([
+    tenter<MembreCabinet[]>('v1/cabinet/membres'),
+    lireDossiers(),
+    tenter<JournalAudit>('v1/audit?limite=100'),
+    tenter<CoutHoraire>('v1/cabinet/cout-horaire'),
+    tenter<Invitation[]>('v1/cabinet/invitations'),
+  ]);
   if (!membres.ok) return <ErreurAcces statut={membres.statut} message={membres.message} />;
   const nomDe = new Map(membres.donnees.map((m) => [m.utilisateurId, m.nom]));
   const nomDossier = new Map((dossiers.ok ? dossiers.donnees : []).map((d) => [d.id, d.raisonSociale]));
@@ -94,9 +101,17 @@ export default async function PageAdministration() {
           rôle retire les habilitations de dossier qui dépassent le plafond du nouveau rôle ; une désactivation ferme immédiatement tous les accès. Chaque modification est
           journalisée.
         </Alerte>
-        <Alerte ton="neutre" className="text-sm" data-testid="sans-invitation">
-          Comtaple ne propose pas l’invitation de nouveaux utilisateurs : la création d’un compte se fait pour l’instant hors de cet écran, par l’éditeur.
-        </Alerte>
+      </section>
+
+      <section aria-labelledby="titre-invitations" className="space-y-2">
+        <SousTitre id="titre-invitations">Inviter une personne</SousTitre>
+        {invitations.ok ? (
+          <Invitations invitations={invitations.donnees} peutInviterAdministrateur={acces.moi.role === 'administrateur'} />
+        ) : (
+          <Alerte ton="attention" role="alert">
+            Les invitations n’ont pas pu être chargées. {invitations.message}
+          </Alerte>
+        )}
       </section>
 
       <section aria-labelledby="titre-dossiers" className="space-y-2">

@@ -6,10 +6,11 @@ import iconv from 'iconv-lite';
  * Reconnaît le format d'après le DÉBUT du fichier (quelques milliers de caractères suffisent).
  * `inconnu` au moindre doute : l'appelant demande alors à l'utilisateur.
  */
-export function detecterFormatReleve(debut: string): 'camt.053' | 'ofx' | 'csv' | 'inconnu' {
+export function detecterFormatReleve(debut: string): 'camt.053' | 'ofx' | 'csv' | 'agregation' | 'inconnu' {
   if (typeof debut !== 'string') return 'inconnu';
   const t = (debut.charCodeAt(0) === 0xfeff ? debut.slice(1) : debut).slice(0, 20_000).trimStart();
   if (t === '') return 'inconnu';
+  if (t.startsWith('{')) return /^\{\s*"format"\s*:\s*"comtaple\.releve-agregation\/1"/.test(t) ? 'agregation' : 'inconnu';
   if (/^OFXHEADER\s*:/i.test(t) || /<\?OFX\b/i.test(t) || /<OFX>/i.test(t)) return 'ofx';
   if (t.startsWith('<')) {
     if (/xmlns(?::[A-Za-z0-9_.-]+)?\s*=\s*["'][^"']*camt\.053\./.test(t)) return 'camt.053';

@@ -1226,3 +1226,30 @@ export const preferencesNotification = pgTable(
   },
   (t) => [primaryKey({ columns: [t.cabinetId, t.utilisateurId, t.famille] })],
 );
+
+/**
+ * Invitations à rejoindre un cabinet. L'application n'envoie AUCUN courriel : l'invitation est une autorisation
+ * d'entrée, rattachée à une adresse. Elle prend effet à la première connexion d'un compte dont le fournisseur
+ * d'identité atteste cette adresse (« email_verified ») ; la création du compte lui-même relève du fournisseur
+ * d'identité (Keycloak ou SSO du cabinet). Réservée aux gestionnaires, dans la base elle-même.
+ */
+export const invitations = pgTable(
+  'invitations',
+  {
+    id: id(),
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    /** Adresse en minuscules. */
+    email: text('email').notNull(),
+    nom: text('nom').notNull(),
+    role: roleCabinet('role').notNull(),
+    /** en_attente | acceptee | annulee */
+    statut: text('statut').notNull().default('en_attente'),
+    /** Null pour une invitation créée par l'éditeur à l'ouverture du cabinet. */
+    inviteePar: uuid('invitee_par').references(() => utilisateurs.id),
+    expireLe: horodatage('expire_le').notNull(),
+    accepteePar: uuid('acceptee_par').references(() => utilisateurs.id),
+    accepteeLe: horodatage('acceptee_le'),
+    creeLe: creeLe(),
+  },
+  (t) => [index('invitations_email').on(t.email, t.statut)],
+);

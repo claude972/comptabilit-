@@ -625,7 +625,7 @@ async function routerV1(r: Requete): Promise<unknown> {
     return {
       antivirus: { statut: 'indisponible', obligatoire: true }, ocr: { statut: 'indisponible', detail: 'injoignable' }, ia: { statut: 'non_connecte', detail: 'Aucun traitement n’appelle l’IA à ce jour.' },
       messagerie: { gmail: messagerie('gmail'), microsoft365: messagerie('microsoft') },
-      agregationBancaire: { statut: 'non_implemente', detail: 'Aucun prestataire choisi. Les imports de fichiers bancaires n’en dépendent pas.' },
+      agregationBancaire: { statut: 'non_connecte', detail: 'Aucun prestataire d’agrégation choisi ni contracté. Les imports de fichiers bancaires n’en dépendent pas.' },
     };
   }
   if (s[0] === 'mail' && s[1] !== 'notifications') return routerMail(r, a);
@@ -1355,6 +1355,8 @@ function validerDossier(d: Enr, partiel: boolean): Enr {
   return sortie;
 }
 
+let INVITATIONS: Array<{ id: string; cabinetId: string; email: string; nom: string; role: string; statut: string; expireLe: string; creeLe: string }> = [];
+
 function routerAdministration(r: Requete, a: Acces): unknown {
   const { methode: m, segments: s } = r;
   const gestionnaire = a.role === 'administrateur' || a.role === 'associe';
@@ -1394,6 +1396,37 @@ function routerAdministration(r: Requete, a: Acces): unknown {
     }
     tracerAudit(a, 'membre.modifie', 'utilisateur', utilisateurId, null, { roleAvant: avant.role, roleApres: role, actifAvant: avant.actif, actifApres: actif, habilitationsRetirees: retirees });
     return { id: randomUUID(), cabinetId: a.cabinetId, utilisateurId, role, actif, expireLe: null, habilitationsRetirees: retirees };
+  }
+  // ── Invitations (même contrat que l'API : aucun courriel, rôle support exclu, une seule en attente par adresse) ──
+  if (s[0] === 'cabinet' && s[1] === 'invitations') {
+    const vue = (i: (typeof INVITATIONS)[number]) => ({ id: i.id, email: i.email, nom: i.nom, role: i.role, statut: i.statut, expireLe: i.expireLe, expiree: false, accepteeLe: null, creeLe: i.creeLe });
+    if (m === 'GET' && s.length === 2) {
+      exigerGestion();
+      return INVITATIONS.filter((i) => i.cabinetId === a.cabinetId).map(vue).reverse();
+    }
+    if (m === 'POST' && s.length === 2) {
+      const d = r.json();
+      const email = typeof d.email === 'string' ? d.email.trim().toLowerCase() : '';
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw invalide('email', 'adresse invalide');
+      if (typeof d.nom !== 'string' || !d.nom.trim()) throw invalide('nom', 'obligatoire');
+      if (!['administrateur', 'associe', 'reviseur', 'collaborateur', 'client_deposant', 'client_lecture'].includes(d.role)) throw invalide('role', 'le rôle support ne s’obtient pas par invitation');
+      exigerGestion();
+      if (d.role === 'administrateur' && a.role !== 'administrateur') throw new ErreurHttp(403, 'Seul un administrateur peut inviter un administrateur');
+      if (membresDuCabinet(a.cabinetId).some((x) => x.email.toLowerCase() === email)) throw new ErreurHttp(409, 'Cette adresse est déjà celle d’un membre du cabinet');
+      if (INVITATIONS.some((i) => i.cabinetId === a.cabinetId && i.email === email && i.statut === 'en_attente')) throw new ErreurHttp(409, 'Une invitation est déjà en attente pour cette adresse');
+      const cree = { id: randomUUID(), cabinetId: a.cabinetId, email, nom: d.nom.trim(), role: d.role as string, statut: 'en_attente', expireLe: new Date(Date.now() + 14 * 86_400_000).toISOString(), creeLe: new Date().toISOString() };
+      INVITATIONS.push(cree);
+      tracerAudit(a, 'invitation.creee', 'invitation', cree.id, null, { role: cree.role });
+      return { ...vue(cree), courrielEnvoye: false };
+    }
+    if (m === 'DELETE' && s.length === 3) {
+      exigerGestion();
+      const i = INVITATIONS.find((x) => x.id === exigerUuid(s[2]) && x.cabinetId === a.cabinetId && x.statut === 'en_attente');
+      if (!i) throw new ErreurHttp(404, 'Invitation en attente introuvable');
+      i.statut = 'annulee';
+      tracerAudit(a, 'invitation.annulee', 'invitation', i.id, null, {});
+      return { id: i.id, statut: 'annulee' };
+    }
   }
   if (m === 'GET' && s.join('/') === 'cabinet/indicateurs') {
     const iso = /^\d{4}-\d{2}-\d{2}$/;
@@ -2681,6 +2714,7 @@ const serveur = http.createServer(async (req, res) => {
         ENTITES = structuredClone(ENTITES_INITIALES);
         HABILITATIONS = structuredClone(HABILITATIONS_INITIALES);
         APPARTENANCES_EN_PLUS = [];
+        INVITATIONS = [];
         audit = [];
         ruptureAudit = null;
         diagnosticAudit = [];

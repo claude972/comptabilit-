@@ -269,3 +269,65 @@ export async function retentionNotifications(client: pg.ClientBase, options: { a
   );
   return r.rows.map((l) => ({ cabinetId: l.cabinet_id, aArchiver: Number(l.a_archiver), aSupprimer: Number(l.a_supprimer), simulation: l.simulation }));
 }
+
+// ───────────────────────────── Ouverture d'un cabinet ─────────────────────────────
+
+/**
+ * Ouvre un cabinet et INVITE son premier administrateur (D-064). Aucun compte n'est créé ici : le compte de la personne
+ * est créé dans le fournisseur d'identité, et son entrée dans le cabinet se fait à sa première connexion, si le
+ * fournisseur atteste l'adresse. Aucun courriel n'est envoyé. L'abonnement s'ouvre à part (`ouvrirEssai`).
+ */
+export async function creerCabinet(client: pg.ClientBase, d: { nom: string; emailAdministrateur: string; nomAdministrateur: string; validiteJours?: number }): Promise<{ cabinetId: string; invitationId: string; expireLe: string }> {
+  const nom = d.nom.trim();
+  const email = d.emailAdministrateur.trim().toLowerCase();
+  const nomAdmin = d.nomAdministrateur.trim();
+  if (nom.length < 2) throw new Error('Nom de cabinet trop court');
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error('Adresse de l’administrateur invalide');
+  if (!nomAdmin) throw new Error('Nom de l’administrateur manquant');
+  const jours = d.validiteJours ?? 14;
+  if (!Number.isInteger(jours) || jours < 1 || jours > 30) throw new Error('Validité de l’invitation : 1 à 30 jours');
+  await client.query('begin');
+  try {
+    const cabinetId = (await client.query<{ id: string }>('insert into cabinets (nom) values ($1) returning id', [nom])).rows[0]!.id;
+    const inv = (
+      await client.query<{ id: string; expire_le: Date }>(
+        `insert into invitations (cabinet_id, email, nom, role, expire_le) values ($1, $2, $3, 'administrateur', now() + make_interval(days => $4)) returning id, expire_le`,
+        [cabinetId, email, nomAdmin, jours],
+      )
+    ).rows[0]!;
+    await client.query(
+      `insert into journal_audit (cabinet_id, acteur_type, action, cible_type, cible_id, details) values ($1::uuid, 'systeme', 'cabinet.ouvert', 'cabinet', $2, $3)`,
+      [cabinetId, cabinetId, JSON.stringify({ invitationAdministrateur: inv.id })],
+    );
+    await client.query('commit');
+    return { cabinetId, invitationId: inv.id, expireLe: inv.expire_le.toISOString() };
+  } catch (e) {
+    await client.query('rollback');
+    throw e;
+  }
+}
+
+/**
+ * Éléments de facturation d'une période, pour l'outil de facturation de l'ÉDITEUR (export CSV, séparateur « ; »).
+ * Ce n'est ni une facture ni un dépôt sur une plateforme agréée : les mentions légales, la TVA et l'émission relèvent
+ * de l'outil de facturation. Les montants d'une grille de démonstration sont marqués « fictif ».
+ */
+export async function exporterElementsFacturation(client: pg.ClientBase, periodeDebut: string, periodeFin: string): Promise<{ csv: string; lignes: number }> {
+  for (const v of [periodeDebut, periodeFin]) if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error('Dates attendues au format AAAA-MM-JJ');
+  const r = await client.query<Record<string, string | number | boolean | null>>(
+    `select e.id as echeance_id, e.reference_virement as reference, c.id as cabinet_id, c.nom as cabinet, e.periode_debut::text as periode_debut, e.offre,
+            e.dossiers_actifs, e.total_ht::text as total_ht, e.fictif, e.statut_paiement, e.paye_le::text as paye_le
+       from echeances_abonnement e join cabinets c on c.id = e.cabinet_id
+      where e.periode_debut >= $1::date and e.periode_debut <= $2::date order by e.periode_debut, c.nom, e.id`,
+    [periodeDebut, periodeFin],
+  );
+  const colonnes = ['echeance_id', 'reference', 'cabinet_id', 'cabinet', 'periode_debut', 'offre', 'dossiers_actifs', 'total_ht', 'fictif', 'statut_paiement', 'paye_le'];
+  // Une cellule commençant par = + - @ est neutralisée (un tableur ne doit pas l'interpréter comme une formule).
+  const cellule = (v: unknown) => {
+    let t = v === null || v === undefined ? '' : String(v);
+    if (/^[=+\-@]/.test(t)) t = `'${t}`;
+    return /[";\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+  };
+  const csv = [colonnes.join(';'), ...r.rows.map((l) => colonnes.map((c) => cellule(l[c])).join(';'))].join('\r\n') + '\r\n';
+  return { csv, lignes: r.rows.length };
+}

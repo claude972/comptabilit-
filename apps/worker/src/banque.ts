@@ -189,6 +189,12 @@ export async function executerRapprochement(c: Contexte, t: TacheRapprochement):
     await tx.delete(s.rapprochements).where(eq(s.rapprochements.executionId, execution.id));
     const parametres = schemaParametresRapprochement.partial().parse(execution.parametres ?? {});
 
+    // Même garde de volume que les contrôles : au-delà de la limite, le rapprochement échoue proprement, avec son motif.
+    const nbLignes = Number((await tx.execute(sql`select count(*)::int as n from lignes_ecriture where lot_import_id = ${execution.lotImportId}::uuid`)).rows[0]?.n ?? 0);
+    if (nbLignes > c.cfg.LIGNES_MAX_PAR_TRAITEMENT) {
+      await tx.update(s.executionsRapprochement).set({ statut: 'echec', erreur: `Volume non pris en charge : ${nbLignes.toLocaleString('fr-FR')} lignes d’écriture pour une limite de ${c.cfg.LIGNES_MAX_PAR_TRAITEMENT.toLocaleString('fr-FR')} par traitement. Aucun rapprochement n’a été calculé.`, termineLe: sql`now()` }).where(eq(s.executionsRapprochement.id, execution.id));
+      return;
+    }
     const lignes = await lignesDuLot(tx, execution.lotImportId);
     const cotesEcritures = elementsBanqueDepuisEcritures(lignes);
     const mouvements = await tx

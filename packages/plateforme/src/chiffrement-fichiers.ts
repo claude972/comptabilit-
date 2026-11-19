@@ -18,7 +18,7 @@
  */
 import { createCipheriv, createDecipheriv, createHash, createPrivateKey, createPublicKey, diffieHellman, generateKeyPairSync, hkdfSync, randomBytes, type KeyObject } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { open } from 'node:fs/promises';
+import { open, rename, rm } from 'node:fs/promises';
 
 export const FORMAT_SAUVEGARDE_CHIFFREE = 'comtaple.sauvegarde-chiffree/1';
 const MAGIE = Buffer.from('CTPSAUV1', 'ascii');
@@ -83,8 +83,14 @@ export async function chiffrerFichier(source: string, destination: string, clePu
   };
   const enTeteBrut = Buffer.from(JSON.stringify(enTete), 'utf8');
   const cle = cleDuFichier(diffieHellman({ privateKey: ephemere.privateKey, publicKey: destinataire }), enTete);
-  // Ouverture exclusive : n'écrase jamais un fichier existant, et l'erreur est levée ici, pas plus tard.
-  const sortie = await open(destination, 'wx', 0o600);
+  // Écriture ATOMIQUE : le contenu va dans « destination.partiel », renommé seulement une fois complet. Une exécution
+  // interrompue ne laisse donc jamais un fichier chiffré tronqué sous son nom définitif ; un « .partiel » resté d'une
+  // exécution précédente est remplacé. Le fichier définitif, lui, n'est jamais écrasé.
+  await refuserSiExiste(destination);
+  const partiel = `${destination}.partiel`;
+  await rm(partiel, { force: true });
+  const sortie = await open(partiel, 'wx', 0o600);
+  let termine = false;
   const ecrire = async (b: Buffer) => {
     await sortie.write(b);
   };
@@ -125,9 +131,12 @@ export async function chiffrerFichier(source: string, destination: string, clePu
   }
   await bloc(attente ?? Buffer.alloc(0), true);
   await sortie.sync();
+  termine = true;
   return { octetsClairs: octets, sha256Clair: hache.digest('hex'), destinataire: enTete.destinataire };
   } finally {
     await sortie.close();
+    if (termine) await rename(partiel, destination);
+    else await rm(partiel, { force: true });
   }
 }
 
@@ -139,8 +148,15 @@ export async function dechiffrerFichier(source: string, destination: string | nu
   const privee = createPrivateKey(clePriveePem);
   const fichier = await open(source, 'r');
   let sortie: Awaited<ReturnType<typeof open>> | null = null;
+  const partiel = destination ? `${destination}.partiel` : null;
+  let termine = false;
   try {
-    sortie = destination ? await open(destination, 'wx', 0o600) : null;
+    // Même écriture atomique qu'au chiffrement : un déchiffrement refusé ou interrompu ne laisse aucun fichier de sortie.
+    if (destination && partiel) {
+      await refuserSiExiste(destination);
+      await rm(partiel, { force: true });
+      sortie = await open(partiel, 'wx', 0o600);
+    }
     let position = 0;
     const lire = async (n: number): Promise<Buffer> => {
       const b = Buffer.alloc(n);
@@ -192,9 +208,24 @@ export async function dechiffrerFichier(source: string, destination: string | nu
     const reste = Buffer.alloc(1);
     if ((await fichier.read(reste, 0, 1, position)).bytesRead !== 0) throw new Error('Données inattendues après le dernier bloc');
     if (sortie) await sortie.sync();
+    termine = true;
     return { octetsClairs: octets, sha256Clair: hache.digest('hex'), destinataire: enTete.destinataire };
   } finally {
     await sortie?.close();
     await fichier.close();
+    if (destination && partiel) {
+      if (termine) await rename(partiel, destination);
+      else await rm(partiel, { force: true });
+    }
   }
+}
+
+async function refuserSiExiste(chemin: string): Promise<void> {
+  try {
+    const f = await open(chemin, 'r');
+    await f.close();
+  } catch {
+    return;
+  }
+  throw Object.assign(new Error(`EEXIST: le fichier existe déjà, il n'est jamais écrasé : ${chemin}`), { code: 'EEXIST' });
 }

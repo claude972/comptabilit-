@@ -1,4 +1,4 @@
-import { CATALOGUE_CONTROLES, executerControles, type LigneEcriture } from '@comtaple/core';
+import { CATALOGUE_CONTROLES, executerControles, type LigneEcriture, type ResultatControle } from '@comtaple/core';
 import { and, desc, eq, journaliser, lt, ne, schema as s, sql } from '@comtaple/db';
 import { parametresApprouves, type TacheControles } from '@comtaple/plateforme';
 import { lignesDuLot, relevesDuDossier } from './banque.js';
@@ -21,7 +21,13 @@ export async function executerControlesExecution(c: Contexte, t: TacheControles)
     await tx.delete(s.constats).where(eq(s.constats.executionId, execution.id));
     await tx.delete(s.resultatsControles).where(eq(s.resultatsControles.executionId, execution.id));
 
-    const lignes = await lignesDuLot(tx, execution.lotImportId);
+    // Garde de volume : les contrôles chargent en mémoire les lignes de l'exercice (et celles de l'exercice précédent).
+    // Au-delà de la limite prise en charge, AUCUN contrôle n'est réalisé et chacun le dit avec son motif : ni plantage du
+    // worker, ni résultat partiel présenté comme complet.
+    const compter = async (lotId: string) => Number((await tx.execute(sql`select count(*)::int as n from lignes_ecriture where lot_import_id = ${lotId}::uuid`)).rows[0]?.n ?? 0);
+    const nbLignes = await compter(execution.lotImportId);
+    const horsLimite = nbLignes > c.cfg.LIGNES_MAX_PAR_TRAITEMENT;
+    const lignes = horsLimite ? [] : await lignesDuLot(tx, execution.lotImportId);
     // Exercice précédent : celui qui se termine juste avant, s'il a des données comptables actives (sinon CLO-002 reste non réalisé).
     const [precedentEx] = await tx
       .select()
@@ -35,7 +41,8 @@ export async function executerControlesExecution(c: Contexte, t: TacheControles)
         .select()
         .from(s.lotsImport)
         .where(and(eq(s.lotsImport.exerciceId, precedentEx.id), eq(s.lotsImport.type, 'fec'), eq(s.lotsImport.actif, true)));
-      if (lotPrecedent) exercicePrecedent = { lignes: await lignesDuLot(tx, lotPrecedent.id) };
+      // L'exercice précédent n'est chargé que si le total reste dans la limite ; sinon CLO-002 reste « non réalisé ».
+      if (lotPrecedent && !horsLimite && nbLignes + (await compter(lotPrecedent.id)) <= c.cfg.LIGNES_MAX_PAR_TRAITEMENT) exercicePrecedent = { lignes: await lignesDuLot(tx, lotPrecedent.id) };
     }
     const releves = await relevesDuDossier(tx, execution.entiteId);
 
@@ -43,7 +50,10 @@ export async function executerControlesExecution(c: Contexte, t: TacheControles)
     const regles = await parametresApprouves(tx, execution.entiteId);
     const [entite] = await tx.select().from(s.entites).where(eq(s.entites.id, execution.entiteId));
     const territoire = entite?.territoireFiscal ?? 'a_confirmer';
-    const resultats = executerControles({ lignes, exercice: { debut: exercice.debut, fin: exercice.fin }, exercicePrecedent, releves: releves.length ? releves : null }, { parametres: regles.parametres }).map((r) => {
+    const motifVolume = `Volume non pris en charge : ${nbLignes.toLocaleString('fr-FR')} lignes d’écriture pour une limite de ${c.cfg.LIGNES_MAX_PAR_TRAITEMENT.toLocaleString('fr-FR')} par traitement. Aucun contrôle n’a été réalisé sur cet exercice ; ce n’est pas une absence d’anomalie.`;
+    const resultats: ResultatControle[] = horsLimite
+      ? CATALOGUE_CONTROLES.map((d) => ({ controleId: d.id, version: d.version, statut: 'non_realise' as const, motif: motifVolume, constats: [], parametresAppliques: {}, mesures: {} }))
+      : executerControles({ lignes, exercice: { debut: exercice.debut, fin: exercice.fin }, exercicePrecedent, releves: releves.length ? releves : null }, { parametres: regles.parametres }).map((r) => {
       // Les règles fiscales implémentées sont celles de la France métropolitaine : hors de ce territoire (ou tant qu'il
       // n'est pas confirmé), le contrôle n'est PAS réalisé et le dit, au lieu d'appliquer une règle inadaptée.
       if (territoire === 'metropole' || !CONTROLES_FISCAUX_METROPOLE.has(r.controleId)) return r;

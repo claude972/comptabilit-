@@ -29,6 +29,9 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright METRIQUES_HOTE=0.0.0.0
 RUN pnpm --filter @comtaple/worker exec playwright install --with-deps chromium && chmod -R a+rx /ms-playwright && rm -rf /var/lib/apt/lists/*
 USER node
 EXPOSE 9465
+# Tas plafonné d'après les mesures (D-061) : au-delà, le processus s'arrête et les traitements en cours sont repris au
+# redémarrage. À ajuster avec LIGNES_MAX_PAR_TRAITEMENT, jamais l'un sans l'autre.
+ENV NODE_OPTIONS=--max-old-space-size=2048
 CMD ["node", "apps/worker/dist/main.js"]
 
 # ── Application web ──

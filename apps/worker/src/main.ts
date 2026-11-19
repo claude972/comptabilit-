@@ -90,7 +90,22 @@ const minuterie = setInterval(
 // Veille réglementaire : une passe par jour sur les sources officielles surveillées.
 await c.taches.comptabilite.upsertJobScheduler('veille-quotidienne', { every: 24 * 3600 * 1000 }, { name: 'veille', data: {} });
 
-console.log('Worker Comtaple démarré (files : documents, comptabilite, exports, mail).');
+// Relevé de la mémoire du processus : un nouveau pic (tas JavaScript ou mémoire résidente) est journalisé par paliers de
+// 32 Mo. Sert à dimensionner le plafond de tas (--max-old-space-size) d'après des mesures, et à voir venir sa limite.
+const picMemoire = { tas: 0, residente: 0 };
+const v8 = await import('node:v8');
+const plafondTasMo = Math.round(v8.getHeapStatistics().heap_size_limit / 1048576);
+setInterval(() => {
+  const m = process.memoryUsage();
+  const [tas, residente] = [Math.round(m.heapUsed / 1048576), Math.round(m.rss / 1048576)];
+  if (tas >= picMemoire.tas + 32 || residente >= picMemoire.residente + 64) {
+    picMemoire.tas = Math.max(picMemoire.tas, tas);
+    picMemoire.residente = Math.max(picMemoire.residente, residente);
+    console.log(`mémoire : pic tas ${picMemoire.tas} Mo (plafond ${plafondTasMo} Mo), résidente ${picMemoire.residente} Mo`);
+  }
+}, 500).unref();
+
+console.log(`Worker Comtaple démarré (files : documents, comptabilite, exports, mail) ; plafond de tas : ${plafondTasMo} Mo.`);
 
 async function arreter() {
   clearInterval(minuterie);

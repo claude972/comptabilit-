@@ -99,7 +99,19 @@ try {
     mkdirSync(join(dest, 'objets'), { recursive: true, mode: 0o700 });
     const depot = process.env.SAUVEGARDE_DEPOT_OBJETS ?? join(dirname(dump), 'objets');
     if (keycloak && !existsSync(keycloak)) throw new Error('Export Keycloak introuvable');
-    for (const f of [dump, manifeste, ...(keycloak ? [resolve(keycloak)] : [])]) {
+    // Jeu complet (scripts/sauvegarder-jeu.mjs) : son descripteur est vérifié AVANT tout chiffrement, puis chiffré avec
+    // l'export Keycloak du même jeu. Un jeu interrompu ou altéré n'est pas chiffré.
+    const descripteur = dump.replace(/\.dump$/, '.jeu.json');
+    const duJeu = [];
+    if (existsSync(descripteur)) {
+      const { verifierJeu } = await import('../packages/plateforme/dist/jeu-sauvegarde.js');
+      const v = await verifierJeu(descripteur);
+      if (!v.conforme) throw new Error(`Jeu de sauvegarde non conforme, rien n'est chiffré : ${v.ecarts.join(' ; ')}`);
+      duJeu.push(dump.replace(/\.dump$/, '.keycloak.json'), descripteur);
+    } else if (existsSync(dump.replace(/\.dump$/, '.en-cours')) || existsSync(dump.replace(/\.dump$/, '.keycloak.json'))) {
+      throw new Error('Sauvegarde interrompue (pas de descripteur de jeu) : rien n’est chiffré.');
+    }
+    for (const f of [dump, manifeste, ...duJeu, ...(keycloak ? [resolve(keycloak)] : [])]) {
       const sortie = join(dest, `${basename(f)}.chiffre`);
       if (!existsSync(sortie)) await c.chiffrerFichier(f, sortie, clePubliquePem);
     }
@@ -117,7 +129,7 @@ try {
       faits++;
       octets += r.octetsClairs;
     }
-    console.log(`Jeu chiffré : base, manifeste${keycloak ? ', export Keycloak' : ''} et ${empreintes.length} objet(s) distinct(s) dont ${faits} chiffré(s) maintenant (${(octets / 1e6).toFixed(1)} Mo). Les sauvegardes d'origine n'ont pas été touchées.`);
+    console.log(`Jeu chiffré : base, manifeste${keycloak || duJeu.length ? ', export Keycloak' : ''}${duJeu.length ? ', descripteur du jeu' : ''} et ${empreintes.length} objet(s) distinct(s) dont ${faits} chiffré(s) maintenant (${(octets / 1e6).toFixed(1)} Mo). Les sauvegardes d'origine n'ont pas été touchées.`);
   } else if (commande === 'dechiffrer-copie') {
     const chemin = option('--cle-privee');
     const source = option('--source');
@@ -143,9 +155,17 @@ try {
       octets += r.octetsClairs;
     }
     // Exports Keycloak présents dans le jeu : déchiffrés à côté de la base.
-    const exportsKeycloak = readdirSync(source).filter((f) => /^keycloak-.*\.json\.chiffre$/.test(f));
+    const exportsKeycloak = readdirSync(source).filter((f) => /^keycloak-.*\.json\.chiffre$|\.keycloak\.json\.chiffre$|\.jeu\.json\.chiffre$/.test(f));
     for (const f of exportsKeycloak) await c.dechiffrerFichier(join(source, f), join(dest, f.replace(/\.chiffre$/, '')), clePriveePem);
-    console.log(`Jeu déchiffré : base (sha256 ${rDump.sha256Clair}), manifeste${exportsKeycloak.length ? `, ${exportsKeycloak.length} export(s) Keycloak` : ''} et ${empreintes.length} objet(s) (${(octets / 1e6).toFixed(1)} Mo), chacun conforme à son empreinte.`);
+    // Si le jeu porte un descripteur, le jeu déchiffré est vérifié contre lui : fichiers présents, tailles et empreintes.
+    const descripteurClair = join(dest, nom.replace(/\.dump$/, '.jeu.json'));
+    if (existsSync(descripteurClair)) {
+      const { verifierJeu } = await import('../packages/plateforme/dist/jeu-sauvegarde.js');
+      const v = await verifierJeu(descripteurClair);
+      if (!v.conforme) throw new Error(`Jeu déchiffré non conforme à son descripteur : ${v.ecarts.join(' ; ')}`);
+      console.log('Jeu déchiffré conforme à son descripteur (base, manifeste des objets, export Keycloak).');
+    }
+    console.log(`Jeu déchiffré : base (sha256 ${rDump.sha256Clair}), manifeste${exportsKeycloak.length ? `, ${exportsKeycloak.length} autre(s) fichier(s) du jeu` : ''} et ${empreintes.length} objet(s) (${(octets / 1e6).toFixed(1)} Mo), chacun conforme à son empreinte.`);
   } else if (commande === 'verifier') {
     const chemin = option('--cle-privee');
     if (!chemin || !args.length) throw new Error('Indiquer --cle-privee <fichier.pem> et au moins un fichier .chiffre');

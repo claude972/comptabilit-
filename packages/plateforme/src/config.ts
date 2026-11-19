@@ -22,6 +22,12 @@ const schema = z.object({
   IA_OVH_JETON: z.string().optional().default(''),
   TAILLE_MAX_PIECE: z.coerce.number().int().default(50 * 1024 * 1024),
   TAILLE_MAX_FEC: z.coerce.number().int().default(500 * 1024 * 1024),
+  /**
+   * Nombre maximal de lignes d'écriture chargées en mémoire par UN traitement du worker (contrôles : exercice + exercice
+   * précédent ; rapprochement : exercice). Au-delà, le traitement n'est PAS réalisé et le dit. Dimensionné sur les
+   * mesures du 2026-11-19 (D-061) : environ 1,45 Ko de tas par ligne, deux traitements simultanés, tas plafonné à 2 048 Mo.
+   */
+  LIGNES_MAX_PAR_TRAITEMENT: z.coerce.number().int().min(1000).default(500_000),
   TAILLE_MORCEAU: z.coerce.number().int().default(4 * 1024 * 1024),
   API_PORT: z.coerce.number().int().default(4000),
   /** Adresse d'écoute de l'API : locale par défaut ; 0.0.0.0 dans un conteneur, derrière un réseau privé. */

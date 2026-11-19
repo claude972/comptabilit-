@@ -1,5 +1,6 @@
 #!/bin/sh
-# Démarre ou arrête l'API et le worker en local (journaux dans var/). Usage : scripts/applis.sh demarrer|arreter|etat|web|serveur
+# Démarre ou arrête l'API et le worker en local (journaux dans var/).
+# Le tas du worker est plafonné (WORKER_TAS_MAX_MO, 2 048 Mo par défaut) : voir docs/decisions.md, D-061. Usage : scripts/applis.sh demarrer|arreter|etat|web|serveur
 set -eu
 cd "$(dirname "$0")/.."
 . "$HOME/.comtaple-outils/env.sh"
@@ -17,7 +18,7 @@ case "${1:-etat}" in
     arreter
     (cd apps/api && exec node dist/main.js) > var/api.log 2>&1 &
     echo $! > var/api.pid
-    (cd apps/worker && exec node dist/main.js) > var/worker.log 2>&1 &
+    (cd apps/worker && NODE_OPTIONS="--max-old-space-size=${WORKER_TAS_MAX_MO:-2048}" exec node dist/main.js) > var/worker.log 2>&1 &
     echo $! > var/worker.pid
     i=0
     until curl -sf -m 2 http://127.0.0.1:4000/v1/sante >/dev/null; do
@@ -37,7 +38,7 @@ case "${1:-etat}" in
     for nom in api worker; do [ -f "var/$nom.pid" ] && kill "$(cat "var/$nom.pid")" 2>/dev/null || true; done
     (cd apps/api && exec node dist/main.js) > var/api.log 2>&1 &
     echo $! > var/api.pid
-    (cd apps/worker && exec node dist/main.js) > var/worker.log 2>&1 &
+    (cd apps/worker && NODE_OPTIONS="--max-old-space-size=${WORKER_TAS_MAX_MO:-2048}" exec node dist/main.js) > var/worker.log 2>&1 &
     echo $! > var/worker.pid
     i=0
     until curl -sf -m 2 http://127.0.0.1:4000/v1/sante >/dev/null; do

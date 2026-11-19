@@ -7,3 +7,4 @@ export * from './mail.js';
 export * from './regles.js';
 export * from './metriques.js';
 export * from './chiffrement-fichiers.js';
+export * from './jeu-sauvegarde.js';

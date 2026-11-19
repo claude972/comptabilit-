@@ -22,7 +22,10 @@ SAUVEGARDE="${1:-$(ls -t var/sauvegardes/*.dump | head -1)}"
 NOM="$(basename "$SAUVEGARDE")"
 [ -f "${SAUVEGARDE%.dump}.objets.json" ] || { echo "REFUS : pas de manifeste d'objets pour $SAUVEGARDE"; exit 5; }
 # Dernier export Keycloak déjà présent dans les sauvegardes (aucun nouvel export n'est produit par cet essai).
-KC="$(ls -t var/sauvegardes/keycloak-*.json 2>/dev/null | head -1 || true)"
+# Jeu complet : l'export Keycloak est celui du jeu (capturé avec la base). Sinon, dernier export isolé des sauvegardes.
+KC="${SAUVEGARDE%.dump}.keycloak.json"
+DU_JEU=1
+[ -f "$KC" ] || { DU_JEU=0; KC="$(ls -t var/sauvegardes/keycloak-*.json 2>/dev/null | head -1 || true)"; }
 [ -n "$KC" ] || { echo "REFUS : aucun export Keycloak dans var/sauvegardes (scripts/essai-restauration-keycloak.sh en produit un)"; exit 5; }
 NOM_KC="$(basename "$KC")"
 AVANT="$(find var/sauvegardes -type f | wc -l | tr -d ' ') fichier(s), $(find var/sauvegardes -type f -name '*.chiffre' | wc -l | tr -d ' ') chiffré(s)"
@@ -41,7 +44,11 @@ PUB="$CLES/a/comtaple-sauvegardes.cle-publique.pem"; PRIV="$CLES/a/comtaple-sauv
 
 echo "--- 2) jeu chiffré complet, dans un dossier temporaire ---"
 DEBUT=$(date +%s)
-node scripts/chiffrer-sauvegardes.mjs copie-chiffree --cle-publique "$PUB" --destination "$T/chiffre" --keycloak "$KC" "$SAUVEGARDE"
+if [ "$DU_JEU" = "1" ]; then
+  node scripts/chiffrer-sauvegardes.mjs copie-chiffree --cle-publique "$PUB" --destination "$T/chiffre" "$SAUVEGARDE"
+else
+  node scripts/chiffrer-sauvegardes.mjs copie-chiffree --cle-publique "$PUB" --destination "$T/chiffre" --keycloak "$KC" "$SAUVEGARDE"
+fi
 echo "Chiffrement : $(( $(date +%s) - DEBUT )) s ; jeu chiffré : $(du -sh "$T/chiffre" | cut -f1 | tr -d ' ') dans $(find "$T/chiffre" -type f | wc -l | tr -d ' ') fichier(s)"
 
 echo "--- 3) contrôles sur le jeu chiffré ---"

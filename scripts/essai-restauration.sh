@@ -14,7 +14,9 @@
 #  4) RLS activé et forcé sur toutes les tables portant cabinet_id ;
 #  5) tous les objets référencés par la base restaurée sont présents dans le stockage restauré, conformes à l'empreinte
 #     enregistrée en base ;
-#  6) aucun service de l'application n'a redémarré pendant l'essai.
+#  6) aucun service de l'application n'a redémarré pendant l'essai ;
+#  7) si la sauvegarde est un JEU : son descripteur est conforme, et les comptes de la base restaurée sont confrontés à
+#     l'export Keycloak du même jeu.
 #
 # Codes de sortie : 0 réussi ; 3 données restaurées fidèlement mais journal d'audit non intègre ; 4 un service de
 # l'application a redémarré pendant l'essai ; 5 essai refusé avant de commencer (pré-contrôle) ; autre : échec.
@@ -93,6 +95,16 @@ fi
 SANS_RLS=$($PSQL -c "select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r' and exists (select 1 from pg_attribute a where a.attrelid = c.oid and a.attname = 'cabinet_id' and not a.attisdropped) and not (c.relrowsecurity and c.relforcerowsecurity)")
 [ "$SANS_RLS" = "0" ] && echo "RLS : activé et forcé sur toutes les tables concernées" || { echo "ÉCHEC : $SANS_RLS table(s) sans RLS forcé après restauration"; exit 1; }
 echo "Politiques RLS restaurées : $($PSQL -c "select count(*) from pg_policies where schemaname = 'public'")"
+
+# ── Jeu de sauvegarde : descripteur vérifié, et comptes de la base restaurée confrontés à l'export Keycloak du jeu ──
+JEU="${SAUVEGARDE%.dump}.jeu.json"
+if [ -f "$JEU" ]; then
+  node -e 'import(process.argv[1]).then(async (m) => { const v = await m.verifierJeu(process.argv[2]); console.log(v.conforme ? "Jeu de sauvegarde : descripteur conforme (base, objets, export Keycloak)" : "ÉCHEC : jeu non conforme — " + v.ecarts.join(" ; ")); process.exit(v.conforme ? 0 : 1); })' "$PWD/packages/plateforme/dist/jeu-sauvegarde.js" "$JEU"
+  $PSQL -c "select sujet_oidc from utilisateurs order by 1" > var/sauvegardes/.references
+  node -e 'const fs = require("fs"); const j = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); const k = JSON.parse(fs.readFileSync(process.argv[1].replace(/jeu\.json$/, "keycloak.json"), "utf8")); const ids = new Set((k.users || []).map((u) => u.id)); const base = fs.readFileSync(process.argv[2], "utf8").split("\n").filter(Boolean); const dans = base.filter((s) => ids.has(s)).length; console.log(`Comptes de la base RESTAURÉE présents dans l\u0027export Keycloak du jeu : ${dans} sur ${base.length} (à la capture : ${j.coherence.comptesBaseDansKeycloak} sur ${j.coherence.comptesBase})`); if (dans !== j.coherence.comptesBaseDansKeycloak || base.length !== j.coherence.comptesBase) { console.log("ÉCHEC : la base restaurée ne correspond pas à l\u0027état décrit par le jeu"); process.exit(1); }' "$JEU" var/sauvegardes/.references
+else
+  echo "Sauvegarde sans descripteur de jeu (ancien format) : cohérence base / Keycloak non vérifiable"
+fi
 
 # ── Stockage objet : instance d'essai séparée, ressources plafonnées ──
 echo "--- stockage objet : restauration dans une instance isolée ---"

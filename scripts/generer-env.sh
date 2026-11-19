@@ -29,6 +29,8 @@ OIDC_CLIENT_SECRET=$KCS
 OIDC_AUDIENCE=comtaple-api
 SESSION_SECRET=$SES
 JETONS_CLE_CHIFFREMENT=$(alea 43)
+# Rotation : anciens secrets, séparés par des virgules, acceptés pour déchiffrer seulement (vide en temps normal).
+JETONS_CLES_ANCIENNES=
 API_URL=http://127.0.0.1:4000
 WEB_URL=http://localhost:3100
 CLAMAV_HOST=127.0.0.1

@@ -46,14 +46,26 @@ export interface ClesMail {
   cleDemandes: Buffer;
 }
 
-/** Dérive les clés de la collecte par mail (HKDF-SHA256) ; `null` si le secret est absent ou trop court. */
-export function clesMail(cfg: Pick<Config, 'JETONS_CLE_CHIFFREMENT'>): ClesMail | null {
+/**
+ * Dérive les clés de la collecte par mail (HKDF-SHA256) ; `null` si le secret est absent ou trop court.
+ * Rotation du secret : le nouveau secret chiffre ; les anciens (`JETONS_CLES_ANCIENNES`) ne servent qu'à déchiffrer
+ * les jetons pas encore rechiffrés, reconnus par l'identifiant de clé porté par chaque enveloppe.
+ */
+export function clesMail(cfg: Pick<Config, 'JETONS_CLE_CHIFFREMENT'> & Partial<Pick<Config, 'JETONS_CLES_ANCIENNES'>>): ClesMail | null {
   if (cfg.JETONS_CLE_CHIFFREMENT.length < 32) return null;
-  const deriver = (usage: string): Buffer =>
-    Buffer.from(hkdfSync('sha256', Buffer.from(cfg.JETONS_CLE_CHIFFREMENT, 'utf8'), Buffer.from('comtaple-mail', 'utf8'), usage, 32));
-  const cleJetons = deriver('jetons-oauth-v1');
+  const deriverDe = (secret: string, usage: string): Buffer => Buffer.from(hkdfSync('sha256', Buffer.from(secret, 'utf8'), Buffer.from('comtaple-mail', 'utf8'), usage, 32));
+  const deriver = (usage: string): Buffer => deriverDe(cfg.JETONS_CLE_CHIFFREMENT, usage);
+  const cleDe = (secret: string) => {
+    const cle = deriverDe(secret, 'jetons-oauth-v1');
+    return { id: `k-${createHash('sha256').update(cle).digest('hex').slice(0, 12)}`, cle };
+  };
+  const anciennes = (cfg.JETONS_CLES_ANCIENNES ?? '')
+    .split(',')
+    .map((x) => x.trim())
+    .filter((x) => x.length >= 32 && x !== cfg.JETONS_CLE_CHIFFREMENT)
+    .map(cleDe);
   return {
-    trousseau: { courante: { id: `k-${createHash('sha256').update(cleJetons).digest('hex').slice(0, 12)}`, cle: cleJetons } },
+    trousseau: { courante: cleDe(cfg.JETONS_CLE_CHIFFREMENT), ...(anciennes.length ? { anciennes } : {}) },
     secretEtat: deriver('state-oauth-v1'),
     cleDemandes: deriver('demandes-oauth-v1'),
   };

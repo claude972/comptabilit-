@@ -38,6 +38,8 @@ const schema = z.object({
   // ── Collecte par mail (@comtaple/mail) ──
   /** Secret dont sont dérivées la clé de chiffrement des jetons OAuth et la clé de liaison du `state`. */
   JETONS_CLE_CHIFFREMENT: z.string().optional().default(''),
+  /** Rotation : anciens secrets (séparés par des virgules), acceptés pour DÉCHIFFRER seulement ; à retirer une fois les jetons rechiffrés. */
+  JETONS_CLES_ANCIENNES: z.string().optional().default(''),
   /** Identifiants des clients OAuth : VIDES = connecteur « non connecté », aucune connexion possible. */
   GOOGLE_CLIENT_ID: z.string().optional().default(''),
   GOOGLE_CLIENT_SECRET: z.string().optional().default(''),

@@ -197,7 +197,8 @@ export async function genererRestitution(c: Contexte, t: TacheRestitution): Prom
       reglesCabinet: decomptes.reglesCabinet ?? 0,
       evenementsAudit: decomptes.evenementsAudit ?? 0,
     };
-    const { sha256, taille } = await archive.terminer({ format: 'comtaple.restitution/1', ...resume });
+    const { sha256, taille, memoire } = await archive.terminer({ format: 'comtaple.restitution/1', ...resume });
+    Object.assign(resume, { memoireGeneration: memoire });
 
     await c.bd.avecContexte(ctx, async (tx) => {
       await tx.update(s.restitutions).set({ statut: 'termine', cleArchive: cle, sha256, taille, resume, termineLe: sql`now()` }).where(eq(s.restitutions.id, debut.id));

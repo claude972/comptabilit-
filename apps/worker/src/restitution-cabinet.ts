@@ -249,10 +249,10 @@ export async function genererRestitutionCabinet(c: Contexte, t: TacheRestitution
         partiel: perimetre.ecartes.length > 0,
       },
     };
-    const { sha256, taille: tailleArchive } = await archive.terminer({ format: 'comtaple.restitution-cabinet/1', ...resume, perimetre, colonnesExclues: [...new Set(colonnesExclues)].sort() });
+    const { sha256, taille: tailleArchive, memoire } = await archive.terminer({ format: 'comtaple.restitution-cabinet/1', ...resume, perimetre, colonnesExclues: [...new Set(colonnesExclues)].sort() });
 
     await c.bd.avecContexte(ctx, async (tx) => {
-      await tx.update(s.restitutionsCabinet).set({ statut: 'termine', cleArchive: cle, sha256, taille: tailleArchive, resume, termineLe: sql`now()` }).where(eq(s.restitutionsCabinet.id, debut.id));
+      await tx.update(s.restitutionsCabinet).set({ statut: 'termine', cleArchive: cle, sha256, taille: tailleArchive, resume: { ...resume, memoireGeneration: memoire }, termineLe: sql`now()` }).where(eq(s.restitutionsCabinet.id, debut.id));
       await journaliser(tx, {
         cabinetId: t.cabinetId,
         acteurType: 'systeme',

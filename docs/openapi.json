@@ -60,6 +60,75 @@
         ]
       }
     },
+    "/v1/notifications/preferences": {
+      "get": {
+        "description": "Par famille de notifications. Une famille désactivée n’est plus notifiée à l’appelant ; les notifications déjà reçues restent. Aucun réglage d’envoi extérieur n’existe : rien n’est jamais envoyé hors de l’application.",
+        "operationId": "NotificationsController_preferences",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mes préférences de notification dans l’application",
+        "tags": [
+          "Notifications"
+        ]
+      },
+      "put": {
+        "operationId": "NotificationsController_reglerPreference",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "famille": {
+                    "type": "string",
+                    "enum": [
+                      "regles",
+                      "pieces",
+                      "imports",
+                      "constats",
+                      "restitutions"
+                    ]
+                  },
+                  "active": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "famille",
+                  "active"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Activer ou désactiver une famille de notifications pour moi, dans ce cabinet",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
     "/v1/notifications/lues": {
       "post": {
         "operationId": "NotificationsController_toutLire",

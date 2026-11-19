@@ -28,6 +28,17 @@ export function ouvrirArchive(c: Contexte, cle: string) {
   const envoi = c.stockage.deposerFlux(cle, sortie, 'application/zip');
   envoi.catch(() => undefined); // l'erreur est relevée par l'attente explicite de `terminer`
   const manifeste: EntreeManifeste[] = [];
+  // Relevé de la mémoire du processus pendant la construction (toutes les 100 ms) : tas JavaScript et tampons binaires
+  // réellement détenus, à distinguer de la mémoire résidente vue par le système, qui inclut ce qui n'est pas encore rendu.
+  const memoire = { picTasMo: 0, picTamponsMo: 0, picResidenteMo: 0 };
+  const relever = () => {
+    const m = process.memoryUsage();
+    memoire.picTasMo = Math.max(memoire.picTasMo, Math.round(m.heapUsed / 1048576));
+    memoire.picTamponsMo = Math.max(memoire.picTamponsMo, Math.round(m.arrayBuffers / 1048576));
+    memoire.picResidenteMo = Math.max(memoire.picResidenteMo, Math.round(m.rss / 1048576));
+  };
+  const minuterie = setInterval(relever, 100);
+  minuterie.unref();
 
   /** Ajoute une entrée lue en flux. Les entrées se suivent une à une : la suivante n'est lue qu'une fois celle-ci écrite. */
   const ajouterFlux = async (chemin: string, source: Readable): Promise<EntreeManifeste> => {
@@ -58,13 +69,16 @@ export function ouvrirArchive(c: Contexte, cle: string) {
         for await (const f of fragments) if (f) yield Buffer.from(f, 'utf8');
       })())),
     /** Écrit le manifeste (dernière entrée, non listée dans elle-même), clôt l'archive et attend la fin de l'envoi. */
-    async terminer(enTete: Record<string, unknown>): Promise<{ sha256: string; taille: number }> {
+    async terminer(enTete: Record<string, unknown>): Promise<{ sha256: string; taille: number; memoire: typeof memoire }> {
       zip.addBuffer(Buffer.from(JSON.stringify({ ...enTete, fichiers: manifeste }, null, 2), 'utf8'), 'manifeste.json');
       zip.end();
       await envoi;
-      return { sha256: hache.digest('hex'), taille };
+      relever();
+      clearInterval(minuterie);
+      return { sha256: hache.digest('hex'), taille, memoire };
     },
     abandonner(erreur: unknown): void {
+      clearInterval(minuterie);
       sortie.destroy(erreur instanceof Error ? erreur : new Error('erreur'));
     },
   };

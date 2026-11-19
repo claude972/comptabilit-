@@ -104,9 +104,9 @@ export default async function PageRestitutionCabinet() {
                     <dd>
                       {nombre(x.resume?.dossiersInclus)} dossier(s) · {nombre(x.resume?.originaux)} original(aux) · {nombre(x.resume?.lignesEcriture)} ligne(s) d’écriture
                     </dd>
-                    <dt className="text-texte-doux">Originaux exclus ou non conformes</dt>
+                    <dt className="text-texte-doux">Originaux non restitués</dt>
                     <dd>
-                      {nombre(x.resume?.originauxExclus?.length)} exclu(s) (antivirus) · {nombre(x.resume?.originauxNonConformes?.length)} non conforme(s) à leur empreinte
+                      {nombre(x.resume?.originauxExclus?.length)} non restitué(s) (antivirus ou contenu altéré), dont {nombre(x.resume?.originauxNonConformes?.length)} dont le contenu ne correspond plus à l’empreinte enregistrée
                     </dd>
                     <dt className="text-texte-doux">Journal d’audit à la génération</dt>
                     <dd data-testid="journal-restitution">

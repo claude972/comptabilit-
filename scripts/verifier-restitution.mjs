@@ -6,8 +6,7 @@
  *  1) empreinte de l'archive elle-même, si elle est fournie (celle affichée par l'application) ;
  *  2) chaque fichier listé au manifeste est présent, à la bonne taille et à la bonne empreinte ;
  *  3) aucun fichier de l'archive n'est absent du manifeste ; aucun chemin ne sort de l'archive ;
- *  4) restitution de cabinet : un original nommé par son empreinte contient bien ce contenu, sauf s'il est signalé
- *     au manifeste comme non conforme.
+ *  4) restitution de cabinet : un original nommé par son empreinte contient bien ce contenu.
  * Les fichiers sont lus en flux. Code de sortie 0 si tout est conforme, 1 sinon.
  */
 import { createHash } from 'node:crypto';
@@ -84,7 +83,8 @@ try {
     if (/\.\.|^\/|\\|\u0000/.test(nom)) ecarts.push(`chemin dangereux : ${JSON.stringify(nom)}`);
   }
   if (manifeste.format === 'comtaple.restitution-cabinet/1') {
-    const signales = new Set((manifeste.originauxNonConformes ?? []).map((x) => x.sha256));
+    // Depuis l'harmonisation des deux restitutions, un original non conforme n'est plus restitué : aucune exception.
+    const signales = new Set();
     for (const [nom, e] of entrees) {
       const m = /^originaux\/([0-9a-f]{64})$/.exec(nom);
       if (m && m[1] !== e.sha256 && !signales.has(m[1])) ecarts.push(`original dont le contenu ne correspond pas à son nom, et non signalé : ${nom}`);
@@ -94,7 +94,7 @@ try {
   if (manifeste.format === 'comtaple.restitution-cabinet/1') {
     console.log(`Périmètre : ${manifeste.dossiersInclus} dossier(s) inclus, ${manifeste.dossiersEcartes} écarté(s) — ${manifeste.complet ? 'restitution COMPLÈTE du cabinet' : 'restitution INCOMPLÈTE (voir perimetre.ecartes)'}`);
     console.log(`Journal d'audit au moment de la génération (vérification stricte) : ${manifeste.journalAudit?.verificationStricte}${manifeste.journalAudit?.partiel ? ' ; journal restitué partiellement' : ''}`);
-    if ((manifeste.originauxNonConformes ?? []).length) console.log(`ATTENTION : ${manifeste.originauxNonConformes.length} original(aux) signalé(s) non conforme(s) à leur empreinte enregistrée.`);
+    if ((manifeste.originauxNonConformes ?? []).length) console.log(`ATTENTION : ${manifeste.originauxNonConformes.length} original(aux) NON RESTITUÉ(S) car leur contenu ne correspondait plus à l'empreinte enregistrée.`);
   }
   console.log(`Fichiers au manifeste : ${attendus.size} ; entrées de l'archive : ${entrees.size}`);
 } catch (e) {

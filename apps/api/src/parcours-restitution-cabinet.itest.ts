@@ -15,6 +15,7 @@ import { genererFecSynthetique, genererTexteFactureSynthetique } from '@comtaple
 import { urlBd } from '@comtaple/db';
 import { DEMO } from '@comtaple/db/amorcer';
 import { ouvrirEssai } from '@comtaple/db/provisionnement';
+import { Stockage, lireConfig } from '@comtaple/plateforme';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import yauzl from 'yauzl';
@@ -246,4 +247,49 @@ describe('restitution d’un cabinet entier', () => {
     // La première archive, incomplète, reste disponible telle quelle : une restitution n'en remplace pas une autre.
     expect((await api('alice', 'GET', `/v1/cabinet/restitutions/${premiere.r.id}/archive`)).brut.equals(premiere.archive)).toBe(true);
   });
+
+  it('original dont le contenu ne correspond plus à son empreinte : non restitué et signalé, de la même façon par les deux restitutions', async () => {
+    // Une pièce de plus, puis son objet est remplacé dans le stockage (altération simulée d'un fichier d'essai).
+    const pieceC = pdfTexte(['Pièce destinée à être altérée', `Référence ${SEL}`], `C-${SEL}`);
+    const depot = await deposer('chloe', dossierA, pieceC, {}, 'facture-c.pdf');
+    await attendre(() => api('chloe', 'GET', `/v1/documents/${depot.fin.json.documentId}`), (r) => r.statut === 200 && !['recu', 'en_analyse'].includes(r.json.document.statut));
+    const cle = (await editeur.query('select cle_stockage from fichiers where cabinet_id = $1 and sha256 = $2', [cabinet, sha(pieceC)])).rows[0].cle_stockage as string;
+    const stockage = new Stockage(lireConfig());
+    const altere = Buffer.from(`contenu altéré ${SEL} — ceci n'est pas l'original reçu`);
+    await stockage.deposer(cle, altere, 'application/pdf');
+    try {
+      const attendu = { sha256: sha(pieceC), motif: 'empreinte différente de celle enregistrée : fichier non restitué, à examiner' };
+      const sansAltere = (fichiers: Map<string, Buffer>) => {
+        expect([...fichiers.keys()].some((n) => n.includes(sha(pieceC)))).toBe(false);
+        expect([...fichiers.values()].some((c) => c.includes(altere))).toBe(false);
+      };
+
+      // Restitution du CABINET.
+      const cab = await restituer();
+      expect(cab.manifeste.originauxExclus).toContainEqual(attendu);
+      expect(cab.manifeste.originauxNonConformes).toEqual([{ sha256: sha(pieceC) }]);
+      sansAltere(cab.fichiers);
+      expect(cab.fichiers.get(`originaux/${sha(pieceA)}`)?.equals(pieceA)).toBe(true); // les autres originaux sont restitués
+      expect(cab.r.resume.originauxNonConformes).toHaveLength(1);
+      writeFileSync(join(dossierTravail, 'altere-cabinet.zip'), cab.archive);
+      expect(execFileSync('node', [VERIFICATEUR, join(dossierTravail, 'altere-cabinet.zip'), cab.r.sha256], { encoding: 'utf8' })).toMatch(/1 original\(aux\) NON RESTITUÉ\(S\)[^]*CONFORME : chaque fichier/);
+
+      // Restitution du DOSSIER : même décision, même motif.
+      const demande = await api('alice', 'POST', `/v1/dossiers/${dossierA}/restitutions`);
+      expect(demande.statut).toBe(202);
+      const liste = await attendre(() => api('alice', 'GET', `/v1/dossiers/${dossierA}/restitutions`), (x) => ['termine', 'echec'].includes(x.json?.find((y: any) => y.id === demande.json.id)?.statut), 120_000);
+      const r = liste.json.find((y: any) => y.id === demande.json.id);
+      expect(r.statut, r.erreur).toBe('termine');
+      const fichiers = await ouvrirZip((await api('alice', 'GET', `/v1/restitutions/${r.id}/archive`)).brut);
+      const manifeste = JSON.parse(fichiers.get('manifeste.json')!.toString('utf8'));
+      expect(manifeste.originauxExclus).toContainEqual(attendu);
+      sansAltere(fichiers);
+      expect([...fichiers.keys()].some((n) => n.startsWith(`originaux/${sha(pieceA)}-`))).toBe(true);
+      // Les deux manifestes disent la même chose de ce fichier.
+      expect(manifeste.originauxExclus.filter((x: any) => x.sha256 === sha(pieceC))).toEqual(cab.manifeste.originauxExclus.filter((x: any) => x.sha256 === sha(pieceC)));
+    } finally {
+      // Le fichier d'essai retrouve son contenu d'origine : le stockage reste cohérent avec la base.
+      await stockage.deposer(cle, pieceC, 'application/pdf');
+    }
+  }, 300_000);
 });

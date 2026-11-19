@@ -1,7 +1,6 @@
-import { createHash } from 'node:crypto';
 import { and, asc, eq, gt, inArray, isNull, journaliser, notifier, or, schema as s, sql } from '@comtaple/db';
 import { cles, type TacheRestitution } from '@comtaple/plateforme';
-import { COLONNES_ECRITURES, csv, objetJson, ouvrirArchive, tableauJson } from './archive.js';
+import { COLONNES_ECRITURES, MOTIF_ORIGINAL_NON_CONFORME, ajouterOriginalVerifie, csv, objetJson, ouvrirArchive, tableauJson } from './archive.js';
 import type { Contexte } from './contexte.js';
 
 const LISEZMOI = `RESTITUTION D'UN DOSSIER — Comtaple
@@ -173,13 +172,11 @@ export async function genererRestitution(c: Contexte, t: TacheRestitution): Prom
           exclus.push({ sha256: f.sha256, motif: 'écarté par l’antivirus' });
           continue;
         }
-        const h = createHash('sha256');
-        for await (const m of await c.stockage.lireFlux(f.cleStockage)) h.update(m as Uint8Array);
-        if (h.digest('hex') !== f.sha256) {
-          exclus.push({ sha256: f.sha256, motif: 'empreinte différente de celle enregistrée : fichier non restitué, à examiner' });
+        const r = await ajouterOriginalVerifie(c, archive, `originaux/${f.sha256}-${nomSur(f.nomImport ?? f.nomPiece ?? 'fichier')}`, f.cleStockage, f.sha256);
+        if (!r.restitue) {
+          exclus.push({ sha256: f.sha256, motif: MOTIF_ORIGINAL_NON_CONFORME });
           continue;
         }
-        await archive.ajouterFlux(`originaux/${f.sha256}-${nomSur(f.nomImport ?? f.nomPiece ?? 'fichier')}`, await c.stockage.lireFlux(f.cleStockage));
         nbOriginaux++;
       }
       if (tranche.length < 200) break;

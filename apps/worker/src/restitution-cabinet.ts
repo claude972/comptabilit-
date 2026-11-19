@@ -1,9 +1,7 @@
-import { createHash } from 'node:crypto';
-import { PassThrough, Readable, Transform } from 'node:stream';
-import { finished } from 'node:stream/promises';
+import { Readable } from 'node:stream';
 import { and, asc, eq, getTableColumns, getTableName, gt, inArray, journaliser, notifier, schema as s, sql } from '@comtaple/db';
 import { cles, type TacheRestitutionCabinet } from '@comtaple/plateforme';
-import yazl from 'yazl';
+import { COLONNES_ECRITURES as COLONNES_CSV, MOTIF_ORIGINAL_NON_CONFORME, ajouterOriginalVerifie, csv, ouvrirArchive } from './archive.js';
 import type { Contexte } from './contexte.js';
 
 const LISEZMOI = `RESTITUTION D'UN CABINET — Comtaple
@@ -35,7 +33,7 @@ mention d'une validation, avec son auteur et sa date.
 
 Non inclus : les sauvegardes, les journaux techniques, les jetons et secrets de connexion (colonnes listées
 dans « colonnesExclues »), les lignes brutes des relevés (présentes dans les originaux), les originaux écartés
-par l'antivirus (« originauxExclus »), et tout ce qui concerne un dossier hors périmètre. Le journal d'audit ne
+par l'antivirus ou dont le contenu ne correspond plus à l'empreinte enregistrée (« originauxExclus »), et tout ce qui concerne un dossier hors périmètre. Le journal d'audit ne
 contient que les lignes du cabinet et des dossiers du périmètre : s'il manque des dossiers, la chaîne
 d'empreintes du journal ne peut pas être revérifiée à partir de cette seule archive.
 `;
@@ -45,15 +43,8 @@ const colonneExclue = (nom: string) => /jeton|chiffre|secret/i.test(nom) || nom 
 /** Tables traitées à part, ou sans objet dans une restitution. */
 /** `restitutions_cabinet` : registre des restitutions elles-mêmes ; le périmètre de celle-ci est déjà au manifeste. */
 const TABLES_A_PART = new Set(['lignes_ecriture', 'demandes_connexion_mail', 'restitutions_cabinet']);
-const COLONNES_CSV = ['numeroLigne', 'journalCode', 'journalLib', 'ecritureNum', 'ecritureDate', 'compteNum', 'compteLib', 'compAuxNum', 'compAuxLib', 'pieceRef', 'pieceDate', 'ecritureLib', 'debit', 'credit', 'ecritureLet', 'dateLet', 'validDate', 'montantDevise', 'idevise'] as const;
 const TRANCHE = 2000;
 
-const csv = (v: unknown) => {
-  const t = v === null || v === undefined ? '' : String(v);
-  // Neutralise les formules de tableur et protège le séparateur.
-  const neutre = /^[=+\-@\t\r]/.test(t) && !/^-?\d+(\.\d+)?$/.test(t) ? `'${t}` : t;
-  return /[";\n\r]/.test(neutre) ? `"${neutre.replace(/"/g, '""')}"` : neutre;
-};
 
 type Colonnes = Record<string, { name: string }>;
 /** Tables du schéma portant `cabinet_id`, avec leurs colonnes. */
@@ -94,40 +85,11 @@ export async function genererRestitutionCabinet(c: Contexte, t: TacheRestitution
   const tableauInclus = `{${inclus.join(',')}}`;
   const dansPerimetre = (colonne: unknown) => sql`(${colonne} is null or ${colonne} = any(${tableauInclus}::uuid[]))`;
 
-  const zip = new yazl.ZipFile();
-  const hache = createHash('sha256');
-  let tailleArchive = 0;
-  const sortie = new PassThrough();
-  zip.outputStream.on('data', (m: Buffer) => {
-    hache.update(m);
-    tailleArchive += m.length;
-  });
-  zip.outputStream.pipe(sortie);
   const cle = cles.restitutionCabinet(t.cabinetId, debut.id);
-  const envoi = c.stockage.deposerFlux(cle, sortie, 'application/zip');
-  envoi.catch(() => undefined); // l'erreur est relevée plus bas, par l'attente explicite
+  const archive = ouvrirArchive(c, cle);
+  const { ajouterFlux, ajouterTexte } = archive;
 
   try {
-    const manifeste: Array<{ chemin: string; taille: number; sha256: string }> = [];
-    /** Ajoute une entrée lue en flux ; son empreinte et sa taille sont calculées au passage. Les entrées se suivent une à une. */
-    const ajouterFlux = async (chemin: string, source: Readable): Promise<{ taille: number; sha256: string }> => {
-      const h = createHash('sha256');
-      let taille = 0;
-      const compteur = new Transform({
-        transform(morceau: Buffer, _e, suite) {
-          h.update(morceau);
-          taille += morceau.length;
-          suite(null, morceau);
-        },
-      });
-      source.on('error', (e) => compteur.destroy(e));
-      zip.addReadStream(source.pipe(compteur), chemin);
-      await finished(compteur, { writable: false });
-      const entree = { chemin, taille, sha256: h.digest('hex') };
-      manifeste.push(entree);
-      return entree;
-    };
-    const ajouterTexte = (chemin: string, texte: string) => ajouterFlux(chemin, Readable.from([Buffer.from(texte, 'utf8')]));
 
     await ajouterTexte('LISEZMOI.txt', LISEZMOI);
 
@@ -222,7 +184,7 @@ export async function genererRestitutionCabinet(c: Contexte, t: TacheRestitution
 
     // ── Originaux : recopiés en flux, une seule fois par empreinte, et comparés à l'empreinte enregistrée ──
     const exclus: Array<{ sha256: string; motif: string }> = [];
-    const nonConformes: Array<{ sha256: string; empreinteLue: string }> = [];
+    const nonConformes: Array<{ sha256: string }> = [];
     const deja = new Set<string>();
     let originaux = 0;
     let octetsOriginaux = 0;
@@ -255,11 +217,16 @@ export async function genererRestitutionCabinet(c: Contexte, t: TacheRestitution
           exclus.push({ sha256: f.sha256, motif: 'écarté par l’antivirus' });
           continue;
         }
-        const entree = await ajouterFlux(`originaux/${f.sha256}`, await c.stockage.lireFlux(f.cleStockage));
-        // Un original dont le contenu relu ne correspond plus à son empreinte reste dans l'archive, signalé comme tel.
-        if (entree.sha256 !== f.sha256) nonConformes.push({ sha256: f.sha256, empreinteLue: entree.sha256 });
+        // Même règle que la restitution d'un dossier : un original dont le contenu ne correspond plus à son empreinte
+        // n'est PAS restitué ; il est listé parmi les exclus, et à part pour être retrouvé facilement.
+        const r = await ajouterOriginalVerifie(c, archive, `originaux/${f.sha256}`, f.cleStockage, f.sha256);
+        if (!r.restitue) {
+          exclus.push({ sha256: f.sha256, motif: MOTIF_ORIGINAL_NON_CONFORME });
+          nonConformes.push({ sha256: f.sha256 });
+          continue;
+        }
         originaux++;
-        octetsOriginaux += entree.taille;
+        octetsOriginaux += r.taille;
       }
       if (tranche.length < 500) break;
     }
@@ -282,13 +249,10 @@ export async function genererRestitutionCabinet(c: Contexte, t: TacheRestitution
         partiel: perimetre.ecartes.length > 0,
       },
     };
-    const corpsManifeste = JSON.stringify({ format: 'comtaple.restitution-cabinet/1', ...resume, perimetre, colonnesExclues: [...new Set(colonnesExclues)].sort(), fichiers: manifeste }, null, 2);
-    zip.addBuffer(Buffer.from(corpsManifeste, 'utf8'), 'manifeste.json');
-    zip.end();
-    await envoi;
+    const { sha256, taille: tailleArchive } = await archive.terminer({ format: 'comtaple.restitution-cabinet/1', ...resume, perimetre, colonnesExclues: [...new Set(colonnesExclues)].sort() });
 
     await c.bd.avecContexte(ctx, async (tx) => {
-      await tx.update(s.restitutionsCabinet).set({ statut: 'termine', cleArchive: cle, sha256: hache.digest('hex'), taille: tailleArchive, resume, termineLe: sql`now()` }).where(eq(s.restitutionsCabinet.id, debut.id));
+      await tx.update(s.restitutionsCabinet).set({ statut: 'termine', cleArchive: cle, sha256, taille: tailleArchive, resume, termineLe: sql`now()` }).where(eq(s.restitutionsCabinet.id, debut.id));
       await journaliser(tx, {
         cabinetId: t.cabinetId,
         acteurType: 'systeme',
@@ -300,7 +264,7 @@ export async function genererRestitutionCabinet(c: Contexte, t: TacheRestitution
       await notifier(tx, [debut.demandePar], { type: 'restitution_cabinet.prete', cibleType: 'restitution_cabinet', cibleId: debut.id });
     });
   } catch (err) {
-    sortie.destroy(err instanceof Error ? err : new Error('erreur'));
+    archive.abandonner(err);
     await c.bd.avecContexte(ctx, async (tx) => {
       await tx.update(s.restitutionsCabinet).set({ statut: 'echec', erreur: err instanceof Error ? err.message.slice(0, 500) : 'erreur' }).where(eq(s.restitutionsCabinet.id, debut.id));
       await notifier(tx, [debut.demandePar], { type: 'restitution_cabinet.echec', cibleType: 'restitution_cabinet', cibleId: debut.id });

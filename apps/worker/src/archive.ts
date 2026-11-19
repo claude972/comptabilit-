@@ -103,3 +103,20 @@ export const csv = (v: unknown): string => {
 };
 
 export const COLONNES_ECRITURES = ['numeroLigne', 'journalCode', 'journalLib', 'ecritureNum', 'ecritureDate', 'compteNum', 'compteLib', 'compAuxNum', 'compAuxLib', 'pieceRef', 'pieceDate', 'ecritureLib', 'debit', 'credit', 'ecritureLet', 'dateLet', 'validDate', 'montantDevise', 'idevise'] as const;
+
+export const MOTIF_ORIGINAL_NON_CONFORME = 'empreinte différente de celle enregistrée : fichier non restitué, à examiner';
+
+/**
+ * Règle COMMUNE aux deux restitutions pour un original : il est d'abord relu en flux pour vérifier son empreinte, puis
+ * recopié en flux dans l'archive. Si son contenu ne correspond plus à l'empreinte enregistrée, il N'EST PAS restitué
+ * (une archive de restitution ne doit pas faire passer un fichier altéré pour l'original reçu) et l'appelant le signale.
+ */
+export async function ajouterOriginalVerifie(c: Contexte, archive: ReturnType<typeof ouvrirArchive>, chemin: string, cleStockage: string, sha256Attendu: string): Promise<{ restitue: true; taille: number } | { restitue: false }> {
+  const h = createHash('sha256');
+  for await (const m of await c.stockage.lireFlux(cleStockage)) h.update(m as Uint8Array);
+  if (h.digest('hex') !== sha256Attendu) return { restitue: false };
+  const entree = await archive.ajouterFlux(chemin, await c.stockage.lireFlux(cleStockage));
+  // Le fichier a pu changer entre les deux lectures : l'entrée écrite doit elle aussi correspondre.
+  if (entree.sha256 !== sha256Attendu) throw new Error('Un original a changé pendant sa restitution : archive abandonnée');
+  return { restitue: true, taille: entree.taille };
+}

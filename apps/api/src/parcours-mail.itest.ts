@@ -2,7 +2,7 @@
  * Parcours de collecte par mail, de bout en bout, sur la pile RÉELLE locale (Keycloak, PostgreSQL, Redis, S3, ClamAV)
  * et contre le SIMULATEUR de @comtaple/mail (ni Gmail ni Microsoft Graph ne sont appelés).
  *
- * Le test démarre le simulateur, puis un SECOND couple API + worker (port 4100, préfixe de files dédié) dont les
+ * Le test démarre le simulateur, puis un SECOND couple API + worker (port 4300, préfixe de files dédié) dont les
  * connecteurs pointent sur le simulateur : les processus lancés par scripts/applis.sh ne sont pas perturbés.
  * Prérequis : services démarrés, migrations + amorçage appliqués, paquets construits (`pnpm run build`).
  */
@@ -19,7 +19,7 @@ import { connexionRedis, Files } from '@comtaple/plateforme';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 chargerEnvLocal();
-const PORT = 4100;
+const PORT = 4300; // distinct du simulateur d'API des tests navigateur (4100)
 const API = `http://127.0.0.1:${PORT}`;
 const API_NORMALE = process.env.API_URL ?? 'http://127.0.0.1:4000';
 const PREFIXE = 'essai-mail';

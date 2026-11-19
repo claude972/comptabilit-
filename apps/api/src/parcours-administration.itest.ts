@@ -70,6 +70,11 @@ describe('dossiers et habilitations', () => {
     expect(audit.json.lignes.find((l: any) => l.action === 'dossier.modifie').details).toMatchObject({ territoireAvant: 'a_confirmer', territoireApres: 'reunion' });
   });
 
+  it('remet les comptes de démonstration dans leur état initial', async () => {
+    expect((await api('alice', 'DELETE', `/v1/dossiers/${dossierId}/habilitations/${DEMO.client}`)).statut).toBe(204);
+    expect((await api('client', 'GET', '/v1/dossiers')).json.map((d: any) => d.id)).toEqual([DEMO.dupain]);
+  });
+
   it('liste les cabinets du compte, sans exiger le choix préalable d’un cabinet', async () => {
     const r = await api('alice', 'GET', '/v1/cabinets');
     expect(r.json).toEqual([{ id: DEMO.cabinetA, nom: expect.any(String), role: 'administrateur' }]);

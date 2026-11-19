@@ -104,9 +104,11 @@ services:
       timeout: 3s
       retries: 40
 
-  # Collecteur OpenTelemetry : point d'entrée OTLP des traces (et métriques OTLP) de l'application. AUCUN service
-  # n'émet de trace aujourd'hui (docs/exploitation.md) et aucun entrepôt de traces n'est choisi : les traces reçues
-  # sont comptées et un échantillon est journalisé, rien n'est conservé.
+  # Collecteur OpenTelemetry : point d'entrée OTLP des traces de l'application (API et worker les émettent quand
+  # OTEL_EXPORTER_OTLP_ENDPOINT désigne ce collecteur : docs/exploitation.md, § 9). Aucun entrepôt de traces n'est
+  # choisi : les traces reçues sont comptées et un échantillon est journalisé, rien n'est conservé.
+  # Essai local : COLLECTEUR_VERBOSITE=detailed et COLLECTEUR_JOURNAL_INITIAL=100000 journalisent chaque span en entier
+  # (identifiants de trace, attributs) ; à ne pas utiliser en production (volume des journaux).
   collecteur:
     image: otel/opentelemetry-collector:0.165.0
     <<: *durcissement
@@ -123,7 +125,7 @@ services:
           memory_limiter: { check_interval: 5s, limit_mib: 192 }
           batch: {}
         exporters:
-          debug: { verbosity: basic, sampling_initial: 2, sampling_thereafter: 500 }
+          debug: { verbosity: ${COLLECTEUR_VERBOSITE:-basic}, sampling_initial: ${COLLECTEUR_JOURNAL_INITIAL:-2}, sampling_thereafter: 500 }
         service:
           telemetry:
             metrics:

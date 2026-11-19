@@ -85,7 +85,7 @@ Voir `docs/exploitation.md` (§ 3, § 9, § 2 et § 10).
 
 ## Métriques
 
-L'API (port 9464) et le worker (port 9465) exposent `/metrics` au format Prometheus : requêtes par gabarit de route et code, durées, tâches par file et issue, métriques du processus. Aucune étiquette ne porte d'identifiant de cabinet, de dossier ou de personne. Ces ports ne doivent jamais être exposés publiquement. La collecte (Prometheus), les alertes et les tableaux de bord (Grafana) sont préparés dans `infra/supervision/` et ont été essayés en local ; ils ne sont pas déployés. Les traces OpenTelemetry ne sont pas instrumentées (`docs/exploitation.md`, § 9).
+L'API (port 9464) et le worker (port 9465) exposent `/metrics` au format Prometheus : requêtes par gabarit de route et code, durées, tâches par file et issue, métriques du processus. Aucune étiquette ne porte d'identifiant de cabinet, de dossier ou de personne. Ces ports ne doivent jamais être exposés publiquement. La collecte (Prometheus), les alertes et les tableaux de bord (Grafana) sont préparés dans `infra/supervision/` et ont été essayés en local ; ils ne sont pas déployés. L'API et le worker émettent des traces OpenTelemetry (OTLP/HTTP) quand `OTEL_EXPORTER_OTLP_ENDPOINT` est renseigné ; vide (défaut), rien n'est émis (`docs/exploitation.md`, § 9).
 
 ## Sauvegarde et restauration
 

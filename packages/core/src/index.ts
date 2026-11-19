@@ -14,10 +14,13 @@ export type { CodeAnomalieFec } from './fec/analyser.js';
 export type { AnomalieFec, LigneFec, OptionsAnalyseFec, RapportFec, ReferentielFec } from './fec/types.js';
 
 // 4. controles
-export { CATALOGUE_CONTROLES, executerControles, genererCatalogueMarkdown } from './controles/catalogue.js';
+export { CATALOGUE_CONTROLES, CONTROLES_EN_FLUX, executerControles, executerControlesFlux, genererCatalogueMarkdown } from './controles/catalogue.js';
+export { reduireAuxEcrituresDeBanque, sourceEnMemoire } from './controles/flux.js';
+export { DepassementBudget } from './controles/outils.js';
 export { type Correspondance, type EtatAssociation, type EtatCorrespondance, cleCompteBancaire, etatCorrespondanceBanque, masquerCompteBancaire, verifierCorrespondances } from './controles/correspondance-banque.js';
 export type {
-  Constat, ContexteControle, CycleControle, DefinitionControle, LigneEcriture, ResultatControle, SourceRegle, StatutControle,
+  BudgetFlux, Constat, ContexteControle, ContexteControleFlux, CycleControle, DefinitionControle, DemandePassage, LigneEcriture, OrdrePassage, ResultatControle, SourceLignes, SourceRegle,
+  StatutControle,
 } from './controles/types.js';
 export { DATE_VERIFICATION_SOURCES, SOURCES } from './sources.js';
 

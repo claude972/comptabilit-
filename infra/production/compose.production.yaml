@@ -69,8 +69,13 @@ x-environnement-serveur: &environnement-serveur
   MAIL_URI_REDIRECTION: ${MAIL_URI_REDIRECTION:-}
   MAIL_URL_PUBLIQUE_API: ${MAIL_URL_PUBLIQUE_API:-}
   MAIL_PERIODE_RATTRAPAGE_S: ${MAIL_PERIODE_RATTRAPAGE_S:-900}
-  # Traces OpenTelemetry : non instrumentées à ce jour (docs/exploitation.md) ; la variable est réservée.
+  # Traces OpenTelemetry de l'API et du worker (docs/exploitation.md, § 9). Point d'accès OTLP/HTTP du collecteur ;
+  # VIDE = aucune trace, aucun appel réseau. L'acheminement vers le collecteur (réseau privé) reste à mettre en place.
   OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+  TRACES_TAUX_ECHANTILLONNAGE: ${TRACES_TAUX_ECHANTILLONNAGE:-0.1}
+  TRACES_ENVIRONNEMENT: ${TRACES_ENVIRONNEMENT:-production}
+  # Version portée par les traces : l'empreinte de commit qui étiquette les images.
+  COMTAPLE_VERSION: ${VERSION}
 
 services:
   # ── Entrée unique : TLS (certificats obtenus automatiquement), en-têtes de sécurité, routage par nom d'hôte ──

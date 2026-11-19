@@ -1,7 +1,7 @@
 import { creerAccesBd, urlBd } from '@comtaple/db';
 import { chargerEnvLocal } from '@comtaple/db/env';
-import { connecteursMail, creerIa, Metriques, connexionRedis, FILES, Files, lireConfig, Stockage } from '@comtaple/plateforme';
-import { Worker } from 'bullmq';
+import { arreterTraces, connecteursMail, creerIa, demarrerTraces, Metriques, connexionRedis, FILES, Files, lireConfig, Stockage, tracerTravail } from '@comtaple/plateforme';
+import { Worker, type Job } from 'bullmq';
 import { analyserDocument } from './analyse-document.js';
 import { executerRapprochement, importerReleve } from './banque.js';
 import type { Contexte } from './contexte.js';
@@ -16,6 +16,13 @@ import { verifierSources } from './veille.js';
 
 chargerEnvLocal();
 const cfg = lireConfig();
+// Traces OpenTelemetry : sans OTEL_EXPORTER_OTLP_ENDPOINT, cet appel ne fait rien (voir packages/plateforme/src/traces.ts).
+if (demarrerTraces('worker', cfg)) console.log('Traces OpenTelemetry actives (export OTLP/HTTP).');
+/** Span du traitement, enfant du contexte de trace transporté avec le travail ; trace neuve s'il n'y en a pas. */
+const suivi =
+  <T>(file: string, traiter: (job: Job) => Promise<T>) =>
+  (job: Job) =>
+    tracerTravail(file, job, () => traiter(job));
 // Les traitements différés utilisent le rôle comtaple_worker : borné au cabinet de l'enregistrement traité, sans BYPASSRLS.
 const c: Contexte = { cfg, bd: creerAccesBd(urlBd('worker'), { max: 8 }), stockage: new Stockage(cfg), taches: new Files(connexionRedis(cfg.REDIS_URL), cfg.FILES_PREFIXE) };
 // Passerelle IA : sans jeton configuré, « non_connecte » ; les passages des pièces sont alors indexés sans vecteur.
@@ -26,10 +33,10 @@ await c.stockage.assurerBucket();
 
 // Concurrence volontairement limitée : les traitements lourds ne doivent pas affamer le serveur interactif.
 const workers = [
-  new Worker(FILES.documents, (job) => analyserDocument(c, job.data), { connection: connexionRedis(cfg.REDIS_URL), concurrency: 2, prefix }),
+  new Worker(FILES.documents, suivi(FILES.documents, (job) => analyserDocument(c, job.data)), { connection: connexionRedis(cfg.REDIS_URL), concurrency: 2, prefix }),
   new Worker(
     FILES.comptabilite,
-    (job) =>
+    suivi(FILES.comptabilite, (job): Promise<unknown> =>
       job.name === 'importer-fec'
         ? importerFec(c, job.data)
         : job.name === 'importer-releve'
@@ -38,12 +45,12 @@ const workers = [
             ? executerRapprochement(c, job.data)
             : job.name === 'veille'
               ? verifierSources(c.bd).then((b) => console.log(`veille : ${b.verifiees} source(s), ${b.changements} changement(s), ${b.indisponibles} indisponible(s)`))
-              : executerControlesExecution(c, job.data),
+              : executerControlesExecution(c, job.data)),
     { connection: connexionRedis(cfg.REDIS_URL), concurrency: 2, prefix },
   ),
-  new Worker(FILES.exports, (job) => (job.name === 'restitution-cabinet' ? genererRestitutionCabinet(c, job.data) : job.name === 'restitution' ? genererRestitution(c, job.data) : genererDossierRevision(c, job.data)), { connection: connexionRedis(cfg.REDIS_URL), concurrency: 1, prefix }),
+  new Worker(FILES.exports, suivi(FILES.exports, (job): Promise<unknown> => (job.name === 'restitution-cabinet' ? genererRestitutionCabinet(c, job.data) : job.name === 'restitution' ? genererRestitution(c, job.data) : genererDossierRevision(c, job.data))), { connection: connexionRedis(cfg.REDIS_URL), concurrency: 1, prefix }),
   // Collecte par mail : synchronisations sérialisées par connexion (verrou), tâches planifiées de rattrapage et d'entretien.
-  new Worker(FILES.mail, (job) => (job.name.startsWith('planifier-') ? planifierMail(c, job.name) : traiterTacheMail(c, mail, job.name, job.data)), {
+  new Worker(FILES.mail, suivi(FILES.mail, (job): Promise<unknown> => (job.name.startsWith('planifier-') ? planifierMail(c, job.name) : traiterTacheMail(c, mail, job.name, job.data))), {
     connection: connexionRedis(cfg.REDIS_URL),
     concurrency: 2,
     prefix,
@@ -114,6 +121,8 @@ async function arreter() {
   await Promise.all(workers.map((w) => w.close()));
   await c.taches.fermer();
   await c.bd.fermer();
+  // Envoi des spans en attente, dans un délai borné (sans effet si les traces ne sont pas actives).
+  await arreterTraces();
   process.exit(0);
 }
 process.on('SIGTERM', arreter);

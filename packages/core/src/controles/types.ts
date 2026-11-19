@@ -52,6 +52,57 @@ export interface ResultatControle {
   mesures: Record<string, string>;
 }
 
+/**
+ * Ordre d'un passage en flux sur les lignes d'un exercice.
+ *  - `fichier` : ordre du fichier d'origine (numéro de ligne croissant) ;
+ *  - `ecriture`, `tiers`, `compte` : les lignes d'un même groupe sont CONTIGUËS et, dans le groupe, dans l'ordre du
+ *    fichier ; l'ordre des groupes entre eux n'est PAS garanti (un contrôle ne doit pas en dépendre).
+ * Clés de groupe : `ecriture` = journal + U+0001 + numéro d'écriture ; `tiers` = compte + U+0001 + (compte auxiliaire,
+ * à défaut compte) ; `compte` = numéro de compte.
+ */
+export type OrdrePassage = 'fichier' | 'ecriture' | 'tiers' | 'compte';
+
+export interface DemandePassage {
+  ordre: OrdrePassage;
+  /**
+   * Restriction facultative : la source rend AU MOINS les lignes dont le compte commence par un de ces préfixes. Elle peut
+   * en rendre davantage : le contrôle applique toujours son propre filtre.
+   */
+  prefixesComptes?: readonly string[];
+  /** Restriction facultative, même règle : AU MOINS les lignes de ces journaux. */
+  journaux?: readonly string[];
+}
+
+/**
+ * Lignes d'un exercice lues par passages successifs, sans chargement intégral en mémoire. Le moteur reste pur : il ne
+ * connaît que cette interface ; l'appelant (worker) l'implémente sur sa base. Contrat : relisible autant de fois que
+ * nécessaire, contenu identique d'un passage à l'autre, `numeroLigne` strictement croissant dans l'ordre du fichier.
+ */
+export interface SourceLignes {
+  readonly nbLignes: number;
+  parcourir(demande: DemandePassage): AsyncIterable<LigneEcriture>;
+}
+
+/**
+ * Budget d'état d'un contrôle en flux. Un contrôle qui devrait garder davantage ne rend PAS de résultat partiel : il
+ * est « non réalisé » avec son motif.
+ *  - `lignes` : nombre maximal de lignes d'écriture gardées en mémoire au même moment ;
+ *  - `elements` : nombre maximal d'éléments compacts (un par écriture distincte, par compte…).
+ */
+export interface BudgetFlux {
+  lignes: number;
+  elements: number;
+}
+
+export interface ContexteControleFlux {
+  source: SourceLignes;
+  exercice: { debut: string; fin: string } | null;
+  exercicePrecedent?: { source: SourceLignes } | null;
+  releves?: readonly RapportReleve[] | null;
+  parametres: Record<string, unknown>;
+  budget: BudgetFlux;
+}
+
 export type CycleControle =
   | 'general'
   | 'tresorerie'
@@ -78,5 +129,13 @@ export interface DefinitionControle {
   exceptions: string;
   source: SourceRegle;
   resultatsAttendus: string;
+  /** Mode de calcul sur gros volume (chemin en flux) : passages, état gardé en mémoire, limites. Reproduit dans le catalogue documenté. */
+  calculGrosVolume: string;
   executer(ctx: ContexteControle): ResultatControle;
+  /**
+   * Même contrôle calculé par passages en flux, en mémoire bornée. Présent seulement si l'égalité stricte avec
+   * `executer` est prouvée par les tests d'équivalence (`flux.test.ts`) ; absent, le contrôle est « non réalisé »
+   * sur le chemin « gros volume ».
+   */
+  executerFlux?(ctx: ContexteControleFlux): Promise<ResultatControle>;
 }

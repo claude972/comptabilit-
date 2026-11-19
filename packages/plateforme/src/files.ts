@@ -1,5 +1,6 @@
-import { Queue, type ConnectionOptions } from 'bullmq';
+import { Queue, type ConnectionOptions, type JobsOptions } from 'bullmq';
 import { Redis } from 'ioredis';
+import { tracerMiseEnFile } from './traces.js';
 
 /**
  * Files de traitements différés. Les tâches ne transportent que des identifiants :
@@ -79,42 +80,50 @@ export class Files {
     this.exports = new Queue(FILES.exports, options);
     this.mail = new Queue(FILES.mail, options);
   }
+  /**
+   * Mise en file suivie : si une trace est en cours (requête de l'API, traitement du worker), son contexte W3C
+   * (`traceparent`, `tracestate`) accompagne le travail dans l'option BullMQ `telemetry.metadata` — hors des données du
+   * travail et sans toucher à son identifiant. Sans trace en cours : mise en file strictement identique à avant.
+   */
+  private ajouter(file: Queue, nom: string, t: object, options: JobsOptions = {}) {
+    return tracerMiseEnFile(file.name, nom, t, (metadonnees) => file.add(nom, t, metadonnees ? { ...options, telemetry: { metadata: metadonnees } } : options));
+  }
   // L'identifiant de tâche rend la mise en file idempotente (une relance ne crée pas de doublon en attente).
   analyserDocument(t: TacheAnalyseDocument) {
-    return this.documents.add('analyser', t, { jobId: `doc-${t.documentId}-${Date.now()}` });
+    return this.ajouter(this.documents, 'analyser', t, { jobId: `doc-${t.documentId}-${Date.now()}` });
   }
   importerFec(t: TacheImportFec) {
     // Identifiant unique par tentative : une REPRISE doit être traitée (la file ignore un identifiant déjà vu).
     // L'idempotence est garantie par le statut du lot, vérifié au début du traitement, pas par l'identifiant de tâche.
-    return this.comptabilite.add('importer-fec', t, { jobId: `fec-${t.lotImportId}-${Date.now()}` });
+    return this.ajouter(this.comptabilite, 'importer-fec', t, { jobId: `fec-${t.lotImportId}-${Date.now()}` });
   }
   executerControles(t: TacheControles) {
-    return this.comptabilite.add('controles', t, { jobId: `ctl-${t.executionId}` });
+    return this.ajouter(this.comptabilite, 'controles', t, { jobId: `ctl-${t.executionId}` });
   }
   genererRestitution(t: TacheRestitution) {
-    return this.exports.add('restitution', t, { jobId: `res-${t.restitutionId}` });
+    return this.ajouter(this.exports, 'restitution', t, { jobId: `res-${t.restitutionId}` });
   }
   genererRestitutionCabinet(t: TacheRestitutionCabinet) {
-    return this.exports.add('restitution-cabinet', t, { jobId: `resc-${t.restitutionCabinetId}-${Date.now()}` });
+    return this.ajouter(this.exports, 'restitution-cabinet', t, { jobId: `resc-${t.restitutionCabinetId}-${Date.now()}` });
   }
   importerReleve(t: TacheImportReleve) {
-    return this.comptabilite.add('importer-releve', t, { jobId: `rel-${t.lotImportId}-${Date.now()}` });
+    return this.ajouter(this.comptabilite, 'importer-releve', t, { jobId: `rel-${t.lotImportId}-${Date.now()}` });
   }
   executerRapprochement(t: TacheRapprochement) {
-    return this.comptabilite.add('rapprochement', t, { jobId: `rap-${t.executionId}` });
+    return this.ajouter(this.comptabilite, 'rapprochement', t, { jobId: `rap-${t.executionId}` });
   }
   genererDossier(t: TacheDossierRevision) {
-    return this.exports.add('dossier-revision', t, { jobId: `exp-${t.exportId}` });
+    return this.ajouter(this.exports, 'dossier-revision', t, { jobId: `exp-${t.exportId}` });
   }
   // Pas d'identifiant de tâche : chaque notification déclenche une synchronisation (sérialisée par connexion, sans effet si rien n'a changé).
   synchroniserMail(t: TacheMail) {
-    return this.mail.add('synchroniser', t);
+    return this.ajouter(this.mail, 'synchroniser', t);
   }
   entretenirMail(t: TacheMail) {
-    return this.mail.add('entretenir', t);
+    return this.ajouter(this.mail, 'entretenir', t);
   }
   cycleDeVieMail(t: TacheMail) {
-    return this.mail.add('cycle-de-vie', t);
+    return this.ajouter(this.mail, 'cycle-de-vie', t);
   }
   async fermer() {
     await Promise.all([this.documents.close(), this.comptabilite.close(), this.exports.close(), this.mail.close()]);

@@ -2,6 +2,8 @@
 
 19 contrôles déterministes. Un contrôle sans données suffisantes rend le statut `non_realise` avec son motif ; jamais un résultat favorable par défaut.
 
+Deux chemins de calcul rendent le même résultat. Jusqu’au seuil de lignes du traitement en mémoire, les lignes de l’exercice sont chargées (chemin de référence). Au-delà, chaque contrôle est calculé par passages successifs en flux, en mémoire bornée : « un passage groupé par écriture » lit les lignes écriture par écriture, sans jamais garder plus d’une écriture. L’égalité stricte des deux chemins (statut, motif, mesures, constats) est vérifiée par les tests d’équivalence du moteur ; un contrôle qui dépasserait son budget d’état est `non_realise` avec son motif, jamais partiel. La rubrique « Calcul sur gros volume » de chaque fiche décrit ses passages et son état.
+
 | Identifiant | Version | Cycle | Titre | Type de source |
 |---|---|---|---|---|
 | GEN-001 | 1.0.0 | general | Équilibre débit/crédit des écritures, des journaux et de l’ensemble | interne |
@@ -34,6 +36,7 @@
 - **Logique** : Regroupe les lignes par (journal, numéro d’écriture), par journal, puis globalement ; calcule Σ débit − Σ crédit en décimal exact ; un écart en valeur absolue supérieur à la tolérance produit un constat (un par écriture, un par journal, un global).
 - **Exceptions et limites** : Une écriture répartie sous plusieurs numéros apparaît déséquilibrée. Les lignes sans numéro d’écriture sont regroupées par journal sous un numéro vide.
 - **Résultats attendus** : Aucun écart. Tout écart est une anomalie à corriger avant tout autre contrôle.
+- **Calcul sur gros volume** : Flux, état borné. Un passage groupé par écriture : totaux exacts de chaque écriture, cumulés par journal et pour l’ensemble. En mémoire : une écriture à la fois, un total par journal et les constats restituables.
 
 **Paramètres (valeurs par défaut)**
 
@@ -60,6 +63,7 @@
 - **Logique** : HEURISTIQUE. Chaque numéro d’écriture distinct est découpé en préfixe + suffixe numérique. Les numéros sont regroupés par (journal, préfixe) (portée « journal ») ou par préfixe seul (portée « globale ») ; en portée « auto », on retient le regroupement qui produit le moins de numéros manquants (à égalité : par journal). Un groupe de moins de `minEcritures` numéros, ou dont la part de numéros manquants dépasse `tauxLacunesMax` (numérotation manifestement non séquentielle, par exemple fondée sur la date), n’est pas analysé. Chaque trou entre deux numéros consécutifs présents donne un constat.
 - **Exceptions et limites** : Numérotations non séquentielles par conception (date, pièce), remises à zéro mensuelles sans préfixe distinctif, numéros réservés puis abandonnés par le logiciel : faux positifs possibles. Une suppression en fin de séquence n’est pas détectable. Les numéros sans suffixe numérique ne sont pas analysés.
 - **Résultats attendus** : Aucune rupture. Une rupture appelle une explication (journal extra-comptable, écritures de simulation, suppression).
+- **Calcul sur gros volume** : Flux, état proportionnel au nombre d’écritures distinctes : un passage groupé par écriture garde un élément compact par écriture (numéro découpé, rang dans le fichier), dans la limite du budget d’éléments ; un second passage ne relit que les lignes voisines des ruptures restituées. Au-delà du budget : non réalisé, motivé.
 
 **Paramètres (valeurs par défaut)**
 
@@ -88,6 +92,7 @@
 - **Logique** : Une ligne dont la date d’écriture est strictement antérieure au début ou strictement postérieure à la fin de l’exercice est hors exercice ; un constat par écriture (journal + numéro), montant = total des débits des lignes concernées.
 - **Exceptions et limites** : Si l’exercice n’est pas communiqué, le contrôle n’est pas réalisé (aucune déduction à partir des dates du fichier).
 - **Résultats attendus** : Aucune écriture hors exercice.
+- **Calcul sur gros volume** : Flux, état borné. Un passage groupé par écriture, limité aux lignes datées hors exercice : une écriture à la fois.
 
 **Paramètres (valeurs par défaut)**
 
@@ -113,6 +118,7 @@
 - **Logique** : Pour chaque écriture, calcule une signature : journal, date, et l’ensemble trié de ses lignes (compte, compte auxiliaire, débit, crédit, référence de pièce). Deux écritures ou plus, de numéros différents, ayant la même signature forment un doublon potentiel. Montant = total débit d’une occurrence.
 - **Exceptions et limites** : Opérations réellement identiques le même jour sous la même référence (abonnements, écritures récurrentes) : faux positifs. Un doublon saisi avec une autre date, une autre référence de pièce ou dans un autre journal n’est PAS détecté.
 - **Résultats attendus** : Aucun doublon potentiel ; chaque suspicion est à confirmer sur pièce.
+- **Calcul sur gros volume** : Flux, état proportionnel aux candidats. Premier passage groupé par écriture : une empreinte par écriture (budget d’éléments). Second passage : les lignes des seules écritures dont l’empreinte est vue au moins deux fois (budget de lignes), sur lesquelles s’applique tel quel le calcul en mémoire, qui compare les signatures exactes. Au-delà d’un budget : non réalisé, motivé.
 
 **Paramètres (valeurs par défaut)**
 
@@ -140,6 +146,7 @@
 - **Logique** : Solde = Σ débit − Σ crédit par numéro de compte, sur les lignes datées jusqu’à la clôture (toutes les lignes si l’exercice est inconnu). Un solde dont la valeur absolue dépasse le seuil produit un constat. Les comptes 471 à 473 relèvent de l’obligation de reclassement du PCG ; le compte 478 « Autres comptes transitoires » est ajouté par convention de cabinet (constat de gravité faible).
 - **Exceptions et limites** : Le PCG ne qualifie de « comptes d’attente » que les subdivisions 471 à 473 ; 474 à 477 (différences d’évaluation et de conversion) ne sont pas contrôlés ; 4781 « Mali de fusion sur actif circulant » est exclu par défaut car son solde est normal.
 - **Résultats attendus** : Solde nul pour chaque compte d’attente à la clôture.
+- **Calcul sur gros volume** : Flux, état borné. Un passage groupé par compte, restreint aux comptes du périmètre : un compte à la fois.
 
 **Paramètres (valeurs par défaut)**
 
@@ -168,6 +175,7 @@
 - **Logique** : Pour chaque compte de caisse, les lignes sont classées par date d’écriture et le solde cumulé (débit − crédit) est calculé à la fin de chaque journée (l’ordre des opérations au sein d’une journée n’est pas connu dans un FEC). Un solde de fin de journée inférieur à −seuil produit un constat par compte, avec la première date créditrice, le nombre de jours créditeurs et le solde créditeur maximal (montant du constat). Toutes les lignes fournies sont prises en compte, y compris les à-nouveaux.
 - **Exceptions et limites** : Un solde créditeur en cours de journée, résorbé le jour même, n’est pas détecté. Si les à-nouveaux ne figurent pas dans les écritures fournies, le solde calculé part de zéro et le contrôle peut produire de faux positifs. Des écritures de caisse centralisées en fin de mois peuvent masquer ou créer des positions créditrices.
 - **Résultats attendus** : Solde de caisse débiteur ou nul à chaque fin de journée.
+- **Calcul sur gros volume** : Flux, état borné. Un passage groupé par compte, restreint aux comptes de caisse : un compte à la fois, avec un mouvement par jour d’écriture.
 
 **Paramètres (valeurs par défaut)**
 
@@ -195,6 +203,7 @@
 - **Logique** : Solde = Σ débit − Σ crédit par numéro de compte sur les lignes datées jusqu’à la clôture (toutes si l’exercice est inconnu). Un solde créditeur supérieur au seuil produit un constat « à examiner » : ce n’est pas une anomalie en soi.
 - **Exceptions et limites** : Un découvert autorisé est une situation normale. Le solde comptable n’est pas le solde bancaire : ce contrôle ne remplace pas le rapprochement bancaire.
 - **Résultats attendus** : Constat informatif pour chaque banque créditrice ; à rapprocher de l’autorisation de découvert et du relevé.
+- **Calcul sur gros volume** : Flux, état borné. Un passage groupé par compte, restreint aux comptes de banque : un compte à la fois.
 
 **Paramètres (valeurs par défaut)**
 
@@ -222,6 +231,7 @@
 - **Logique** : Solde = Σ débit − Σ crédit par (compte général, compte auxiliaire) sur les lignes datées jusqu’à la clôture. Un solde créditeur supérieur au seuil produit un constat.
 - **Exceptions et limites** : Les acomptes reçus régulièrement comptabilisés en 4191 ne sont pas concernés. Sans comptes auxiliaires, les soldes créditeurs individuels sont masqués par la compensation au sein du compte général.
 - **Résultats attendus** : Aucun client créditeur, ou soldes créditeurs justifiés et reclassés au passif.
+- **Calcul sur gros volume** : Flux, état borné. Un passage groupé par tiers (compte général + compte auxiliaire), restreint aux comptes du périmètre : un tiers à la fois.
 
 **Paramètres (valeurs par défaut)**
 
@@ -249,6 +259,7 @@
 - **Logique** : Solde = Σ débit − Σ crédit par (compte général, compte auxiliaire) sur les lignes datées jusqu’à la clôture. Un solde débiteur supérieur au seuil produit un constat.
 - **Exceptions et limites** : Les acomptes versés régulièrement comptabilisés en 4091 ne sont pas concernés. Sans comptes auxiliaires, les soldes débiteurs individuels sont masqués.
 - **Résultats attendus** : Aucun fournisseur débiteur, ou soldes débiteurs justifiés et reclassés à l’actif.
+- **Calcul sur gros volume** : Flux, état borné. Un passage groupé par tiers (compte général + compte auxiliaire), restreint aux comptes du périmètre : un tiers à la fois.
 
 **Paramètres (valeurs par défaut)**
 
@@ -276,6 +287,7 @@
 - **Logique** : Pour chaque tiers, on retient les lignes non lettrées (EcritureLet vide) datées jusqu’à la clôture. L’âge d’une ligne est le nombre de jours entre sa date de pièce (à défaut sa date d’écriture) et la date de clôture. Si la somme algébrique (débit − crédit) des lignes non lettrées d’âge strictement supérieur à `seuilJours` dépasse en valeur absolue `seuilMontant`, un constat est produit pour ce montant. Seuil par défaut de 90 jours : convention interne.
 - **Exceptions et limites** : Si l’exercice est inconnu, ou si aucune ligne des comptes de tiers ne porte de lettrage (lettrage non tenu ou non exporté), le contrôle n’est PAS réalisé : l’ancienneté n’est pas mesurable. Un lettrage partiel peut être exporté sous des formes diverses et fausser le calcul. Les à-nouveaux non détaillés sont datés de l’ouverture.
 - **Résultats attendus** : Aucun solde non lettré ancien, ou soldes anciens justifiés (litige, échéancier, dépréciation).
+- **Calcul sur gros volume** : Flux, état borné. Un passage groupé par tiers, restreint aux comptes du périmètre : un tiers à la fois (lignes non lettrées anciennes cumulées, présence d’un lettrage relevée au passage).
 
 **Paramètres (valeurs par défaut)**
 
@@ -304,6 +316,7 @@
 - **Logique** : Pour chaque compte courant, solde cumulé (débit − crédit) en fin de journée par ordre chronologique. Un solde débiteur supérieur au seuil à la clôture produit un constat de gravité élevée ; si `controleInfraAnnuel` est actif, un solde débiteur en cours de période, résorbé à la clôture, produit un constat de gravité moyenne. Le constat est formulé « à examiner » : la forme sociale et la qualité du titulaire (personne physique ou morale, dirigeant ou non) ne figurent pas dans le FEC.
 - **Exceptions et limites** : L’interdiction ne vise pas les associés personnes morales, ni les sociétés exploitant un établissement bancaire ou financier pour leurs opérations courantes ; elle ne concerne pas, par ces textes, les sociétés de personnes (SNC, sociétés civiles) ni l’entreprise individuelle. Sans compte auxiliaire ni subdivision par associé, un associé débiteur peut être masqué par un associé créditeur. Les avances à des tiers liés comptabilisées dans d’autres comptes ne sont pas couvertes.
 - **Résultats attendus** : Comptes courants d’associés créditeurs ou nuls à tout moment.
+- **Calcul sur gros volume** : Flux, état borné. Un passage groupé par titulaire (compte + compte auxiliaire), restreint aux comptes courants : un titulaire à la fois, avec un mouvement par jour d’écriture.
 
 **Paramètres (valeurs par défaut)**
 
@@ -332,6 +345,7 @@
 - **Logique** : CONTRÔLE DE VRAISEMBLANCE. Base = Σ (crédit − débit) des comptes de préfixes `prefixesBase` (défaut 70, RRR accordés 709 inclus). TVA = Σ (crédit − débit) des comptes de préfixes `prefixesTva` (défaut 4457), en excluant les lignes des écritures qui mouvementent aussi un compte de préfixes `prefixesLiquidation` (défaut 4455 : écritures de déclaration qui soldent la TVA collectée). Taux apparent = TVA / base. Le taux apparent doit être compris entre le plus petit et le plus grand des `tauxAttendus` (borne basse ramenée à 0 si `ventesSansTvaAdmises`), à `toleranceTaux` points près. Hors bornes : constat, montant = écart de TVA par rapport à la borne franchie.
 - **Exceptions et limites** : Faible pouvoir de détection lorsque plusieurs taux coexistent (seules les bornes sont testées). Ne tient pas compte de l’exigibilité (TVA sur encaissements, prestations de services), des opérations exonérées ou hors champ, des exportations et livraisons intracommunautaires (activer `ventesSansTvaAdmises`), de la franchise en base, des cessions d’immobilisations, des acomptes, de la TVA sur autres produits (comptes 74, 75, 77…). Les taux par défaut sont des paramètres (France métropolitaine) et non une source réglementaire du contrôle.
 - **Résultats attendus** : Taux apparent compris dans les bornes des taux attendus ; tout écart est à expliquer par un cadrage détaillé.
+- **Calcul sur gros volume** : Flux, état borné aux écritures de liquidation. Deux passages restreints : les comptes de liquidation (une clé par écriture de liquidation, budget d’éléments), puis les comptes de produits et de TVA collectée, cumulés ligne par ligne.
 
 **Paramètres (valeurs par défaut)**
 
@@ -363,6 +377,7 @@
 - **Logique** : Association compte 512 ↔ compte bancaire : paramètre `correspondances`, ou d’office s’il n’y a qu’un compte 512 et qu’un compte bancaire. Les relevés du compte doivent être lisibles, cadrés (ouverture + mouvements = clôture) et contigus. Date d’arrêté D = dernière date de clôture des relevés. Solde comptable = Σ (débit − crédit) du 512 jusqu’à D ; solde du relevé = solde de clôture (positif = créditeur chez la banque = avoir de l’entreprise). Écart = solde comptable − solde du relevé. Les lignes du 512 datées du début de la période des relevés jusqu’à D (hors journaux d’à-nouveaux) sont rapprochées des mouvements par le module de rapprochement déterministe (niveaux exact et règles). L’écart se décompose exactement en : écart à l’ouverture (solde comptable avant la période − solde d’ouverture du relevé) + écritures comptables non rapprochées − mouvements bancaires non rapprochés + écarts des rapprochements. Sans écart supérieur au seuil, sans suspens et sans écart d’ouverture : sans anomalie. Sinon un constat par compte, montant = valeur absolue de l’écart, avec l’état de rapprochement en preuves.
 - **Exceptions et limites** : Un écart expliqué par des suspens (chèques émis non débités, remises en cours) est normal : le constat est un état de rapprochement à examiner, pas une anomalie en soi. Les mouvements de même montant à des dates proches sont laissés non rapprochés (ambiguïté non tranchée) et gonflent les suspens. Le contrôle n’est pas réalisé si un relevé est illisible, non cadré, non contigu, si le solde d’ouverture manque (OFX, CSV sans solde) ou si l’association compte comptable / compte bancaire est indéterminée. La date d’arrêté est celle du relevé, qui peut différer de la clôture de l’exercice.
 - **Résultats attendus** : Solde comptable égal au solde du relevé, ou écart intégralement expliqué par des suspens identifiés.
+- **Calcul sur gros volume** : Lignes réellement nécessaires, dans la limite du budget de lignes. Sans relevé lisible, aucune ligne n’est lue. Sinon deux passages ne gardent que les lignes des comptes de banque et, dans leurs écritures, les lignes portant un compte auxiliaire (tiers de la contrepartie) ; le calcul en mémoire s’applique tel quel à ces lignes. Si elles dépassent le budget : non réalisé, motivé. Les mouvements bancaires des relevés sont en mémoire, comme sur le chemin courant.
 
 **Paramètres (valeurs par défaut)**
 
@@ -394,6 +409,7 @@
 - **Logique** : Soldes par compte à la clôture (débit − crédit). Correspondance du PCG : le compte 28xyz amortit le compte 2xyz (280 ↔ 20, 281 ↔ 21, 2815 ↔ 215, 28183 ↔ 2183…). Pour chaque compte 28 soldé non nul, on cherche les comptes d’immobilisations commençant par la racine correspondante ; à défaut on remonte d’un chiffre à la fois jusqu’au compte à trois chiffres, niveau auquel le PCG établit la correspondance (28183 → 2183, puis 218). (1) Aucun compte d’immobilisation trouvé : constat « amortissement sans immobilisation ». (2) Au niveau de correspondance trouvé, si le cumul des amortissements (tous les comptes 28 relevant de ce niveau) dépasse la valeur brute (tous les comptes 2 de ce niveau) de plus de la tolérance : constat, montant = excédent. (3) Compte 28 à solde débiteur : constat de sens anormal.
 - **Exceptions et limites** : Les soldes ne sont justes que si les à-nouveaux figurent dans les écritures fournies : sans eux, un amortissement de l’exercice peut dépasser à tort une valeur brute incomplète. Une subdivision propre à l’entreprise qui ne suit pas la ventilation du PCG (amortissements et immobilisations numérotés différemment) donne des faux positifs. Les dépréciations (29x) et les immobilisations financières ou en cours (23x, 26x, 27x) ne sont pas examinées. Le contrôle ne vérifie ni les durées ni les dotations.
 - **Résultats attendus** : Chaque compte d’amortissement correspond à un compte d’immobilisation, pour un cumul créditeur inférieur ou égal à la valeur brute.
+- **Calcul sur gros volume** : Flux, état borné au plan de comptes. Un passage restreint aux comptes d’immobilisations et d’amortissements : un agrégat par compte (budget d’éléments).
 
 **Paramètres (valeurs par défaut)**
 
@@ -422,6 +438,7 @@
 - **Logique** : Chaque ligne débitrice d’un compte du périmètre dont le débit est STRICTEMENT supérieur au seuil (défaut 500,00, montant hors taxes : une charge est comptabilisée hors TVA récupérable) produit un constat « à examiner », montant = débit de la ligne. Le seuil par défaut est celui de la tolérance administrative des biens de faible valeur (500 € HT par bien, BOI-BIC-CHG-20-30-10). Les lignes des journaux d’à-nouveaux sont ignorées.
 - **Exceptions et limites** : Le FEC ne donne pas le prix unitaire : une ligne peut regrouper plusieurs biens dont chacun est sous le seuil, ou concerner une dépense non immobilisable (consommables, entretien courant). La tolérance fiscale ne vise que les matériels et outillages, les matériels et mobiliers de bureau et les logiciels ; elle ne s’applique pas aux biens qui sont l’objet même de l’activité. Si la TVA n’est pas récupérable, la charge est comptabilisée TTC alors que le seuil s’entend hors taxes. Constat d’examen, non d’anomalie.
 - **Résultats attendus** : Aucune ligne de charge du périmètre au-delà du seuil, ou des lignes justifiées (dépense non immobilisable, lot de biens de faible valeur).
+- **Calcul sur gros volume** : Flux, état borné. Un passage groupé par écriture, restreint aux comptes de charges du périmètre : chaque ligne est examinée une fois, le rang des lignes répétées se compte dans son écriture. Limite : si un code de journal, un numéro d’écriture ou un numéro de compte contient « | », le contrôle n’est pas réalisé en flux (motivé).
 
 **Paramètres (valeurs par défaut)**
 
@@ -451,6 +468,7 @@
 - **Logique** : CONTRÔLE DE VRAISEMBLANCE. (1) Total net (débit − crédit) des comptes 641 et des comptes 645 jusqu’à la clôture : si l’un dépasse le seuil alors que l’autre est nul ou négatif, constat (montant = total du compte présent). (2) Pour chaque compte 421 et 431, solde à la clôture : un solde DÉBITEUR supérieur au seuil est anormal (ces comptes enregistrent à leur crédit les sommes dues au personnel et aux organismes), constat par compte.
 - **Exceptions et limites** : Des rémunérations sans cotisations existent (gratifications de stage sous le seuil, certaines indemnités) ; un dirigeant non salarié relève d’autres comptes (644, 646). Un compte 421 ou 431 peut être débiteur à juste titre (trop-versé à récupérer, acompte non reclassé en 425, régularisation de cotisations). Le contrôle ne vérifie ni les taux de cotisations ni la concordance avec les déclarations sociales (DSN).
 - **Résultats attendus** : Salaires et charges sociales tous deux présents (ou tous deux absents) ; comptes 421 et 431 créditeurs ou soldés à la clôture.
+- **Calcul sur gros volume** : Flux, état borné au plan de comptes. Un passage dans l’ordre du fichier, restreint aux comptes de salaires, de charges sociales, de personnel et d’organismes : deux totaux et un agrégat par compte de tiers (budget d’éléments).
 
 **Paramètres (valeurs par défaut)**
 
@@ -481,6 +499,7 @@
 - **Logique** : Pour chaque ligne du périmètre dont la date de pièce est connue : la date d’écriture est-elle dans l’exercice ? la date de pièce l’est-elle ? Si l’une l’est et l’autre non, et que la date hors exercice s’écarte de la borne franchie (ouverture ou clôture) de plus de `toleranceJours` jours, l’écriture est retenue. Un constat « à examiner » par écriture (journal + numéro), montant = somme des débits et crédits des lignes concernées.
 - **Exceptions et limites** : Une facture datée de l’exercice précédent mais reçue et comptabilisée dans l’exercice, compensée par l’extourne d’une charge à payer, est une situation normale : le contrôle signale, il ne conclut pas. La date de pièce d’un FEC est parfois recopiée de la date d’écriture (aucun constat possible) ou absente (lignes décomptées, non examinées). Les écritures d’inventaire (FNP, FAE, CCA, PCA) ne sont pas reconstituées.
 - **Résultats attendus** : Dates de pièce et d’écriture dans le même exercice, ou écarts justifiés par les écritures d’inventaire.
+- **Calcul sur gros volume** : Flux, état borné. Un passage groupé par écriture, restreint aux comptes de charges et de produits : une écriture à la fois, lignes sans date de pièce décomptées au passage.
 
 **Paramètres (valeurs par défaut)**
 
@@ -509,6 +528,7 @@
 - **Logique** : Solde de clôture N-1 = Σ (débit − crédit) par numéro de compte sur les écritures de `exercicePrecedent`. À-nouveau N = Σ (débit − crédit) par numéro de compte des lignes dont le journal figure dans `journauxANouveaux`. Les comptes de résultat de bilan (préfixes `prefixesResultat`, défaut 12) sont comparés en bloc : leur à-nouveau doit égaler leur solde N-1 augmenté du solde des comptes de classes 6 et 7 de N-1 (résultat non encore viré si le FEC N-1 est fourni avant écritures de clôture). Tout écart supérieur à la tolérance produit un constat par compte, montant = valeur absolue de l’écart.
 - **Exceptions et limites** : La comparaison se fait par numéro de compte général : un changement de plan de comptes ou de longueur de numéros entre les deux exercices produit des écarts de pure forme. Une affectation du résultat ou des reclassements passés directement dans le journal d’à-nouveaux produisent des écarts à justifier. Si le journal d’à-nouveaux porte un autre code que ceux paramétrés, le contrôle n’est pas réalisé. Les à-nouveaux détaillés par pièce sont additionnés par compte.
 - **Résultats attendus** : Pour chaque compte de bilan, à-nouveau N égal au solde de clôture N-1.
+- **Calcul sur gros volume** : Flux, état borné au plan de comptes. Un passage sur les journaux d’à-nouveaux de l’exercice, un passage sur les comptes de bilan et de gestion de l’exercice précédent : un solde par compte de chaque côté (budget d’éléments). L’exercice précédent est lu en flux quel que soit son volume.
 
 **Paramètres (valeurs par défaut)**
 
@@ -539,6 +559,7 @@
 - **Logique** : CONTRÔLE DE VRAISEMBLANCE. Base = Σ (débit − crédit) des comptes de préfixes `prefixesBase` et `prefixesImmobilisations`. TVA = Σ (débit − crédit) des comptes de préfixes `prefixesTva` hors `prefixesTvaExclus`, en excluant les lignes des écritures qui mouvementent aussi un compte de préfixes `prefixesLiquidation` (défaut 4455). Les lignes des journaux d’à-nouveaux sont ignorées des deux côtés. Taux apparent = TVA / base. Constat si le taux apparent dépasse le plus grand des `tauxAttendus` de plus de `toleranceTaux` points (TVA déduite supérieure au maximum théorique), ou s’il est inférieur à `tauxPlancher` (défaut 0 : pas de borne basse, de nombreuses charges ne supportant pas de TVA). Montant = écart de TVA par rapport à la borne franchie.
 - **Exceptions et limites** : Pouvoir de détection limité : seule une TVA déductible excédant le taux maximal appliqué à toute la base est signalée par défaut. Ne tient pas compte des charges sans TVA (loyers nus, assurances, salaires hors périmètre), des exclusions du droit à déduction (véhicules de tourisme, cadeaux), du prorata, de l’autoliquidation (acquisitions intracommunautaires, sous-traitance du bâtiment), de la TVA sur les débits ou les encaissements, ni des variations de stock (603). Les taux par défaut sont des paramètres (France métropolitaine) et non une source réglementaire du contrôle.
 - **Résultats attendus** : Taux apparent de TVA déductible inférieur ou égal au taux maximal attendu ; tout dépassement est à expliquer par un cadrage détaillé.
+- **Calcul sur gros volume** : Flux, état borné aux écritures de liquidation. Deux passages restreints : les comptes de liquidation (une clé par écriture de liquidation, budget d’éléments), puis les comptes d’achats, de charges externes, d’immobilisations et de TVA déductible, cumulés ligne par ligne.
 
 **Paramètres (valeurs par défaut)**
 

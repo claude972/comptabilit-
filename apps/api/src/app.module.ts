@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { creerAccesBd, urlBd } from '@comtaple/db';
-import { agregationBancaire, connecteursMail, connexionRedis, creerIa, Files, lireConfig, Stockage } from '@comtaple/plateforme';
+import { agregationBancaire, arreterTraces, connecteursMail, connexionRedis, creerIa, Files, lireConfig, Stockage } from '@comtaple/plateforme';
 import { GardeAcces } from './acces.js';
 import { AbonnementController } from './abonnement.controller.js';
 import { AdministrationController } from './administration.controller.js';
@@ -50,6 +50,8 @@ import { TeleversementsController } from './televersements.controller.js';
     // Passerelle IA : sans jeton configuré, statut « non_connecte » et aucun appel sortant. Aucun simulateur ici.
     { provide: IA, inject: [CONFIG, BD], useFactory: (cfg: ReturnType<typeof lireConfig>, bd: ReturnType<typeof creerAccesBd>) => creerIa(cfg, bd) },
     { provide: APP_GUARD, useClass: GardeAcces },
+    // À l'arrêt de l'application (SIGTERM, SIGINT) : envoi des spans en attente, dans un délai borné.
+    { provide: 'ARRET_TRACES', useValue: { onApplicationShutdown: () => arreterTraces() } },
   ],
 })
 export class AppModule {}

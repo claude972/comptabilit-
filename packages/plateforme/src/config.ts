@@ -36,11 +36,27 @@ const schema = z.object({
   TAILLE_MAX_PIECE: z.coerce.number().int().default(50 * 1024 * 1024),
   TAILLE_MAX_FEC: z.coerce.number().int().default(500 * 1024 * 1024),
   /**
-   * Nombre maximal de lignes d'écriture chargées en mémoire par UN traitement du worker (contrôles : exercice + exercice
-   * précédent ; rapprochement : exercice). Au-delà, le traitement n'est PAS réalisé et le dit. Dimensionné sur les
-   * mesures du 2026-11-19 (D-061) : environ 1,45 Ko de tas par ligne, deux traitements simultanés, tas plafonné à 2 048 Mo.
+   * Bornes du processus enfant qui décode une pièce (un processus par fichier, voir apps/worker/src/analyse-isolee.ts) :
+   * durée, tas JavaScript, mémoire résidente, taille du résultat. Au-delà, l'enfant est arrêté et la pièce le dit.
+   */
+  ANALYSE_DUREE_MAX_MS: z.coerce.number().int().min(1000).default(60_000),
+  ANALYSE_TAS_MAX_MO: z.coerce.number().int().min(64).default(512),
+  ANALYSE_MEMOIRE_MAX_MO: z.coerce.number().int().min(128).default(1024),
+  ANALYSE_SORTIE_MAX_OCTETS: z.coerce.number().int().min(65_536).default(8 * 1024 * 1024),
+  /**
+   * Seuil du chemin EN MÉMOIRE : nombre maximal de lignes d'écriture chargées en mémoire par UN traitement du worker
+   * (contrôles : exercice + exercice précédent ; rapprochement : exercice). Dimensionné sur les mesures du 2026-11-19
+   * (D-061) : environ 1,45 Ko de tas par ligne, deux traitements simultanés, tas plafonné à 2 048 Mo.
+   * Au-delà, le traitement passe par le chemin EN FLUX (passages successifs sur la base, mémoire bornée) : même
+   * résultat pour les contrôles dont l'égalité est prouvée, « non réalisé » motivé pour ce qui ne tient pas dans le budget.
    */
   LIGNES_MAX_PAR_TRAITEMENT: z.coerce.number().int().min(1000).default(500_000),
+  /**
+   * Budget d'état d'un traitement EN FLUX : nombre maximal de lignes d'écriture qu'il garde en mémoire au même moment
+   * (écritures candidates au doublon, lignes de banque à rapprocher). Dix fois ce nombre pour les éléments compacts (un
+   * par écriture distincte). Au-delà, le contrôle concerné n'est PAS réalisé et le dit : jamais de résultat partiel.
+   */
+  LIGNES_MAX_ETAT_FLUX: z.coerce.number().int().min(1000).default(100_000),
   TAILLE_MORCEAU: z.coerce.number().int().default(4 * 1024 * 1024),
   API_PORT: z.coerce.number().int().default(4000),
   /** Adresse d'écoute de l'API : locale par défaut ; 0.0.0.0 dans un conteneur, derrière un réseau privé. */
@@ -53,6 +69,16 @@ const schema = z.object({
   /** Préfixe des clés BullMQ dans Redis : permet à une pile de test de ne pas partager ses files avec la pile normale. */
   FILES_PREFIXE: z.string().regex(/^[a-z0-9-]{1,40}$/).default('bull'),
   NODE_ENV: z.string().optional().default(''),
+
+  // ── Traces OpenTelemetry (traces.ts) ──
+  /** Point d'accès OTLP/HTTP du collecteur (ex. http://127.0.0.1:4318). VIDE = aucune trace, aucun appel réseau. */
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional().default(''),
+  /** Part des traces enregistrées, de 0 à 1, décidée à la racine (requête, travail planifié) et suivie par le worker. */
+  TRACES_TAUX_ECHANTILLONNAGE: z.coerce.number().min(0).max(1).default(1),
+  /** Nom de l'environnement porté par les traces ; vide = NODE_ENV, sinon « local ». */
+  TRACES_ENVIRONNEMENT: z.string().regex(/^[a-z0-9-]{0,40}$/).optional().default(''),
+  /** Version du service portée par les traces : empreinte de commit des images en production ; vide = version du dépôt. */
+  COMTAPLE_VERSION: z.string().regex(/^[A-Za-z0-9._-]{0,64}$/).optional().default(''),
 
   // ── Collecte par mail (@comtaple/mail) ──
   /** Secret dont sont dérivées la clé de chiffrement des jetons OAuth et la clé de liaison du `state`. */

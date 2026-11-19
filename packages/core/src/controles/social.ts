@@ -1,8 +1,93 @@
 import { z } from 'zod';
 import { dec } from '../montant.js';
 import { sourceInterne } from '../sources.js';
-import { aPrefixe, definir, grouper, idsDe, lignesJusquaCloture, mentionCloture, montant2, schemaMaxConstats, schemaMontantPositif, schemaPrefixes, soldeDe } from './outils.js';
+import { Agregat, DepassementBudget, aPrefixe, definir, jusquaCloture, lignesJusquaCloture, mentionCloture, montant2, schemaMaxConstats, schemaMontantPositif, schemaPrefixes } from './outils.js';
+import type { Calcul } from './outils.js';
 import type { Constat, LigneEcriture } from './types.js';
+
+interface ParametresSoc001 { prefixesSalaires: string[]; prefixesCharges: string[]; prefixesPersonnel: string[]; prefixesOrganismes: string[]; seuil: string }
+
+/** Totaux des salaires et des charges sociales, et un agrégat par compte de personnel ou d'organisme (commun aux deux chemins). */
+class CollecteSociale {
+  private readonly salaires = new Agregat();
+  private readonly charges = new Agregat();
+  private readonly tiers = new Map<string, Agregat>();
+  private readonly prefixesTiers: string[];
+  constructor(private readonly p: ParametresSoc001) {
+    this.prefixesTiers = [...p.prefixesPersonnel, ...p.prefixesOrganismes];
+  }
+  get nbComptesTiers(): number {
+    return this.tiers.size;
+  }
+  ajouter(l: LigneEcriture): void {
+    if (aPrefixe(l.compteNum, this.p.prefixesSalaires)) this.salaires.ajouter(l);
+    if (aPrefixe(l.compteNum, this.p.prefixesCharges)) this.charges.ajouter(l);
+    if (aPrefixe(l.compteNum, this.prefixesTiers)) {
+      let a = this.tiers.get(l.compteNum);
+      if (a === undefined) {
+        a = new Agregat(200, (x) => x.ecritureLet === null);
+        this.tiers.set(l.compteNum, a);
+      }
+      a.ajouter(l);
+    }
+  }
+  conclure(ctx: { exercice: { fin: string } | null }): Calcul {
+    const { p, salaires, charges, tiers: parCompte } = this;
+    const seuil = dec(p.seuil);
+    if (salaires.n === 0 && charges.n === 0 && parCompte.size === 0) {
+      return { statut: 'non_applicable', motif: 'Aucun compte de salaires (641), de charges sociales (645), de personnel (421) ni de sécurité sociale (431) mouvementé dans les écritures fournies.' };
+    }
+    const constats: Constat[] = [];
+    const totalSalaires = salaires.solde;
+    const totalCharges = charges.solde;
+    if (totalSalaires.greaterThan(seuil) && !totalCharges.greaterThan(0)) {
+      constats.push({
+        gravite: 'moyenne',
+        titre: 'Salaires comptabilisés sans charges sociales',
+        explication: `Les comptes de salaires (${p.prefixesSalaires.join(', ')}) totalisent ${montant2(totalSalaires)} ${mentionCloture(ctx)} alors que les comptes de charges sociales (${p.prefixesCharges.join(', ')}) totalisent ${montant2(totalCharges)}. Contrôle de vraisemblance : une rémunération salariée donne normalement lieu à des cotisations.`,
+        actionProposee: 'Vérifier l’imputation des cotisations patronales (compte 645), la comptabilisation des bordereaux de charges et la nature des rémunérations.',
+        montant: montant2(totalSalaires),
+        lignesConcernees: salaires.ids,
+        preuves: [{ libelle: 'Total salaires (débit − crédit)', valeur: montant2(totalSalaires) }, { libelle: 'Total charges sociales (débit − crédit)', valeur: montant2(totalCharges) }],
+        cle: 'SOC-001|salaires_sans_charges',
+      });
+    } else if (totalCharges.greaterThan(seuil) && !totalSalaires.greaterThan(0)) {
+      constats.push({
+        gravite: 'moyenne',
+        titre: 'Charges sociales comptabilisées sans salaires',
+        explication: `Les comptes de charges sociales (${p.prefixesCharges.join(', ')}) totalisent ${montant2(totalCharges)} ${mentionCloture(ctx)} alors que les comptes de salaires (${p.prefixesSalaires.join(', ')}) totalisent ${montant2(totalSalaires)}. Contrôle de vraisemblance.`,
+        actionProposee: 'Vérifier l’imputation des rémunérations (compte 641) et la nature des cotisations comptabilisées (cotisations du dirigeant, régularisations).',
+        montant: montant2(totalCharges),
+        lignesConcernees: charges.ids,
+        preuves: [{ libelle: 'Total charges sociales (débit − crédit)', valeur: montant2(totalCharges) }, { libelle: 'Total salaires (débit − crédit)', valeur: montant2(totalSalaires) }],
+        cle: 'SOC-001|charges_sans_salaires',
+      });
+    }
+    for (const compte of [...parCompte.keys()].sort()) {
+      const a = parCompte.get(compte) as Agregat;
+      const solde = a.solde;
+      if (!solde.greaterThan(seuil)) continue;
+      const personnel = aPrefixe(compte, p.prefixesPersonnel);
+      constats.push({
+        gravite: 'moyenne',
+        titre: `Compte ${compte} débiteur de ${montant2(solde)} ${mentionCloture(ctx)}`,
+        explication: personnel
+          ? `Le compte de rémunérations dues ${compte} est débiteur : il a été payé plus de salaires nets qu'il n'en a été constaté. À examiner (salaire non comptabilisé, acompte à reclasser, double paiement).`
+          : `Le compte d'organisme social ${compte} est débiteur : il a été réglé plus de cotisations qu'il n'en a été constaté. À examiner (charges non comptabilisées, trop-versé à récupérer).`,
+        actionProposee: 'Rapprocher du journal de paie et des bordereaux de cotisations ; reclasser ou régulariser.',
+        montant: montant2(solde),
+        lignesConcernees: a.ids,
+        preuves: [{ libelle: 'Compte', valeur: `${compte} ${a.tete.compteLib}`.trim() }, { libelle: 'Solde (débit − crédit)', valeur: montant2(solde) }],
+        cle: `SOC-001|debiteur|${compte}`,
+      });
+    }
+    return {
+      statut: constats.length > 0 ? 'constat' : 'sans_anomalie',
+      constats,
+      mesures: { totalSalaires: montant2(totalSalaires), totalChargesSociales: montant2(totalCharges), nbComptesTiersExamines: String(parCompte.size) },
+    };
+  }
+}
 
 export const SOC_001 = definir({
   id: 'SOC-001',
@@ -32,64 +117,22 @@ export const SOC_001 = definir({
     'Contrôle de vraisemblance interne. Contexte (PCG, règlement ANC n° 2014-03, consulté le 2026-11-19) : art. 1214-42, le compte 421 est crédité des rémunérations à payer ; art. 1214-43, le compte 431 est crédité des cotisations dues et débité des règlements.',
   ),
   resultatsAttendus: 'Salaires et charges sociales tous deux présents (ou tous deux absents) ; comptes 421 et 431 créditeurs ou soldés à la clôture.',
+  calculGrosVolume:
+    'Flux, état borné au plan de comptes. Un passage dans l’ordre du fichier, restreint aux comptes de salaires, de charges sociales, de personnel et d’organismes : deux totaux et un agrégat par compte de tiers (budget d’éléments).',
   calcul(ctx, p) {
-    const seuil = dec(p.seuil);
-    const lignes = lignesJusquaCloture(ctx);
-    const salaires = lignes.filter((l) => aPrefixe(l.compteNum, p.prefixesSalaires));
-    const charges = lignes.filter((l) => aPrefixe(l.compteNum, p.prefixesCharges));
-    const tiers = lignes.filter((l) => aPrefixe(l.compteNum, [...p.prefixesPersonnel, ...p.prefixesOrganismes]));
-    if (salaires.length === 0 && charges.length === 0 && tiers.length === 0) {
-      return { statut: 'non_applicable', motif: 'Aucun compte de salaires (641), de charges sociales (645), de personnel (421) ni de sécurité sociale (431) mouvementé dans les écritures fournies.' };
+    const collecte = new CollecteSociale(p);
+    for (const l of lignesJusquaCloture(ctx)) collecte.ajouter(l);
+    return collecte.conclure(ctx);
+  },
+  async calculFlux(ctx, p) {
+    const avantCloture = jusquaCloture(ctx);
+    const collecte = new CollecteSociale(p);
+    // Ordre du fichier : les lignes concernées sont les premières lignes de salaires (ou de charges) du fichier.
+    for await (const l of ctx.source.parcourir({ ordre: 'fichier', prefixesComptes: [...p.prefixesSalaires, ...p.prefixesCharges, ...p.prefixesPersonnel, ...p.prefixesOrganismes] })) {
+      if (!avantCloture(l)) continue;
+      collecte.ajouter(l);
+      if (collecte.nbComptesTiers > ctx.budget.elements) throw new DepassementBudget(`plus de ${ctx.budget.elements.toLocaleString('fr-FR')} comptes de personnel et d’organismes sociaux`);
     }
-    const constats: Constat[] = [];
-    const totalSalaires = soldeDe(salaires);
-    const totalCharges = soldeDe(charges);
-    if (totalSalaires.greaterThan(seuil) && !totalCharges.greaterThan(0)) {
-      constats.push({
-        gravite: 'moyenne',
-        titre: 'Salaires comptabilisés sans charges sociales',
-        explication: `Les comptes de salaires (${p.prefixesSalaires.join(', ')}) totalisent ${montant2(totalSalaires)} ${mentionCloture(ctx)} alors que les comptes de charges sociales (${p.prefixesCharges.join(', ')}) totalisent ${montant2(totalCharges)}. Contrôle de vraisemblance : une rémunération salariée donne normalement lieu à des cotisations.`,
-        actionProposee: 'Vérifier l’imputation des cotisations patronales (compte 645), la comptabilisation des bordereaux de charges et la nature des rémunérations.',
-        montant: montant2(totalSalaires),
-        lignesConcernees: idsDe(salaires),
-        preuves: [{ libelle: 'Total salaires (débit − crédit)', valeur: montant2(totalSalaires) }, { libelle: 'Total charges sociales (débit − crédit)', valeur: montant2(totalCharges) }],
-        cle: 'SOC-001|salaires_sans_charges',
-      });
-    } else if (totalCharges.greaterThan(seuil) && !totalSalaires.greaterThan(0)) {
-      constats.push({
-        gravite: 'moyenne',
-        titre: 'Charges sociales comptabilisées sans salaires',
-        explication: `Les comptes de charges sociales (${p.prefixesCharges.join(', ')}) totalisent ${montant2(totalCharges)} ${mentionCloture(ctx)} alors que les comptes de salaires (${p.prefixesSalaires.join(', ')}) totalisent ${montant2(totalSalaires)}. Contrôle de vraisemblance.`,
-        actionProposee: 'Vérifier l’imputation des rémunérations (compte 641) et la nature des cotisations comptabilisées (cotisations du dirigeant, régularisations).',
-        montant: montant2(totalCharges),
-        lignesConcernees: idsDe(charges),
-        preuves: [{ libelle: 'Total charges sociales (débit − crédit)', valeur: montant2(totalCharges) }, { libelle: 'Total salaires (débit − crédit)', valeur: montant2(totalSalaires) }],
-        cle: 'SOC-001|charges_sans_salaires',
-      });
-    }
-    const parCompte = grouper(tiers, (l) => l.compteNum);
-    for (const compte of [...parCompte.keys()].sort()) {
-      const ls = parCompte.get(compte) ?? [];
-      const solde = soldeDe(ls);
-      if (!solde.greaterThan(seuil)) continue;
-      const personnel = aPrefixe(compte, p.prefixesPersonnel);
-      constats.push({
-        gravite: 'moyenne',
-        titre: `Compte ${compte} débiteur de ${montant2(solde)} ${mentionCloture(ctx)}`,
-        explication: personnel
-          ? `Le compte de rémunérations dues ${compte} est débiteur : il a été payé plus de salaires nets qu'il n'en a été constaté. À examiner (salaire non comptabilisé, acompte à reclasser, double paiement).`
-          : `Le compte d'organisme social ${compte} est débiteur : il a été réglé plus de cotisations qu'il n'en a été constaté. À examiner (charges non comptabilisées, trop-versé à récupérer).`,
-        actionProposee: 'Rapprocher du journal de paie et des bordereaux de cotisations ; reclasser ou régulariser.',
-        montant: montant2(solde),
-        lignesConcernees: idsDe(ls.filter((l) => l.ecritureLet === null)),
-        preuves: [{ libelle: 'Compte', valeur: `${compte} ${(ls[0] as LigneEcriture).compteLib}`.trim() }, { libelle: 'Solde (débit − crédit)', valeur: montant2(solde) }],
-        cle: `SOC-001|debiteur|${compte}`,
-      });
-    }
-    return {
-      statut: constats.length > 0 ? 'constat' : 'sans_anomalie',
-      constats,
-      mesures: { totalSalaires: montant2(totalSalaires), totalChargesSociales: montant2(totalCharges), nbComptesTiersExamines: String(parCompte.size) },
-    };
+    return collecte.conclure(ctx);
   },
 });

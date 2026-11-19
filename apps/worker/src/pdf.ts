@@ -1,5 +1,6 @@
 import type { PageTexte } from '@comtaple/core';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { PAGES_MAX } from './analyse-types.js';
 
 export interface LecturePdf {
   nbPages: number;
@@ -9,7 +10,6 @@ export interface LecturePdf {
 }
 
 const NOMS_XML = ['factur-x.xml', 'zugferd-invoice.xml', 'xrechnung.xml', 'zugferd-invoice.xml'];
-const PAGES_MAX = 60;
 
 /**
  * Lit la couche texte et les pièces jointes d'un PDF sans rien exécuter (pdf.js 6 n'évalue plus de code),
@@ -47,11 +47,14 @@ export async function lirePdf(contenu: Buffer): Promise<LecturePdf> {
       page.cleanup();
     }
     let xmlEmbarque: string | null = null;
-    const jointes = (await doc.getAttachments().catch(() => null)) as Record<string, { filename: string; content: Uint8Array }> | null;
-    if (jointes) {
-      for (const j of Object.values(jointes)) {
-        if (NOMS_XML.includes(j.filename.toLowerCase()) && j.content.length < 5 * 1024 * 1024) {
-          xmlEmbarque = Buffer.from(j.content).toString('utf8');
+    // pdf.js 6 rend une table (Map) nom → description, SANS le contenu : celui-ci se demande pièce par pièce.
+    const jointes = await doc.getAttachments().catch(() => null);
+    if (jointes instanceof Map) {
+      for (const [identifiant, jointe] of jointes as Map<string, { filename?: unknown }>) {
+        if (typeof jointe?.filename !== 'string' || !NOMS_XML.includes(jointe.filename.toLowerCase())) continue;
+        const octets: unknown = await doc.getAttachmentContent(identifiant).catch(() => null);
+        if (octets instanceof Uint8Array && octets.length > 0 && octets.length < 5 * 1024 * 1024) {
+          xmlEmbarque = Buffer.from(octets).toString('utf8');
           break;
         }
       }

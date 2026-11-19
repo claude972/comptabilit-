@@ -1,3 +1,4 @@
+import { SpanKind, SpanStatusCode, trace } from '@opentelemetry/api';
 import { sql } from 'drizzle-orm';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
@@ -49,13 +50,31 @@ export function creerAccesBd(url: string, options: { max?: number } = {}): Acces
   return {
     pool,
     avecContexte(ctx, fn) {
-      return db.transaction(async (tx) => {
-        await tx.execute(sql`
+      const transaction = () =>
+        db.transaction(async (tx) => {
+          await tx.execute(sql`
           select set_config('app.cabinet_id', ${ctx.cabinetId ?? ''}, true),
                  set_config('app.utilisateur_id', ${ctx.utilisateurId ?? ''}, true),
                  set_config('app.sujet', ${ctx.sujet ?? ''}, true)`);
-        return fn(tx);
-      });
+          return fn(tx);
+        });
+      // Trace : un span par TRANSACTION (durée, issue, cabinet), jamais le texte ni les paramètres des requêtes. Sans
+      // traces actives dans le processus (cas par défaut), le traceur de l'API OpenTelemetry est inerte.
+      return trace.getTracer('comtaple').startActiveSpan(
+        'bd transaction',
+        { kind: SpanKind.CLIENT, attributes: { 'db.system.name': 'postgresql', 'db.operation.name': 'transaction', ...(ctx.cabinetId ? { 'comtaple.cabinet.id': ctx.cabinetId } : {}) } },
+        async (span) => {
+          try {
+            return await transaction();
+          } catch (e) {
+            span.setStatus({ code: SpanStatusCode.ERROR });
+            span.setAttribute('error.type', e instanceof Error ? e.name : 'Erreur');
+            throw e;
+          } finally {
+            span.end();
+          }
+        },
+      );
     },
     fermer: () => pool.end(),
   };

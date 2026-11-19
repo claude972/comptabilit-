@@ -1,32 +1,27 @@
-import {
-  type ChampsFacture,
-  extraireChampsFacture,
-  extraireChampsFacturX,
-  extraireChampsUbl,
-  type PageTexte,
-  verifierCoherenceFacture,
-} from '@comtaple/core';
+import { type ChampsFacture, type PageTexte, verifierCoherenceFacture } from '@comtaple/core';
 import { and, eq, journaliser, schema as s, sql } from '@comtaple/db';
 import type { TacheAnalyseDocument } from '@comtaple/plateforme';
+import { analyserPieceIsolee, type CauseEchec, extraireTexteIsole, motifEchecAnalyse, type OptionsAnalyse } from './analyse-isolee.js';
+import { caracteresUtiles } from './analyse-types.js';
 import { analyserAntivirus } from './antivirus.js';
 import type { Contexte } from './contexte.js';
 import { ocr } from './ocr.js';
 import { preparerPassages, remplacerPassages } from './passages.js';
-import { lirePdf } from './pdf.js';
 import { detecterType } from './types-fichier.js';
 
-/** Nombre minimal de caractères utiles pour considérer qu'une couche texte PDF existe réellement. */
-const SEUIL_COUCHE_TEXTE = 40;
 /** En dessous, une pièce passée à l'OCR est jugée illisible et renvoyée au déposant (règle interne). */
 const SEUIL_LISIBILITE = 25;
-
-const caracteresUtiles = (pages: PageTexte[]) => pages.reduce((n, p) => n + p.texte.replace(/\s/g, '').length, 0);
 
 /**
  * Analyse d'une pièce : type réel, antivirus, extraction (données structurées > couche texte > OCR), vérifications
  * arithmétiques par le moteur. Le contenu de la pièce est une DONNÉE : aucun texte qu'elle contient n'est interprété
  * comme une instruction. L'IA n'intervient pas dans l'extraction. Après l'analyse, le texte des pages est découpé en passages
  * pour la recherche de l'assistant ; leurs vecteurs ne sont calculés que si la passerelle IA est connectée (sinon NULL).
+ *
+ * ISOLEMENT : ce processus ne DÉCODE aucun fichier déposé. Il compare les premiers octets à des signatures fixes
+ * (type réel), transmet les octets à l'antivirus, au service OCR et au processus enfant d'analyse (`analyse-isolee.ts`),
+ * et ne reçoit de l'enfant qu'un résultat structuré validé par schéma. Un enfant qui plante, boucle ou déborde donne à
+ * la pièce un motif explicite ; le fichier original n'est jamais modifié et les autres pièces continuent d'être traitées.
  */
 export async function analyserDocument(c: Contexte, t: TacheAnalyseDocument): Promise<void> {
   const ctx = { cabinetId: t.cabinetId };
@@ -89,44 +84,49 @@ export async function analyserDocument(c: Contexte, t: TacheAnalyseDocument): Pr
   let motif: string | null = null;
   let illisible = false;
 
-  try {
-    if (type === 'application/xml') {
-      const xml = contenu.toString('utf8');
-      champs = /CrossIndustryInvoice/.test(xml.slice(0, 4000)) ? extraireChampsFacturX(xml) : extraireChampsUbl(xml);
-      methode = 'structure';
-      moteur = 'analyse XML (CII/UBL)';
-    } else {
-      if (type === 'application/pdf') {
-        const pdf = await lirePdf(contenu);
-        nbPages = pdf.nbPages;
-        pages = pdf.pages;
-        if (pdf.xmlEmbarque) {
-          champs = extraireChampsFacturX(pdf.xmlEmbarque);
-          methode = 'structure';
-          moteur = 'Factur-X (XML embarqué)';
-        } else if (caracteresUtiles(pages) >= SEUIL_COUCHE_TEXTE) {
-          methode = 'couche_texte';
-          moteur = 'pdfjs-dist';
-        }
+  const isolement: OptionsAnalyse = {
+    dureeMaxMs: c.cfg.ANALYSE_DUREE_MAX_MS,
+    tasMaxMo: c.cfg.ANALYSE_TAS_MAX_MO,
+    memoireMaxMo: c.cfg.ANALYSE_MEMOIRE_MAX_MO,
+    sortieMaxOctets: c.cfg.ANALYSE_SORTIE_MAX_OCTETS,
+    ...c.analyse,
+  };
+  // Le motif technique (cause) va au journal du worker, jamais à l'utilisateur ; aucun contenu de pièce n'y figure.
+  const interrompre = (etape: string, cause: CauseEchec) => {
+    console.error(`[documents] analyse isolée interrompue (${etape}) pour le document ${t.documentId} : ${cause}`);
+    motif = motifEchecAnalyse(cause);
+  };
+
+  if (type === 'application/pdf' || type === 'application/xml') {
+    const r = await analyserPieceIsolee(type, contenu, isolement);
+    if (!r.ok) interrompre('lecture', r.cause);
+    else {
+      ({ pages, nbPages, champs, methode, moteur } = r.valeur);
+      if (r.valeur.lectureImpossible) {
+        console.error(`[documents] lecture impossible du document ${t.documentId}`);
+        motif = 'Lecture impossible : le fichier est endommagé ou son contenu ne correspond pas à son format. La pièce est conservée telle quelle ; déposez-la à nouveau si vous en avez une copie lisible.';
       }
-      if (methode === 'aucune') {
-        const r = await ocr(contenu, type, c.cfg.OCR_URL);
-        if (r.disponible) {
-          pages = r.pages;
-          nbPages ??= r.pages.length;
-          methode = 'ocr';
-          moteur = r.moteur ?? 'ocr';
-          if (caracteresUtiles(pages) < SEUIL_LISIBILITE) illisible = true;
-        } else {
-          motif = `OCR indisponible (${r.motif ?? 'inconnu'}) : saisie manuelle nécessaire`;
-        }
-      }
-      if (!champs && pages.length > 0 && !illisible) champs = extraireChampsFacture(pages);
     }
-  } catch (e) {
-    // Le message de la bibliothèque de lecture (en anglais, parfois technique) va au journal du worker, pas à l'utilisateur.
-    console.error(`[documents] lecture impossible du document ${t.documentId} : ${e instanceof Error ? e.name : 'erreur'}`);
-    motif = 'Lecture impossible : le fichier est endommagé ou son contenu ne correspond pas à son format. La pièce est conservée telle quelle ; déposez-la à nouveau si vous en avez une copie lisible.';
+  }
+  // OCR (service dédié, déjà isolé) : pour une image, ou un PDF lu sans couche texte exploitable.
+  if (type !== 'application/xml' && methode === 'aucune' && motif === null) {
+    const r = await ocr(contenu, type, c.cfg.OCR_URL);
+    if (r.disponible) {
+      pages = r.pages;
+      nbPages ??= r.pages.length;
+      methode = 'ocr';
+      moteur = r.moteur ?? 'ocr';
+      champs = null;
+      if (caracteresUtiles(pages) < SEUIL_LISIBILITE) illisible = true;
+      else if (pages.length > 0) {
+        // Le texte reconnu reste un contenu non fiable : ses champs sont extraits dans un enfant, comme pour un PDF.
+        const e = await extraireTexteIsole(pages, isolement);
+        if (e.ok) champs = e.valeur.champs;
+        else interrompre('extraction', e.cause);
+      }
+    } else {
+      motif = `OCR indisponible (${r.motif ?? 'inconnu'}) : saisie manuelle nécessaire`;
+    }
   }
 
   // Passages de recherche : préparés hors transaction (un éventuel appel d'embeddings ne tient aucune transaction ouverte).

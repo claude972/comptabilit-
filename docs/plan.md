@@ -99,8 +99,8 @@ Reste réalisable sans intervention extérieure, non fait (par ordre d'utilité)
 2. Amortissements autres que linéaires ; reprise du fichier des immobilisations depuis le logiciel comptable (aujourd'hui : saisie par le cabinet).
 3. Assistant sur un portefeuille de plusieurs dossiers ; recherche multi-dossiers.
 4. Table des tiers et suivi des règlements par facture (aujourd'hui : comptes auxiliaires des écritures et rapprochement bancaire).
-5. Traces OpenTelemetry dans l'API et le worker (branchement décrit dans `exploitation.md`, demande un SDK).
-6. Contrôles en flux au-delà de 500 000 lignes par exercice ; dépôt d'une archive répartie entre dossiers ; notifications poussées.
+5. Entrepôt de traces et acheminement vers le collecteur en production (les traces sont émises, D-074).
+6. Isolation par le noyau des analyseurs ; même isolement pour les relevés bancaires, les FEC et le mail (D-076) ; plafonds des écrans de l'API qui chargent encore les lignes en mémoire (D-075) ; dépôt d'une archive répartie entre dossiers ; notifications poussées.
 7. Purge effective à l'issue des durées de conservation (à ne pas écrire avant que les durées soient arrêtées).
 
 Le reste dépend d'une intervention extérieure : liste en tête de `acces-externes.md`.

@@ -1,5 +1,6 @@
 import {
   decoderTexteReleve,
+  DepassementBudget,
   detecterFormatReleve,
   elementDepuisMouvement,
   elementsBanqueDepuisEcritures,
@@ -12,6 +13,7 @@ import {
   proposerProfilCsv,
   rapprocher,
   type RapportReleve,
+  reduireAuxEcrituresDeBanque,
   schemaParametresRapprochement,
   schemaProfilCsvBanque,
   TAILLE_MAX_RELEVE,
@@ -19,6 +21,10 @@ import {
 import { and, asc, eq, gte, inArray, journaliser, lte, schema as s, sql, type Tx } from '@comtaple/db';
 import { lignesDuLot, type TacheImportReleve, type TacheRapprochement } from '@comtaple/plateforme';
 import type { Contexte } from './contexte.js';
+import { preparerSourceDuLot } from './source-lignes.js';
+
+/** Comptes de banque rapprochés (les mêmes que la valeur par défaut du moteur). */
+const PREFIXES_BANQUE = ['512'];
 
 /**
  * Import d'un relevé bancaire (camt.053, OFX, CSV). Fonctionne sans aucun prestataire d'agrégation.
@@ -191,14 +197,28 @@ export async function executerRapprochement(c: Contexte, t: TacheRapprochement):
     await tx.delete(s.rapprochements).where(eq(s.rapprochements.executionId, execution.id));
     const parametres = schemaParametresRapprochement.partial().parse(execution.parametres ?? {});
 
-    // Même garde de volume que les contrôles : au-delà de la limite, le rapprochement échoue proprement, avec son motif.
+    // Même règle de volume que les contrôles. Jusqu'au seuil, l'exercice est chargé en mémoire. Au-delà, seules les
+    // lignes dont dépend le rapprochement sont lues en flux (comptes de banque et tiers de leurs contreparties) : les
+    // éléments à rapprocher sont identiques. Si même ces lignes dépassent le budget, échec propre, avec son motif.
     const nbLignes = Number((await tx.execute(sql`select count(*)::int as n from lignes_ecriture where lot_import_id = ${execution.lotImportId}::uuid`)).rows[0]?.n ?? 0);
-    if (nbLignes > c.cfg.LIGNES_MAX_PAR_TRAITEMENT) {
-      await tx.update(s.executionsRapprochement).set({ statut: 'echec', erreur: `Volume non pris en charge : ${nbLignes.toLocaleString('fr-FR')} lignes d’écriture pour une limite de ${c.cfg.LIGNES_MAX_PAR_TRAITEMENT.toLocaleString('fr-FR')} par traitement. Aucun rapprochement n’a été calculé.`, termineLe: sql`now()` }).where(eq(s.executionsRapprochement.id, execution.id));
-      return;
+    let lignes: LigneEcriture[];
+    if (nbLignes <= c.cfg.LIGNES_MAX_PAR_TRAITEMENT) lignes = await lignesDuLot(tx, execution.lotImportId);
+    else {
+      const { source, ordreDetermine } = await preparerSourceDuLot(tx, execution.lotImportId);
+      const echec = (raison: string) =>
+        tx
+          .update(s.executionsRapprochement)
+          .set({ statut: 'echec', erreur: `Volume non pris en charge : ${nbLignes.toLocaleString('fr-FR')} lignes d’écriture (seuil du traitement en mémoire : ${c.cfg.LIGNES_MAX_PAR_TRAITEMENT.toLocaleString('fr-FR')}) ; ${raison}. Aucun rapprochement n’a été calculé.`, termineLe: sql`now()` })
+          .where(eq(s.executionsRapprochement.id, execution.id));
+      if (!ordreDetermine) return void (await echec('les numéros de ligne du lot ne sont pas distincts, ce qui interdit le traitement en flux'));
+      try {
+        lignes = await reduireAuxEcrituresDeBanque(source, PREFIXES_BANQUE, c.cfg.LIGNES_MAX_ETAT_FLUX);
+      } catch (e) {
+        if (!(e instanceof DepassementBudget)) throw e;
+        return void (await echec(`traitement en flux impossible : ${e.raison}`));
+      }
     }
-    const lignes = await lignesDuLot(tx, execution.lotImportId);
-    const cotesEcritures = elementsBanqueDepuisEcritures(lignes);
+    const cotesEcritures = elementsBanqueDepuisEcritures(lignes, { prefixesBanque: PREFIXES_BANQUE });
     const mouvements = await tx
       .select()
       .from(s.mouvementsBancaires)

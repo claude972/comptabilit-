@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import type { INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { type Config, Metriques } from '@comtaple/plateforme';
+import { type Config, intergicielTraces, Metriques } from '@comtaple/plateforme';
 import express from 'express';
 import { AppModule } from './app.module.js';
 import { CONFIG } from './jetons.js';
@@ -28,6 +28,8 @@ export async function creerApplication(): Promise<INestApplication> {
   // Métriques techniques : étiquetées par GABARIT de route (jamais par identifiant), servies sur un port local séparé.
   const metriques = new Metriques('api');
   metriques.servir(cfg.METRIQUES_PORT_API, cfg.METRIQUES_HOTE);
+  // Trace : un span par requête, nommé par le gabarit de route (sans effet si les traces ne sont pas actives).
+  http.use(intergicielTraces());
   http.use((req, res, suite) => {
     const debut = process.hrtime.bigint();
     res.on('finish', () => {

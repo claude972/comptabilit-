@@ -2,8 +2,106 @@ import { Decimal } from 'decimal.js';
 import { z } from 'zod';
 import { dec } from '../montant.js';
 import { sourceInterne } from '../sources.js';
-import { ZERO, aPrefixe, cleEcriture, definir, lignesJusquaCloture, montant2, schemaMaxConstats, schemaMontantPositif, schemaPrefixes } from './outils.js';
-import { creditDe, debitDe } from './outils.js';
+import {
+  DepassementBudget, ZERO, aPrefixe, cleEcriture, definir, jusquaCloture, lignesJusquaCloture, montant2, mouvementDe, schemaMaxConstats, schemaMontantPositif, schemaPrefixes,
+} from './outils.js';
+import type { Calcul } from './outils.js';
+import type { ContexteControleFlux, LigneEcriture } from './types.js';
+
+/**
+ * Cumul de la base et de la TVA d'un cadrage (commun aux deux chemins). Les écritures de liquidation sont repérées
+ * d'abord (`reperer`), puis chaque ligne est cumulée (`ajouter`) : la TVA d'une écriture de liquidation est décomptée
+ * mais pas cumulée. `sens` : +1 si base et TVA se lisent au débit (TVA déductible), −1 au crédit (TVA collectée).
+ */
+class CumulTva {
+  readonly liquidation = new Set<string>();
+  base: Decimal = ZERO;
+  tva: Decimal = ZERO;
+  nbBase = 0;
+  nbTva = 0;
+  constructor(
+    private readonly sens: 1 | -1,
+    private readonly estBase: (compte: string) => boolean,
+    private readonly estTva: (compte: string) => boolean,
+    private readonly estLiquidation: ((compte: string) => boolean) | null,
+  ) {}
+  reperer(l: LigneEcriture): void {
+    if (this.estLiquidation !== null && this.estLiquidation(l.compteNum)) this.liquidation.add(cleEcriture(l));
+  }
+  ajouter(l: LigneEcriture): void {
+    const mouvement = this.sens === 1 ? mouvementDe(l) : mouvementDe(l).negated();
+    if (this.estBase(l.compteNum)) {
+      this.nbBase++;
+      this.base = this.base.plus(mouvement);
+    } else if (this.estTva(l.compteNum)) {
+      this.nbTva++;
+      if (!this.liquidation.has(cleEcriture(l))) this.tva = this.tva.plus(mouvement);
+    }
+  }
+}
+
+/** Les deux passages d'un cadrage en flux : écritures de liquidation, puis base et TVA. */
+async function cumulerEnFlux(ctx: ContexteControleFlux, cumul: CumulTva, retenue: (l: LigneEcriture) => boolean, prefixesLiquidation: readonly string[], prefixesCumul: readonly string[]): Promise<void> {
+  if (prefixesLiquidation.length > 0) {
+    for await (const l of ctx.source.parcourir({ ordre: 'fichier', prefixesComptes: prefixesLiquidation })) {
+      if (!retenue(l)) continue;
+      cumul.reperer(l);
+      if (cumul.liquidation.size > ctx.budget.elements) throw new DepassementBudget(`plus de ${ctx.budget.elements.toLocaleString('fr-FR')} écritures de liquidation de TVA`);
+    }
+  }
+  for await (const l of ctx.source.parcourir({ ordre: 'fichier', prefixesComptes: prefixesCumul })) {
+    if (retenue(l)) cumul.ajouter(l);
+  }
+}
+
+interface ParametresTva001 { prefixesBase: string[]; prefixesTva: string[]; prefixesLiquidation: string[]; tauxAttendus: string[]; ventesSansTvaAdmises: boolean; toleranceTaux: string }
+const cumulTva001 = (p: ParametresTva001): CumulTva =>
+  new CumulTva(-1, (c) => aPrefixe(c, p.prefixesBase), (c) => aPrefixe(c, p.prefixesTva), p.prefixesLiquidation.length > 0 ? (c) => aPrefixe(c, p.prefixesLiquidation) : null);
+
+function conclureTva001(cumul: CumulTva, p: ParametresTva001): Calcul {
+  const { base, tva, nbBase, nbTva } = cumul;
+  const mesures: Record<string, string> = { base: montant2(base), tvaCollectee: montant2(tva), nbLignesBase: String(nbBase), nbLignesTva: String(nbTva) };
+  if (nbBase === 0) return { statut: 'non_realise', motif: `Aucun compte de produits (${p.prefixesBase.join(', ')}) dans les écritures : cadrage impossible.`, mesures };
+  if (nbTva === 0) return { statut: 'non_realise', motif: `Aucun compte de TVA collectée (${p.prefixesTva.join(', ')}) dans les écritures : cadrage impossible.`, mesures };
+  if (!base.isPositive() || base.isZero()) return { statut: 'non_realise', motif: 'Base nulle ou négative : taux apparent non calculable.', mesures };
+  const taux = p.tauxAttendus.map((t) => dec(t));
+  const tauxMax = Decimal.max(...taux);
+  const tauxMin = p.ventesSansTvaAdmises ? ZERO : Decimal.min(...taux);
+  const tolerance = dec(p.toleranceTaux);
+  const tauxApparent = tva.div(base).times(100);
+  mesures['tauxApparent'] = tauxApparent.toFixed(4, Decimal.ROUND_HALF_UP);
+  mesures['tauxMin'] = tauxMin.toString();
+  mesures['tauxMax'] = tauxMax.toString();
+  let borne: Decimal | null = null;
+  if (tauxApparent.greaterThan(tauxMax.plus(tolerance))) borne = tauxMax;
+  else if (tauxApparent.lessThan(tauxMin.minus(tolerance))) borne = tauxMin;
+  if (borne === null) return { statut: 'sans_anomalie', mesures };
+  const tvaBorne = base.times(borne).div(100);
+  const ecart = tva.minus(tvaBorne);
+  return {
+    statut: 'constat',
+    mesures,
+    constats: [
+      {
+        gravite: 'moyenne',
+        titre: `TVA collectée peu vraisemblable : taux apparent de ${tauxApparent.toFixed(2, Decimal.ROUND_HALF_UP)} %`,
+        explication:
+          `TVA collectée comptabilisée ${montant2(tva)} pour une base de ${montant2(base)}, soit un taux apparent hors de l'intervalle attendu [${tauxMin.toString()} % ; ${tauxMax.toString()} %]. ` +
+          `Écart de ${montant2(ecart)} par rapport à la borne de ${borne.toString()} %. Contrôle de vraisemblance : l'écart peut s'expliquer (exonérations, exigibilité, autres produits taxables).`,
+        actionProposee: 'Réaliser un cadrage détaillé par taux et par nature d’opération, et rapprocher des déclarations de TVA.',
+        montant: montant2(ecart.abs()),
+        lignesConcernees: [],
+        preuves: [
+          { libelle: 'Base (comptes de produits)', valeur: montant2(base) },
+          { libelle: 'TVA collectée (hors liquidation)', valeur: montant2(tva) },
+          { libelle: 'Taux apparent (%)', valeur: tauxApparent.toFixed(4, Decimal.ROUND_HALF_UP) },
+          { libelle: 'Taux attendus (%)', valeur: p.tauxAttendus.join(' ; ') },
+        ],
+        cle: 'TVA-001|global',
+      },
+    ],
+  };
+}
 
 export const TVA_001 = definir({
   id: 'TVA-001',
@@ -44,68 +142,78 @@ export const TVA_001 = definir({
     'Contrôle de vraisemblance interne. Taux par défaut paramétrables : taux normal 20 % (CGI art. 278, consulté sur Légifrance le 2026-11-19, article signalé comme abrogé à terme par l’ordonnance n° 2025-1247 du 17 décembre 2025) ; taux 10 %, 5,5 % et 2,1 % non revérifiés.',
   ),
   resultatsAttendus: 'Taux apparent compris dans les bornes des taux attendus ; tout écart est à expliquer par un cadrage détaillé.',
+  calculGrosVolume:
+    'Flux, état borné aux écritures de liquidation. Deux passages restreints : les comptes de liquidation (une clé par écriture de liquidation, budget d’éléments), puis les comptes de produits et de TVA collectée, cumulés ligne par ligne.',
   calcul(ctx, p) {
     const lignes = lignesJusquaCloture(ctx);
-    const ecrituresDeLiquidation = new Set<string>();
-    if (p.prefixesLiquidation.length > 0) {
-      for (const l of lignes) if (aPrefixe(l.compteNum, p.prefixesLiquidation)) ecrituresDeLiquidation.add(cleEcriture(l));
-    }
-    let base: Decimal = ZERO;
-    let tva: Decimal = ZERO;
-    let nbBase = 0;
-    let nbTva = 0;
-    for (const l of lignes) {
-      if (aPrefixe(l.compteNum, p.prefixesBase)) {
-        nbBase++;
-        base = base.plus(creditDe(l)).minus(debitDe(l));
-      } else if (aPrefixe(l.compteNum, p.prefixesTva)) {
-        nbTva++;
-        if (!ecrituresDeLiquidation.has(cleEcriture(l))) tva = tva.plus(creditDe(l)).minus(debitDe(l));
-      }
-    }
-    const mesures: Record<string, string> = { base: montant2(base), tvaCollectee: montant2(tva), nbLignesBase: String(nbBase), nbLignesTva: String(nbTva) };
-    if (nbBase === 0) return { statut: 'non_realise', motif: `Aucun compte de produits (${p.prefixesBase.join(', ')}) dans les écritures : cadrage impossible.`, mesures };
-    if (nbTva === 0) return { statut: 'non_realise', motif: `Aucun compte de TVA collectée (${p.prefixesTva.join(', ')}) dans les écritures : cadrage impossible.`, mesures };
-    if (!base.isPositive() || base.isZero()) return { statut: 'non_realise', motif: 'Base nulle ou négative : taux apparent non calculable.', mesures };
-    const taux = p.tauxAttendus.map((t) => dec(t));
-    const tauxMax = Decimal.max(...taux);
-    const tauxMin = p.ventesSansTvaAdmises ? ZERO : Decimal.min(...taux);
-    const tolerance = dec(p.toleranceTaux);
-    const tauxApparent = tva.div(base).times(100);
-    mesures['tauxApparent'] = tauxApparent.toFixed(4, Decimal.ROUND_HALF_UP);
-    mesures['tauxMin'] = tauxMin.toString();
-    mesures['tauxMax'] = tauxMax.toString();
-    let borne: Decimal | null = null;
-    if (tauxApparent.greaterThan(tauxMax.plus(tolerance))) borne = tauxMax;
-    else if (tauxApparent.lessThan(tauxMin.minus(tolerance))) borne = tauxMin;
-    if (borne === null) return { statut: 'sans_anomalie', mesures };
-    const tvaBorne = base.times(borne).div(100);
-    const ecart = tva.minus(tvaBorne);
-    return {
-      statut: 'constat',
-      mesures,
-      constats: [
-        {
-          gravite: 'moyenne',
-          titre: `TVA collectée peu vraisemblable : taux apparent de ${tauxApparent.toFixed(2, Decimal.ROUND_HALF_UP)} %`,
-          explication:
-            `TVA collectée comptabilisée ${montant2(tva)} pour une base de ${montant2(base)}, soit un taux apparent hors de l'intervalle attendu [${tauxMin.toString()} % ; ${tauxMax.toString()} %]. ` +
-            `Écart de ${montant2(ecart)} par rapport à la borne de ${borne.toString()} %. Contrôle de vraisemblance : l'écart peut s'expliquer (exonérations, exigibilité, autres produits taxables).`,
-          actionProposee: 'Réaliser un cadrage détaillé par taux et par nature d’opération, et rapprocher des déclarations de TVA.',
-          montant: montant2(ecart.abs()),
-          lignesConcernees: [],
-          preuves: [
-            { libelle: 'Base (comptes de produits)', valeur: montant2(base) },
-            { libelle: 'TVA collectée (hors liquidation)', valeur: montant2(tva) },
-            { libelle: 'Taux apparent (%)', valeur: tauxApparent.toFixed(4, Decimal.ROUND_HALF_UP) },
-            { libelle: 'Taux attendus (%)', valeur: p.tauxAttendus.join(' ; ') },
-          ],
-          cle: 'TVA-001|global',
-        },
-      ],
-    };
+    const cumul = cumulTva001(p);
+    for (const l of lignes) cumul.reperer(l);
+    for (const l of lignes) cumul.ajouter(l);
+    return conclureTva001(cumul, p);
+  },
+  async calculFlux(ctx, p) {
+    const cumul = cumulTva001(p);
+    await cumulerEnFlux(ctx, cumul, jusquaCloture(ctx), p.prefixesLiquidation, [...p.prefixesBase, ...p.prefixesTva]);
+    return conclureTva001(cumul, p);
   },
 });
+
+interface ParametresTva002 {
+  prefixesBase: string[]; prefixesImmobilisations: string[]; prefixesTva: string[]; prefixesTvaExclus: string[]; prefixesLiquidation: string[]; journauxANouveaux: string[];
+  tauxAttendus: string[]; tauxPlancher: string; toleranceTaux: string;
+}
+const cumulTva002 = (p: ParametresTva002): CumulTva => {
+  const prefixesBase = [...p.prefixesBase, ...p.prefixesImmobilisations];
+  return new CumulTva(1, (c) => aPrefixe(c, prefixesBase), (c) => aPrefixe(c, p.prefixesTva, p.prefixesTvaExclus), p.prefixesLiquidation.length > 0 ? (c) => aPrefixe(c, p.prefixesLiquidation) : null);
+};
+
+function conclureTva002(cumul: CumulTva, p: ParametresTva002): Calcul {
+  const { base, tva, nbBase, nbTva } = cumul;
+  const prefixesBase = [...p.prefixesBase, ...p.prefixesImmobilisations];
+  const mesures: Record<string, string> = { base: montant2(base), tvaDeductible: montant2(tva), nbLignesBase: String(nbBase), nbLignesTva: String(nbTva) };
+  if (nbBase === 0) return { statut: 'non_realise', motif: `Aucun compte d'achats, de charges externes ou d'immobilisations (${prefixesBase.join(', ')}) dans les écritures : cadrage impossible.`, mesures };
+  if (nbTva === 0) return { statut: 'non_realise', motif: `Aucun compte de TVA déductible (${p.prefixesTva.join(', ')}) dans les écritures : cadrage impossible (franchise en base ou TVA non comptabilisée ?).`, mesures };
+  if (!base.isPositive() || base.isZero()) return { statut: 'non_realise', motif: 'Base nulle ou négative : taux apparent non calculable.', mesures };
+  const tauxMax = Decimal.max(...p.tauxAttendus.map((t) => dec(t)));
+  const plancher = dec(p.tauxPlancher);
+  const tolerance = dec(p.toleranceTaux);
+  const tauxApparent = tva.div(base).times(100);
+  mesures['tauxApparent'] = tauxApparent.toFixed(4, Decimal.ROUND_HALF_UP);
+  mesures['tauxMax'] = tauxMax.toString();
+  mesures['tauxPlancher'] = plancher.toString();
+  let borne: Decimal | null = null;
+  if (tauxApparent.greaterThan(tauxMax.plus(tolerance))) borne = tauxMax;
+  else if (plancher.isPositive() && !plancher.isZero() && tauxApparent.lessThan(plancher.minus(tolerance))) borne = plancher;
+  if (borne === null) return { statut: 'sans_anomalie', mesures };
+  const ecart = tva.minus(base.times(borne).div(100));
+  const exces = borne.equals(tauxMax) && tauxApparent.greaterThan(tauxMax);
+  return {
+    statut: 'constat',
+    mesures,
+    constats: [
+      {
+        gravite: 'moyenne',
+        titre: `TVA déductible peu vraisemblable : taux apparent de ${tauxApparent.toFixed(2, Decimal.ROUND_HALF_UP)} %`,
+        explication:
+          `TVA déductible comptabilisée ${montant2(tva)} pour une base d'achats, charges externes et immobilisations de ${montant2(base)}. ` +
+          (exces
+            ? `Le taux apparent dépasse le taux maximal attendu de ${tauxMax.toString()} % : la TVA déduite excède de ${montant2(ecart)} le maximum théorique. `
+            : `Le taux apparent est inférieur au plancher paramétré de ${plancher.toString()} % (écart de ${montant2(ecart)}). `) +
+          'Contrôle de vraisemblance : l’écart peut s’expliquer (régularisations, TVA sur immobilisations d’un autre exercice, autoliquidation).',
+        actionProposee: 'Réaliser un cadrage détaillé de la TVA déductible par nature de dépense et rapprocher des déclarations de TVA.',
+        montant: montant2(ecart.abs()),
+        lignesConcernees: [],
+        preuves: [
+          { libelle: 'Base (achats, charges externes, immobilisations)', valeur: montant2(base) },
+          { libelle: 'TVA déductible (hors liquidation)', valeur: montant2(tva) },
+          { libelle: 'Taux apparent (%)', valeur: tauxApparent.toFixed(4, Decimal.ROUND_HALF_UP) },
+          { libelle: 'Taux attendus (%)', valeur: p.tauxAttendus.join(' ; ') },
+        ],
+        cle: 'TVA-002|global',
+      },
+    ],
+  };
+}
 
 export const TVA_002 = definir({
   id: 'TVA-002',
@@ -152,68 +260,19 @@ export const TVA_002 = definir({
     'Contrôle de vraisemblance interne, symétrique de TVA-001. Taux par défaut paramétrables : taux normal 20 % (CGI art. 278, consulté sur Légifrance le 2026-11-19) ; taux 10 %, 5,5 % et 2,1 % non revérifiés.',
   ),
   resultatsAttendus: 'Taux apparent de TVA déductible inférieur ou égal au taux maximal attendu ; tout dépassement est à expliquer par un cadrage détaillé.',
+  calculGrosVolume:
+    'Flux, état borné aux écritures de liquidation. Deux passages restreints : les comptes de liquidation (une clé par écriture de liquidation, budget d’éléments), puis les comptes d’achats, de charges externes, d’immobilisations et de TVA déductible, cumulés ligne par ligne.',
   calcul(ctx, p) {
     const lignes = lignesJusquaCloture(ctx).filter((l) => !p.journauxANouveaux.includes(l.journalCode));
-    const ecrituresDeLiquidation = new Set<string>();
-    if (p.prefixesLiquidation.length > 0) {
-      for (const l of lignes) if (aPrefixe(l.compteNum, p.prefixesLiquidation)) ecrituresDeLiquidation.add(cleEcriture(l));
-    }
-    let base: Decimal = ZERO;
-    let tva: Decimal = ZERO;
-    let nbBase = 0;
-    let nbTva = 0;
-    const prefixesBase = [...p.prefixesBase, ...p.prefixesImmobilisations];
-    for (const l of lignes) {
-      if (aPrefixe(l.compteNum, prefixesBase)) {
-        nbBase++;
-        base = base.plus(debitDe(l)).minus(creditDe(l));
-      } else if (aPrefixe(l.compteNum, p.prefixesTva, p.prefixesTvaExclus)) {
-        nbTva++;
-        if (!ecrituresDeLiquidation.has(cleEcriture(l))) tva = tva.plus(debitDe(l)).minus(creditDe(l));
-      }
-    }
-    const mesures: Record<string, string> = { base: montant2(base), tvaDeductible: montant2(tva), nbLignesBase: String(nbBase), nbLignesTva: String(nbTva) };
-    if (nbBase === 0) return { statut: 'non_realise', motif: `Aucun compte d'achats, de charges externes ou d'immobilisations (${prefixesBase.join(', ')}) dans les écritures : cadrage impossible.`, mesures };
-    if (nbTva === 0) return { statut: 'non_realise', motif: `Aucun compte de TVA déductible (${p.prefixesTva.join(', ')}) dans les écritures : cadrage impossible (franchise en base ou TVA non comptabilisée ?).`, mesures };
-    if (!base.isPositive() || base.isZero()) return { statut: 'non_realise', motif: 'Base nulle ou négative : taux apparent non calculable.', mesures };
-    const tauxMax = Decimal.max(...p.tauxAttendus.map((t) => dec(t)));
-    const plancher = dec(p.tauxPlancher);
-    const tolerance = dec(p.toleranceTaux);
-    const tauxApparent = tva.div(base).times(100);
-    mesures['tauxApparent'] = tauxApparent.toFixed(4, Decimal.ROUND_HALF_UP);
-    mesures['tauxMax'] = tauxMax.toString();
-    mesures['tauxPlancher'] = plancher.toString();
-    let borne: Decimal | null = null;
-    if (tauxApparent.greaterThan(tauxMax.plus(tolerance))) borne = tauxMax;
-    else if (plancher.isPositive() && !plancher.isZero() && tauxApparent.lessThan(plancher.minus(tolerance))) borne = plancher;
-    if (borne === null) return { statut: 'sans_anomalie', mesures };
-    const ecart = tva.minus(base.times(borne).div(100));
-    const exces = borne.equals(tauxMax) && tauxApparent.greaterThan(tauxMax);
-    return {
-      statut: 'constat',
-      mesures,
-      constats: [
-        {
-          gravite: 'moyenne',
-          titre: `TVA déductible peu vraisemblable : taux apparent de ${tauxApparent.toFixed(2, Decimal.ROUND_HALF_UP)} %`,
-          explication:
-            `TVA déductible comptabilisée ${montant2(tva)} pour une base d'achats, charges externes et immobilisations de ${montant2(base)}. ` +
-            (exces
-              ? `Le taux apparent dépasse le taux maximal attendu de ${tauxMax.toString()} % : la TVA déduite excède de ${montant2(ecart)} le maximum théorique. `
-              : `Le taux apparent est inférieur au plancher paramétré de ${plancher.toString()} % (écart de ${montant2(ecart)}). `) +
-            'Contrôle de vraisemblance : l’écart peut s’expliquer (régularisations, TVA sur immobilisations d’un autre exercice, autoliquidation).',
-          actionProposee: 'Réaliser un cadrage détaillé de la TVA déductible par nature de dépense et rapprocher des déclarations de TVA.',
-          montant: montant2(ecart.abs()),
-          lignesConcernees: [],
-          preuves: [
-            { libelle: 'Base (achats, charges externes, immobilisations)', valeur: montant2(base) },
-            { libelle: 'TVA déductible (hors liquidation)', valeur: montant2(tva) },
-            { libelle: 'Taux apparent (%)', valeur: tauxApparent.toFixed(4, Decimal.ROUND_HALF_UP) },
-            { libelle: 'Taux attendus (%)', valeur: p.tauxAttendus.join(' ; ') },
-          ],
-          cle: 'TVA-002|global',
-        },
-      ],
-    };
+    const cumul = cumulTva002(p);
+    for (const l of lignes) cumul.reperer(l);
+    for (const l of lignes) cumul.ajouter(l);
+    return conclureTva002(cumul, p);
+  },
+  async calculFlux(ctx, p) {
+    const avantCloture = jusquaCloture(ctx);
+    const cumul = cumulTva002(p);
+    await cumulerEnFlux(ctx, cumul, (l) => avantCloture(l) && !p.journauxANouveaux.includes(l.journalCode), p.prefixesLiquidation, [...p.prefixesBase, ...p.prefixesImmobilisations, ...p.prefixesTva]);
+    return conclureTva002(cumul, p);
   },
 });

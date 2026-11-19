@@ -1,8 +1,9 @@
-import { CATALOGUE_CONTROLES, executerControles, type LigneEcriture, type ResultatControle } from '@comtaple/core';
+import { CATALOGUE_CONTROLES, executerControles, executerControlesFlux, type LigneEcriture, type ResultatControle } from '@comtaple/core';
 import { and, desc, eq, journaliser, lt, ne, schema as s, sql } from '@comtaple/db';
 import { parametresApprouves, type TacheControles } from '@comtaple/plateforme';
 import { lignesDuLot, relevesDuDossier } from './banque.js';
 import type { Contexte } from './contexte.js';
+import { ErreurLectureSource, preparerSourceDuLot } from './source-lignes.js';
 
 /** Contrôles dont la règle ou le seuil relève de la fiscalité métropolitaine (taux de TVA, tolérance des biens de faible valeur). */
 const CONTROLES_FISCAUX_METROPOLE = new Set(['TVA-001', 'TVA-002', 'IMM-002']);
@@ -21,13 +22,16 @@ export async function executerControlesExecution(c: Contexte, t: TacheControles)
     await tx.delete(s.constats).where(eq(s.constats.executionId, execution.id));
     await tx.delete(s.resultatsControles).where(eq(s.resultatsControles.executionId, execution.id));
 
-    // Garde de volume : les contrôles chargent en mémoire les lignes de l'exercice (et celles de l'exercice précédent).
-    // Au-delà de la limite prise en charge, AUCUN contrôle n'est réalisé et chacun le dit avec son motif : ni plantage du
-    // worker, ni résultat partiel présenté comme complet.
-    const compter = async (lotId: string) => Number((await tx.execute(sql`select count(*)::int as n from lignes_ecriture where lot_import_id = ${lotId}::uuid`)).rows[0]?.n ?? 0);
-    const nbLignes = await compter(execution.lotImportId);
-    const horsLimite = nbLignes > c.cfg.LIGNES_MAX_PAR_TRAITEMENT;
-    const lignes = horsLimite ? [] : await lignesDuLot(tx, execution.lotImportId);
+    // Règle de volume (D-061 révisée) :
+    //  - jusqu'au seuil LIGNES_MAX_PAR_TRAITEMENT : chemin EN MÉMOIRE (référence), inchangé ;
+    //  - au-delà : chemin EN FLUX (passages successifs par curseur, mémoire bornée), pour les contrôles dont l'égalité
+    //    avec le calcul en mémoire est prouvée ; tout autre contrôle, ou tout contrôle dont l'état dépasserait le budget,
+    //    est « non réalisé » avec son motif. Ni plantage du worker, ni résultat partiel présenté comme complet.
+    const { source, ordreDetermine } = await preparerSourceDuLot(tx, execution.lotImportId);
+    const nbLignes = source.nbLignes;
+    const seuil = c.cfg.LIGNES_MAX_PAR_TRAITEMENT;
+    const enFlux = nbLignes > seuil;
+    const budget = { lignes: c.cfg.LIGNES_MAX_ETAT_FLUX, elements: 10 * c.cfg.LIGNES_MAX_ETAT_FLUX };
     // Exercice précédent : celui qui se termine juste avant, s'il a des données comptables actives (sinon CLO-002 reste non réalisé).
     const [precedentEx] = await tx
       .select()
@@ -35,25 +39,47 @@ export async function executerControlesExecution(c: Contexte, t: TacheControles)
       .where(and(eq(s.exercices.entiteId, execution.entiteId), lt(s.exercices.fin, exercice.debut)))
       .orderBy(desc(s.exercices.fin))
       .limit(1);
-    let exercicePrecedent: { lignes: LigneEcriture[] } | null = null;
-    if (precedentEx) {
-      const [lotPrecedent] = await tx
-        .select()
-        .from(s.lotsImport)
-        .where(and(eq(s.lotsImport.exerciceId, precedentEx.id), eq(s.lotsImport.type, 'fec'), eq(s.lotsImport.actif, true)));
-      // L'exercice précédent n'est chargé que si le total reste dans la limite ; sinon CLO-002 reste « non réalisé ».
-      if (lotPrecedent && !horsLimite && nbLignes + (await compter(lotPrecedent.id)) <= c.cfg.LIGNES_MAX_PAR_TRAITEMENT) exercicePrecedent = { lignes: await lignesDuLot(tx, lotPrecedent.id) };
-    }
+    const [lotPrecedent] = precedentEx
+      ? await tx
+          .select()
+          .from(s.lotsImport)
+          .where(and(eq(s.lotsImport.exerciceId, precedentEx.id), eq(s.lotsImport.type, 'fec'), eq(s.lotsImport.actif, true)))
+      : [];
+    const precedent = lotPrecedent ? await preparerSourceDuLot(tx, lotPrecedent.id) : null;
     const releves = await relevesDuDossier(tx, execution.entiteId);
 
     // Paramètres propres au cabinet ou au dossier : uniquement des règles approuvées par une personne habilitée.
     const regles = await parametresApprouves(tx, execution.entiteId);
     const [entite] = await tx.select().from(s.entites).where(eq(s.entites.id, execution.entiteId));
     const territoire = entite?.territoireFiscal ?? 'a_confirmer';
-    const motifVolume = `Volume non pris en charge : ${nbLignes.toLocaleString('fr-FR')} lignes d’écriture pour une limite de ${c.cfg.LIGNES_MAX_PAR_TRAITEMENT.toLocaleString('fr-FR')} par traitement. Aucun contrôle n’a été réalisé sur cet exercice ; ce n’est pas une absence d’anomalie.`;
-    const resultats: ResultatControle[] = horsLimite
-      ? CATALOGUE_CONTROLES.map((d) => ({ controleId: d.id, version: d.version, statut: 'non_realise' as const, motif: motifVolume, constats: [], parametresAppliques: {}, mesures: {} }))
-      : executerControles({ lignes, exercice: { debut: exercice.debut, fin: exercice.fin }, exercicePrecedent, releves: releves.length ? releves : null }, { parametres: regles.parametres }).map((r) => {
+    const exerciceCtx = { debut: exercice.debut, fin: exercice.fin };
+    const relevesCtx = releves.length ? releves : null;
+    const flux = (ids?: string[]) =>
+      executerControlesFlux(
+        { source, exercice: exerciceCtx, exercicePrecedent: precedent && precedent.ordreDetermine ? { source: precedent.source } : null, releves: relevesCtx, budget },
+        { parametres: regles.parametres, erreurDeLecture: (e) => e instanceof ErreurLectureSource, ...(ids ? { ids } : {}) },
+      );
+
+    let bruts: ResultatControle[];
+    if (!enFlux) {
+      const lignes = await lignesDuLot(tx, execution.lotImportId);
+      // L'exercice précédent n'est chargé en mémoire que si le total reste sous le seuil.
+      const precedentEnMemoire = lotPrecedent && precedent && nbLignes + precedent.source.nbLignes <= seuil;
+      const exercicePrecedent: { lignes: LigneEcriture[] } | null = precedentEnMemoire ? { lignes: await lignesDuLot(tx, lotPrecedent.id) } : null;
+      bruts = executerControles({ lignes, exercice: exerciceCtx, exercicePrecedent, releves: relevesCtx }, { parametres: regles.parametres });
+      // Sinon la reprise des à-nouveaux (seul contrôle qui lit l'exercice précédent) se calcule en flux, sur les deux exercices.
+      if (lotPrecedent && !precedentEnMemoire && ordreDetermine && precedent?.ordreDetermine) {
+        const [clo002] = await flux(['CLO-002']);
+        if (clo002) bruts = bruts.map((r) => (r.controleId === 'CLO-002' ? clo002 : r));
+      }
+    } else if (!ordreDetermine) {
+      // Le calcul en flux suppose un ordre du fichier déterminé (numéros de ligne distincts) : sans lui, rien n'est conclu.
+      const motif = `Volume non pris en charge : ${nbLignes.toLocaleString('fr-FR')} lignes d’écriture (seuil du traitement en mémoire : ${seuil.toLocaleString('fr-FR')}) et les numéros de ligne du lot ne sont pas distincts, ce qui interdit le traitement en flux. Aucun contrôle n’a été réalisé sur cet exercice ; ce n’est pas une absence d’anomalie.`;
+      bruts = CATALOGUE_CONTROLES.map((d) => ({ controleId: d.id, version: d.version, statut: 'non_realise' as const, motif, constats: [], parametresAppliques: {}, mesures: {} }));
+    } else {
+      bruts = await flux();
+    }
+    const resultats: ResultatControle[] = bruts.map((r) => {
       // Les règles fiscales implémentées sont celles de la France métropolitaine : hors de ce territoire (ou tant qu'il
       // n'est pas confirmé), le contrôle n'est PAS réalisé et le dit, au lieu d'appliquer une règle inadaptée.
       if (territoire === 'metropole' || !CONTROLES_FISCAUX_METROPOLE.has(r.controleId)) return r;
@@ -138,7 +164,8 @@ export async function executerControlesExecution(c: Contexte, t: TacheControles)
       entiteId: execution.entiteId,
       details: {
         versionDonnees: execution.versionDonnees,
-        lignes: lignes.length,
+        lignes: nbLignes,
+        chemin: enFlux ? 'flux' : 'memoire',
         constats: nbConstats,
         statuts: Object.fromEntries(resultats.map((r) => [`${r.controleId}@${r.version}`, r.statut])),
       },

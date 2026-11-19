@@ -132,3 +132,92 @@ export function ExplicationConstat({ constatId }: { constatId: string }) {
     </div>
   );
 }
+
+// ───────────────────────────── Tâches sans écran dédié : affichage générique, toujours un PROJET ─────────────────────────────
+
+interface ElementLettre {
+  rubrique: string;
+  contenu: string;
+  extrait: string;
+}
+interface PropositionGenerique {
+  commentaire?: string;
+  elements?: ElementLettre[];
+  rubriquesNonTrouvees?: string[];
+  retenues?: Array<{ mouvementIds: string[]; ecritureIds: string[]; explication: string | null }>;
+  ecartees?: Array<{ motif: string }>;
+}
+
+const LIBELLE_RUBRIQUE_LETTRE: Record<string, string> = {
+  perimetre: 'Périmètre',
+  duree: 'Durée',
+  honoraires: 'Honoraires',
+  obligations: 'Obligations des parties',
+  livrables: 'Livrables',
+  mandats: 'Mandats et limites',
+  revision: 'Conditions de révision',
+};
+
+/**
+ * Bouton d'une tâche IA qui n'a pas d'écran propre (commentaire d'indicateurs, analyse de lettre de mission, suggestions
+ * de rapprochement). Affiche l'origine réelle du résultat ; sans IA connectée, dit que la tâche est indisponible (ou
+ * montre le repli déterministe quand il existe). Rien n'est jamais appliqué.
+ */
+export function TacheIa({ chemin, titre, libelleBouton, explication, bloc }: { chemin: string; titre: string; libelleBouton: string; explication: string; bloc: string }) {
+  const t = useTache<ReponseTacheIa<PropositionGenerique>>();
+  const r = t.resultat;
+  const p = r?.proposition ?? null;
+  return (
+    <div className="space-y-3" data-bloc={bloc}>
+      <SousTitre className="text-base">{titre}</SousTitre>
+      <p className="text-sm text-texte-doux">{explication}</p>
+      <Bouton variante="secondaire" disabled={t.occupe} onClick={() => t.demander(chemin)}>
+        {t.occupe ? 'Préparation…' : libelleBouton}
+      </Bouton>
+      {t.erreur ? (
+        <Alerte ton="danger" role="alert">
+          {t.erreur}
+        </Alerte>
+      ) : null}
+      <div aria-live="polite" className="space-y-2" data-testid={`resultat-${bloc}`}>
+        {r ? (
+          <>
+            <Origine r={r} />
+            {!p ? <Alerte ton="neutre">{r.motif ?? 'Aucune proposition : aucune IA n’est connectée et cette tâche n’a pas de repli sans IA.'}</Alerte> : null}
+            {p?.commentaire ? <p className="break-words whitespace-pre-wrap">{p.commentaire}</p> : null}
+            {p?.elements ? (
+              <dl className="space-y-2">
+                {p.elements.map((e, i) => (
+                  <div key={i}>
+                    <dt className="font-medium">{LIBELLE_RUBRIQUE_LETTRE[e.rubrique] ?? e.rubrique}</dt>
+                    <dd className="break-words">
+                      {e.contenu}
+                      <span className="block text-sm text-texte-doux">Extrait de la lettre : « {e.extrait} »</span>
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            ) : null}
+            {p?.rubriquesNonTrouvees?.length ? <p className="text-sm">Non trouvé dans le texte : {p.rubriquesNonTrouvees.map((x) => LIBELLE_RUBRIQUE_LETTRE[x] ?? x).join(', ')}.</p> : null}
+            {p?.retenues ? (
+              <p>
+                {p.retenues.length} suggestion{p.retenues.length > 1 ? 's' : ''} vérifiée{p.retenues.length > 1 ? 's' : ''} arithmétiquement par le moteur
+                {p.ecartees?.length ? `, ${p.ecartees.length} écartée${p.ecartees.length > 1 ? 's' : ''} (ne tombent pas juste)` : ''}.
+              </p>
+            ) : null}
+            {p?.retenues?.length ? (
+              <ul className="list-disc pl-5 text-sm">
+                {p.retenues.map((x, i) => (
+                  <li key={i} className="break-words">
+                    {x.mouvementIds.length} mouvement(s) ↔ {x.ecritureIds.length} écriture(s){x.explication ? ` — ${x.explication}` : ''}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <p className="text-sm font-medium">Projet à vérifier : rien n’a été appliqué ni enregistré dans le dossier.</p>
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}

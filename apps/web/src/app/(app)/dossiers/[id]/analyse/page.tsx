@@ -3,7 +3,9 @@ import Link from 'next/link';
 import { ChoixExercice } from '@/components/dossier';
 import { ErreurAcces } from '@/components/erreurs';
 import { LienSource } from '@/components/revision-affichage';
+import { TacheIa } from '@/components/assistant/taches';
 import { Alerte, Carte, Etiquette, Libelle, Saisie, SousTitre, Tableau } from '@/components/ui/base';
+import { auMoins } from '@/lib/types-api';
 import { Bouton } from '@/components/ui/bouton';
 import {
   type ControleEtat, type DefinitionIndicateur, type EtatProjet, type Etats, type Indicateurs, LIBELLE_FAMILLE, ORDRE_FAMILLES, PHRASE_SIGNAUX, type Rubrique, type ValeurIndicateur, filtrerBalance, formaterNombre,
@@ -227,6 +229,8 @@ export default async function PageAnalyse({ params, searchParams }: { params: Pr
   if (!ex.ok) return <ErreurAcces statut={ex.statut} message={ex.message} retour={`/dossiers/${id}`} />;
   if (!ex.exercice) return <Alerte ton="attention">Aucun exercice n’est défini pour ce dossier.</Alerte>;
   const exercice = ex.exercice;
+  const exerciceIa = exercice.id;
+  const collaborationIa = auMoins(ctx.niveau, 'collaboration');
   const tv = tauxSaisi(parametre(sp.tauxTvaVentes));
   const ta = tauxSaisi(parametre(sp.tauxTvaAchats));
   const requeteTva = `${tv ? `&tauxTvaVentes=${tv}` : ''}${ta ? `&tauxTvaAchats=${ta}` : ''}`;
@@ -351,6 +355,17 @@ export default async function PageAnalyse({ params, searchParams }: { params: Pr
       <section aria-labelledby="titre-indicateurs" className="space-y-3" id="indicateurs">
         <div className="flex flex-wrap items-center gap-2">
           <SousTitre id="titre-indicateurs">Indicateurs</SousTitre>
+          {collaborationIa ? (
+            <Carte>
+              <TacheIa
+                bloc="commentaire-indicateurs"
+                chemin={`v1/exercices/${exerciceIa}/indicateurs/commentaire`}
+                titre="Projet de commentaire"
+                libelleBouton="Préparer un commentaire des indicateurs"
+                explication="Rédigé à partir des seuls indicateurs calculés par le moteur ; tout chiffre du texte est vérifié contre eux. Sans IA connectée, un gabarit les restitue, et le dit."
+              />
+            </Carte>
+          ) : null}
           <Link href="/reference/indicateurs" prefetch={false}>
             Catalogue des indicateurs (formules, conventions, sources)
           </Link>

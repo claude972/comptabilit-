@@ -95,14 +95,13 @@ Matrice exigence → implémentation → preuve → reste : `exigences.md`. Réa
 
 Reste réalisable sans intervention extérieure, non fait (par ordre d'utilité) :
 
-1. Boutons d'interface pour le commentaire d'indicateurs, l'analyse de lettre de mission et les suggestions de rapprochement (routes livrées).
-2. Persistance de la preuve de connexion de la passerelle IA et route de vérification (inutile tant qu'aucun jeton n'existe).
-3. Fichier des immobilisations (base, mise en service, durée) pour proposer les dotations aux amortissements.
-4. Assistant sur un portefeuille de plusieurs dossiers ; recherche multi-dossiers.
-5. Table des tiers et suivi des règlements par facture (aujourd'hui : comptes auxiliaires des écritures et rapprochement bancaire).
-6. Traces OpenTelemetry dans l'API et le worker (branchement décrit dans `exploitation.md`, demande un SDK).
-7. Contrôles en flux au-delà de 500 000 lignes par exercice ; dépôt d'une archive répartie entre dossiers ; notifications poussées.
-8. Purge effective à l'issue des durées de conservation (à ne pas écrire avant que les durées soient arrêtées).
+1. Persistance de la preuve de connexion de la passerelle IA et route de vérification (inutile tant qu'aucun jeton n'existe).
+2. Fichier des immobilisations (base, mise en service, durée) pour proposer les dotations aux amortissements.
+3. Assistant sur un portefeuille de plusieurs dossiers ; recherche multi-dossiers.
+4. Table des tiers et suivi des règlements par facture (aujourd'hui : comptes auxiliaires des écritures et rapprochement bancaire).
+5. Traces OpenTelemetry dans l'API et le worker (branchement décrit dans `exploitation.md`, demande un SDK).
+6. Contrôles en flux au-delà de 500 000 lignes par exercice ; dépôt d'une archive répartie entre dossiers ; notifications poussées.
+7. Purge effective à l'issue des durées de conservation (à ne pas écrire avant que les durées soient arrêtées).
 
 Le reste dépend d'une intervention extérieure : liste en tête de `acces-externes.md`.
 

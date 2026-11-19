@@ -624,6 +624,25 @@ async function routerV1(r: Requete): Promise<unknown> {
   if (m === 'GET' && s[0] === 'exercices' && s[2] === 'inventaire' && s[3] === 'propositions' && s.length === 4) {
     throw new ErreurHttp(409, 'Aucune donnée comptable importée pour cet exercice : rien ne peut être préparé');
   }
+  // ── Tâches IA sans repli : sans IA connectée, l'API réelle répond « ia_indisponible » ; le commentaire d'indicateurs a un gabarit.
+  if (m === 'POST' && ((s[0] === 'lettres' && s[2] === 'analyse') || (s[0] === 'exercices' && s[2] === 'rapprochements' && s[3] === 'suggestions') || (s[0] === 'exercices' && s[2] === 'indicateurs' && s[3] === 'commentaire'))) {
+    const commentaire = s[2] === 'indicateurs';
+    return {
+      tache: commentaire ? 'commenter_indicateurs' : s[0] === 'lettres' ? 'analyser_lettre_mission' : 'suggerer_rapprochements',
+      statut: 'ia_indisponible',
+      origine: commentaire ? 'repli_deterministe' : 'aucune',
+      etiquette: commentaire ? 'Sans IA : restitution des indicateurs calculés par le moteur, sans rédaction.' : 'Aucune IA n’est connectée : cette tâche n’a pas de repli sans IA.',
+      proposition: commentaire ? { commentaire: 'Indicateurs calculés par le moteur (restitution sans rédaction).', indicateursCites: [] } : null,
+      preuves: [],
+      confiance: { statut: 'non_evaluee', mention: 'Confiance non évaluée', indiceModele: null },
+      avertissements: [],
+      motif: commentaire ? null : 'IA non connectée',
+      codes: ['non_connecte'],
+      propositionId: null,
+      applique: false,
+      ia: { statut: 'non_connecte', message: 'IA non connectée.' },
+    };
+  }
   if (m === 'GET' && chemin === 'tableau-de-bord/pieces') {
     const comptes = new Map<string, number>();
     for (const d of etat.documents) {

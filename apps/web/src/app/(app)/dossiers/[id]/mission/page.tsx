@@ -10,6 +10,7 @@ import { formaterDate, formaterHorodatage, formaterMontant } from '@/lib/montant
 import { tenter } from '@/lib/serveur/api';
 import { lireMoi } from '@/lib/serveur/donnees';
 import { contexteDossier } from '@/lib/serveur/dossier';
+import { TacheIa } from '@/components/assistant/taches';
 import { auMoins } from '@/lib/types-api';
 
 export const metadata: Metadata = { title: 'Mission du dossier' };
@@ -129,6 +130,18 @@ export default async function PageMission({ params }: { params: Promise<{ id: st
                     ) : (
                       <p className="text-sm text-texte-doux">La validation est réservée au niveau « Validation » sur ce dossier.</p>
                     )
+                  ) : null}
+                  {collaboration ? (
+                    <details>
+                      <summary>Analyser le texte de la lettre signée jointe (projet)</summary>
+                      <TacheIa
+                        bloc={`analyse-lettre-${l.id}`}
+                        chemin={`v1/lettres/${l.id}/analyse`}
+                        titre="Analyse de la lettre jointe"
+                        libelleBouton="Analyser la lettre"
+                        explication="Extrait du texte de la lettre signée jointe : périmètre, durée, honoraires, obligations, livrables, mandats, conditions de révision — chacun avec l’extrait exact qui le fonde. Exige une IA connectée ; le résultat est un projet et ne modifie jamais la lettre."
+                      />
+                    </details>
                   ) : null}
                 </li>
               ))}

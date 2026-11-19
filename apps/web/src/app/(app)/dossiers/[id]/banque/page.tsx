@@ -17,6 +17,7 @@ import {
 import type { MembreDossier } from '@/lib/administration';
 import { actionsImport } from '@/lib/imports';
 import { LIBELLE_STATUT_LOT } from '@/lib/libelles';
+import { TacheIa } from '@/components/assistant/taches';
 import { AgregationBancaire, type EtatAgregation } from '@/components/banque/agregation';
 import { formaterDate, formaterHorodatage, formaterMontant } from '@/lib/montants';
 import { tenter } from '@/lib/serveur/api';
@@ -321,6 +322,18 @@ export default async function PageBanque({ params, searchParams }: { params: Pro
             {collaboration && reference.ok ? <LancerRapprochement key={exercice.id} exerciceId={exercice.id} defauts={reference.donnees.parametresParDefaut} /> : null}
             {dernier && !dernier.ok ? <Alerte ton="attention">Le dernier rapprochement n’a pas pu être chargé. {dernier.message}</Alerte> : null}
             {dernier?.ok ? <Rapprochement d={dernier.donnees} regles={regles} libelleRegle={libelleRegle} revision={revision} lienPage={lienPageR} /> : null}
+          {revision && dernier?.ok ? (
+            <Carte>
+              <TacheIa
+                bloc="suggestions-rapprochement"
+                chemin={`v1/exercices/${exercice.id}/rapprochements/suggestions`}
+                titre="Suggestions complémentaires"
+                libelleBouton="Demander des suggestions de rapprochement"
+                explication="Pour les mouvements et écritures restés sans correspondance : chaque suggestion est vérifiée arithmétiquement par le moteur, et écartée si elle ne tombe pas juste. Exige une IA connectée ; aucune suggestion ne valide un rapprochement."
+              />
+            </Carte>
+          ) : null}
+
           </>
         )}
       </section>

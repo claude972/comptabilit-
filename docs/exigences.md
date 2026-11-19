@@ -84,7 +84,7 @@ Lecture des colonnes :
 
 | Exigence | Implémentation | Preuve | Reste réel |
 |---|---|---|---|
-| Rapprochements : exact, règles explicites, suggestions IA vérifiées arithmétiquement | Niveaux 1 et 2 ; niveau 3 : route `suggererRapprochements` + vérification du moteur branchée | Tests (niveaux 1 et 2 ; niveau 3 : « IA indisponible ») | Bouton d'interface ; modèle réel **(externe)** |
+| Rapprochements : exact, règles explicites, suggestions IA vérifiées arithmétiquement | Niveaux 1 et 2 ; niveau 3 : route `suggererRapprochements` + vérification du moteur branchée | Tests (niveaux 1 et 2 ; niveau 3 : « IA indisponible ») | Modèle réel **(externe)** |
 | Bibliothèque de contrôles par cycle, avec fiche complète | 19 contrôles, `catalogue-controles.md` | 465 tests moteur | Validation professionnelle **(externe)** |
 | Six statuts distincts ; absence de données jamais favorable | `sans_anomalie`, `constat`, `non_applicable`, `non_realise`, `erreur` + « anomalie confirmée » par décision de revue | Tests | — |
 | Revue humaine (affecter, commenter, demander une pièce, accepter, corriger, rejeter, clôturer avec motif) | API + écrans | Tests API et navigateur | — |
@@ -113,7 +113,7 @@ Lecture des colonnes :
 
 | Exigence | Implémentation | Preuve | Reste réel |
 |---|---|---|---|
-| Analyse des lettres et avenants (périmètre, durée, honoraires, obligations, livrables, mandats, révision) | Saisie structurée + route `analyserLettreMission` (citations exactes exigées, projet jamais appliqué) | Tests (saisie ; route : « IA indisponible ») | Bouton d'interface ; modèle réel **(externe)** |
+| Analyse des lettres et avenants (périmètre, durée, honoraires, obligations, livrables, mandats, révision) | Saisie structurée + route `analyserLettreMission` (citations exactes exigées, projet jamais appliqué) | Tests (saisie ; route : « IA indisponible ») | Modèle réel **(externe)** |
 | Rattachement des travaux, hors périmètre, projet d'avenant, estimations par le moteur | Moteur + API + écrans | Tests | Validation **(externe)** |
 | Registre des conseils, faits d'envoi distingués | API + écrans | Tests | — |
 
@@ -129,7 +129,7 @@ Lecture des colonnes :
 | Exigence | Implémentation | Preuve | Reste réel |
 |---|---|---|---|
 | Indicateurs du dossier (SIG, BFR, délais, trésorerie, évolutions, signaux) | 25 indicateurs | Tests | Validation **(externe)** |
-| Commentaire rédigé par l'IA à partir des résultats | Tâche `commenterIndicateurs` (chiffres vérifiés), route ; sans IA : gabarit étiqueté | Tests API (repli) | Bouton d'interface ; modèle réel **(externe)** |
+| Commentaire rédigé par l'IA à partir des résultats | Tâche `commenterIndicateurs` (chiffres vérifiés), route ; sans IA : gabarit étiqueté | Tests API (repli), navigateur simulé | Modèle réel **(externe)** |
 | Indicateurs du cabinet (temps, rentabilité, volumes, délais, charge, anomalies) | API + écrans | Tests | — |
 | Indicateurs du logiciel (imports, rapprochements, propositions, abstentions, coût) | Indicateurs d'activité + mesures de la passerelle IA | Tests | Qualité d'extraction et faux positifs : exigent un corpus évalué **(externe)** |
 
@@ -171,4 +171,4 @@ estimation des coûts, liste des accès externes.
 
 ## Reste réel, hors dépendances externes
 
-Liste tenue dans `plan.md`, section « Chantier du 2026-11-19 (soir) » : boutons d'interface de trois tâches IA, preuve de connexion de la passerelle, fichier des immobilisations, assistant multi-dossiers, table des tiers et suivi des règlements, traces OpenTelemetry, contrôles en flux au-delà de 500 000 lignes, notifications poussées, purge à l'issue des durées de conservation.
+Liste tenue dans `plan.md`, section « Chantier du 2026-11-19 (soir) » : preuve de connexion de la passerelle, fichier des immobilisations, assistant multi-dossiers, table des tiers et suivi des règlements, traces OpenTelemetry, contrôles en flux au-delà de 500 000 lignes, notifications poussées, purge à l'issue des durées de conservation.

@@ -96,6 +96,12 @@ test.describe('service fermé — cabinet', () => {
     await expect(page.getByTestId('mention-etats')).toContainText('PROJET');
     await expect(page.getByTestId('balance-equilibre')).toHaveText('Déséquilibrée — écart 179,50');
     await expect(page.getByTestId('totaux-balance')).toHaveText('Total des débits : 679,50 · Total des crédits : 500,00');
+    // Projet de commentaire : aucune IA n'est connectée — le résultat est un repli sans IA, étiqueté, et rien n'est appliqué.
+    const commentaire = page.locator('[data-bloc="commentaire-indicateurs"]');
+    await commentaire.getByRole('button', { name: 'Préparer un commentaire des indicateurs' }).click();
+    await expect(commentaire.getByTestId('origine-proposition')).toHaveText('Repli déterministe, sans IA');
+    await expect(commentaire.getByTestId('etat-ia-tache')).toContainText('IA non connectée');
+    await expect(commentaire).toContainText('rien n’a été appliqué ni enregistré');
     await expect(page.getByTestId('correspondance')).toContainText('en attente de validation professionnelle');
     await expect(page.locator('[data-controle-etat="ecart"]').first()).toBeVisible(); // jamais d'égalité forcée
     // Exercice ouvert avant 2025 : pas de table de correspondance, seule la balance est donnée.

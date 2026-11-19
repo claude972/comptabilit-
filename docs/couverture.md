@@ -83,7 +83,7 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (quatri
 | CSV ambigu : abstention, aperçu du fichier, profil confirmé par un humain | Testé | — |
 | Rapprochement banque ↔ comptabilité (exact, groupé, partiel, compensation, tolérance) | En attente de validation | Propositions seulement ; appariements par somme parfois fortuits sur données dégradées (signalés) ; aucune écriture ni lettrage produit |
 | Validation et rejet des rapprochements, obsolescence quand les données changent | Testé | — |
-| Suggestions IA de rapprochement | En attente de connexion | Route livrée, vérification arithmétique par le moteur branchée ; sans IA : « IA indisponible », aucun repli. Jamais exercée avec une vraie suggestion ; pas de bouton à l'écran |
+| Suggestions IA de rapprochement | En attente de connexion | Route livrée, vérification arithmétique par le moteur branchée ; sans IA : « IA indisponible », aucun repli. Jamais exercée avec une vraie suggestion ; bouton sur l'écran Banque (niveau révision) |
 | Contrôle de rapprochement bancaire `TRE-003` alimenté par les relevés | Testé | S'abstient si plusieurs comptes bancaires ne peuvent pas être associés aux comptes 512 (pas d'écran de correspondance) |
 | Cohérence entre exercices `CLO-002` alimentée par l'exercice précédent | Testé | Exercé de bout en bout avec deux exercices importés (fichiers synthétiques indépendants : le contrôle relève l'écart de reprise) ; pas de jeu où les à-nouveaux concordent |
 | Contrôles immobilisations, social, césure, TVA déductible | En attente de validation | — |
@@ -114,13 +114,13 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (quatri
 | Assistant documenté — mode sans IA | Testé | API sur pile réelle, navigateur simulé et réel. Habilitations vérifiées avant toute recherche, citations vers les vraies pièces, écritures et constats, période et périmètre affichés, abstention. Recherche par mots-clés, sans compréhension de la question ; pas de rédaction ; un seul dossier à la fois (pas de portefeuille) ; limite de débit en mémoire du processus |
 | Assistant documenté — rédaction par un modèle | En attente de connexion | Orchestration et garde-fous (fonctions métier en liste blanche, citations et chiffres vérifiés par code, refus d'un modèle manipulé) testés contre le SIMULATEUR avec les ports réels sous RLS : cela ne dit rien d'un modèle réel. Aucun jeton, aucun appel réel jamais fait |
 | Passerelle IA unique, traces sans contenu, mesures pour les gestionnaires | En attente de connexion | Statut réel : « non connecté ». Natures « réel », « simulateur » et « sans IA » distinguées. Preuve de connexion non persistée et aucune route de vérification : avec un jeton, le statut resterait « configuré, non vérifié » et aucun modèle ne serait sollicité. Coût non estimé (aucun tarif configuré) |
-| Explication d'un constat, commentaire d'indicateurs | Partiel | Sans IA : message du moteur ou gabarit, étiquetés. Bouton sur la page du constat ; pas de bouton pour le commentaire d'indicateurs |
+| Explication d'un constat, commentaire d'indicateurs | Partiel | Sans IA : message du moteur ou gabarit, étiquetés. Boutons sur la page du constat et sur l'écran Analyse |
 
 ## Lot 4 — Missions et performance
 
 | Fonctionnalité | État | Limites |
 |---|---|---|
-| Missions, lettres et avenants structurés (projet → validée), lettre signée jointe | Testé | Contenu SAISI par le cabinet. Analyse automatique d'une lettre existante : route livrée (citations exactes exigées, résultat = projet jamais appliqué), « IA indisponible » sans modèle, pas de bouton à l'écran |
+| Missions, lettres et avenants structurés (projet → validée), lettre signée jointe | Testé | Contenu SAISI par le cabinet. Analyse automatique d'une lettre existante : route livrée (citations exactes exigées, résultat = projet jamais appliqué), « IA indisponible » sans modèle ; bouton sous chaque lettre de l'écran Mission |
 | Rattachement des travaux à la lettre applicable à leur date, hors-périmètre signalé | En attente de validation | Référentiel de prestations interne ; signalement, pas conclusion contractuelle |
 | Projet d'avenant avec estimation de temps sur base nommée | Testé | Honoraires de l'avenant à compléter par le cabinet ; explication par gabarit, sans IA |
 | Registre des conseils : validation, autorisation d'envoi, faits constatés distincts, pièces jointes | Testé | Le logiciel n'envoie rien ; les faits sont saisis avec justificatif |

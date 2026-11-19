@@ -19,6 +19,10 @@
     "./provisionnement": {
       "types": "./dist/provisionnement.d.ts",
       "default": "./dist/provisionnement.js"
+    },
+    "./ancre-journal": {
+      "types": "./dist/ancre-journal.d.ts",
+      "default": "./dist/ancre-journal.js"
     }
   },
   "scripts": {

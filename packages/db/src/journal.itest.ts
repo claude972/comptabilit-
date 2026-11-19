@@ -18,6 +18,7 @@ import { DEMO, amorcer } from './amorcer.js';
 import { chargerEnvLocal } from './env.js';
 import { type AccesBd, creerAccesBd, journaliser, schema as s, sql, urlBd } from './index.js';
 import { migrer } from './migrer.js';
+import { type AncreJournal, type LigneJournalExportee, empreinteAncre, empreinteLigne, etablirAncre, exporterJournal, lireEtatJournal, serialiserAncre, verifierExport } from './ancre-journal.js';
 import { consignerAnomalieJournal, ecartsJournal } from './provisionnement.js';
 
 chargerEnvLocal();
@@ -362,5 +363,144 @@ describe('isolation des cabinets', () => {
   it('usurper le contexte d’un autre cabinet ne donne accès à aucune ligne de son journal', async () => {
     const vu = await app.avecContexte(ctx(DEMO.cabinetA, DEMO.bruno), (tx) => tx.select().from(s.journalAudit));
     expect(vu).toEqual([]);
+  });
+});
+
+describe('ancres du journal : format et vérification hors base (aucun ancrage externe n’est réalisé)', () => {
+  const toutLire = async (cabinet: string) => {
+    const lignes: LigneJournalExportee[] = [];
+    for await (const l of exporterJournal(admin, cabinet, 7)) lignes.push(l);
+    return lignes;
+  };
+  const ecrire = async (cabinet: string, n: number) => {
+    for (let i = 0; i < n; i++) await admin.query(`insert into journal_audit (cabinet_id, acteur_type, action, details) values ($1, 'systeme', 'essai.ancre', $2)`, [cabinet, JSON.stringify({ i, texte: 'accents é ù — « guillemets », "quotes", \\ barre', nombre: 1.5, vide: null, liste: [1, 'a'] })]);
+  };
+  /** Réécrit la fin d'un export en recalculant toutes les empreintes : ce que ferait qui maîtrise entièrement la base. */
+  const reecrire = (lignes: LigneJournalExportee[], depuis: number, modifier: (l: LigneJournalExportee) => void) => {
+    const copie = lignes.map((l) => ({ ...l }));
+    for (let i = depuis; i < copie.length; i++) {
+      if (i === depuis) modifier(copie[i]!);
+      copie[i]!.empreintePrecedente = i === 0 ? null : copie[i - 1]!.empreinte;
+      copie[i]!.empreinte = empreinteLigne(copie[i]!);
+    }
+    return copie;
+  };
+
+  it('l’export se vérifie hors base : le calcul hors base donne les mêmes empreintes que PostgreSQL, sur un journal réel', async () => {
+    // Journal du cabinet de démonstration de la base neuve : écritures concurrentes, plusieurs rôles, détails variés.
+    const lignes = await toutLire(DEMO.cabinetA);
+    expect(lignes.length).toBeGreaterThan(100);
+    expect(lignes.every((l) => l.empreinte === empreinteLigne(l))).toBe(true);
+    const r = await verifierExport(lignes, []);
+    expect(r.rupture, JSON.stringify(lignes.find((l) => l.id === r.rupture?.ligne))).toBeNull();
+    expect(r).toMatchObject({ lignes: lignes.length, rupture: null, conforme: true });
+    expect(await strict(DEMO.cabinetA)).toBeNull(); // même conclusion que la vérification stricte en base
+    // Numéros de longueurs différentes (1 à plus de 100) : la dernière ligne lue en base est bien la plus récente, et
+    // une ancre établie sur ce journal se vérifie.
+    expect(new Set(lignes.map((l) => l.id.length)).size).toBeGreaterThan(1);
+    const etat = await lireEtatJournal(admin, DEMO.cabinetA);
+    expect(etat).toMatchObject({ derniereLigne: lignes.at(-1)!.id, empreinteTete: lignes.at(-1)!.empreinte, nombreLignes: lignes.length, verificationStricte: null });
+    expect((await verifierExport(lignes, [etablirAncre(etat, null)])).conforme).toBe(true);
+    // Cloisonnement de l'export : uniquement les lignes du cabinet demandé.
+    expect(lignes.every((l) => l.cabinetId === DEMO.cabinetA)).toBe(true);
+  });
+
+  it('une rupture constatée en base l’est aussi hors base, à la même ligne', async () => {
+    const c = await cabinetAvecLignes('Export avec rupture', 6);
+    await sansDeclencheurs(async () => {
+      await admin.query(`update journal_audit set details = '{"i": 999}' where id = $1`, [c.lignes[2]]);
+    });
+    const r = await verifierExport(await toutLire(c.id), []);
+    expect(r.conforme).toBe(false);
+    expect(r.rupture).toEqual({ ligne: await strict(c.id), motif: 'empreinte ne correspondant pas au contenu' });
+  });
+
+  let cabinet: string;
+  let lignes: LigneJournalExportee[];
+  let ancres: AncreJournal[];
+
+  it('deux ancres successives s’enchaînent et se vérifient contre l’export', async () => {
+    cabinet = (await cabinetAvecLignes('Journal ancré', 0)).id;
+    const vide = etablirAncre(await lireEtatJournal(admin, cabinet), null, '2026-01-01T00:00:00.000Z');
+    expect(vide).toMatchObject({ format: 'comtaple.ancre-journal/1', rang: 1, derniereLigne: null, empreinteTete: null, nombreLignes: 0, verificationStricte: null, ancrePrecedente: null });
+    await ecrire(cabinet, 9);
+    const a2 = etablirAncre(await lireEtatJournal(admin, cabinet), vide, '2026-01-02T00:00:00.000Z');
+    await ecrire(cabinet, 8);
+    const a3 = etablirAncre(await lireEtatJournal(admin, cabinet), a2, '2026-01-03T00:00:00.000Z');
+    await ecrire(cabinet, 4); // lignes postérieures à la dernière ancre
+    ancres = [vide, a2, a3];
+    lignes = await toutLire(cabinet);
+    expect(lignes).toHaveLength(21);
+    expect(a2).toMatchObject({ rang: 2, nombreLignes: 9, derniereLigne: lignes[8]!.id, empreinteTete: lignes[8]!.empreinte, ancrePrecedente: empreinteAncre(vide) });
+    expect(a3).toMatchObject({ rang: 3, nombreLignes: 17, derniereLigne: lignes[16]!.id, ancrePrecedente: empreinteAncre(a2) });
+    // Sérialisation canonique : stable, et indépendante de l'ordre des clés de l'objet.
+    expect(serialiserAncre(a2)).toBe(serialiserAncre(JSON.parse(JSON.stringify(Object.fromEntries(Object.entries(a2).reverse())))));
+    expect(empreinteAncre(a2)).toMatch(/^[0-9a-f]{64}$/);
+    expect(await verifierExport(lignes, ancres)).toEqual({ lignes: 21, rupture: null, ancres: [1, 2, 3].map((rang) => ({ rang, conforme: true, motif: null })), conforme: true });
+  });
+
+  it('fin du journal entièrement réécrite, empreintes recalculées : la chaîne paraît intègre, l’ancre révèle la réécriture', async () => {
+    const reecrit = reecrire(lignes, 12, (l) => {
+      l.detailsTexte = '{"i": 0, "falsifie": true}';
+    });
+    const r = await verifierExport(reecrit, ancres);
+    expect(r.rupture).toBeNull(); // la chaîne seule ne voit rien : c'est la limite que l'ancre comble
+    expect(r.ancres).toEqual([
+      { rang: 1, conforme: true, motif: null },
+      { rang: 2, conforme: true, motif: null }, // figée avant la réécriture
+      { rang: 3, conforme: false, motif: 'la ligne figée par l’ancre n’a plus la même empreinte : le journal a été réécrit' },
+    ]);
+    expect(r.conforme).toBe(false);
+  });
+
+  it('dernières lignes supprimées, ligne retirée ou insérée avant une ancre : révélé par l’ancre', async () => {
+    const tronque = await verifierExport(lignes.slice(0, 14), ancres);
+    expect(tronque.rupture).toBeNull();
+    expect(tronque.ancres[2]).toEqual({ rang: 3, conforme: false, motif: 'la dernière ligne figée par l’ancre est absente du journal' });
+    // Une ligne retirée au milieu, chaîne recousue : la ligne figée par l'ancre 2 n'a plus la même empreinte.
+    const sans = lignes.filter((_, i) => i !== 4);
+    const recousu = await verifierExport(reecrire(sans, 4, () => undefined), ancres);
+    expect(recousu.rupture).toBeNull();
+    expect(recousu.ancres.map((a) => a.conforme)).toEqual([true, false, false]);
+    // Sans recoudre, la chaîne elle-même rompt à la ligne suivante.
+    expect((await verifierExport(sans, ancres)).rupture).toEqual({ ligne: lignes[5]!.id, motif: 'ne s’enchaîne pas à la ligne précédente' });
+    // Lignes dans le désordre, ou d'un autre cabinet.
+    expect((await verifierExport([lignes[1]!, lignes[0]!], [])).rupture?.motif).toBe('ne s’enchaîne pas à la ligne précédente');
+    const etrangere = (await toutLire(DEMO.cabinetB))[0]!;
+    expect((await verifierExport([...lignes, etrangere], ancres)).rupture).toMatchObject({ ligne: etrangere.id });
+  });
+
+  it('une ancre modifiée, manquante ou d’un autre cabinet est rejetée ; aucune ancre n’est établie sur un journal amputé', async () => {
+    const [a1, a2, a3] = ancres as [AncreJournal, AncreJournal, AncreJournal];
+    const modifiee = await verifierExport(lignes, [a1, { ...a2, nombreLignes: 8 }, a3]);
+    expect(modifiee.ancres[1]).toMatchObject({ conforme: false, motif: 'le nombre de lignes jusqu’à l’ancre a changé : des lignes ont été retirées ou insérées' });
+    expect(modifiee.ancres[2]).toMatchObject({ conforme: false, motif: 'ne s’enchaîne pas à l’ancre précédente' }); // l'ancre suivante dénonce la modification
+    expect((await verifierExport(lignes, [a1, a3])).ancres[1]).toMatchObject({ conforme: false, motif: 'rang inattendu : une ancre manque ou l’ordre est faux' });
+    expect((await verifierExport(lignes, [a1, a2, { ...a3, cabinetId: DEMO.cabinetB }])).ancres[2]).toMatchObject({ conforme: false, motif: 'ancre d’un autre cabinet' });
+    expect((await verifierExport(lignes, [a1, a2, { ...a3, format: 'autre' as never }])).ancres[2]).toMatchObject({ conforme: false, motif: 'format inconnu' });
+    const etat = await lireEtatJournal(admin, cabinet);
+    expect(() => etablirAncre({ ...etat, nombreLignes: 3 }, a3)).toThrow(/amputé/);
+    expect(() => etablirAncre({ ...etat, cabinetId: DEMO.cabinetB }, a3)).toThrow(/autre cabinet/);
+  });
+
+  it('réécriture complète de la fin du journal DANS LA BASE par son propriétaire : la vérification stricte ne voit rien, l’ancre si', async () => {
+    // C'est la limite reconnue en D-038 : qui peut désactiver les déclencheurs peut recalculer toute la fin de la chaîne.
+    const c = await cabinetAvecLignes('Réécriture en base', 8);
+    const ancre = etablirAncre(await lireEtatJournal(admin, c.id), null);
+    await sansDeclencheurs(async () => {
+      for (const [i, id] of c.lignes.slice(4).entries()) {
+        if (i === 0) await admin.query(`update journal_audit set action = 'essai.reecrite' where id = $1`, [id]);
+        await admin.query(
+          `update journal_audit j set empreinte_precedente = (select p.empreinte from journal_audit p where p.cabinet_id = j.cabinet_id and p.id < j.id order by p.id desc limit 1) where id = $1`,
+          [id],
+        );
+        await admin.query('update journal_audit j set empreinte = journal_audit_empreinte(j.empreinte_precedente, j) where id = $1', [id]);
+      }
+    });
+    expect(await strict(c.id)).toBeNull(); // la chaîne, recalculée, est cohérente : la base seule ne peut pas le voir
+    const r = await verifierExport(await toutLire(c.id), [ancre]);
+    expect(r.rupture).toBeNull();
+    expect(r.ancres).toEqual([{ rang: 1, conforme: false, motif: 'la ligne figée par l’ancre n’a plus la même empreinte : le journal a été réécrit' }]);
+    expect(r.conforme).toBe(false);
   });
 });

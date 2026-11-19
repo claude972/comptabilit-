@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
  * Relais vers l'API métier (« backend for frontend »). Le navigateur ne détient aucun jeton : le relais ajoute
  * `Authorization: Bearer …` à partir de la session chiffrée, ne joint que `API_URL` et uniquement des chemins `v1/…`.
  */
-const ENTETES_REQUETE = ['content-type', 'content-length', 'accept', 'x-cabinet-id'];
+const ENTETES_REQUETE = ['content-type', 'content-length', 'accept'];
 const ENTETES_REPONSE = ['content-type', 'content-length', 'content-disposition', 'content-security-policy', 'x-content-type-options'];
 const SEGMENT = /^[A-Za-z0-9._~-]+$/;
 
@@ -35,6 +35,8 @@ async function relayer(req: NextRequest, ctx: { params: Promise<{ chemin: string
   const cible = new URL(`${env().API_URL}/${chemin.map(encodeURIComponent).join('/')}`);
   cible.search = req.nextUrl.search;
   const entetes = new Headers({ authorization: `Bearer ${session.acces}` });
+  // Le cabinet vient de la session serveur (choix d'un compte multi-cabinets), jamais d'un en-tête fourni par le navigateur.
+  if (session.cabinet) entetes.set('x-cabinet-id', session.cabinet);
   for (const nom of ENTETES_REQUETE) {
     const v = req.headers.get(nom);
     if (v) entetes.set(nom, v);

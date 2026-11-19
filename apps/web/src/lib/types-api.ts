@@ -69,6 +69,9 @@ export interface DocumentListe {
 }
 export interface ListeDocuments {
   niveau: Niveau;
+  page: number;
+  taillePage: number;
+  suite: boolean;
   documents: DocumentListe[];
 }
 

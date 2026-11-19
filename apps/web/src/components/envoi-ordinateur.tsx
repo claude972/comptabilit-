@@ -239,3 +239,55 @@ export function ImportComptable({ entiteId, exerciceId, cheminRetour }: { entite
     </section>
   );
 }
+
+/** Import d'un relevé bancaire (camt.053, OFX ou CSV) : fichier fourni par l'utilisateur, sans aucune connexion bancaire. */
+export function ImportReleve({ entiteId }: { entiteId: string }) {
+  const routeur = useRouter();
+  const { envois, ajouter, reprendre } = useEnvois(() => routeur.refresh());
+  const [survol, setSurvol] = useState(false);
+  const id = useId();
+  const deposer = (fichiers: File[]) => ajouter(fichiers, (f) => ({ entiteId, nomFichier: f.name.slice(0, 255), ...(f.type ? { typeMime: f.type.slice(0, 100) } : {}), canal: 'ordinateur', usage: 'banque' }));
+  return (
+    <section aria-labelledby={`${id}-titre`} className="space-y-3">
+      <SousTitre id={`${id}-titre`}>Importer un relevé bancaire</SousTitre>
+      <p className="text-sm text-texte-doux">
+        Formats lus : <strong>camt.053</strong> (XML), <strong>OFX</strong>, <strong>CSV</strong>. Vous déposez un fichier téléchargé depuis l’espace bancaire :
+        cela ne dépend d’aucune connexion bancaire et Comtaple n’accède à aucun compte.
+      </p>
+      <label
+        onDragOver={(e) => {
+          e.preventDefault();
+          setSurvol(true);
+        }}
+        onDragLeave={() => setSurvol(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setSurvol(false);
+          deposer(Array.from(e.dataTransfer.files));
+        }}
+        className={cn(
+          'flex min-h-28 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-bordure bg-surface p-5 text-center focus-within:outline-3 focus-within:outline-offset-2 focus-within:outline-anneau',
+          survol && 'border-primaire bg-surface-2',
+        )}
+      >
+        <Upload aria-hidden="true" className="size-7" />
+        <span className="font-medium">Glissez-déposez un relevé ici, ou cliquez pour le choisir</span>
+        <span className="text-sm text-texte-doux">Un relevé déjà importé n’est pas dupliqué : les mouvements connus sont reconnus.</span>
+        <input
+          type="file"
+          multiple
+          accept=".xml,.ofx,.csv,.txt,application/xml,text/xml,text/csv,text/plain"
+          className="sr-only"
+          data-testid="entree-releve"
+          onChange={(e) => {
+            deposer(Array.from(e.target.files ?? []));
+            e.target.value = '';
+          }}
+        />
+      </label>
+      <div aria-live="polite">
+        <ListeEnvois envois={envois} surReprise={reprendre} recu={(e) => (e.resultat?.dejaImporte ? 'Ce fichier avait déjà été importé dans ce dossier : aucun nouvel import n’a été créé.' : 'Fichier reçu : la lecture du relevé démarre.')} />
+      </div>
+    </section>
+  );
+}

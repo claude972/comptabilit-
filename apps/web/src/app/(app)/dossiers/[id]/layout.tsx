@@ -30,6 +30,7 @@ export default async function MiseEnPageDossier({ children, params }: { children
         liens={[
           { href: base, libelle: 'Pièces' },
           { href: `${base}/comptabilite`, libelle: 'Comptabilité' },
+          { href: `${base}/banque`, libelle: 'Banque' },
           { href: `${base}/revision`, libelle: 'Révision' },
         ]}
       />

@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
+import { cookies } from 'next/headers';
 import type { ReactNode } from 'react';
 import { BoutonDeconnexion } from '@/components/deconnexion';
 import { type LienNavigation, Navigation } from '@/components/navigation';
@@ -6,11 +8,14 @@ import { Alerte, Carte, Titre } from '@/components/ui/base';
 import { LIBELLE_ROLE } from '@/lib/libelles';
 import { estGestionnaire } from '@/lib/messagerie';
 import { estDeposant, lireMoi } from '@/lib/serveur/donnees';
+import { lireSession } from '@/lib/serveur/session';
 
 export const dynamic = 'force-dynamic';
 
 export default async function MiseEnPage({ children }: { children: ReactNode }) {
   const moi = await lireMoi();
+  // Compte membre de plusieurs cabinets sans choix fait : l'API demande de préciser le cabinet.
+  if (!moi.ok && moi.statut === 400) redirect('/cabinet');
   if (!moi.ok) {
     // Compte authentifié mais non rattaché (403), plusieurs cabinets sans choix (400), ou API indisponible.
     return (
@@ -26,6 +31,7 @@ export default async function MiseEnPage({ children }: { children: ReactNode }) 
     );
   }
   const { utilisateur, cabinet, role } = moi.donnees;
+  const session = await lireSession(await cookies());
   // Un déposant n'a aucun lien vers l'espace cabinet ; l'API lui en refuse de toute façon l'accès.
   const liens: LienNavigation[] = estDeposant(role)
     ? [
@@ -38,6 +44,7 @@ export default async function MiseEnPage({ children }: { children: ReactNode }) 
         { href: '/deposer', libelle: 'Déposer' },
         { href: '/depots', libelle: 'Pièces déposées' },
         { href: '/reference/controles', libelle: 'Catalogue des contrôles' },
+        ...(estGestionnaire(role) ? [{ href: '/administration', libelle: 'Administration' }] : []),
         // Connexions de messagerie : gestionnaires du cabinet uniquement (l'API refuse les autres rôles).
         ...(estGestionnaire(role) ? [{ href: '/messagerie', libelle: 'Messagerie' }] : []),
       ];
@@ -51,6 +58,11 @@ export default async function MiseEnPage({ children }: { children: ReactNode }) 
             Comtaple
           </Link>
           <div className="ml-auto flex items-center gap-2">
+            {session?.cabinet ? (
+              <Link href="/cabinet" prefetch={false} className="inline-flex min-h-11 items-center text-sm">
+                Changer de cabinet
+              </Link>
+            ) : null}
             <p className="text-right text-sm leading-tight">
               <span className="block font-medium" data-testid="utilisateur">{utilisateur.nom}</span>
               <span className="block text-texte-doux">

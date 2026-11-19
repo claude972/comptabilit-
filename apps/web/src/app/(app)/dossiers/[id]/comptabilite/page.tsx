@@ -17,7 +17,14 @@ import { type LotImport, type RapportFec, auMoins } from '@/lib/types-api';
 
 export const metadata: Metadata = { title: 'Comptabilité du dossier' };
 
-const PAR_PAGE = 50;
+/** Page d'anomalies renvoyée par `GET v1/imports/:id/anomalies` (pagination et filtre par code faits par le serveur). */
+interface PageAnomalies {
+  page: number;
+  taillePage: number;
+  total: number;
+  suite: boolean;
+  anomalies: NonNullable<RapportFec['anomalies']>;
+}
 const GRAVITE_ANOMALIE: Record<string, string> = { bloquante: 'Bloquante', majeure: 'Majeure', mineure: 'Mineure', information: 'Information' };
 
 /** Indicateur à trois états : oui, non, ou non évalué (jamais présenté comme un « oui »). */
@@ -34,17 +41,17 @@ function Indicateur({ libelle, valeur, aide }: { libelle: string; valeur: boolea
   );
 }
 
-function Rapport({ lot, base, page }: { lot: LotImport; base: string; page: number }) {
+function Rapport({ lot, base, detail, code }: { lot: LotImport; base: string; detail: PageAnomalies | null; code: string }) {
   const r: RapportFec = lot.rapport ?? {};
   const analyse = typeof r.lisible === 'boolean';
-  const anomalies = r.anomalies ?? [];
   const parCode = Object.entries(r.nbAnomaliesParCode ?? {}).sort((a, b) => a[0].localeCompare(b[0]));
-  const totalDetail = anomalies.length;
+  const PAR_PAGE = detail?.taillePage ?? 100;
+  const totalDetail = detail?.total ?? 0;
   const nbPages = Math.max(1, Math.ceil(totalDetail / PAR_PAGE));
-  const courante = Math.min(Math.max(1, page), nbPages);
-  const tranche = anomalies.slice((courante - 1) * PAR_PAGE, courante * PAR_PAGE);
+  const courante = detail?.page ?? 1;
+  const tranche = detail?.anomalies ?? [];
   const totalAnomalies = parCode.reduce((n, [, v]) => n + (Number.isSafeInteger(v) ? v : 0), 0);
-  const lien = (p: number) => `${base}&lot=${lot.id}&page=${p}#anomalies`;
+  const lien = (p: number, c = code) => `${base}&lot=${lot.id}&page=${p}${c ? `&code=${encodeURIComponent(c)}` : ''}#anomalies`;
 
   return (
     <Carte className="space-y-4" data-testid="rapport-import">
@@ -136,9 +143,13 @@ function Rapport({ lot, base, page }: { lot: LotImport; base: string; page: numb
                   </tr>
                 </thead>
                 <tbody>
-                  {parCode.map(([code, n]) => (
-                    <tr key={code}>
-                      <td><code>{code}</code></td>
+                  {parCode.map(([c, n]) => (
+                    <tr key={c}>
+                      <td>
+                        <Link href={lien(1, c)} prefetch={false} aria-label={`Voir le détail des anomalies ${c}`}>
+                          <code>{c}</code>
+                        </Link>
+                      </td>
                       <td className="text-right tabular-nums">{Number(n).toLocaleString('fr-FR')}</td>
                     </tr>
                   ))}
@@ -152,9 +163,16 @@ function Rapport({ lot, base, page }: { lot: LotImport; base: string; page: numb
           {totalDetail ? (
             <section aria-labelledby="titre-anomalies" id="anomalies" className="space-y-2">
               <SousTitre id="titre-anomalies" className="text-base">
-                Détail ligne par ligne — {(courante - 1) * PAR_PAGE + 1} à {Math.min(courante * PAR_PAGE, totalDetail)} sur {totalDetail.toLocaleString('fr-FR')}
+                Détail ligne par ligne{code ? ` (${code})` : ''} — {(courante - 1) * PAR_PAGE + 1} à {Math.min(courante * PAR_PAGE, totalDetail)} sur {totalDetail.toLocaleString('fr-FR')}
               </SousTitre>
-              {totalDetail < totalAnomalies ? (
+              {code ? (
+                <p className="text-sm">
+                  <Link href={lien(1, '')} prefetch={false}>
+                    Voir tous les codes
+                  </Link>
+                </p>
+              ) : null}
+              {!code && totalDetail < totalAnomalies ? (
                 <p className="text-sm text-texte-doux">Le détail conservé par le serveur est plafonné : le décompte complet figure dans le tableau par code.</p>
               ) : null}
               <Tableau legende="Anomalies ligne par ligne">
@@ -212,7 +230,9 @@ export default async function PageComptabilite({ params, searchParams }: { param
   const base = `/dossiers/${id}/comptabilite?exercice=${exercice.id}`;
   const voulu = parametre(sp.lot);
   const choisi = lots.donnees.find((l) => l.id === voulu) ?? lots.donnees.find((l) => l.actif) ?? lots.donnees[0];
-  const page = Number.parseInt(parametre(sp.page) ?? '1', 10) || 1;
+  const page = Math.max(1, Number.parseInt(parametre(sp.page) ?? '1', 10) || 1);
+  const code = /^[A-Z0-9_]{1,60}$/.test(parametre(sp.code) ?? '') ? parametre(sp.code)! : '';
+  const detail = choisi ? await tenter<PageAnomalies>(`v1/imports/${choisi.id}/anomalies?page=${page}${code ? `&code=${code}` : ''}`) : null;
 
   return (
     <div className="space-y-4">
@@ -266,7 +286,7 @@ export default async function PageComptabilite({ params, searchParams }: { param
         <p className="text-sm text-texte-doux">Le lot actif est celui sur lequel portent les contrôles de révision. Les versions précédentes sont conservées.</p>
       </section>
 
-      {choisi ? <Rapport lot={choisi} base={base} page={page} /> : null}
+      {choisi ? <Rapport lot={choisi} base={base} detail={detail?.ok ? detail.donnees : null} code={code} /> : null}
     </div>
   );
 }

@@ -33,7 +33,7 @@ test.describe('espace cabinet — collaboratrice (niveau collaboration)', () => 
     await expect(ligne).toContainText('Collaboration');
     await ligne.getByRole('link', { name: 'Boulangerie Dupain SAS (fictive)' }).click();
     const onglets = page.getByRole('navigation', { name: 'Sections du dossier' });
-    await expect(onglets.getByRole('link')).toHaveText(['Pièces', 'Comptabilité', 'Révision']);
+    await expect(onglets.getByRole('link')).toHaveText(['Pièces', 'Comptabilité', 'Banque', 'Révision']);
     await expect(onglets.getByRole('link', { name: 'Pièces' })).toHaveAttribute('aria-current', 'page');
     await expect(page.getByText('Habilitation : Collaboration')).toBeVisible();
     expect(erreurs).toEqual([]);
@@ -148,14 +148,19 @@ test.describe('espace cabinet — collaboratrice (niveau collaboration)', () => 
     await expect(rapport.locator('[data-indicateur="Suffisant pour les travaux"]')).toHaveAttribute('data-valeur', 'true');
     await expect(rapport.getByRole('row', { name: /CHAMP_VIDE 60/ })).toBeVisible();
     await expect(rapport.getByRole('row', { name: /DATE_INVALIDE 60/ })).toBeVisible();
-    await expect(rapport.getByRole('heading', { name: /Détail ligne par ligne — 1 à 50 sur 120/ })).toBeVisible();
-    await expect(rapport.getByText('Page 1 sur 3')).toBeVisible();
-    await rapport.getByRole('link', { name: 'Suivantes →' }).click();
-    await expect(rapport.getByRole('heading', { name: /51 à 100 sur 120/ })).toBeVisible();
+    // Pagination et filtre par code faits par le serveur (GET v1/imports/:id/anomalies).
+    await expect(rapport.getByRole('heading', { name: /Détail ligne par ligne — 1 à 100 sur 120/ })).toBeVisible();
+    await expect(rapport.getByText('Page 1 sur 2')).toBeVisible();
     await expect(rapport.getByText('Libellé d’écriture vide (ligne 52).')).toBeVisible();
-    await page.goto(page.url().replace('page=2', 'page=3'));
+    await rapport.getByRole('link', { name: 'Suivantes →' }).click();
     await expect(rapport.getByRole('heading', { name: /101 à 120 sur 120/ })).toBeVisible();
     await expect(rapport.getByText('Suivantes →')).not.toHaveAttribute('href');
+    await rapport.getByRole('link', { name: 'Voir le détail des anomalies CHAMP_VIDE' }).click();
+    await expect(rapport.getByRole('heading', { name: /Détail ligne par ligne \(CHAMP_VIDE\) — 1 à 60 sur 60/ })).toBeVisible();
+    await expect(rapport.getByText('Date de pièce invalide')).toHaveCount(0);
+    expect((await journal()).some((e) => /\/anomalies\?page=1&code=CHAMP_VIDE$/.test(e.chemin))).toBe(true);
+    await rapport.getByRole('link', { name: 'Voir tous les codes' }).click();
+    await expect(rapport.getByRole('heading', { name: /1 à 100 sur 120/ })).toBeVisible();
   });
 
   test('import comptable : choix explicite du statut des données, suivi de progression par interrogation, nouveau lot actif', async ({ page }) => {
@@ -189,7 +194,7 @@ test.describe('espace cabinet — collaboratrice (niveau collaboration)', () => 
     await page.goto(`${dossier}/revision`);
     await page.getByTestId('liste-constats').getByRole('link', { name: /Caisse créditrice/ }).click();
     const actions = page.locator('form[data-formulaire="constat"]').getByLabel('Action');
-    await expect(actions.locator('option')).toHaveText(['Prendre en charge', 'Commenter', 'Demander une pièce', 'Marquer comme corrigé']);
+    await expect(actions.locator('option')).toHaveText(['Prendre en charge', 'Affecter', 'Commenter', 'Demander une pièce', 'Marquer comme corrigé']);
     // Requête forgée vers une action de réviseur : l'API répond 403, relayé tel quel.
     const id = page.url().split('/').pop()!;
     const statut = await page.evaluate(async (c) => (await fetch(`/api/bff/v1/constats/${c}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'X-Comtaple-Csrf': '1' }, body: JSON.stringify({ action: 'accepter', motif: 'x' }) })).status, id);
@@ -319,7 +324,7 @@ test.describe('espace cabinet — réviseur (niveau révision)', () => {
     await expect(page.getByText('Aucune décision enregistrée.')).toBeVisible();
 
     const formulaire = page.locator('form[data-formulaire="constat"]');
-    await expect(formulaire.getByLabel('Action').locator('option')).toHaveCount(9);
+    await expect(formulaire.getByLabel('Action').locator('option')).toHaveCount(10);
     await formulaire.getByLabel('Action').selectOption('confirmer_anomalie');
     await expect(formulaire.getByLabel('Motif (obligatoire)')).toHaveAttribute('required', '');
     // Contournement de la contrainte du formulaire : le motif reste exigé avant tout envoi.

@@ -9,6 +9,7 @@ import { formaterDate, formaterHorodatage, formaterMontant } from '@/lib/montant
 import { tenter } from '@/lib/serveur/api';
 import { estUuid } from '@/lib/serveur/donnees';
 import { contexteDossier } from '@/lib/serveur/dossier';
+import type { MembreDossier } from '@/lib/administration';
 import type { DetailConstat } from '@/lib/types-api';
 
 export const metadata: Metadata = { title: 'Constat de révision' };
@@ -19,7 +20,9 @@ export default async function PageConstat({ params }: { params: Promise<{ id: st
   if (!ctx.ok) return null;
   const base = `/dossiers/${id}/revision`;
   if (!estUuid(constatId)) return <ErreurAcces statut={404} retour={base} />;
-  const r = await tenter<DetailConstat>(`v1/constats/${constatId}`);
+  const [r, membres] = await Promise.all([tenter<DetailConstat>(`v1/constats/${constatId}`), tenter<MembreDossier[]>(`v1/dossiers/${id}/membres`)]);
+  // Seules les personnes habilitées au moins en lecture peuvent se voir affecter un constat.
+  const affectables = membres.ok ? membres.donnees.filter((m) => m.niveau !== 'depot').map((m) => ({ utilisateurId: m.utilisateurId, nom: m.nom })) : [];
   if (!r.ok) return <ErreurAcces statut={r.statut} message={r.message} retour={base} />;
   const { constat: c, lignes, nbLignesTotal, decisions, controle } = r.donnees;
   if (c.entiteId !== id) return <ErreurAcces statut={404} retour={base} />;
@@ -134,7 +137,8 @@ export default async function PageConstat({ params }: { params: Promise<{ id: st
           </Carte>
 
           <Carte>
-            <ActionsConstat constatId={c.id} niveau={ctx.niveau} />
+            {c.affecteA ? <p className="mb-2 text-sm" data-testid="affecte-a">Affecté à : {affectables.find((m) => m.utilisateurId === c.affecteA)?.nom ?? 'une personne qui n’est plus habilitée'}</p> : null}
+            <ActionsConstat constatId={c.id} niveau={ctx.niveau} membres={affectables} affecteA={c.affecteA} />
           </Carte>
 
           <Carte className="space-y-2">

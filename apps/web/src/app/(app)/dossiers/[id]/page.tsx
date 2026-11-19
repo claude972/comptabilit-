@@ -18,16 +18,25 @@ export default async function PagePieces({ params, searchParams }: { params: Pro
   const { id } = await params;
   const ctx = await contexteDossier(id);
   if (!ctx.ok) return null; // la mise en page du dossier affiche déjà le refus
-  const filtre = parametre((await searchParams).statut);
+  const sp = await searchParams;
+  const filtre = parametre(sp.statut);
   const statut = (ORDRE_STATUTS_DOCUMENT as readonly string[]).includes(filtre ?? '') ? (filtre as StatutDocument) : undefined;
+  const page = Math.max(1, Number.parseInt(parametre(sp.page) ?? '1', 10) || 1);
   const r = await tenter<ListeDocuments>(`v1/documents?entiteId=${id}`);
   if (!r.ok) return <ErreurAcces statut={r.statut} message={r.message} retour="/dossiers" />;
+  // Tant que le dossier tient sur une page de l'API, tout est connu : décomptes exacts et tri par urgence.
+  // Au-delà, le filtre et la pagination sont faits par le serveur, et les décomptes ne sont plus affichés.
+  const complet = !r.donnees.suite;
+  const courante = complet ? r : await tenter<ListeDocuments>(`v1/documents?entiteId=${id}&page=${page}${statut ? `&statut=${statut}` : ''}`);
+  if (!courante.ok) return <ErreurAcces statut={courante.statut} message={courante.message} retour="/dossiers" />;
   const tous = r.donnees.documents;
   const comptes = new Map<StatutDocument, number>();
   for (const d of tous) comptes.set(d.statut, (comptes.get(d.statut) ?? 0) + 1);
   const rang = (s: StatutDocument) => ORDRE_STATUTS_DOCUMENT.indexOf(s);
-  const affiches = tous.filter((d) => !statut || d.statut === statut).sort((a, b) => rang(a.statut) - rang(b.statut) || b.creeLe.localeCompare(a.creeLe));
+  const affiches = complet ? tous.filter((d) => !statut || d.statut === statut).sort((a, b) => rang(a.statut) - rang(b.statut) || b.creeLe.localeCompare(a.creeLe)) : courante.donnees.documents;
   const base = `/dossiers/${id}`;
+  const nombre = (n: number) => (complet ? ` (${n})` : '');
+  const lienPage = (p: number) => `${base}?page=${p}${statut ? `&statut=${statut}` : ''}`;
   const styleFiltre = (actif: boolean) => cn('inline-flex min-h-11 items-center rounded-lg border border-bordure px-3 text-texte no-underline hover:bg-surface-2', actif && 'border-primaire bg-surface-2 font-semibold');
 
   return (
@@ -41,13 +50,13 @@ export default async function PagePieces({ params, searchParams }: { params: Pro
           <ul className="flex flex-wrap gap-2">
             <li>
               <Link href={base} prefetch={false} aria-current={!statut ? 'true' : undefined} className={styleFiltre(!statut)}>
-                Toutes ({tous.length})
+                Toutes{nombre(tous.length)}
               </Link>
             </li>
             {ORDRE_STATUTS_DOCUMENT.map((s) => (
               <li key={s}>
                 <Link href={`${base}?statut=${s}`} prefetch={false} aria-current={statut === s ? 'true' : undefined} className={styleFiltre(statut === s)}>
-                  {LIBELLE_STATUT_DOCUMENT[s]} ({comptes.get(s) ?? 0})
+                  {LIBELLE_STATUT_DOCUMENT[s]}{nombre(comptes.get(s) ?? 0)}
                 </Link>
               </li>
             ))}
@@ -87,7 +96,15 @@ export default async function PagePieces({ params, searchParams }: { params: Pro
         ) : (
           <p className="text-texte-doux">Aucune pièce {statut ? 'dans ce statut' : 'dans ce dossier'}.</p>
         )}
-        {tous.length >= 500 ? <p className="text-sm text-texte-doux">Seules les 500 pièces les plus récentes sont listées.</p> : null}
+        {!complet ? (
+          <nav aria-label="Pagination des pièces" className="flex flex-wrap items-center gap-3">
+            {page > 1 ? <Link href={lienPage(page - 1)} prefetch={false} rel="prev">← Plus récentes</Link> : <span className="text-texte-doux">← Plus récentes</span>}
+            <span>
+              Page {page} ({courante.donnees.taillePage} par page)
+            </span>
+            {courante.donnees.suite ? <Link href={lienPage(page + 1)} prefetch={false} rel="next">Plus anciennes →</Link> : <span className="text-texte-doux">Plus anciennes →</span>}
+          </nav>
+        ) : null}
       </section>
     </div>
   );

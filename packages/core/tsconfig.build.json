@@ -3,5 +3,5 @@
   "compilerOptions": {
     "noEmit": false
   },
-  "exclude": ["src/**/*.test.ts", "src/aides-tests.ts"]
+  "exclude": ["src/**/*.test.ts", "src/aides-tests.ts", "src/jeux-etats-tests.ts"]
 }

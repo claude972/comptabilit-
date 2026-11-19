@@ -301,6 +301,8 @@ test.describe('dépôt depuis le téléphone (émulation mobile, API simulée)',
     await enAttente(page).getByRole('button', { name: 'Supprimer ce dépôt en attente' }).click();
     await expect(page.getByTestId('liste-depots-en-attente')).toHaveCount(0);
     expect(await nbLocaux(page)).toBe(0);
+    // Le téléversement est aussi abandonné côté serveur (DELETE v1/televersements/:id).
+    await expect.poll(async () => (await simulateur<{ televersements: Array<{ statut: string }> }>('administration', {})).televersements.map((t) => t.statut)).toEqual(['abandonne']);
     await page.reload();
     await expect(page.getByTestId('dossier-unique')).toBeVisible();
     await expect(page.getByTestId('liste-depots-en-attente')).toHaveCount(0);

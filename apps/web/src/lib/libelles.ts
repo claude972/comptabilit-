@@ -104,6 +104,7 @@ export const LIBELLE_STATUT_REVUE: Record<StatutRevue, string> = {
 /** Actions de revue d'un constat, telles que définies par l'API (niveau minimal et motif obligatoire). */
 export const ACTIONS_CONSTAT: ReadonlyArray<{ action: string; libelle: string; niveau: Niveau; motifRequis: boolean }> = [
   { action: 'prendre_en_charge', libelle: 'Prendre en charge', niveau: 'collaboration', motifRequis: false },
+  { action: 'affecter', libelle: 'Affecter', niveau: 'collaboration', motifRequis: false },
   { action: 'commenter', libelle: 'Commenter', niveau: 'collaboration', motifRequis: true },
   { action: 'demander_piece', libelle: 'Demander une pièce', niveau: 'collaboration', motifRequis: true },
   { action: 'corriger', libelle: 'Marquer comme corrigé', niveau: 'collaboration', motifRequis: true },
@@ -115,7 +116,6 @@ export const ACTIONS_CONSTAT: ReadonlyArray<{ action: string; libelle: string; n
 ];
 export const LIBELLE_ACTION: Record<string, string> = {
   ...Object.fromEntries(ACTIONS_CONSTAT.map((a) => [a.action, a.libelle])),
-  affecter: 'Affecter',
   valider: 'Valider',
 };
 export const LIBELLE_CYCLE: Record<string, string> = {

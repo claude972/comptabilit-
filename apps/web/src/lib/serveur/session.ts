@@ -22,6 +22,8 @@ export interface Session {
   /** Début de la session (secondes Unix) : borne la durée totale. */
   debut: number;
   sujet: string;
+  /** Cabinet choisi par un compte membre de plusieurs cabinets (transmis à l'API par `X-Cabinet-Id`). */
+  cabinet?: string | null;
 }
 
 export interface TransactionOidc {

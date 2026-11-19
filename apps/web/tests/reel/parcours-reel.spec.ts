@@ -57,7 +57,11 @@ test('téléphone (émulation) : photo → envoi → « Reçu » confirmé par l
   await seConnecter(page, 'client.depot@client-a.test', '/deposer');
 
   await expect(page.getByRole('heading', { name: 'Déposer une pièce' })).toBeVisible();
-  await expect(page.getByTestId('dossier-unique')).toHaveText('Boulangerie Dupain SAS (fictive)');
+  // La base réelle est partagée : d'autres parcours peuvent avoir habilité ce déposant sur des dossiers d'essai.
+  // Dossier unique → présélectionné ; sinon on choisit explicitement le dossier de démonstration.
+  const choix = page.getByLabel('Dossier', { exact: true });
+  if (await page.getByTestId('dossier-unique').count()) await expect(page.getByTestId('dossier-unique')).toHaveText('Boulangerie Dupain SAS (fictive)');
+  else await choix.selectOption({ label: 'Boulangerie Dupain SAS (fictive)' });
   await page.getByTestId('entree-photo').setInputFiles({ name: 'photo.png', mimeType: 'image/png', buffer: image });
   await page.getByRole('radio', { name: 'Facture d’achat' }).check();
   await expect(page.getByTestId('liste-recus')).toHaveCount(0);

@@ -57,3 +57,26 @@ export type { AttenduReleveSynthetique, MouvementAttendu, OptionsReleveSynthetiq
 // 9. abonnement
 export { calculerEcheance, etatQuota, schemaOffre, serviceOuvert, situationAbonnement, verifierOffre } from './abonnement.js';
 export type { CalculEcheance, EtatAbonnement, EtatQuota, LigneEcheance, Offre, SituationAbonnement, StatutAbonnement } from './abonnement.js';
+
+// 10. missions
+export { PRESTATIONS, estimerTemps, lettreApplicable, schemaContenuLettre, situerTravail } from './missions.js';
+export type { CodePrestation, ContenuLettre, EstimationTemps, LettreDatee, SituationTravail } from './missions.js';
+
+// 11. veille
+export { evaluerApplicabilite, schemaCriteresEvolution, texteComparable } from './veille.js';
+export type { Applicabilite, CriteresEvolution, ProfilDossier } from './veille.js';
+
+// 12. etats — balance, projets de compte de résultat et de bilan (états de travail, jamais des comptes annuels)
+export { calculerBalance } from './etats/balance.js';
+export { CODES_RUBRIQUES_RESERVES, CORRESPONDANCE_PCG, correspondancePour, verifierCorrespondance } from './etats/correspondance.js';
+export { COMPTE_RESULTAT_EN_COURS, projeterBilan, projeterCompteDeResultat } from './etats/projection.js';
+export { DATE_APPLICATION_REGLEMENT_2022_06, SOURCES_ETATS } from './etats/sources.js';
+export type {
+  Balance, ControleEtat, CorrespondanceRubriques, EtatProjet, EtatRubrique, LigneBalance, LigneBalanceAuxiliaire, OptionsBalance, RegleAffectation, RubriqueDefinition, RubriqueProjetee,
+} from './etats/types.js';
+
+// 13. indicateurs — aide à la revue (jamais un diagnostic)
+export {
+  CATALOGUE_INDICATEURS, SEUIL_HAUSSE_DETTES_FISCALES_SOCIALES_PAR_DEFAUT, SEUIL_JOURS_SANS_ECRITURE_AVANT_CLOTURE, calculerIndicateurs, genererCatalogueIndicateursMarkdown,
+} from './indicateurs/calcul.js';
+export type { ComposanteIndicateur, ContexteIndicateurs, DefinitionIndicateur, OptionsIndicateurs, ValeurIndicateur } from './indicateurs/types.js';

@@ -46,6 +46,7 @@ function versSession(j: oidc.TokenEndpointResponse & oidc.TokenEndpointResponseH
     expireA: maintenant + (j.expiresIn() ?? 60),
     debut: precedent?.debut ?? maintenant,
     sujet,
+    ...(precedent?.cabinet ? { cabinet: precedent.cabinet } : {}),
   };
 }
 

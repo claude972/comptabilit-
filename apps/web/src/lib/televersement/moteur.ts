@@ -13,7 +13,7 @@ export interface Ouverture {
   sha256: string;
   typeMime?: string;
   canal: 'telephone' | 'ordinateur';
-  usage?: 'piece' | 'fec';
+  usage?: 'piece' | 'fec' | 'banque';
   nature?: NatureDocument;
   commentaire?: string;
   exerciceId?: string;

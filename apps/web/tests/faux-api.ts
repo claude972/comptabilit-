@@ -15,6 +15,10 @@
  */
 import { createHash, randomUUID } from 'node:crypto';
 import http from 'node:http';
+import {
+  type LigneEcriture, type LigneFec, type MouvementBancaire, PARAMETRES_RAPPROCHEMENT_PAR_DEFAUT, REGLES_RAPPROCHEMENT, type RapportReleve, analyserFec, decoderTexteReleve, detecterFormatReleve, elementDepuisMouvement,
+  elementsBanqueDepuisEcritures, enBlocs, lireCamt053, lireCsvBanque, lireOfx, proposerProfilCsv, rapprocher, schemaParametresRapprochement, schemaProfilCsvBanque,
+} from '@comtaple/core';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
 const PORT = Number(process.env.FAUX_API_PORT ?? 4100);
@@ -73,18 +77,29 @@ const UTILISATEURS = [
   { id: DEMO.client, email: 'client.depot@client-a.test', nom: 'Camille Client', cabinetId: DEMO.cabinetA, role: 'client_deposant' },
   { id: DEMO.bruno, email: 'bruno.admin@cabinet-b.test', nom: 'Bruno Admin', cabinetId: DEMO.cabinetB, role: 'administrateur' },
 ];
-const ENTITES = [
+const ENTITES_INITIALES: Enr0[] = [
   { id: DEMO.dupain, cabinetId: DEMO.cabinetA, raisonSociale: 'Boulangerie Dupain SAS (fictive)', formeJuridique: 'SAS' },
   { id: DEMO.martin, cabinetId: DEMO.cabinetA, raisonSociale: 'Garage Martin SARL (fictif)', formeJuridique: 'SARL' },
   { id: DEMO.leroy, cabinetId: DEMO.cabinetB, raisonSociale: 'Menuiserie Leroy SAS (fictive)', formeJuridique: 'SAS' },
 ];
-const HABILITATIONS: Array<{ entiteId: string; utilisateurId: string; niveau: Niveau }> = [
+const HABILITATIONS_INITIALES: Array<{ entiteId: string; utilisateurId: string; niveau: Niveau }> = [
   { entiteId: DEMO.dupain, utilisateurId: DEMO.alice, niveau: 'validation' },
   { entiteId: DEMO.dupain, utilisateurId: DEMO.remi, niveau: 'revision' },
   { entiteId: DEMO.martin, utilisateurId: DEMO.remi, niveau: 'revision' },
   { entiteId: DEMO.dupain, utilisateurId: DEMO.chloe, niveau: 'collaboration' },
   { entiteId: DEMO.dupain, utilisateurId: DEMO.client, niveau: 'depot' },
   { entiteId: DEMO.leroy, utilisateurId: DEMO.bruno, niveau: 'validation' },
+];
+
+type Enr0 = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+/** Dossiers, habilitations et appartenances supplémentaires : modifiables par les routes d'administration, remis à zéro entre les tests. */
+let ENTITES: Enr0[] = structuredClone(ENTITES_INITIALES);
+let HABILITATIONS = structuredClone(HABILITATIONS_INITIALES);
+/** Appartenances ajoutées par un test (compte multi-cabinets : aucun compte de démonstration n'en a plusieurs). */
+let APPARTENANCES_EN_PLUS: Array<{ utilisateurId: string; cabinetId: string; role: string }> = [];
+const appartenancesDe = (utilisateurId: string) => [
+  ...UTILISATEURS.filter((u) => u.id === utilisateurId).map((u) => ({ cabinetId: u.cabinetId as string, role: u.role })),
+  ...APPARTENANCES_EN_PLUS.filter((x) => x.utilisateurId === utilisateurId).map((x) => ({ cabinetId: x.cabinetId, role: x.role })),
 ];
 
 interface Acces {
@@ -115,6 +130,10 @@ interface Etat {
   decisions: Enr[];
   exports: Enr[];
   fichiersExports: Map<string, Buffer>;
+  releves: Enr[];
+  mouvements: Enr[];
+  rapprochementsExec: Enr[];
+  propositions: Enr[];
 }
 let etat: Etat;
 /** Pannes programmées par les tests (routes /__test/pannes). */
@@ -281,7 +300,7 @@ function etatInitial(): Etat {
       { id: DEMO.exLeroy2025, cabinetId: DEMO.cabinetB, entiteId: DEMO.leroy, debut: '2025-01-01', fin: '2025-12-31', statut: 'ouvert', versionDonnees: 0, creeLe: instant() },
     ],
     fichiers: [], contenus: new Map(), documents: [], receptions: [], extractions: [], echanges: [], televersements: [], morceaux: new Map(),
-    lots: [], executions: [], resultats: [], constats: [], lignes: [], decisions: [], exports: [], fichiersExports: new Map(),
+    lots: [], executions: [], resultats: [], constats: [], lignes: [], decisions: [], exports: [], fichiersExports: new Map(), releves: [], mouvements: [], rapprochementsExec: [], propositions: [],
   };
   const piece = (nom: string, contenu: Buffer, type: string | null, antivirus: string, statut: string, nature: string, deposant: string, canal: string, motifStatut: string | null = null) => {
     const fichier = { id: randomUUID(), cabinetId: DEMO.cabinetA, sha256: sha256(contenu), taille: contenu.length, typeMimeDeclare: type, typeMimeDetecte: type, cleStockage: `fictif/${nom}`, nature: 'original', analyseAntivirus: antivirus };
@@ -352,7 +371,7 @@ etat = etatInitial();
 
 // ───────────── Accès (calqué sur apps/api/src/acces.ts) ─────────────
 const jwks = createRemoteJWKSet(new URL(`${EMETTEUR}/protocol/openid-connect/certs`));
-async function authentifier(req: http.IncomingMessage): Promise<Acces> {
+async function authentifier(req: http.IncomingMessage, sansCabinet = false): Promise<Acces> {
   const entete = req.headers.authorization;
   if (!entete?.startsWith('Bearer ')) throw new ErreurHttp(401, 'Jeton manquant');
   let sujet: string;
@@ -365,9 +384,18 @@ async function authentifier(req: http.IncomingMessage): Promise<Acces> {
   }
   const u = UTILISATEURS.find((x) => x.id === sujet);
   if (!u) throw new ErreurHttp(403, 'Compte non rattaché à un cabinet');
+  const appartenances = appartenancesDe(u.id);
   const demande = req.headers['x-cabinet-id'];
-  if (typeof demande === 'string' && demande && demande !== u.cabinetId) throw new ErreurHttp(403, 'Cabinet non autorisé');
-  return { cabinetId: u.cabinetId, utilisateurId: u.id, role: u.role, email: u.email, nom: u.nom };
+  let choisie = appartenances.length === 1 ? appartenances[0] : undefined;
+  if (typeof demande === 'string' && demande) {
+    choisie = appartenances.find((x) => x.cabinetId === demande);
+    if (!choisie) throw new ErreurHttp(403, 'Cabinet non autorisé');
+  }
+  if (!choisie) {
+    if (sansCabinet) return { cabinetId: '', utilisateurId: u.id, role: '', email: u.email, nom: u.nom };
+    throw new ErreurHttp(400, 'Plusieurs cabinets : préciser l’en-tête X-Cabinet-Id');
+  }
+  return { cabinetId: choisie.cabinetId, utilisateurId: u.id, role: choisie.role, email: u.email, nom: u.nom };
 }
 function niveauSur(a: Acces, entiteId: string): Niveau | null {
   const entite = ENTITES.find((x) => x.id === entiteId && x.cabinetId === a.cabinetId);
@@ -464,14 +492,23 @@ async function routerV1(r: Requete): Promise<unknown> {
   const { methode: m, segments: s } = r;
   const chemin = s.join('/');
   if (m === 'GET' && chemin === 'sante') return { statut: 'ok' };
-  const a = await authentifier(r.req);
+  const a = await authentifier(r.req, m === 'GET' && chemin === 'cabinets');
   (r.req as Enr).utilisateur = a.nom;
+  if (m === 'GET' && chemin === 'cabinets') {
+    return appartenancesDe(a.utilisateurId).map((x) => ({ id: x.cabinetId, nom: CABINETS.find((c) => c.id === x.cabinetId)!.nom, role: x.role })).sort((x, y) => x.nom.localeCompare(y.nom));
+  }
+  {
+    const admin = routerAdministration(r, a);
+    if (admin !== undefined || r.res.writableEnded) return admin;
+    const banque = routerBanque(r, a);
+    if (banque !== undefined) return banque;
+  }
 
   if (m === 'GET' && chemin === 'moi') return { utilisateur: { id: a.utilisateurId, nom: a.nom, email: a.email }, cabinet: CABINETS.find((c) => c.id === a.cabinetId), role: a.role };
   if (m === 'GET' && chemin === 'dossiers') {
     const gestionnaire = a.role === 'administrateur' || a.role === 'associe';
     return ENTITES.filter((e) => e.cabinetId === a.cabinetId && (gestionnaire || niveauSur(a, e.id)))
-      .map((e) => ({ id: e.id, raisonSociale: e.raisonSociale, formeJuridique: e.formeJuridique, regimeFiscal: 'IS', territoireFiscal: 'metropole', niveau: niveauSur(a, e.id) }))
+      .map((e) => ({ id: e.id, raisonSociale: e.raisonSociale, formeJuridique: e.formeJuridique ?? null, regimeFiscal: e.regimeFiscal ?? 'IS', territoireFiscal: e.territoireFiscal ?? 'metropole', niveau: niveauSur(a, e.id) }))
       .sort((x, y) => x.raisonSociale.localeCompare(y.raisonSociale));
   }
   if (m === 'GET' && s[0] === 'dossiers' && s[2] === 'exercices' && s.length === 3) {
@@ -505,20 +542,21 @@ async function routerV1(r: Requete): Promise<unknown> {
       if (typeof d.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(d.sha256)) throw invalide('sha256', 'empreinte SHA-256 hexadécimale attendue');
       if (d.canal !== 'telephone' && d.canal !== 'ordinateur') throw invalide('canal', 'valeur inconnue');
       const usage = d.usage ?? 'piece';
-      if (usage !== 'piece' && usage !== 'fec') throw invalide('usage', 'valeur inconnue');
+      if (usage !== 'piece' && usage !== 'fec' && usage !== 'banque') throw invalide('usage', 'valeur inconnue');
+      if (d.profilCsv !== undefined && (typeof d.profilCsv !== 'object' || d.profilCsv === null || Array.isArray(d.profilCsv))) throw invalide('profilCsv', 'objet attendu');
       const nature = d.nature ?? 'a_qualifier';
       if (!NATURES.includes(nature)) throw invalide('nature', 'valeur inconnue');
       if (d.commentaire !== undefined && (typeof d.commentaire !== 'string' || d.commentaire.length > 2000)) throw invalide('commentaire', 'trop long');
       if (d.statutDonnees !== undefined && !['travail_avant_cloture', 'fec'].includes(d.statutDonnees)) throw invalide('statutDonnees', 'valeur inconnue');
       if (d.taille > TAILLE_MAX_PIECE * (usage === 'fec' ? 10 : 1)) throw new ErreurHttp(413, 'Fichier trop volumineux');
       if (usage === 'fec' && (!d.exerciceId || !d.statutDonnees)) throw new ErreurHttp(400, 'exerciceId et statutDonnees sont requis pour un import comptable');
-      exigerNiveau(a, d.entiteId, usage === 'fec' ? 'collaboration' : 'depot');
+      exigerNiveau(a, d.entiteId, usage === 'piece' ? 'depot' : 'collaboration');
       if (d.exerciceId && !etat.exercices.some((x) => x.id === d.exerciceId && x.entiteId === d.entiteId)) throw new ErreurHttp(404, 'Exercice introuvable pour ce dossier');
       const existant = etat.televersements.findLast((t) => t.entiteId === d.entiteId && t.utilisateurId === a.utilisateurId && t.sha256Attendu === d.sha256 && t.usage === usage && t.statut === 'ouvert');
       if (existant && existant.tailleAttendue === d.taille) return vueT(existant);
       const t = {
         id: randomUUID(), cabinetId: a.cabinetId, entiteId: d.entiteId, utilisateurId: a.utilisateurId, canal: d.canal, nomFichier: d.nomFichier, typeMimeDeclare: d.typeMime ?? null, tailleAttendue: d.taille,
-        sha256Attendu: d.sha256, octetsRecus: 0, nature, commentaire: d.commentaire ?? null, usage, exerciceId: d.exerciceId ?? null, statutDonnees: d.statutDonnees ?? null, lotImportId: null, statut: 'ouvert', documentId: null,
+        sha256Attendu: d.sha256, octetsRecus: 0, nature, commentaire: d.commentaire ?? null, usage, exerciceId: d.exerciceId ?? null, statutDonnees: d.statutDonnees ?? null, parametres: d.profilCsv ? { profilCsv: d.profilCsv } : null, lotImportId: null, statut: 'ouvert', documentId: null,
         creeLe: instant(), expireLe: new Date(Date.now() + 7 * 86400_000).toISOString(),
       };
       etat.televersements.push(t);
@@ -528,6 +566,15 @@ async function routerV1(r: Requete): Promise<unknown> {
     }
     const id = exigerUuid(s[1]);
     if (m === 'GET' && s.length === 2) return vueT(chargerTeleversement(a, id));
+    if (m === 'DELETE' && s.length === 2) {
+      const t = chargerTeleversement(a, id);
+      if (t.statut === 'complet') throw new ErreurHttp(409, 'Ce téléversement est terminé : la pièce a été reçue et ne peut pas être retirée ici');
+      if (t.statut === 'ouvert') {
+        etat.morceaux.delete(t.id);
+        t.statut = 'abandonne';
+      }
+      return null;
+    }
     if (m === 'PUT' && s[2] === 'morceaux' && s.length === 3) {
       const decalage = Number(r.query.get('decalage'));
       if (!Number.isSafeInteger(decalage) || decalage < 0) throw new ErreurHttp(400, 'decalage invalide');
@@ -558,6 +605,10 @@ async function routerV1(r: Requete): Promise<unknown> {
       }
       let doublonBinaire = false;
       let dejaImporte = false;
+      if (t.statut === 'complet') {
+        doublonBinaire = Boolean(t.doublonBinaire);
+        dejaImporte = Boolean(t.dejaImporte);
+      }
       if (t.statut !== 'complet') {
         if (t.statut !== 'ouvert') throw new ErreurHttp(409, { message: 'Téléversement clos', statut: t.statut });
         if (t.octetsRecus !== t.tailleAttendue) throw new ErreurHttp(409, { message: 'Téléversement incomplet', octetsRecus: t.octetsRecus, tailleAttendue: t.tailleAttendue });
@@ -586,6 +637,16 @@ async function routerV1(r: Requete): Promise<unknown> {
             imiterImport(lot.id);
           }
           t.lotImportId = lot.id;
+        } else if (t.usage === 'banque') {
+          const cle = `banque:${t.entiteId}:${empreinte}`;
+          let lot = etat.lots.find((l) => l.cleIdempotence === cle);
+          dejaImporte = Boolean(lot);
+          if (!lot) {
+            lot = { id: randomUUID(), cabinetId: a.cabinetId, entiteId: t.entiteId, exerciceId: null, type: 'releve_bancaire', statutDonnees: null, fichierId: fichier.id, cleIdempotence: cle, version: 1, remplaceLotId: null, actif: false, statut: 'en_attente', progression: 0, rapport: { nomFichier: t.nomFichier, ...(t.parametres ?? {}) }, lancePar: a.utilisateurId, creeLe: instant(), termineLe: null };
+            etat.lots.push(lot);
+            imiterReleve(lot.id);
+          }
+          t.lotImportId = lot.id;
         } else {
           let doc = etat.documents.find((d) => d.entiteId === t.entiteId && d.fichierId === fichier.id);
           doublonBinaire = Boolean(doc);
@@ -597,7 +658,7 @@ async function routerV1(r: Requete): Promise<unknown> {
           etat.receptions.push({ id: randomUUID(), cabinetId: a.cabinetId, entiteId: t.entiteId, documentId: doc.id, canal: t.canal, deposantId: a.utilisateurId, doublonBinaire, provenance: { televersementId: t.id }, recuLe: instant() });
           t.documentId = doc.id;
         }
-        t.statut = 'complet';
+        Object.assign(t, { statut: 'complet', doublonBinaire, dejaImporte });
       }
       return { ...vueT(t), recu: true, doublonBinaire, dejaImporte };
     }
@@ -611,15 +672,16 @@ async function routerV1(r: Requete): Promise<unknown> {
       if (statut && !['recu', 'en_analyse', 'a_completer', 'a_controler', 'traite', 'quarantaine', 'rejete'].includes(statut)) throw new ErreurHttp(400, 'statut inconnu');
       const niveau = exigerNiveau(a, entiteId, 'depot');
       const documents = etat.documents
-        .filter((d) => d.entiteId === entiteId && (!statut || d.statut === statut) && (niveau !== 'depot' || etat.receptions.some((x) => x.documentId === d.id && x.deposantId === a.utilisateurId)))
+        .filter((d) => d.entiteId === entiteId && (!statut || d.statut === statut) && ((niveau !== 'depot' && r.query.get('deposant') !== 'moi') || etat.receptions.some((x) => x.documentId === d.id && x.deposantId === a.utilisateurId)))
         .sort((x, y) => y.creeLe.localeCompare(x.creeLe))
-        .slice(0, 500)
         .map((d) => ({
           id: d.id, nomOrigine: d.nomOrigine, nature: d.nature, statut: d.statut, motifStatut: d.motifStatut, creeLe: d.creeLe, majLe: d.majLe,
           nbReceptions: etat.receptions.filter((x) => x.documentId === d.id).length,
           demandesOuvertes: etat.echanges.filter((x) => x.documentId === d.id && x.type === 'demande_complement' && !x.resolu).length,
         }));
-      return { niveau, documents };
+      const page = Math.max(Number(r.query.get('page')) || 1, 1);
+      const TAILLE = 100;
+      return { niveau, page, taillePage: TAILLE, suite: documents.length > page * TAILLE, documents: documents.slice((page - 1) * TAILLE, page * TAILLE) };
     }
     const id = exigerUuid(s[1]);
     if (m === 'GET' && s.length === 2) {
@@ -769,6 +831,16 @@ async function routerV1(r: Requete): Promise<unknown> {
       chargerExercice(a, id, 'lecture');
       return etat.exports.filter((e) => e.exerciceId === id).sort((x, y) => y.creeLe.localeCompare(x.creeLe));
     }
+  }
+  if (m === 'GET' && s[0] === 'imports' && s[2] === 'anomalies' && s.length === 3) {
+    const id = exigerUuid(s[1]);
+    const lot = etat.lots.find((l) => l.id === id && l.cabinetId === a.cabinetId && visibleEnLecture(a, l.entiteId));
+    if (!lot) throw new ErreurHttp(404, 'Import introuvable');
+    const page = Math.max(Number(r.query.get('page')) || 1, 1);
+    const code = r.query.get('code');
+    const TAILLE = 100;
+    const toutes = ((lot.rapport?.anomalies ?? []) as Array<{ code: string }>).filter((x) => !code || x.code === code);
+    return { page, taillePage: TAILLE, total: toutes.length, suite: page * TAILLE < toutes.length, anomalies: toutes.slice((page - 1) * TAILLE, page * TAILLE) };
   }
   if (m === 'GET' && s[0] === 'imports' && s.length === 2) {
     const id = exigerUuid(s[1]);
@@ -1087,6 +1159,325 @@ function pageFournisseur(q: URLSearchParams): string {
   return `<!doctype html><html lang="fr"><meta charset="utf-8"><title>Fournisseur simulé</title><h1>SIMULATEUR DE TEST — consentement fictif (${(q.get('fournisseur') ?? '').replace(/[^a-z]/g, '')})</h1>${lien('Accepter', 'code=code-de-test-valide')}${lien('Refuser', 'error=access_denied')}${lien('Code invalide', 'code=code-errone')}</html>`;
 }
 
+// ───────────── Administration, audit, banque et rapprochements ─────────────
+// Calqué sur administration.controller.ts, audit.controller.ts, banque.controller.ts et apps/worker/src/banque.ts.
+// La lecture des relevés, l'analyse d'un FEC lisible et le rapprochement utilisent le VRAI moteur (@comtaple/core) ;
+// seuls le stockage et l'exécution différée sont simulés.
+const PLAFOND_NIVEAUX: Record<string, readonly string[]> = {
+  client_deposant: ['depot'], client_lecture: ['depot', 'lecture'], collaborateur: ['depot', 'lecture', 'collaboration'], support: ['lecture'],
+  reviseur: ['depot', 'lecture', 'collaboration', 'revision'], associe: ORDRE, administrateur: ORDRE,
+};
+const TERRITOIRES = ['metropole', 'guadeloupe', 'martinique', 'guyane', 'reunion', 'mayotte', 'autre', 'a_confirmer'];
+let audit: Enr[] = [];
+let ruptureAudit: number | null = null;
+function tracerAudit(a: { cabinetId: string; utilisateurId?: string }, action: string, cibleType: string, cibleId: string, entiteId: string | null, details: Enr = {}): void {
+  audit.push({ id: audit.length + 1, cabinetId: a.cabinetId, acteurId: a.utilisateurId ?? null, acteurType: a.utilisateurId ? 'utilisateur' : 'systeme', action, cibleType, cibleId, entiteId, details, horodatage: instant(), empreintePrecedente: null, empreinte: sha256(`${audit.length}`) });
+}
+const membresDuCabinet = (cabinetId: string) =>
+  UTILISATEURS.flatMap((u) => appartenancesDe(u.id).filter((x) => x.cabinetId === cabinetId).map((x) => ({ utilisateurId: u.id, nom: u.nom, email: u.email, role: x.role, actif: true, expireLe: null })));
+const ficheEntite = (e: Enr) => ({ id: e.id, cabinetId: e.cabinetId, raisonSociale: e.raisonSociale, siren: e.siren ?? null, formeJuridique: e.formeJuridique ?? null, regimeFiscal: e.regimeFiscal ?? 'IS', referentielComptable: 'PCG', territoireFiscal: e.territoireFiscal ?? 'metropole', codeNaf: e.codeNaf ?? null, devise: 'EUR', actif: true, creeLe: e.creeLe ?? '2026-11-18T08:00:00.000Z' });
+function sirenValide(s: string): boolean {
+  let somme = 0;
+  for (let i = 0; i < 9; i++) {
+    let c = s.charCodeAt(8 - i) - 48;
+    if (i % 2 === 1 && (c *= 2) > 9) c -= 9;
+    somme += c;
+  }
+  return somme % 10 === 0;
+}
+function validerDossier(d: Enr, partiel: boolean): Enr {
+  const sortie: Enr = {};
+  const texte = (nom: string, max: number, min = 0) => {
+    if (d[nom] === undefined) return;
+    if (typeof d[nom] !== 'string' || d[nom].length < min || d[nom].length > max) throw invalide(nom, 'chaîne invalide');
+    sortie[nom] = d[nom];
+  };
+  if (!partiel && d.raisonSociale === undefined) throw invalide('raisonSociale', 'obligatoire');
+  texte('raisonSociale', 200, 1);
+  texte('formeJuridique', 50);
+  texte('regimeFiscal', 50);
+  texte('codeNaf', 10);
+  if (d.siren !== undefined) {
+    if (typeof d.siren !== 'string' || !/^\d{9}$/.test(d.siren)) throw invalide('siren', 'SIREN à 9 chiffres');
+    sortie.siren = d.siren;
+  }
+  if (d.territoireFiscal === undefined ? !partiel : true) {
+    if (!TERRITOIRES.includes(d.territoireFiscal)) throw invalide('territoireFiscal', 'valeur inconnue ou absente');
+    sortie.territoireFiscal = d.territoireFiscal;
+  }
+  if (partiel && Object.keys(sortie).length === 0) throw invalide('', 'aucune modification');
+  if (sortie.siren && !sirenValide(sortie.siren)) throw new ErreurHttp(400, 'SIREN invalide (clé de contrôle)');
+  return sortie;
+}
+
+function routerAdministration(r: Requete, a: Acces): unknown {
+  const { methode: m, segments: s } = r;
+  const gestionnaire = a.role === 'administrateur' || a.role === 'associe';
+  const exigerGestion = () => {
+    if (!gestionnaire) throw new ErreurHttp(403, 'Réservé aux administrateurs et associés du cabinet');
+  };
+  /** Politique RLS des dossiers : visibles si habilité, ou si gestionnaire du cabinet. */
+  const entiteVisible = (id: string) => ENTITES.find((e) => e.id === id && e.cabinetId === a.cabinetId && (gestionnaire || niveauSur(a, e.id)));
+  if (m === 'GET' && s.join('/') === 'cabinet/membres') {
+    exigerGestion();
+    return membresDuCabinet(a.cabinetId).sort((x, y) => x.nom.localeCompare(y.nom));
+  }
+  if (m === 'GET' && s[0] === 'audit' && s.length === 1) {
+    exigerGestion();
+    const limite = Math.min(Math.max(Number(r.query.get('limite')) || 100, 1), 500);
+    return { integrite: { rupture: ruptureAudit }, lignes: audit.filter((l) => l.cabinetId === a.cabinetId).reverse().slice(0, limite) };
+  }
+  if (s[0] !== 'dossiers') return undefined;
+  if (m === 'POST' && s.length === 1) {
+    const d = validerDossier(r.json(), false);
+    exigerGestion();
+    const e = { id: randomUUID(), cabinetId: a.cabinetId, creeLe: instant(), ...d };
+    ENTITES.push(e);
+    tracerAudit(a, 'dossier.cree', 'entite', e.id, e.id, { territoireFiscal: d.territoireFiscal });
+    r.res.statusCode = 201;
+    return ficheEntite(e);
+  }
+  if (s.length === 1) return undefined;
+  const id = exigerUuid(s[1]);
+  if (m === 'GET' && s.length === 2) {
+    const e = entiteVisible(id);
+    if (!e) throw new ErreurHttp(404, 'Dossier introuvable');
+    return { ...ficheEntite(e), niveau: niveauSur(a, id) };
+  }
+  if (m === 'PATCH' && s.length === 2) {
+    const d = validerDossier(r.json(), true);
+    exigerGestion();
+    const e = entiteVisible(id);
+    if (!e) throw new ErreurHttp(404, 'Dossier introuvable');
+    const avant = e.territoireFiscal ?? 'metropole';
+    Object.assign(e, d);
+    if (d.territoireFiscal && d.territoireFiscal !== avant) for (const x of etat.executions) if (x.entiteId === id) x.obsolete = true;
+    tracerAudit(a, 'dossier.modifie', 'entite', id, id, { territoireAvant: avant, territoireApres: e.territoireFiscal ?? 'metropole' });
+    return ficheEntite(e);
+  }
+  if (m === 'POST' && s[2] === 'exercices' && s.length === 3) {
+    const d = r.json();
+    for (const k of ['debut', 'fin']) if (typeof d[k] !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(d[k])) throw invalide(k, 'date AAAA-MM-JJ attendue');
+    if (!(d.debut < d.fin)) throw invalide('', 'la fin doit suivre le début');
+    exigerNiveau(a, id, 'collaboration');
+    if (etat.exercices.some((x) => x.entiteId === id && x.debut <= d.fin && x.fin >= d.debut)) throw new ErreurHttp(409, 'Cet exercice chevauche un exercice existant du dossier');
+    const ex = { id: randomUUID(), cabinetId: a.cabinetId, entiteId: id, debut: d.debut, fin: d.fin, statut: 'ouvert', versionDonnees: 0, creeLe: instant() };
+    etat.exercices.push(ex);
+    tracerAudit(a, 'exercice.cree', 'exercice', ex.id, id, { debut: d.debut, fin: d.fin });
+    r.res.statusCode = 201;
+    return ex;
+  }
+  if (m === 'GET' && s[2] === 'membres' && s.length === 3) {
+    if (!entiteVisible(id)) throw new ErreurHttp(404, 'Dossier introuvable');
+    const niveau = niveauSur(a, id);
+    if (!gestionnaire && (!niveau || niveau === 'depot')) throw new ErreurHttp(403, 'Habilitation insuffisante sur ce dossier');
+    const membres = membresDuCabinet(a.cabinetId);
+    return HABILITATIONS.filter((h) => h.entiteId === id).flatMap((h) => membres.filter((x) => x.utilisateurId === h.utilisateurId).map((x) => ({ utilisateurId: x.utilisateurId, nom: x.nom, email: x.email, niveau: h.niveau, role: x.role })));
+  }
+  if (s[2] === 'habilitations' && s.length === 4) {
+    const utilisateurId = exigerUuid(s[3]);
+    if (m === 'PUT') {
+      const d = r.json();
+      if (!ORDRE.includes(d.niveau)) throw invalide('niveau', 'valeur inconnue');
+      exigerGestion();
+      if (!entiteVisible(id)) throw new ErreurHttp(404, 'Dossier introuvable');
+      const membre = membresDuCabinet(a.cabinetId).find((x) => x.utilisateurId === utilisateurId);
+      if (!membre) throw new ErreurHttp(404, 'Cette personne n’est pas membre actif du cabinet');
+      if (!PLAFOND_NIVEAUX[membre.role]?.includes(d.niveau)) throw new ErreurHttp(400, `Le rôle « ${membre.role} » ne peut pas recevoir le niveau « ${d.niveau} »`);
+      let h = HABILITATIONS.find((x) => x.entiteId === id && x.utilisateurId === utilisateurId);
+      if (h) h.niveau = d.niveau;
+      else HABILITATIONS.push((h = { entiteId: id, utilisateurId, niveau: d.niveau }));
+      tracerAudit(a, 'habilitation.accordee', 'utilisateur', utilisateurId, id, { niveau: d.niveau, pourSoiMeme: utilisateurId === a.utilisateurId });
+      return { ...h, cabinetId: a.cabinetId, accordeePar: a.utilisateurId };
+    }
+    if (m === 'DELETE') {
+      exigerGestion();
+      const i = HABILITATIONS.findIndex((x) => x.entiteId === id && x.utilisateurId === utilisateurId && ENTITES.some((e) => e.id === id && e.cabinetId === a.cabinetId));
+      if (i < 0) throw new ErreurHttp(404, 'Habilitation introuvable');
+      HABILITATIONS.splice(i, 1);
+      tracerAudit(a, 'habilitation.retiree', 'utilisateur', utilisateurId, id);
+      r.res.writeHead(204).end();
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+/** Imite la tâche du worker `importerReleve` (même enchaînement, vrai moteur de lecture). */
+function imiterReleve(lotId: string): void {
+  const reference = etat;
+  setTimeout(() => {
+    const lot = reference.lots.find((l) => l.id === lotId);
+    if (etat !== reference || !lot) return;
+    const demande = (lot.rapport ?? {}) as Enr;
+    const echec = (motif: string, extra: Enr = {}) => Object.assign(lot, { statut: 'echec', actif: false, rapport: { ...demande, lisible: false, motif, ...extra }, termineLe: instant() });
+    const contenu = reference.contenus.get(lot.fichierId) ?? Buffer.alloc(0);
+    const { texte, encodage } = decoderTexteReleve(new Uint8Array(contenu));
+    const format = detecterFormatReleve(texte.slice(0, 8192));
+    let rapport: RapportReleve;
+    let profilUtilise: unknown = null;
+    if (format === 'camt.053') rapport = lireCamt053(texte);
+    else if (format === 'ofx') rapport = lireOfx(texte);
+    else if (format === 'csv') {
+      let profil = demande.profilCsv ? schemaProfilCsvBanque.safeParse(demande.profilCsv) : null;
+      if (profil && !profil.success) return void echec('Profil de colonnes CSV invalide', { format });
+      if (!profil) {
+        const proposition = proposerProfilCsv(texte);
+        if (!proposition.profil) return void echec('Colonnes du fichier CSV non reconnues avec certitude : un profil de colonnes doit être confirmé', { format, profilAConfirmer: true, raisons: proposition.raisons });
+        profil = { success: true, data: proposition.profil } as never;
+        profilUtilise = { ...proposition.profil, origine: 'propose_automatiquement', raisons: proposition.raisons };
+      } else profilUtilise = { ...profil.data, origine: 'confirme' };
+      rapport = lireCsvBanque(texte, (profil as unknown as { data: Parameters<typeof lireCsvBanque>[1] }).data);
+    } else return void echec('Format de relevé non reconnu (camt.053, OFX ou CSV attendus)', { format });
+    if (!rapport.lisible) return void echec('Relevé illisible', { format: rapport.format, version: rapport.version, anomalies: rapport.anomalies.slice(0, 200) });
+
+    reference.releves = reference.releves.filter((x) => x.lotImportId !== lot.id);
+    const parCompte = new Map<string, string>();
+    for (const compte of rapport.comptes) {
+      const { nbMouvements, totalMouvements, cadrage, ecart, iban, identifiant, devise, soldeOuverture, dateOuverture, soldeCloture, dateCloture } = compte;
+      const rel = { id: randomUUID(), cabinetId: lot.cabinetId, entiteId: lot.entiteId, lotImportId: lot.id, format: rapport.format, iban, identifiant, devise, soldeOuverture, dateOuverture, soldeCloture, dateCloture, totalMouvements, nbMouvements, cadrage, ecart, creeLe: instant() };
+      reference.releves.push(rel);
+      const cle = `${iban ?? ''}|${identifiant ?? ''}`;
+      if (!parCompte.has(cle)) parCompte.set(cle, rel.id);
+    }
+    let nouveaux = 0;
+    const connus = new Set(reference.mouvements.filter((x) => x.entiteId === lot.entiteId).map((x) => x.cleIdempotence));
+    for (const mv of rapport.mouvements) {
+      if (connus.has(mv.cleIdempotence)) continue;
+      connus.add(mv.cleIdempotence);
+      nouveaux++;
+      reference.mouvements.push({
+        id: randomUUID(), cabinetId: lot.cabinetId, entiteId: lot.entiteId, lotImportId: lot.id, releveId: parCompte.get(`${mv.compte.iban ?? ''}|${mv.compte.identifiant ?? ''}`) ?? null, rang: mv.rang, cleIdempotence: mv.cleIdempotence,
+        iban: mv.compte.iban, identifiantCompte: mv.compte.identifiant, devise: mv.compte.devise, dateOperation: mv.dateOperation, dateValeur: mv.dateValeur, montant: mv.montant, libelle: mv.libelle,
+        referenceBanque: mv.referenceBanque, referenceBoutEnBout: mv.referenceBoutEnBout, contrepartieNom: mv.contrepartie?.nom ?? null, brut: mv, creeLe: instant(),
+      });
+    }
+    if (nouveaux > 0) for (const x of reference.rapprochementsExec) if (x.entiteId === lot.entiteId) x.obsolete = true;
+    const { mouvements: _m, ...resume } = rapport;
+    Object.assign(lot, {
+      statut: rapport.anomalies.length > 0 ? 'termine_avec_erreurs' : 'termine', actif: true, progression: rapport.mouvements.length, termineLe: instant(),
+      rapport: { ...demande, ...resume, encodage, profilCsv: profilUtilise ?? demande.profilCsv ?? null, anomalies: rapport.anomalies.slice(0, 500), nbMouvements: rapport.mouvements.length, nbNouveaux: nouveaux, nbDejaConnus: rapport.mouvements.length - nouveaux },
+    });
+  }, DELAI_WORKER_MS);
+}
+
+/** Imite la tâche du worker `executerRapprochement` avec le vrai moteur déterministe. */
+function imiterRapprochement(executionId: string): void {
+  const reference = etat;
+  setTimeout(() => {
+    const execution = reference.rapprochementsExec.find((x) => x.id === executionId);
+    const exercice = execution && reference.exercices.find((x) => x.id === execution.exerciceId);
+    if (etat !== reference || !execution || !exercice) return;
+    const lignes = reference.lignes.filter((l) => l.lotImportId === execution.lotImportId).sort((x, y) => x.numeroLigne - y.numeroLigne) as unknown as LigneEcriture[];
+    const cotesEcritures = elementsBanqueDepuisEcritures(lignes);
+    const mouvements = reference.mouvements.filter((x) => x.entiteId === execution.entiteId && x.dateOperation >= exercice.debut && x.dateOperation <= exercice.fin).sort((x, y) => x.dateOperation.localeCompare(y.dateOperation) || x.rang - y.rang);
+    const idParCle = new Map<string, string>(mouvements.map((x) => [x.cleIdempotence, x.id]));
+    const versIds = (cles: readonly string[]) => cles.map((k) => idParCle.get(k) ?? k);
+    const resultat = rapprocher(cotesEcritures, mouvements.map((x) => elementDepuisMouvement(x.brut as MouvementBancaire)), schemaParametresRapprochement.partial().parse(execution.parametres ?? {}));
+    for (const p of resultat.rapprochements) {
+      reference.propositions.push({ id: randomUUID(), cabinetId: execution.cabinetId, entiteId: execution.entiteId, exerciceId: exercice.id, executionId: execution.id, niveau: p.niveau, regle: p.regle, cotesEcritures: p.cotesA, cotesMouvements: versIds(p.cotesB), criteres: p.criteres, explication: p.explication, ecart: p.ecart, statut: 'propose', motif: null, decidePar: null, decideLe: null, creeLe: instant() });
+    }
+    const idsEcritures = new Set(cotesEcritures.map((x) => x.id));
+    const traduire = (ids: readonly string[]) => ids.map((x) => (idsEcritures.has(x) ? x : (idParCle.get(x) ?? x)));
+    Object.assign(execution, {
+      statut: 'termine', termineLe: instant(), mesures: { ...resultat.mesures, ecrituresBanque: String(cotesEcritures.length), mouvementsBancaires: String(mouvements.length) },
+      nonRapprochesEcritures: resultat.nonRapprochesA, nonRapprochesMouvements: versIds(resultat.nonRapprochesB),
+      ambiguites: resultat.ambiguites.map((x) => ({ ...x, ids: traduire(x.ids), candidats: x.candidats.map(traduire) })), abandons: resultat.abandons.map((x) => ({ ...x, ids: traduire(x.ids) })),
+    });
+  }, DELAI_WORKER_MS);
+}
+
+function routerBanque(r: Requete, a: Acces): unknown {
+  const { methode: m, segments: s } = r;
+  if (m === 'GET' && s.join('/') === 'reference/rapprochement') return { regles: REGLES_RAPPROCHEMENT, parametresParDefaut: PARAMETRES_RAPPROCHEMENT_PAR_DEFAUT };
+  if (m === 'GET' && s[0] === 'dossiers' && s[2] === 'banque') {
+    const entiteId = exigerUuid(s[1]);
+    if (s.length === 3) {
+      exigerNiveau(a, entiteId, 'lecture');
+      return {
+        imports: etat.lots.filter((l) => l.entiteId === entiteId && l.type === 'releve_bancaire').sort((x, y) => y.creeLe.localeCompare(x.creeLe)),
+        releves: etat.releves.filter((x) => x.entiteId === entiteId).sort((x, y) => String(y.dateCloture).localeCompare(String(x.dateCloture))),
+        nbMouvements: etat.mouvements.filter((x) => x.entiteId === entiteId).length,
+      };
+    }
+    if (s[3] === 'mouvements' && s.length === 4) {
+      const du = r.query.get('du');
+      const au = r.query.get('au');
+      if ((du && !/^\d{4}-\d{2}-\d{2}$/.test(du)) || (au && !/^\d{4}-\d{2}-\d{2}$/.test(au))) throw new ErreurHttp(400, 'dates AAAA-MM-JJ attendues');
+      const page = Math.max(Number(r.query.get('page')) || 1, 1);
+      exigerNiveau(a, entiteId, 'lecture');
+      const tous = etat.mouvements.filter((x) => x.entiteId === entiteId && (!du || x.dateOperation >= du) && (!au || x.dateOperation <= au)).sort((x, y) => x.dateOperation.localeCompare(y.dateOperation) || x.rang - y.rang);
+      const TAILLE = 100;
+      return { page, taillePage: TAILLE, suite: tous.length > page * TAILLE, mouvements: tous.slice((page - 1) * TAILLE, page * TAILLE).map(({ brut: _b, ...x }) => x) };
+    }
+  }
+  if (m === 'POST' && s[0] === 'imports' && s[2] === 'relancer' && s.length === 3) {
+    const id = exigerUuid(s[1]);
+    const d = r.json();
+    if (!d.profilCsv || typeof d.profilCsv !== 'object' || Array.isArray(d.profilCsv)) throw invalide('profilCsv', 'objet attendu');
+    const lot = etat.lots.find((l) => l.id === id && l.cabinetId === a.cabinetId && niveauSur(a, l.entiteId) && auMoins(niveauSur(a, l.entiteId)!, 'lecture'));
+    if (!lot || lot.type !== 'releve_bancaire') throw new ErreurHttp(404, 'Import de relevé introuvable');
+    exigerNiveau(a, lot.entiteId, 'collaboration');
+    if (lot.statut !== 'echec') throw new ErreurHttp(409, 'Seul un import en échec peut être relancé');
+    Object.assign(lot, { statut: 'en_attente', rapport: { nomFichier: lot.rapport?.nomFichier, profilCsv: d.profilCsv }, termineLe: null });
+    imiterReleve(lot.id);
+    r.res.statusCode = 202;
+    return { accepte: true };
+  }
+  if (s[0] === 'exercices' && s[2] === 'rapprochements' && s.length === 3) {
+    const id = exigerUuid(s[1]);
+    if (m === 'POST') {
+      const d = r.json();
+      const parametres = schemaParametresRapprochement.partial().safeParse(d.parametres ?? {});
+      if (!parametres.success) throw new ErreurHttp(400, { message: 'Requête invalide', erreurs: parametres.error.issues.map((i) => ({ champ: `parametres.${i.path.join('.')}`, probleme: i.message })) });
+      const ex = chargerExercice(a, id, 'collaboration');
+      const lot = etat.lots.find((l) => l.exerciceId === id && l.type === 'fec' && l.actif);
+      if (!lot) throw new ErreurHttp(409, 'Aucune donnée comptable importée pour cet exercice : le rapprochement ne peut pas être réalisé');
+      if (!etat.mouvements.some((x) => x.entiteId === ex.entiteId && x.dateOperation >= ex.debut && x.dateOperation <= ex.fin)) throw new ErreurHttp(409, 'Aucun mouvement bancaire importé sur la période de l’exercice : le rapprochement ne peut pas être réalisé');
+      const e = { id: randomUUID(), cabinetId: a.cabinetId, entiteId: ex.entiteId, exerciceId: id, lotImportId: lot.id, versionDonnees: ex.versionDonnees, statut: 'en_attente', obsolete: false, parametres: d.parametres ?? {}, mesures: null, nonRapprochesEcritures: null, nonRapprochesMouvements: null, ambiguites: null, abandons: null, erreur: null, lancePar: a.utilisateurId, creeLe: instant(), termineLe: null };
+      etat.rapprochementsExec.push(e);
+      imiterRapprochement(e.id);
+      r.res.statusCode = 202;
+      return e;
+    }
+    if (m === 'GET') {
+      const ex = chargerExercice(a, id, 'lecture');
+      const execution = etat.rapprochementsExec.filter((x) => x.exerciceId === id).at(-1);
+      if (!execution) return { exercice: ex, execution: null, rapprochements: [], ecritures: {}, mouvements: {}, nonRapproches: { ecritures: [], mouvements: [], nbEcritures: 0, nbMouvements: 0 } };
+      const rapprochements = etat.propositions.filter((x) => x.executionId === execution.id).sort((x, y) => x.niveau.localeCompare(y.niveau) || x.regle.localeCompare(y.regle)).slice(0, 2000);
+      const PLAFOND = 300;
+      const nonE: string[] = (execution.nonRapprochesEcritures ?? []).filter((x: string) => UUID.test(x));
+      const nonM: string[] = (execution.nonRapprochesMouvements ?? []).filter((x: string) => UUID.test(x));
+      const ids = new Set<string>([...nonE.slice(0, PLAFOND), ...nonM.slice(0, PLAFOND)]);
+      for (const p of rapprochements) for (const x of [...p.cotesEcritures, ...p.cotesMouvements]) ids.add(x);
+      for (const g of (execution.ambiguites ?? []).slice(0, 100)) for (const x of g.ids) ids.add(x);
+      return {
+        exercice: ex, execution, rapprochements,
+        ecritures: Object.fromEntries(etat.lignes.filter((l) => ids.has(l.id)).map((l) => [l.id, { id: l.id, date: l.ecritureDate, journal: l.journalCode, numero: l.ecritureNum, compte: l.compteNum, piece: l.pieceRef, libelle: l.ecritureLib, debit: l.debit, credit: l.credit }])),
+        mouvements: Object.fromEntries(etat.mouvements.filter((x) => ids.has(x.id)).map((x) => [x.id, { id: x.id, date: x.dateOperation, montant: x.montant, libelle: x.libelle, reference: x.referenceBoutEnBout, contrepartie: x.contrepartieNom, iban: x.iban }])),
+        nonRapproches: { ecritures: nonE.slice(0, PLAFOND), mouvements: nonM.slice(0, PLAFOND), nbEcritures: nonE.length, nbMouvements: nonM.length },
+      };
+    }
+  }
+  if (m === 'PATCH' && s[0] === 'rapprochements' && s.length === 2) {
+    const id = exigerUuid(s[1]);
+    const d = r.json();
+    if (!['valider', 'rejeter', 'remettre_en_proposition'].includes(d.decision)) throw invalide('decision', 'valeur inconnue');
+    if (d.motif !== undefined && (typeof d.motif !== 'string' || d.motif.length < 1 || d.motif.length > 2000)) throw invalide('motif', 'chaîne de 1 à 2000 caractères attendue');
+    if (d.decision === 'rejeter' && !d.motif) throw new ErreurHttp(400, 'Un motif est requis pour rejeter');
+    const p = etat.propositions.find((x) => x.id === id && x.cabinetId === a.cabinetId && visibleEnLecture(a, x.entiteId));
+    if (!p) throw new ErreurHttp(404, 'Rapprochement introuvable');
+    exigerNiveau(a, p.entiteId, 'revision');
+    const execution = etat.rapprochementsExec.find((x) => x.id === p.executionId);
+    if (execution?.obsolete && d.decision === 'valider') throw new ErreurHttp(409, 'Les données ont changé depuis ce rapprochement : relancez-le avant de valider');
+    const statut = d.decision === 'valider' ? 'valide' : d.decision === 'rejeter' ? 'rejete' : 'propose';
+    Object.assign(p, { statut, motif: d.motif ?? null, decidePar: statut === 'propose' ? null : a.utilisateurId, decideLe: statut === 'propose' ? null : instant() });
+    tracerAudit(a, `rapprochement.${d.decision}`, 'rapprochement', id, p.entiteId, { regle: p.regle, ecart: p.ecart });
+    return p;
+  }
+  return undefined;
+}
+
 // ───────────── Imitation des traitements du worker (minuteries) ─────────────
 function imiterImport(lotId: string): void {
   const reference = etat;
@@ -1094,14 +1485,21 @@ function imiterImport(lotId: string): void {
     const lot = reference.lots.find((l) => l.id === lotId);
     if (etat !== reference || !lot) return;
     Object.assign(lot, { statut: 'en_cours', progression: 600 });
-    setTimeout(() => {
+    setTimeout(async () => {
       if (etat !== reference) return;
       const ex = reference.exercices.find((x) => x.id === lot.exerciceId)!;
+      // Un fichier réellement lisible est analysé par le vrai moteur (lignes et rapport réels) ; sinon, rapport fictif ci-dessous.
+      const lues: LigneFec[] = [];
+      const reel = await analyserFec(enBlocs(new Uint8Array(reference.contenus.get(lot.fichierId) ?? Buffer.alloc(0))), { exerciceDebut: ex.debut, exerciceFin: ex.fin, nomFichier: lot.rapport.nomFichier, surLigne: (l) => void lues.push(l) }).catch(() => null);
+      if (etat !== reference) return;
+      const analyse = reel?.lisible && lues.length > 0 ? reel : null;
+      if (analyse) for (const l of lues) reference.lignes.push({ ...l, id: randomUUID(), cabinetId: lot.cabinetId, entiteId: lot.entiteId, exerciceId: lot.exerciceId, lotImportId: lot.id });
       for (const l of reference.lots) if (l.exerciceId === lot.exerciceId && l.id !== lot.id) l.actif = false;
       ex.versionDonnees += 1;
       for (const e of reference.executions) if (e.exerciceId === lot.exerciceId) e.obsolete = true;
       for (const c of reference.constats) if (c.exerciceId === lot.exerciceId && c.statutRevue !== 'a_examiner') c.aRevoir = true;
-      Object.assign(lot, { actif: true, statut: 'termine_avec_erreurs', progression: 1250, rapport: rapportFec(lot.rapport.nomFichier, 3), termineLe: instant() });
+      if (analyse) Object.assign(lot, { actif: true, statut: analyse.anomalies.length > 0 ? 'termine_avec_erreurs' : 'termine', progression: lues.length, rapport: { ...analyse, nomFichier: lot.rapport.nomFichier }, termineLe: instant() });
+      else Object.assign(lot, { actif: true, statut: 'termine_avec_erreurs', progression: 1250, rapport: rapportFec(lot.rapport.nomFichier, 3), termineLe: instant() });
       const execution = creerExecution(reference, lot.exerciceId, lot.entiteId, lot.id, ex.versionDonnees, 'en_attente');
       imiterControles(execution.id);
     }, DELAI_WORKER_MS);
@@ -1154,12 +1552,33 @@ const serveur = http.createServer(async (req, res) => {
     if (segments[0] === '__test') {
       // Routes de pilotage des tests : absentes de l'API réelle.
       if (methode === 'POST' && segments[1] === 'reinitialiser') {
+        ENTITES = structuredClone(ENTITES_INITIALES);
+        HABILITATIONS = structuredClone(HABILITATIONS_INITIALES);
+        APPARTENANCES_EN_PLUS = [];
+        audit = [];
+        ruptureAudit = null;
         etat = etatInitial();
+        tracerAudit({ cabinetId: DEMO.cabinetA }, 'import.fec.termine', 'lot_import', etat.lots[0]!.id, DEMO.dupain, { lignes: 1250, lisible: true, anomalies: { CHAMP_VIDE: 60 } });
         mail = mailInitial();
         pannes = { couperMorceauNumero: 0, conflitMorceauNumero: 0, ralentirMorceauxMs: 0, erreurTerminer: 0 };
         compteurMorceaux = 0;
         journal = [];
         resultat = { ok: true };
+      } else if (methode === 'POST' && segments[1] === 'administration') {
+        // Pilotage : appartenance supplémentaire (compte multi-cabinets), rupture simulée de la chaîne d'audit, masse de documents.
+        const d = json();
+        if (d.appartenance) APPARTENANCES_EN_PLUS.push(d.appartenance);
+        if (d.rupture !== undefined) ruptureAudit = d.rupture;
+        if (typeof d.documents === 'number') {
+          const modele: Enr = etat.documents[0]!;
+          for (let i = 0; i < d.documents; i++) {
+            const doc: Enr = { ...modele, id: randomUUID(), nomOrigine: `piece-en-masse-${String(i + 1).padStart(3, '0')}.pdf`, statut: i % 2 ? 'a_controler' : 'traite', creeLe: instant() };
+            etat.documents.push(doc);
+            etat.receptions.push({ id: randomUUID(), cabinetId: doc.cabinetId, entiteId: doc.entiteId, documentId: doc.id, canal: 'ordinateur', deposantId: DEMO.chloe, doublonBinaire: false, provenance: {}, recuLe: doc.creeLe });
+          }
+        }
+        if (d.obsoleteRapprochement) for (const x of etat.rapprochementsExec) x.obsolete = true;
+        resultat = { entites: ENTITES.map((e) => ({ id: e.id, raisonSociale: e.raisonSociale, territoireFiscal: e.territoireFiscal ?? 'metropole' })), habilitations: HABILITATIONS, exercices: etat.exercices.map((x) => ({ id: x.id, entiteId: x.entiteId, debut: x.debut, fin: x.fin })), televersements: etat.televersements.map((t) => ({ id: t.id, statut: t.statut })), propositions: etat.propositions.map((x) => ({ id: x.id, statut: x.statut, motif: x.motif, regle: x.regle })) };
       } else if (methode === 'POST' && segments[1] === 'mail') {
         // Pilotage de la messagerie simulée : connecteur configuré ou non, jeu de données fictif.
         const d = json();

@@ -28,7 +28,7 @@ export async function api<T>(chemin: string, init?: { method?: string; corps?: u
   try {
     reponse = await fetch(`${env().API_URL}/${chemin.replace(/^\/+/, '')}`, {
       method: init?.method ?? 'GET',
-      headers: { authorization: `Bearer ${session.acces}`, accept: 'application/json', ...(init?.corps !== undefined ? { 'content-type': 'application/json' } : {}) },
+      headers: { authorization: `Bearer ${session.acces}`, accept: 'application/json', ...(session.cabinet ? { 'x-cabinet-id': session.cabinet } : {}), ...(init?.corps !== undefined ? { 'content-type': 'application/json' } : {}) },
       ...(init?.corps !== undefined ? { body: JSON.stringify(init.corps) } : {}),
       cache: 'no-store',
     });

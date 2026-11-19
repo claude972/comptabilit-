@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { type DepotLocal, enregistrerDepot, listerDepots, modifierDepot, purgerDepots, stockageDisponible, supprimerDepot } from '@/lib/depots-locaux';
 import { type EtatDepot, repriseAutomatique, transition } from '@/lib/televersement/etats';
 import { type IssueEnvoi, televerser } from '@/lib/televersement/moteur';
-import { transportBff } from '@/lib/televersement/transport-bff';
+import { appelBff, transportBff } from '@/lib/televersement/transport-bff';
 
 export interface DepotSuivi extends DepotLocal {
   /** Faux si le dépôt n'a pas pu être écrit sur l'appareil : il ne survivra pas à la fermeture de la page. */
@@ -215,6 +215,9 @@ export function useDepots(utilisateurId: string) {
     async (id: string) => {
       if (actif.current?.id === id) actif.current.controleur.abort();
       coupures.current.delete(id);
+      // Abandon côté serveur (libère les morceaux déjà reçus) : au mieux, sans jamais bloquer la suppression locale.
+      const televersementId = liste.current.find((d) => d.id === id)?.televersementId;
+      if (televersementId && navigator.onLine) void appelBff(`v1/televersements/${televersementId}`, { method: 'DELETE' }).catch(() => undefined);
       publier(liste.current.filter((d) => d.id !== id));
       await supprimerDepot(id).catch(() => undefined);
     },

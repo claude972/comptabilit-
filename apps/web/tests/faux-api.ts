@@ -617,6 +617,10 @@ async function routerV1(r: Requete): Promise<unknown> {
       .map((e) => ({ id: e.id, raisonSociale: e.raisonSociale, formeJuridique: e.formeJuridique ?? null, regimeFiscal: e.regimeFiscal ?? 'IS', territoireFiscal: e.territoireFiscal ?? 'metropole', niveau: niveauSur(a, e.id) }))
       .sort((x, y) => x.raisonSociale.localeCompare(y.raisonSociale));
   }
+  if (m === 'GET' && s[0] === 'dossiers' && s[2] === 'immobilisations' && s.length === 3) {
+    exigerNiveau(a, exigerUuid(s[1]), 'lecture');
+    return [];
+  }
   // ── États fiscaux (projets) : le simulateur ne recalcule rien ; il rend l'abstention ou l'absence de données, comme l'API réelle.
   if (m === 'GET' && s[0] === 'exercices' && (s[2] === 'liasse' || s[2] === 'annexe') && s.length === 3) {
     throw new ErreurHttp(409, 'Aucune donnée comptable importée pour cet exercice : rien ne peut être préparé');

@@ -3,7 +3,7 @@
 import { useId, useState } from 'react';
 import { useAppel } from '@/components/appel';
 import { Retours } from '@/components/retours';
-import { Libelle, Liste, ZoneTexte } from '@/components/ui/base';
+import { Libelle, Liste, Saisie, ZoneTexte } from '@/components/ui/base';
 import { Bouton } from '@/components/ui/bouton';
 import { LIBELLE_CATEGORIE } from '@/lib/fiscal';
 
@@ -87,5 +87,85 @@ export function ReprendreProposition({ exerciceId, propositionId, libelle }: { e
       </Bouton>
       <Retours erreur={appel.erreur} succes={appel.succes} />
     </div>
+  );
+}
+
+export interface Immobilisation {
+  id: string;
+  libelle: string;
+  compteImmobilisation: string;
+  baseAmortissable: string;
+  dateMiseEnService: string;
+  dureeMois: number;
+  amortissementsAnterieurs: string | null;
+}
+
+/** Saisie d'une immobilisation dans le fichier du dossier (`POST v1/dossiers/:id/immobilisations`). */
+export function SaisirImmobilisation({ dossierId }: { dossierId: string }) {
+  const appel = useAppel();
+  const vide = { libelle: '', compte: '', base: '', date: '', duree: '', anterieurs: '' };
+  const [f, setF] = useState(vide);
+  const id = useId();
+  const maj = (m: Partial<typeof vide>) => setF((v) => ({ ...v, ...m }));
+  const decimal = (v: string) => v.trim().replace(/\s/g, '').replace(',', '.');
+  return (
+    <form
+      className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+      aria-label="Saisir une immobilisation"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        const r = await appel.executer(
+          `v1/dossiers/${dossierId}/immobilisations`,
+          { method: 'POST', json: { libelle: f.libelle, compteImmobilisation: f.compte.trim(), baseAmortissable: decimal(f.base), dateMiseEnService: f.date, dureeMois: Number(f.duree), ...(f.anterieurs.trim() ? { amortissementsAnterieurs: decimal(f.anterieurs) } : {}) } },
+          'Immobilisation enregistrée : la dotation de l’exercice figure dans les propositions du moteur.',
+        );
+        if (r) setF(vide);
+      }}
+    >
+      <div>
+        <Libelle htmlFor={`${id}-lib`}>Désignation</Libelle>
+        <Saisie id={`${id}-lib`} required maxLength={200} value={f.libelle} onChange={(e) => maj({ libelle: e.target.value })} autoComplete="off" />
+      </div>
+      <div>
+        <Libelle htmlFor={`${id}-compte`}>Compte d’immobilisation (classe 2)</Libelle>
+        <Saisie id={`${id}-compte`} required inputMode="numeric" pattern="2[0-9]{2,11}" value={f.compte} onChange={(e) => maj({ compte: e.target.value })} autoComplete="off" />
+      </div>
+      <div>
+        <Libelle htmlFor={`${id}-base`}>Base amortissable (€)</Libelle>
+        <Saisie id={`${id}-base`} required inputMode="decimal" value={f.base} onChange={(e) => maj({ base: e.target.value })} autoComplete="off" />
+      </div>
+      <div>
+        <Libelle htmlFor={`${id}-date`}>Date de mise en service</Libelle>
+        <Saisie id={`${id}-date`} type="date" required value={f.date} onChange={(e) => maj({ date: e.target.value })} />
+      </div>
+      <div>
+        <Libelle htmlFor={`${id}-duree`}>Durée d’amortissement (mois)</Libelle>
+        <Saisie id={`${id}-duree`} required inputMode="numeric" pattern="[0-9]{1,4}" value={f.duree} onChange={(e) => maj({ duree: e.target.value })} autoComplete="off" />
+      </div>
+      <div>
+        <Libelle htmlFor={`${id}-ant`}>Amortissements antérieurs (€, facultatif)</Libelle>
+        <Saisie id={`${id}-ant`} inputMode="decimal" value={f.anterieurs} onChange={(e) => maj({ anterieurs: e.target.value })} autoComplete="off" />
+      </div>
+      <div className="sm:col-span-2 lg:col-span-3">
+        <Bouton type="submit" variante="secondaire" disabled={appel.occupe}>
+          Enregistrer l’immobilisation
+        </Bouton>
+      </div>
+      <div className="sm:col-span-2 lg:col-span-3">
+        <Retours erreur={appel.erreur} succes={appel.succes} />
+      </div>
+    </form>
+  );
+}
+
+export function RetirerImmobilisation({ dossierId, immobilisation }: { dossierId: string; immobilisation: Immobilisation }) {
+  const appel = useAppel();
+  return (
+    <>
+      <Bouton variante="contour" disabled={appel.occupe} aria-label={`Retirer du fichier : ${immobilisation.libelle}`} onClick={() => void appel.executer(`v1/dossiers/${dossierId}/immobilisations/${immobilisation.id}`, { method: 'DELETE' }, 'Immobilisation retirée du fichier.')}>
+        Retirer
+      </Bouton>
+      <Retours erreur={appel.erreur} succes={appel.succes} />
+    </>
   );
 }

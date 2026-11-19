@@ -253,6 +253,13 @@
       "when": 1795113227541,
       "tag": "0035_assistant_lecture",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1795117161439,
+      "tag": "0036_immobilisations",
+      "breakpoints": true
     }
   ]
 }

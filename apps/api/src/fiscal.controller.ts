@@ -12,9 +12,10 @@ import {
   preparerLiasse,
   proposerEcrituresInventaire,
   type RegimeLiasse,
+  schemaChaineDecimale,
   versChaine,
 } from '@comtaple/core';
-import { type AccesBd, and, desc, eq, journaliser, schema as s, type Tx } from '@comtaple/db';
+import { type AccesBd, and, asc, desc, eq, journaliser, schema as s, type Tx } from '@comtaple/db';
 import { lignesDuLot, tailleEtOperationsDuDossier } from '@comtaple/plateforme';
 import { z } from 'zod';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
@@ -26,6 +27,14 @@ const PLAFOND_LIGNES = 400_000;
 const CATEGORIES = ['micro_entreprise', 'petite_entreprise', 'personne_morale_regime_simplifie', 'moyenne_ou_grande_entreprise'] as const;
 const categorie = z.object({ categorie: z.enum(CATEGORIES).nullable() });
 const confirmation = z.object({ etat: z.enum(['complete', 'non_applicable']), note: z.string().max(8000).optional() });
+const immobilisation = z.object({
+  libelle: z.string().trim().min(1).max(200),
+  compteImmobilisation: z.string().regex(/^2\d{2,11}$/, 'compte d’immobilisation du PCG attendu (classe 2)'),
+  baseAmortissable: schemaChaineDecimale,
+  dateMiseEnService: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date AAAA-MM-JJ attendue'),
+  dureeMois: z.number().int().min(1).max(1200),
+  amortissementsAnterieurs: schemaChaineDecimale.nullable().optional(),
+});
 const RUBRIQUE = /^ANX-[0-9A-Za-z-]{1,24}$/;
 const PROPOSITION = /^[A-Za-z0-9:_|.-]{1,200}$/;
 
@@ -183,6 +192,55 @@ export class FiscalController {
     });
   }
 
+  @Get('dossiers/:entiteId/immobilisations')
+  @ApiOperation({
+    summary: 'Fichier des immobilisations SAISI par le cabinet pour un dossier',
+    description: 'Sert uniquement à proposer les dotations aux amortissements linéaires. Ce n’est pas le fichier des immobilisations du logiciel de production comptable, qui reste la référence ; rien n’y est importé ni exporté.',
+  })
+  async listerImmobilisations(@AccesCourant() acces: Acces, @Param('entiteId') entiteId: string) {
+    exigerUuid(entiteId);
+    return this.bd.avecContexte(acces, async (tx) => {
+      await exigerNiveau(tx, entiteId, 'lecture');
+      return tx.select().from(s.immobilisations).where(eq(s.immobilisations.entiteId, entiteId)).orderBy(asc(s.immobilisations.creeLe));
+    });
+  }
+
+  @Post('dossiers/:entiteId/immobilisations')
+  @HttpCode(201)
+  @ApiOperation({ summary: 'Saisir une immobilisation (niveau collaboration)', description: 'Base amortissable strictement positive, en chaîne décimale ; durée en mois ; compte de classe 2. Aucune écriture n’est créée : seules des PROPOSITIONS de dotation en découleront.' })
+  @ApiBody({ schema: schemaOpenApi(immobilisation) })
+  async saisirImmobilisation(@AccesCourant() acces: Acces, @Param('entiteId') entiteId: string, @Body() corps: unknown) {
+    exigerUuid(entiteId);
+    const d = valider(immobilisation, corps);
+    if (!dec(d.baseAmortissable).isPositive() || dec(d.baseAmortissable).isZero()) throw new BadRequestException('La base amortissable doit être strictement positive');
+    if (d.amortissementsAnterieurs != null && (dec(d.amortissementsAnterieurs).isNegative() || dec(d.amortissementsAnterieurs).greaterThan(dec(d.baseAmortissable)))) {
+      throw new BadRequestException('Les amortissements antérieurs sont compris entre zéro et la base amortissable');
+    }
+    return this.bd.avecContexte(acces, async (tx) => {
+      await exigerNiveau(tx, entiteId, 'collaboration');
+      const [i] = await tx
+        .insert(s.immobilisations)
+        .values({ cabinetId: acces.cabinetId, entiteId, libelle: d.libelle, compteImmobilisation: d.compteImmobilisation, baseAmortissable: versChaine(dec(d.baseAmortissable)), dateMiseEnService: d.dateMiseEnService, dureeMois: d.dureeMois, amortissementsAnterieurs: d.amortissementsAnterieurs != null ? versChaine(dec(d.amortissementsAnterieurs)) : null, saisiePar: acces.utilisateurId })
+        .returning();
+      await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'immobilisation.saisie', cibleType: 'immobilisation', cibleId: i!.id, entiteId, details: { compte: d.compteImmobilisation, dureeMois: d.dureeMois } });
+      return i;
+    });
+  }
+
+  @Delete('dossiers/:entiteId/immobilisations/:immobilisationId')
+  @ApiOperation({ summary: 'Retirer une immobilisation du fichier saisi (niveau collaboration)', description: 'Ne touche à aucune écriture : seules les propositions de dotation futures en tiennent compte. Le retrait est journalisé.' })
+  async retirerImmobilisation(@AccesCourant() acces: Acces, @Param('entiteId') entiteId: string, @Param('immobilisationId') immobilisationId: string) {
+    exigerUuid(entiteId);
+    exigerUuid(immobilisationId);
+    return this.bd.avecContexte(acces, async (tx) => {
+      await exigerNiveau(tx, entiteId, 'collaboration');
+      const retirees = await tx.delete(s.immobilisations).where(and(eq(s.immobilisations.id, immobilisationId), eq(s.immobilisations.entiteId, entiteId))).returning({ id: s.immobilisations.id, libelle: s.immobilisations.libelle });
+      if (!retirees.length) throw new NotFoundException('Immobilisation introuvable dans ce dossier');
+      await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'immobilisation.retiree', cibleType: 'immobilisation', cibleId: immobilisationId, entiteId });
+      return { id: immobilisationId, retiree: true };
+    });
+  }
+
   /** Propositions déterministes du moteur pour un exercice (rien n'est enregistré). */
   private async propositions(tx: Tx, exerciceId: string, minimum: Parameters<typeof exigerNiveau>[2]) {
     const { exercice, lot, lignes } = await this.donnees(tx, exerciceId, minimum);
@@ -195,20 +253,25 @@ export class FiscalController {
       .limit(1);
     const cesure = execution && !execution.obsolete ? await tx.select().from(s.constats).where(and(eq(s.constats.executionId, execution.id), eq(s.constats.controleId, 'CLO-001'))) : [];
     const constatsCesure: Constat[] = cesure.map((c) => ({ gravite: c.gravite, titre: c.titre, explication: c.explication, actionProposee: c.actionProposee, montant: c.montant, lignesConcernees: c.lignesConcernees as string[], preuves: c.preuves as Constat['preuves'], cle: c.cle }));
-    const resultat = proposerEcrituresInventaire({ lignes, exercice: { debut: exercice.debut, fin: exercice.fin }, lireLibelles: true, constatsCesure });
-    return { exercice, lot, lignes, resultat, signalCesure: execution ? (execution.obsolete ? 'controles_obsoletes' : 'disponible') : 'controles_non_executes' };
+    // Fichier des immobilisations SAISI par le cabinet : seules les immobilisations en service au plus tard à la clôture.
+    const fichier = await tx.select().from(s.immobilisations).where(eq(s.immobilisations.entiteId, exercice.entiteId)).orderBy(asc(s.immobilisations.creeLe));
+    const immobilisations = fichier
+      .filter((i) => i.dateMiseEnService <= exercice.fin)
+      .map((i) => ({ id: i.id, libelle: i.libelle, compteImmobilisation: i.compteImmobilisation, baseAmortissable: i.baseAmortissable, dateMiseEnService: i.dateMiseEnService, dureeMois: i.dureeMois, amortissementsAnterieurs: i.amortissementsAnterieurs }));
+    const resultat = proposerEcrituresInventaire({ lignes, exercice: { debut: exercice.debut, fin: exercice.fin }, lireLibelles: true, constatsCesure, immobilisations });
+    return { exercice, lot, lignes, resultat, nbImmobilisations: fichier.length, signalCesure: execution ? (execution.obsolete ? 'controles_obsoletes' : 'disponible') : 'controles_non_executes' };
   }
 
   @Get('exercices/:id/inventaire/propositions')
   @ApiOperation({
     summary: 'Propositions DÉTERMINISTES d’écritures d’inventaire (charges et produits constatés d’avance, factures non parvenues, factures à établir)',
     description:
-      'Calculées par le moteur à partir de règles explicites et versionnées ; chaque proposition porte son origine, sa justification, son calcul, ses écritures sources, ses impacts et ses hypothèses. Rien n’est comptabilisé ni même enregistré : une proposition ne devient une écriture d’inventaire (elle-même un projet à approuver par une autre personne) que si quelqu’un la reprend. Quand une donnée manque, le moteur s’abstient et le dit. Les dotations aux amortissements ne sont pas proposées : le logiciel n’a pas de fichier des immobilisations.',
+      'Calculées par le moteur à partir de règles explicites et versionnées ; chaque proposition porte son origine, sa justification, son calcul, ses écritures sources, ses impacts et ses hypothèses. Rien n’est comptabilisé ni même enregistré : une proposition ne devient une écriture d’inventaire (elle-même un projet à approuver par une autre personne) que si quelqu’un la reprend. Quand une donnée manque, le moteur s’abstient et le dit. Les dotations aux amortissements (linéaires seulement) ne sont proposées que pour les immobilisations saisies par le cabinet dans le fichier du dossier.',
   })
   async listerPropositions(@AccesCourant() acces: Acces, @Param('id') id: string) {
     exigerUuid(id);
     return this.bd.avecContexte(acces, async (tx) => {
-      const { exercice, lot, resultat, signalCesure } = await this.propositions(tx, id, 'lecture');
+      const { exercice, lot, resultat, signalCesure, nbImmobilisations } = await this.propositions(tx, id, 'lecture');
       const reprises = await tx.select({ id: s.ecrituresInventaire.id, statut: s.ecrituresInventaire.statut, detail: s.ecrituresInventaire.origineDetail }).from(s.ecrituresInventaire).where(and(eq(s.ecrituresInventaire.exerciceId, id), eq(s.ecrituresInventaire.origine, 'proposition_moteur')));
       const parProposition = new Map(reprises.map((r) => [(r.detail as { propositionId?: string } | null)?.propositionId ?? '', r]));
       return {
@@ -216,7 +279,10 @@ export class FiscalController {
         exercice: { id: exercice.id, debut: exercice.debut, fin: exercice.fin, versionDonnees: exercice.versionDonnees },
         donnees: { lotImportId: lot.id, version: lot.version, statutDonnees: lot.statutDonnees },
         signalCesure,
-        amortissements: { proposes: false, motif: 'Aucun fichier des immobilisations (base, date de mise en service, durée) n’existe dans le logiciel : aucune dotation n’est proposée.' },
+        amortissements:
+          nbImmobilisations > 0
+            ? { proposes: true, motif: `Dotations linéaires proposées à partir des ${nbImmobilisations} immobilisation(s) SAISIE(S) par le cabinet pour ce dossier ; ce fichier n’est pas celui du logiciel comptable, qui reste la référence.` }
+            : { proposes: false, motif: 'Aucune immobilisation n’est saisie pour ce dossier (base, date de mise en service, durée) : aucune dotation n’est proposée.' },
         propositions: resultat.propositions.map((p) => {
           const reprise = parProposition.get(p.id);
           return { ...p, reprise: reprise ? { ecritureInventaireId: reprise.id, statut: reprise.statut } : null };

@@ -1368,3 +1368,27 @@ export const confirmationsAnnexe = pgTable(
   },
   (t) => [uniqueIndex('confirmations_annexe_unique').on(t.exerciceId, t.rubrique)],
 );
+
+/**
+ * Fichier des immobilisations d'un dossier, SAISI par le cabinet (aucune donnée importée ne le fournit). Il ne sert qu'à
+ * proposer les dotations aux amortissements linéaires ; il ne remplace pas le fichier des immobilisations du logiciel
+ * de production comptable, qui reste la référence. Une immobilisation retirée ici n'est pas supprimée de la comptabilité.
+ */
+export const immobilisations = pgTable(
+  'immobilisations',
+  {
+    id: id(),
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    entiteId: uuid('entite_id').notNull().references(() => entites.id),
+    libelle: text('libelle').notNull(),
+    compteImmobilisation: text('compte_immobilisation').notNull(),
+    baseAmortissable: montant('base_amortissable').notNull(),
+    dateMiseEnService: date('date_mise_en_service', { mode: 'string' }).notNull(),
+    dureeMois: integer('duree_mois').notNull(),
+    /** Amortissements cumulés avant le premier exercice suivi ici ; null = non renseigné (le moteur le dit). */
+    amortissementsAnterieurs: montant('amortissements_anterieurs'),
+    saisiePar: uuid('saisie_par').notNull().references(() => utilisateurs.id),
+    creeLe: creeLe(),
+  },
+  (t) => [index('immobilisations_dossier').on(t.entiteId)],
+);

@@ -96,7 +96,7 @@ Matrice exigence → implémentation → preuve → reste : `exigences.md`. Réa
 Reste réalisable sans intervention extérieure, non fait (par ordre d'utilité) :
 
 1. Persistance de la preuve de connexion de la passerelle IA et route de vérification (inutile tant qu'aucun jeton n'existe).
-2. Fichier des immobilisations (base, mise en service, durée) pour proposer les dotations aux amortissements.
+2. Amortissements autres que linéaires ; reprise du fichier des immobilisations depuis le logiciel comptable (aujourd'hui : saisie par le cabinet).
 3. Assistant sur un portefeuille de plusieurs dossiers ; recherche multi-dossiers.
 4. Table des tiers et suivi des règlements par facture (aujourd'hui : comptes auxiliaires des écritures et rapprochement bancaire).
 5. Traces OpenTelemetry dans l'API et le worker (branchement décrit dans `exploitation.md`, demande un SDK).
@@ -117,4 +117,4 @@ Pour reprendre le travail sans relire l'historique :
 - **Données d'essai volumineuses ajoutées** : cabinet Bêta, 200 dossiers « Mesure … » et un dossier « Mesure restitution … » (603 Mo d'originaux, plusieurs archives de 576 Mo) ; cabinet Alpha, deux archives de restitution de 359 Mo ; nombreux cabinets et dossiers d'essai créés par les parcours. Le stockage local sauvegardé pèse environ 8 Go.
 - **Reste local connu** : liste ci-dessus (« Reste réalisable sans intervention extérieure »). Ce qui exige une intervention extérieure : `acces-externes.md`, section « En bref ».
 - **IA** : aucune n'est connectée ; l'assistant répond « sans IA ». Ne jamais activer un jeton sans les vérifications de `packages/ia/docs/passerelle.md` § 7.
-- **Migrations** : 0000 à 0035 ; les tests de base les rejouent toutes sur une base neuve.
+- **Migrations** : 0000 à 0036 ; les tests de base les rejouent toutes sur une base neuve.

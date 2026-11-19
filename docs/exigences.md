@@ -171,4 +171,4 @@ estimation des coûts, liste des accès externes.
 
 ## Reste réel, hors dépendances externes
 
-Liste tenue dans `plan.md`, section « Chantier du 2026-11-19 (soir) » : preuve de connexion de la passerelle, fichier des immobilisations, assistant multi-dossiers, table des tiers et suivi des règlements, traces OpenTelemetry, contrôles en flux au-delà de 500 000 lignes, notifications poussées, purge à l'issue des durées de conservation.
+Liste tenue dans `plan.md`, section « Chantier du 2026-11-19 (soir) » : preuve de connexion de la passerelle, amortissements non linéaires, assistant multi-dossiers, table des tiers et suivi des règlements, traces OpenTelemetry, contrôles en flux au-delà de 500 000 lignes, notifications poussées, purge à l'issue des durées de conservation.

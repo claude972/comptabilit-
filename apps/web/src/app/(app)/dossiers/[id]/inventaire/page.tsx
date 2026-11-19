@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { ChoixExercice } from '@/components/dossier';
 import { PiecesJointes } from '@/components/document/pieces-jointes';
 import { ErreurAcces } from '@/components/erreurs';
-import { ReprendreProposition } from '@/components/fiscal/actions';
+import { type Immobilisation, ReprendreProposition, RetirerImmobilisation, SaisirImmobilisation } from '@/components/fiscal/actions';
 import { DeciderEcriture, ExporterEcritures, ProposerEcriture } from '@/components/inventaire/actions';
 import { LIBELLE_TYPE_PROPOSITION, type ReponsePropositions } from '@/lib/fiscal';
 import { Alerte, Carte, Etiquette, MentionProjet, SousTitre, Tableau, type Ton } from '@/components/ui/base';
@@ -26,11 +26,12 @@ export default async function PageInventaire({ params, searchParams }: { params:
   if (!ex.ok) return <ErreurAcces statut={ex.statut} message={ex.message} retour={`/dossiers/${id}`} />;
   if (!ex.exercice) return <Alerte ton="attention">Aucun exercice n’est défini pour ce dossier.</Alerte>;
   const exercice = ex.exercice;
-  const [liste, balance, moi, propositions] = await Promise.all([
+  const [liste, balance, moi, propositions, fichierImmos] = await Promise.all([
     tenter<EcritureInventaire[]>(`v1/exercices/${exercice.id}/ecritures-inventaire`),
     tenter<BalanceAjustee>(`v1/exercices/${exercice.id}/balance-ajustee`),
     lireMoi(),
     tenter<ReponsePropositions>(`v1/exercices/${exercice.id}/inventaire/propositions`),
+    tenter<Immobilisation[]>(`v1/dossiers/${id}/immobilisations`),
   ]);
   if (!liste.ok) return <ErreurAcces statut={liste.statut} message={liste.message} retour={`/dossiers/${id}`} />;
   const moiId = moi.ok ? moi.donnees.utilisateur.id : null;
@@ -134,6 +135,48 @@ export default async function PageInventaire({ params, searchParams }: { params:
             ) : null}
           </>
         )}
+      </section>
+
+      <section aria-labelledby="titre-immobilisations" className="space-y-3" data-testid="fichier-immobilisations">
+        <SousTitre id="titre-immobilisations">Immobilisations saisies ({fichierImmos.ok ? fichierImmos.donnees.length : '—'})</SousTitre>
+        <p className="text-sm text-texte-doux">
+          Fichier saisi par le cabinet pour proposer les dotations aux amortissements linéaires. Ce n’est pas le fichier des immobilisations du logiciel comptable, qui reste la référence ; rien n’y
+          est importé ni exporté, et aucune écriture n’est créée par cette saisie.
+        </p>
+        {fichierImmos.ok && fichierImmos.donnees.length ? (
+          <Tableau legende="Immobilisations saisies pour ce dossier">
+            <thead>
+              <tr>
+                <th scope="col">Désignation</th>
+                <th scope="col">Compte</th>
+                <th scope="col" className="text-right">Base amortissable</th>
+                <th scope="col">Mise en service</th>
+                <th scope="col" className="text-right">Durée (mois)</th>
+                <th scope="col">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {fichierImmos.donnees.map((i) => (
+                <tr key={i.id} data-immobilisation={i.id}>
+                  <th scope="row" className="!bg-transparent font-normal">{i.libelle}</th>
+                  <td>{i.compteImmobilisation}</td>
+                  <td className="text-right tabular-nums">{formaterMontant(i.baseAmortissable)}</td>
+                  <td>{formaterDate(i.dateMiseEnService)}</td>
+                  <td className="text-right tabular-nums">{i.dureeMois}</td>
+                  <td>{collaboration ? <RetirerImmobilisation dossierId={id} immobilisation={i} /> : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </Tableau>
+        ) : null}
+        {collaboration ? (
+          <details>
+            <summary>Saisir une immobilisation</summary>
+            <Carte>
+              <SaisirImmobilisation dossierId={id} />
+            </Carte>
+          </details>
+        ) : null}
       </section>
 
       <section aria-labelledby="titre-ecritures" className="space-y-3">

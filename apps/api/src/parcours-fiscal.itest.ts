@@ -183,6 +183,25 @@ describe('états fiscaux — projets, jamais validés', () => {
     expect((await api('chloe', 'POST', `/v1/exercices/${exercice}/inventaire/propositions/${encodeURIComponent(cca.id)}/reprise`)).statut).toBe(409);
     const apres = (await api('chloe', 'GET', `/v1/exercices/${exercice}/inventaire/propositions`)).json.propositions.find((p: any) => p.id === cca.id);
     expect(apres.reprise).toMatchObject({ ecritureInventaireId: reprise.json.id, statut: 'proposee' });
+    // Fichier des immobilisations SAISI par le cabinet : sans lui aucune dotation ; avec lui, une proposition linéaire équilibrée.
+    expect(liste.propositions.some((p: any) => p.type === 'dotation_amortissement_lineaire')).toBe(false);
+    const saisir = (corps: unknown, qui = 'chloe') => api(qui, 'POST', `/v1/dossiers/${dossier}/immobilisations`, corps);
+    const immo = { libelle: 'Serveur de fichiers', compteImmobilisation: '218300', baseAmortissable: '12000.00', dateMiseEnService: '2025-07-01', dureeMois: 60 };
+    expect((await saisir({ ...immo, baseAmortissable: '0.00' })).statut).toBe(400);
+    expect((await saisir({ ...immo, compteImmobilisation: '606000' })).statut).toBe(400);
+    expect((await saisir({ ...immo, baseAmortissable: 12000 })).statut).toBe(400); // nombre refusé : chaîne décimale exigée
+    expect((await saisir(immo, 'client')).statut).toBeGreaterThanOrEqual(403);
+    const cree = await saisir(immo);
+    expect(cree.statut).toBe(201);
+    const avecImmo = (await api('chloe', 'GET', `/v1/exercices/${exercice}/inventaire/propositions`)).json;
+    expect(avecImmo.amortissements).toMatchObject({ proposes: true });
+    const dotation = avecImmo.propositions.find((p: any) => p.type === 'dotation_amortissement_lineaire');
+    expect(dotation).toMatchObject({ equilibree: true, origine: { regle: 'INV-AMORT' }, totalDebit: '1200.00' }); // 12 000 € sur 60 mois, 6 mois en base 360
+    expect(dotation.sources.immobilisation).toBe(cree.json.id);
+    expect((await api('chloe', 'GET', `/v1/dossiers/${dossier}/immobilisations`)).json).toHaveLength(1);
+    expect((await api('chloe', 'DELETE', `/v1/dossiers/${outreMer}/immobilisations/${cree.json.id}`)).statut).toBe(404); // autre dossier
+    expect((await api('chloe', 'DELETE', `/v1/dossiers/${dossier}/immobilisations/${cree.json.id}`)).statut).toBe(200);
+    expect((await api('chloe', 'GET', `/v1/exercices/${exercice}/inventaire/propositions`)).json.propositions.some((p: any) => p.type === 'dotation_amortissement_lineaire')).toBe(false);
     // Circuit normal ensuite : l'auteure ne s'approuve pas elle-même ; le réviseur approuve.
     expect((await api('chloe', 'POST', `/v1/ecritures-inventaire/${reprise.json.id}/decision`, { decision: 'approuver' })).statut).toBeGreaterThanOrEqual(403);
     expect((await api('remi', 'POST', `/v1/ecritures-inventaire/${reprise.json.id}/decision`, { decision: 'approuver' })).statut).toBe(200);

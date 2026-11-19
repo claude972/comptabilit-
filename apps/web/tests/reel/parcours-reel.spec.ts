@@ -132,7 +132,9 @@ test('ordinateur : révision — contrôles avec statuts distincts et catalogue,
 test('cloisonnement dans l’interface : l’administratrice ne peut pas ouvrir le dossier où elle n’est pas habilitée', async ({ browser }) => {
   const contexte = await browser.newContext({ ...ordinateur(browser) });
   const page = await contexte.newPage();
+  // La liste est paginée (50 par page) : le dossier est cherché par son nom, comme le ferait une utilisatrice.
   await seConnecter(page, 'alice.admin@cabinet-a.test', '/dossiers');
+  await page.goto('/dossiers?q=Garage+Martin');
   const martin = page.getByRole('main').getByText('Garage Martin SARL (fictif)');
   await expect(martin).toBeVisible();
   await expect(page.getByRole('link', { name: /Garage Martin/ })).toHaveCount(0);

@@ -51,6 +51,11 @@ export default async function PageAdministration() {
               Restitution du cabinet
             </Link>
           </li>
+          <li>
+            <Link href="/administration/ia" prefetch={false}>
+              Intelligence artificielle : état et mesures
+            </Link>
+          </li>
         </ul>
       </nav>
 

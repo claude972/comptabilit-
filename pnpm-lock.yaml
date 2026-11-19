@@ -183,6 +183,9 @@ importers:
       '@comtaple/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@comtaple/ia':
+        specifier: workspace:*
+        version: link:../../packages/ia
       '@comtaple/mail':
         specifier: workspace:*
         version: link:../../packages/mail
@@ -320,6 +323,9 @@ importers:
       '@comtaple/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@comtaple/ia':
+        specifier: workspace:*
+        version: link:../../packages/ia
       '@comtaple/mail':
         specifier: workspace:*
         version: link:../../packages/mail
@@ -460,6 +466,9 @@ importers:
       '@comtaple/db':
         specifier: workspace:*
         version: link:../db
+      '@comtaple/ia':
+        specifier: workspace:*
+        version: link:../ia
       '@comtaple/mail':
         specifier: workspace:*
         version: link:../mail

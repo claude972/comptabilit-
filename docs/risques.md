@@ -17,6 +17,11 @@ Le logiciel ne se substitue ni à un expert-comptable ni à un avocat. Ce regist
 | V9 | Autorisation de mise en production | Éditeur | Non demandée |
 | V11 | Table de correspondance comptes → rubriques des projets de bilan et de compte de résultat ; conventions des indicateurs financiers | Expert-comptable | En attente |
 | V12 | Référentiel de prestations et formulation des signalements « hors périmètre » | Expert-comptable | En attente |
+| V13 | Préparation de la liasse : correspondance lignes → cases des formulaires du millésime, tracé des tableaux, agrégats du régime simplifié, borne d'exercice, arrondis (`etats-fiscaux.md`) | Expert-comptable | En attente ; codes de cases non vérifiés sur la source officielle |
+| V14 | Projet d'annexe : rubriques requises par catégorie, seuils de taille en vigueur, contenu des mentions | Expert-comptable | En attente |
+| V15 | Propositions d'écritures d'inventaire : conventions de prorata, schémas d'écriture FNP/FAE, traitement de la TVA | Expert-comptable | En attente |
+| V16 | Choix d'un prestataire d'agrégation bancaire : statut réglementaire (registre de l'ACPR), conditions | Éditeur / avocat | Aucun prestataire choisi |
+| V17 | Activation de l'IA : conditions contractuelles du fournisseur, évaluation sur corpus métier réel avant de confier une tâche au modèle | Éditeur / expert-comptable | Non commencée (aucun jeton) |
 | V10 | Conditions des fournisseurs d'IA et d'hébergement (région, conservation, non-réutilisation) | Éditeur / avocat | Non vérifiées |
 
 Aucune certification, conformité à une norme ou validation par une autorité n'est revendiquée.

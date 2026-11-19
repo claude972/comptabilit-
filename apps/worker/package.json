@@ -13,6 +13,7 @@
   "dependencies": {
     "@comtaple/core": "workspace:*",
     "@comtaple/db": "workspace:*",
+    "@comtaple/ia": "workspace:*",
     "@comtaple/mail": "workspace:*",
     "@comtaple/plateforme": "workspace:*",
     "bullmq": "6.7.7",

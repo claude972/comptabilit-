@@ -11,6 +11,7 @@ import type { TacheAnalyseDocument } from '@comtaple/plateforme';
 import { analyserAntivirus } from './antivirus.js';
 import type { Contexte } from './contexte.js';
 import { ocr } from './ocr.js';
+import { preparerPassages, remplacerPassages } from './passages.js';
 import { lirePdf } from './pdf.js';
 import { detecterType } from './types-fichier.js';
 
@@ -24,7 +25,8 @@ const caracteresUtiles = (pages: PageTexte[]) => pages.reduce((n, p) => n + p.te
 /**
  * Analyse d'une pièce : type réel, antivirus, extraction (données structurées > couche texte > OCR), vérifications
  * arithmétiques par le moteur. Le contenu de la pièce est une DONNÉE : aucun texte qu'elle contient n'est interprété
- * comme une instruction. L'IA n'intervient pas ici ; la passerelle IA est facultative et, non connectée, n'est pas appelée.
+ * comme une instruction. L'IA n'intervient pas dans l'extraction. Après l'analyse, le texte des pages est découpé en passages
+ * pour la recherche de l'assistant ; leurs vecteurs ne sont calculés que si la passerelle IA est connectée (sinon NULL).
  */
 export async function analyserDocument(c: Contexte, t: TacheAnalyseDocument): Promise<void> {
   const ctx = { cabinetId: t.cabinetId };
@@ -127,6 +129,10 @@ export async function analyserDocument(c: Contexte, t: TacheAnalyseDocument): Pr
     motif = 'Lecture impossible : le fichier est endommagé ou son contenu ne correspond pas à son format. La pièce est conservée telle quelle ; déposez-la à nouveau si vous en avez une copie lisible.';
   }
 
+  // Passages de recherche : préparés hors transaction (un éventuel appel d'embeddings ne tient aucune transaction ouverte).
+  const cible = { cabinetId: t.cabinetId, entiteId: doc.entiteId, documentId: doc.id, remplaceDocumentId: doc.remplaceDocumentId };
+  const passages = illisible ? [] : await preparerPassages(c.ia, cible, pages);
+
   await conclure(
     illisible ? 'a_completer' : 'a_controler',
     illisible ? 'Pièce illisible ou incomplète : merci de la photographier à nouveau' : motif,
@@ -139,6 +145,7 @@ export async function analyserDocument(c: Contexte, t: TacheAnalyseDocument): Pr
           pages.map((p) => ({ cabinetId: t.cabinetId, entiteId: doc.entiteId, documentId: doc.id, numero: p.page, texte: p.texte, lignes: p.lignes ?? null, methode })),
         );
       }
+      await remplacerPassages(tx, cible, passages);
       if (!champs) return;
       const [actuelle] = await tx
         .select()

@@ -129,6 +129,7 @@ export interface EtatSuite {
   restitutions: Array<{ id: string; statut: string; sha256: string | null }>;
   membres: Array<[string, { role?: string; actif?: boolean }]>;
   habilitations: Array<{ entiteId: string; utilisateurId: string; niveau: string }>;
+  echangesAssistant?: Array<{ id: string; entiteId: string; utilisateurId: string; question: string; mode: string; statut: string }>;
 }
 export const etatSuite = () => simulateur<EtatSuite>('suite');
 /** Appel du BFF depuis la page (même origine, en-tête CSRF) : renvoie le statut HTTP, pour vérifier un refus côté serveur. */

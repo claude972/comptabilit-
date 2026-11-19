@@ -162,6 +162,8 @@ interface Suite {
   /** Campagnes d'import (imports.controller.ts) et coût horaire interne par cabinet (missions.controller.ts). */
   campagnes: Enr[];
   coutsHoraires: Map<string, { coutHoraireInterneHt: string | null; majLe: string }>;
+  /** Échanges avec l'assistant (assistant.controller.ts) : chacun ne relit que les siens. */
+  echangesAssistant: Enr[];
 }
 const ID_EVOLUTIONS = { metropole: 'eeeeeeee-0000-4000-8000-000000000001', naf: 'eeeeeeee-0000-4000-8000-000000000002', martinique: 'eeeeeeee-0000-4000-8000-000000000003', brute: 'eeeeeeee-0000-4000-8000-000000000004' } as const;
 function suiteInitiale(): Suite {
@@ -176,7 +178,7 @@ function suiteInitiale(): Suite {
     conditions: etatVerification === 'verifiee' ? 'Exercices ouverts à compter du 1er janvier 2025.' : null, resume: etatVerification === 'verifiee' ? `Évolution fictive de test : ${reference}.` : null, criteres, etatVerification, verifieeLe: etatVerification === 'verifiee' ? '2026-11-18' : null,
   });
   return {
-    regles: [], ecritures: [], missions: [], lettres: [], travaux: [], baremes: [], conseils: [], evenements: [], suivis: [], restitutions: [], archives: new Map(), membres: new Map(), campagnes: [], coutsHoraires: new Map(),
+    regles: [], ecritures: [], missions: [], lettres: [], travaux: [], baremes: [], conseils: [], evenements: [], suivis: [], restitutions: [], archives: new Map(), membres: new Map(), campagnes: [], coutsHoraires: new Map(), echangesAssistant: [],
     sources: [
       source('BOFiP', 'BOI-BIC-CHG-20-30-10 (biens de faible valeur)', 'https://bofip.impots.gouv.fr/bofip/2109-PGP.html', true),
       source('BOFiP', 'BOI-CF-IOR-60-40-20 (format du FEC)', 'https://bofip.impots.gouv.fr/bofip/9028-PGP.html', true),
@@ -615,6 +617,13 @@ async function routerV1(r: Requete): Promise<unknown> {
       .map((e) => ({ id: e.id, raisonSociale: e.raisonSociale, formeJuridique: e.formeJuridique ?? null, regimeFiscal: e.regimeFiscal ?? 'IS', territoireFiscal: e.territoireFiscal ?? 'metropole', niveau: niveauSur(a, e.id) }))
       .sort((x, y) => x.raisonSociale.localeCompare(y.raisonSociale));
   }
+  // ── États fiscaux (projets) : le simulateur ne recalcule rien ; il rend l'abstention ou l'absence de données, comme l'API réelle.
+  if (m === 'GET' && s[0] === 'exercices' && (s[2] === 'liasse' || s[2] === 'annexe') && s.length === 3) {
+    throw new ErreurHttp(409, 'Aucune donnée comptable importée pour cet exercice : rien ne peut être préparé');
+  }
+  if (m === 'GET' && s[0] === 'exercices' && s[2] === 'inventaire' && s[3] === 'propositions' && s.length === 4) {
+    throw new ErreurHttp(409, 'Aucune donnée comptable importée pour cet exercice : rien ne peut être préparé');
+  }
   if (m === 'GET' && chemin === 'tableau-de-bord/pieces') {
     const comptes = new Map<string, number>();
     for (const d of etat.documents) {
@@ -633,7 +642,7 @@ async function routerV1(r: Requete): Promise<unknown> {
   if (m === 'GET' && chemin === 'integrations') {
     const messagerie = (f: string) => ({ statut: 'non_connecte', detail: mail.configure ? 'Simulateur de test : aucune connexion réelle.' : DETAIL_NON_CONFIGURE[f] });
     return {
-      antivirus: { statut: 'indisponible', obligatoire: true }, ocr: { statut: 'indisponible', detail: 'injoignable' }, ia: { statut: 'non_connecte', detail: 'Aucun traitement n’appelle l’IA à ce jour.' },
+      antivirus: { statut: 'indisponible', obligatoire: true }, ocr: { statut: 'indisponible', detail: 'injoignable' }, ia: { statut: 'non_connecte', detail: 'Aucun fournisseur IA n’est configuré (URL ou jeton absent).' },
       messagerie: { gmail: messagerie('gmail'), microsoft365: messagerie('microsoft') },
       agregationBancaire: { statut: 'non_connecte', detail: 'Aucun prestataire d’agrégation choisi ni contracté. Les imports de fichiers bancaires n’en dépendent pas.' },
     };
@@ -2602,6 +2611,158 @@ function routerSuite(r: Requete, a: Acces): unknown {
     return { requete, perimetre: 'Pièces, écritures du lot actif et constats de la dernière exécution, dans ce dossier', pieces, ecritures, constats };
   }
 
+  // ── Assistant documenté et tâches IA (calqué sur assistant.controller.ts et ia-taches.controller.ts) ──
+  // État simulé : AUCUNE IA (statut « non_connecte »), comme l'application réelle aujourd'hui. Les réponses « sans IA »
+  // sont FICTIVES : recherche par sous-chaîne dans les données du simulateur, sans analyse linguistique ni moteur réel
+  // (sauf la balance, calculée par @comtaple/core). Aucune réponse n'est présentée comme rédigée par un modèle.
+  const ETAT_IA = {
+    statut: 'non_connecte', raisons: ['Aucun fournisseur IA n’est configuré (URL ou jeton absent).'],
+    message: 'IA non connectée : les réponses ci-dessous sont des résultats de recherche et des calculs du moteur, sans rédaction par un modèle.', modeleSollicite: false,
+  };
+  const MENTION_CONFIANCE_IA = 'Confiance non évaluée : aucune calibration n’existe pour cette tâche. L’indice du modèle n’est pas une probabilité.';
+  if (m === 'GET' && chemin === 'ia') {
+    const natures = ['reel', 'simulateur', 'sans_ia'] as const;
+    const vide = { appelsModele: 0, reussis: 0, abstentions: 0, rejets: 0, erreurs: 0, indisponibles: 0, fonctionsExecutees: 0, fonctionsRefusees: 0 };
+    const miens = suite.echangesAssistant.filter((e) => e.cabinetId === a.cabinetId);
+    const fonctions = miens.reduce((n, e) => n + (e.fonctions as number), 0);
+    return {
+      ...ETAT_IA, fournisseur: 'OVHcloud AI Endpoints',
+      modeles: { langage: { id: 'Mistral-Small-3.2-24B-Instruct-2506', temperature: 0, maxJetonsSortie: 2048 }, embeddings: { id: 'bge-m3', dimensions: 1024 } },
+      prompts: [['assistant', 'assistant-documente'], ['classer_piece', 'classer-piece'], ['expliquer_constat', 'expliquer-constat'], ['commenter_indicateurs', 'commenter-indicateurs'], ['analyser_lettre_mission', 'analyser-lettre-mission'], ['suggerer_rapprochements', 'suggerer-rapprochements']].map(([tache, id]) => ({ tache, id, version: '1.0.0' })),
+      etiquettes: { sansIa: 'Sans IA : résultats de recherche et calculs du moteur, sans rédaction', ia: 'Réponse rédigée par une IA à partir des sources citées : à vérifier. Les calculs proviennent du moteur.', confiance: MENTION_CONFIANCE_IA },
+      tarifs: null,
+      ...(gestionnaire
+        ? {
+            mesures: {
+              mention: 'Mesures tirées des traces sans contenu. « sans_ia » : aucun modèle appelé. « simulateur » : essais, jamais un appel réel. Coût : estimation, pas une facture.',
+              totaux: Object.fromEntries(natures.map((n) => [n, n === 'sans_ia' ? { ...vide, indisponibles: miens.length, fonctionsExecutees: fonctions } : vide])),
+              parTache: miens.length
+                ? [
+                    { nature: 'sans_ia', type: 'appel_ia', tache: 'assistant', resultat: 'indisponible', nombre: miens.length, dureeTotaleMs: 0, dureeMoyenneMs: 0, jetonsEntree: null, jetonsSortie: null, coutEstime: null, devise: null, premierLe: miens[0]!.creeLe, dernierLe: miens.at(-1)!.creeLe },
+                    { nature: 'sans_ia', type: 'fonction_metier', tache: 'assistant', resultat: 'executee', nombre: fonctions, dureeTotaleMs: 0, dureeMoyenneMs: null, jetonsEntree: null, jetonsSortie: null, coutEstime: null, devise: null, premierLe: miens[0]!.creeLe, dernierLe: miens.at(-1)!.creeLe },
+                  ]
+                : [],
+            },
+          }
+        : { mesures: null, mesuresReservees: 'Les mesures sont réservées aux administrateurs et associés du cabinet.' }),
+    };
+  }
+  if (s[0] === 'dossiers' && s[2] === 'assistant' && s[3] === 'questions' && s.length === 4) {
+    const id = exigerUuid(s[1]);
+    if (m === 'GET') {
+      const page = Number(r.query.get('page') ?? 1);
+      if (!Number.isInteger(page) || page < 1 || page > 10_000) throw new ErreurHttp(400, 'page : entier positif attendu');
+      exigerNiveau(a, id, 'lecture');
+      const miens = suite.echangesAssistant.filter((e) => e.entiteId === id && e.utilisateurId === a.utilisateurId).toReversed();
+      return { page, taillePage: 20, total: miens.length, echanges: miens.slice((page - 1) * 20, page * 20).map(({ cabinetId: _c, entiteId: _e, utilisateurId: _u, fonctions: _f, ...e }) => e) };
+    }
+    if (m === 'POST') {
+      const d = r.json();
+      const inconnue = Object.keys(d).find((k) => k !== 'question' && k !== 'exerciceId');
+      if (inconnue) throw invalide(inconnue, 'clé inattendue');
+      const question = typeof d.question === 'string' ? d.question.trim() : '';
+      if (question.length < 3) throw invalide('question', 'question de 3 caractères au moins');
+      if (question.length > 1000) throw invalide('question', 'question de 1000 caractères au plus');
+      const exerciceId = uuidOptionnel(d, 'exerciceId');
+      const niveau = exigerNiveau(a, id, 'lecture');
+      const exercicesDossier = etat.exercices.filter((x) => x.entiteId === id).sort((x, y) => y.fin.localeCompare(x.fin));
+      const exercice = exerciceId ? exercicesDossier.find((x) => x.id === exerciceId) : exercicesDossier[0];
+      if (exerciceId && !exercice) throw new ErreurHttp(404, 'Exercice introuvable dans ce dossier');
+      const annee = new Date().getUTCFullYear();
+      const periode = exercice ? { debut: exercice.debut, fin: exercice.fin } : { debut: `${annee}-01-01`, fin: `${annee}-12-31` };
+      const sansAccent = (t: string) => t.toLocaleLowerCase('fr').normalize('NFD').replace(/[̀-ͯ]/g, '');
+      const motsVides = new Set(['quel', 'quelle', 'quels', 'quelles', 'est', 'sont', 'les', 'des', 'une', 'que', 'qui', 'pour', 'dans', 'sur', 'par', 'ont', 'ete', 'dit', 'contient', 'compte', 'solde', 'constats', 'constat', 'ecritures', 'ecriture', 'facture', 'factures']);
+      const mots = (sansAccent(question).match(/[a-z0-9][a-z0-9-]+/g) ?? []).filter((x) => x.length >= 3 && !motsVides.has(x));
+      const trouve = (texte: string) => mots.some((x) => sansAccent(texte).includes(x));
+      const declenche = (...cles: string[]) => (sansAccent(question).match(/[a-z0-9]+/g) ?? []).some((x) => cles.includes(x));
+      const elements: Array<{ id: string; nature: string; libelle: string; valeurs: Record<string, string> }> = [];
+      let fonctions = 1;
+      // Pièces : texte extrait (extraits des champs), restitué tel quel comme une DONNÉE.
+      for (const doc of etat.documents.filter((x) => x.entiteId === id && x.statut !== 'remplace' && x.statut !== 'quarantaine')) {
+        const extraction = etat.extractions.find((x) => x.documentId === doc.id && x.actuelle);
+        const texte = Object.values((extraction?.champs ?? {}) as Enr).map((c) => c?.extrait).filter((x): x is string => typeof x === 'string').join(' ');
+        if (texte && (trouve(texte) || trouve(doc.nomOrigine))) elements.push({ id: `piece:${doc.id}:p1`, nature: 'piece', libelle: `${doc.nomOrigine} — page 1`, valeurs: { page: '1', extrait: texte.slice(0, 400) } });
+      }
+      const actifs = new Set(etat.lots.filter((l) => l.actif && l.exerciceId === exercice?.id).map((l) => l.id));
+      if (declenche('ecriture', 'ecritures', 'compte', 'journal', 'facture', 'factures', 'paiement', 'reglement', 'montant')) {
+        fonctions += 1;
+        for (const l of etat.lignes.filter((x) => x.entiteId === id && actifs.has(x.lotImportId) && trouve(`${x.ecritureLib} ${x.pieceRef} ${x.compteLib}`)).slice(0, 20)) {
+          elements.push({ id: `ecriture:${l.id}`, nature: 'ecriture', libelle: `Écriture ${l.journalCode} n° ${l.ecritureNum} du ${l.ecritureDate}`, valeurs: { date: l.ecritureDate, journal: l.journalCode, compte: l.compteNum, pièce: l.pieceRef, libellé: l.ecritureLib, débit: l.debit, crédit: l.credit } });
+        }
+      }
+      if (declenche('balance', 'solde', 'soldes')) {
+        fonctions += 1;
+        const prefixe = /\bcomptes?\s+(\d{1,8})\b/i.exec(question)?.[1] ?? '';
+        const balance = calculerBalance(etat.lignes.filter((x) => x.entiteId === id && actifs.has(x.lotImportId)) as unknown as LigneEcriture[]);
+        for (const l of balance.lignes.filter((x) => x.compteNum.startsWith(prefixe)).slice(0, 40)) {
+          elements.push({ id: `balance:${exercice?.id}:${l.compteNum}:${periode.debut}:${periode.fin}`, nature: 'resultat_moteur', libelle: `Balance — compte ${l.compteNum} ${l.compteLib}`, valeurs: { compte: l.compteNum, 'total débit': l.totalDebit, 'total crédit': l.totalCredit, 'solde débiteur': l.soldeDebiteur, 'solde créditeur': l.soldeCrediteur, période: `du ${periode.debut} au ${periode.fin}` } });
+        }
+      }
+      if (declenche('constat', 'constats', 'anomalie', 'anomalies', 'controle', 'controles', 'alerte', 'alertes')) {
+        fonctions += 1;
+        const execution = etat.executions.filter((e) => e.exerciceId === exercice?.id && e.statut === 'termine').at(-1);
+        for (const c of etat.constats.filter((x) => x.entiteId === id && x.executionId === execution?.id).slice(0, 20)) {
+          elements.push({ id: `constat:${c.id}`, nature: 'constat', libelle: `Constat ${c.controleId} — ${c.titre}`, valeurs: { contrôle: c.controleId, gravité: c.gravite, revue: c.statutRevue, ...(c.montant !== null ? { montant: c.montant } : {}) } });
+        }
+      }
+      if (declenche('tva', 'impot', 'impots', 'fiscal', 'fiscale', 'loi', 'obligation', 'delai', 'declaration', 'seuil', 'taux')) {
+        fonctions += 1;
+        for (const ev of suite.evolutions.filter((x) => x.etatVerification === 'verifiee' && trouve(`${x.reference} ${x.resume ?? ''}`)).slice(0, 5)) {
+          elements.push({ id: `evolution:${ev.id}`, nature: 'source_officielle', libelle: `${ev.emetteur} — ${ev.reference}`, valeurs: {}, ...{ reference: { titre: ev.reference, url: ev.url, dateVersion: ev.verifieeLe ?? ev.dateEffet ?? null } } });
+        }
+      }
+      const citation = (e: (typeof elements)[number]) => ({ id: e.id, nature: e.nature, libelle: e.libelle, reference: (e as Enr).reference ?? null });
+      const segments = elements.slice(0, 40).map((e) => ({
+        type: e.nature === 'resultat_moteur' ? 'calcul' : 'fait',
+        texte: Object.keys(e.valeurs).length ? `${e.libelle} — ${Object.entries(e.valeurs).map(([k, v]) => `${k} : ${v}`).join(' ; ')}` : e.libelle,
+        citations: [citation(e)],
+        reglementaire: e.nature === 'source_officielle',
+      }));
+      const reponse = {
+        statut: segments.length ? 'repondu' : 'abstention',
+        motifAbstention: segments.length ? null : 'Aucun élément trouvé par la recherche et les fonctions du moteur pour cette question.',
+        mode: 'sans_ia', etiquette: 'Sans IA : résultats de recherche et calculs du moteur, sans rédaction', segments,
+        perimetre: { cabinetId: a.cabinetId, dossierIds: [id], periode },
+        donneesManquantes: exercice ? [] : ['Aucun exercice n’est ouvert dans ce dossier : la comptabilité n’a pas été interrogée.'],
+        pointsEcartes: [], abstentionsPartielles: [], refus: [], sources: elements.map(citation), etapes: 0,
+        confiance: { statut: 'non_evaluee', mention: MENTION_CONFIANCE_IA }, iaIndisponible: { code: 'non_connecte' }, prompt: null,
+      };
+      // Comme la base réelle : l'échange n'est conservé qu'à partir du niveau « collaboration » (politique de la table).
+      const enregistre = auMoins(niveau, 'collaboration');
+      const echangeId = enregistre ? randomUUID() : null;
+      if (enregistre) suite.echangesAssistant.push({ id: echangeId, cabinetId: a.cabinetId, entiteId: id, utilisateurId: a.utilisateurId, exerciceId: exercice?.id ?? null, question, mode: 'sans_ia', statut: reponse.statut, reponse, creeLe: horodatagePg(suite.echangesAssistant.length), fonctions });
+      tracerAudit(a, 'assistant.question', 'echange_assistant', echangeId ?? '', id, { mode: 'sans_ia', statut: reponse.statut, longueurQuestion: question.length });
+      return { echangeId, echangeEnregistre: enregistre, mode: 'sans_ia', exercice: exercice ? { id: exercice.id, debut: exercice.debut, fin: exercice.fin } : null, reponse, ia: ETAT_IA };
+    }
+  }
+  const tacheSansIa = (tache: string, origine: string, etiquette: string, proposition: unknown, preuves: unknown[]) => ({
+    tache, statut: 'ia_indisponible', origine, etiquette, proposition, preuves, confiance: { statut: 'non_evaluee', mention: MENTION_CONFIANCE_IA, indiceModele: null }, avertissements: [],
+    motif: 'IA indisponible : résultat produit par un calcul déterministe, sans modèle.', codes: ['non_connecte'], propositionId: randomUUID(), applique: false, ia: { statut: ETAT_IA.statut, message: ETAT_IA.message },
+  });
+  if (m === 'POST' && s[0] === 'documents' && s[2] === 'proposition-classement' && s.length === 3) {
+    const id = exigerUuid(s[1]);
+    const doc = etat.documents.find((x) => x.id === id && x.cabinetId === a.cabinetId && niveauSur(a, x.entiteId));
+    if (!doc) throw new ErreurHttp(404, 'Document introuvable');
+    exigerNiveau(a, doc.entiteId, 'collaboration');
+    const extraction = etat.extractions.find((x) => x.documentId === id && x.actuelle);
+    const texte = Object.values((extraction?.champs ?? {}) as Enr).map((c) => c?.extrait).filter((x): x is string => typeof x === 'string').join('\n');
+    if (!texte) throw new ErreurHttp(409, 'Aucun texte n’a été extrait de cette pièce : aucun classement ne peut être proposé.');
+    // Repli déterministe FICTIF : rattachement si la raison sociale d'un seul dossier habilité figure dans le texte ; type à qualifier.
+    const candidats = ENTITES.filter((e) => e.cabinetId === a.cabinetId && niveauSur(a, e.id) && niveauSur(a, e.id) !== 'depot' && texte.includes(e.raisonSociale));
+    const unique = candidats.length === 1 ? candidats[0] : undefined;
+    const proposition = { type: 'a_qualifier', dossierId: unique?.id ?? null, preuves: unique ? [unique.raisonSociale] : [], justification: unique ? 'Un indice propre à ce dossier figure dans le texte de la pièce, et à aucun autre dossier candidat.' : 'Aucun rattachement certain : à qualifier.' };
+    tracerAudit(a, 'ia.tache', 'document', id, doc.entiteId, { tache: 'classer_piece', statut: 'ia_indisponible', origine: 'repli_deterministe' });
+    return { ...tacheSansIa('classer_piece', 'repli_deterministe', 'Sans IA : rattachement par indice exact uniquement, type à qualifier.', proposition, proposition.preuves), libelles: { type: 'À qualifier', dossier: unique?.raisonSociale ?? null }, pieceActuelle: { nature: doc.nature, entiteId: doc.entiteId } };
+  }
+  if (m === 'POST' && s[0] === 'constats' && s[2] === 'explication' && s.length === 3) {
+    const id = exigerUuid(s[1]);
+    const c = etat.constats.find((x) => x.id === id && x.cabinetId === a.cabinetId && visibleEnLecture(a, x.entiteId));
+    if (!c) throw new ErreurHttp(404, 'Constat introuvable');
+    exigerNiveau(a, c.entiteId, 'collaboration');
+    tracerAudit(a, 'ia.tache', 'constat', id, c.entiteId, { tache: 'expliquer_constat', statut: 'ia_indisponible', origine: 'repli_deterministe' });
+    return tacheSansIa('expliquer_constat', 'repli_deterministe', 'Sans IA : message du constat tel que produit par le moteur, sans reformulation.', { constatId: c.id, explication: c.explication }, [{ type: 'constat', id: c.id, controle: c.controleId }]);
+  }
+
   // ── Restitution (archive FICTIVE : ZIP vide valide) ──
   if (s[0] === 'dossiers' && s[2] === 'restitutions' && s.length === 3) {
     const id = exigerUuid(s[1]);
@@ -2778,7 +2939,7 @@ const serveur = http.createServer(async (req, res) => {
         resultat = pannes;
       } else if (methode === 'GET' && segments[1] === 'suite') {
         // Lecture de l'état des écrans ajoutés (règles, inventaire, missions, conseils, veille, restitutions, membres).
-        resultat = { regles: suite.regles, ecritures: suite.ecritures, missions: suite.missions, lettres: suite.lettres, travaux: suite.travaux, baremes: suite.baremes, conseils: suite.conseils, evenements: suite.evenements, suivis: suite.suivis, restitutions: suite.restitutions, membres: [...suite.membres.entries()], habilitations: HABILITATIONS, campagnes: suite.campagnes, lots: etat.lots.map((l) => ({ id: l.id, entiteId: l.entiteId, type: l.type, statut: l.statut, actif: l.actif, campagneId: l.campagneId ?? null, motifAnnulation: l.motifAnnulation ?? null, statutAvantAnnulation: l.statutAvantAnnulation ?? null })), coutHoraire: suite.coutsHoraires.get(DEMO.cabinetA)?.coutHoraireInterneHt ?? null };
+        resultat = { regles: suite.regles, ecritures: suite.ecritures, missions: suite.missions, lettres: suite.lettres, travaux: suite.travaux, baremes: suite.baremes, conseils: suite.conseils, evenements: suite.evenements, suivis: suite.suivis, restitutions: suite.restitutions, echangesAssistant: suite.echangesAssistant, membres: [...suite.membres.entries()], habilitations: HABILITATIONS, campagnes: suite.campagnes, lots: etat.lots.map((l) => ({ id: l.id, entiteId: l.entiteId, type: l.type, statut: l.statut, actif: l.actif, campagneId: l.campagneId ?? null, motifAnnulation: l.motifAnnulation ?? null, statutAvantAnnulation: l.statutAvantAnnulation ?? null })), coutHoraire: suite.coutsHoraires.get(DEMO.cabinetA)?.coutHoraireInterneHt ?? null };
       } else if (methode === 'GET' && segments[1] === 'journal') resultat = journal;
       else if (methode === 'GET' && segments[1] === 'etat') {
         resultat = {

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { BoutonReanalyse, FormulaireCorrection, FormulaireEchange, FormulaireQualification, FormulaireValidation } from '@/components/document/actions';
 import { ChampsExtraits, Echanges, EtiquetteStatutDocument, MotifStatut, Receptions, Verifications, estValidee } from '@/components/document/affichage';
+import { PropositionClassement } from '@/components/assistant/taches';
 import { ApercuPiece } from '@/components/document/apercu';
 import { NouvelleVersion } from '@/components/document/nouvelle-version';
 import { BandeauRemplacee, BlocVersions } from '@/components/document/versions';
@@ -120,6 +121,9 @@ export default async function PageRevuePiece({ params }: { params: Promise<{ id:
               <Carte className="space-y-4">
                 <FormulaireQualification documentId={doc.id} nature={doc.nature} exerciceId={doc.exerciceId} exercices={exercices.ok ? exercices.donnees : []} />
                 {doc.statut !== 'traite' ? <BoutonReanalyse documentId={doc.id} /> : null}
+              </Carte>
+              <Carte>
+                <PropositionClassement documentId={doc.id} />
               </Carte>
               <Carte>
                 <FormulaireEchange documentId={doc.id} type="demande_complement" />

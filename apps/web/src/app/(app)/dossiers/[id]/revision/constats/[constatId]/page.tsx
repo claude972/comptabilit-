@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { ExplicationConstat } from '@/components/assistant/taches';
 import { ErreurAcces } from '@/components/erreurs';
 import { ActionsConstat } from '@/components/revision-actions';
 import { EtiquetteGravite, EtiquetteStatutControle, EtiquetteStatutRevue, SourceDeRegle } from '@/components/revision-affichage';
@@ -10,7 +11,7 @@ import { tenter } from '@/lib/serveur/api';
 import { estUuid } from '@/lib/serveur/donnees';
 import { contexteDossier } from '@/lib/serveur/dossier';
 import type { MembreDossier } from '@/lib/administration';
-import type { DetailConstat } from '@/lib/types-api';
+import { type DetailConstat, auMoins } from '@/lib/types-api';
 
 export const metadata: Metadata = { title: 'Constat de révision' };
 
@@ -60,6 +61,12 @@ export default async function PageConstat({ params }: { params: Promise<{ id: st
               <p className="break-words whitespace-pre-wrap">{c.actionProposee}</p>
             </div>
           </Carte>
+
+          {auMoins(ctx.niveau, 'collaboration') ? (
+            <Carte>
+              <ExplicationConstat constatId={c.id} />
+            </Carte>
+          ) : null}
 
           <Carte className="space-y-2">
             <SousTitre>Preuves</SousTitre>

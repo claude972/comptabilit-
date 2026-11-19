@@ -21,6 +21,11 @@ const schema = z.object({
   IA_OVH_ENDPOINT: z.string().optional().default(''),
   IA_OVH_JETON: z.string().optional().default(''),
   /**
+   * Tarifs IA DATÉS pour l'estimation de coût, en JSON : { relevesLe, devise, source, parMillionDeJetons: { <modèle>: { entree, sortie } } }.
+   * Vide (défaut) = aucun coût estimé. Le code n'embarque aucun tarif (voir packages/ia/docs/passerelle.md).
+   */
+  IA_TARIFS: z.string().optional().default(''),
+  /**
    * Agrégation bancaire : vide = non connecté. Aucun prestataire n'est choisi à ce jour (voir agregation-bancaire.ts).
    * AGREGATION_SIMULATEUR_URL : tests uniquement, refusé en production.
    */

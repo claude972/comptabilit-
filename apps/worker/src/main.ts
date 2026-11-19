@@ -1,6 +1,6 @@
 import { creerAccesBd, urlBd } from '@comtaple/db';
 import { chargerEnvLocal } from '@comtaple/db/env';
-import { connecteursMail, Metriques, connexionRedis, FILES, Files, lireConfig, Stockage } from '@comtaple/plateforme';
+import { connecteursMail, creerIa, Metriques, connexionRedis, FILES, Files, lireConfig, Stockage } from '@comtaple/plateforme';
 import { Worker } from 'bullmq';
 import { analyserDocument } from './analyse-document.js';
 import { executerRapprochement, importerReleve } from './banque.js';
@@ -18,6 +18,8 @@ chargerEnvLocal();
 const cfg = lireConfig();
 // Les traitements différés utilisent le rôle comtaple_worker : borné au cabinet de l'enregistrement traité, sans BYPASSRLS.
 const c: Contexte = { cfg, bd: creerAccesBd(urlBd('worker'), { max: 8 }), stockage: new Stockage(cfg), taches: new Files(connexionRedis(cfg.REDIS_URL), cfg.FILES_PREFIXE) };
+// Passerelle IA : sans jeton configuré, « non_connecte » ; les passages des pièces sont alors indexés sans vecteur.
+c.ia = creerIa(cfg, c.bd);
 const mail = connecteursMail(cfg);
 const prefix = cfg.FILES_PREFIXE;
 await c.stockage.assurerBucket();

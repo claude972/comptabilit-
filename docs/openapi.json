@@ -410,6 +410,27 @@
         ]
       }
     },
+    "/v1/tableau-de-bord/pieces": {
+      "get": {
+        "description": "Une seule requête pour tout le portefeuille (le tableau de bord n’interroge plus chaque dossier). Versions remplacées exclues. Les dossiers où l’habilitation se limite au dépôt ne sont pas comptés ici.",
+        "operationId": "ProfilController_piecesEnAttente",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Pièces en attente de traitement, par dossier et par statut, sur les dossiers où l’on est habilité en lecture au moins",
+        "tags": [
+          "Profil et dossiers"
+        ]
+      }
+    },
     "/v1/dossiers/{entiteId}/exercices": {
       "get": {
         "operationId": "ProfilController_exercices",
@@ -1931,6 +1952,92 @@
         ]
       }
     },
+    "/v1/dossiers/{entiteId}/banque/agregation": {
+      "get": {
+        "description": "Statut « non_connecte » tant qu’aucun prestataire n’est choisi (c’est le cas à ce jour) ; « simule » contre le simulateur de test ; jamais « connecte ». Les IBAN sont masqués. Le consentement du client auprès de sa banque se recueille chez le prestataire.",
+        "operationId": "BanqueController_etatAgregation",
+        "parameters": [
+          {
+            "name": "entiteId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "État de l’agrégation bancaire et comptes proposés par le prestataire",
+        "tags": [
+          "Banque et rapprochements"
+        ]
+      }
+    },
+    "/v1/dossiers/{entiteId}/banque/agregation/synchroniser": {
+      "post": {
+        "description": "Refusé (409) si l’agrégation n’est pas connectée. Les données reçues sont converties en un document pivot conservé comme ORIGINAL de l’import (provenance : prestataire, identifiants de compte et d’opération), puis suivent la même chaîne que les fichiers : idempotence, cadrage (« non vérifiable » si le prestataire ne donne pas de solde d’ouverture), annulation. Lecture seule : aucun ordre n’est transmis à la banque.",
+        "operationId": "BanqueController_synchroniserAgregation",
+        "parameters": [
+          {
+            "name": "entiteId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "compte": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 140
+                  },
+                  "depuis": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  }
+                },
+                "required": [
+                  "compte",
+                  "depuis"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Récupérer les mouvements d’un compte auprès du prestataire et les importer comme un relevé",
+        "tags": [
+          "Banque et rapprochements"
+        ]
+      }
+    },
     "/v1/dossiers/{entiteId}/banque": {
       "get": {
         "description": "Le cadrage (« ok », « ecart », « non_verifiable ») compare solde d’ouverture + mouvements au solde de clôture ; « non vérifiable » n’est jamais un succès.",
@@ -2450,7 +2557,7 @@
     },
     "/v1/cabinet/membres/{utilisateurId}": {
       "patch": {
-        "description": "Garde-fous : on ne modifie pas sa propre appartenance ; le cabinet garde toujours au moins un administrateur actif ; un changement de rôle retire les habilitations de dossier qui dépassent le plafond du nouveau rôle ; une désactivation ferme immédiatement tous les accès. L’invitation d’un nouvel utilisateur n’existe pas (création de compte par l’éditeur).",
+        "description": "Garde-fous : on ne modifie pas sa propre appartenance ; le cabinet garde toujours au moins un administrateur actif ; un changement de rôle retire les habilitations de dossier qui dépassent le plafond du nouveau rôle ; une désactivation ferme immédiatement tous les accès. Pour faire entrer une personne : voir les invitations.",
         "operationId": "AdministrationController_modifierMembre",
         "parameters": [
           {
@@ -2501,6 +2608,122 @@
           }
         ],
         "summary": "Changer le rôle d’un membre ou le désactiver (gestionnaires)",
+        "tags": [
+          "Administration du cabinet"
+        ]
+      }
+    },
+    "/v1/cabinet/invitations": {
+      "get": {
+        "description": "Une invitation dont la date de validité est passée est renvoyée avec « expiree: true » ; elle ne peut plus être acceptée.",
+        "operationId": "AdministrationController_invitations",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Invitations du cabinet (gestionnaires)",
+        "tags": [
+          "Administration du cabinet"
+        ]
+      },
+      "post": {
+        "description": "L’application n’envoie AUCUN courriel : l’invitation autorise l’entrée du compte dont le fournisseur d’identité atteste cette adresse, à sa première connexion. Le compte lui-même est créé dans le fournisseur d’identité (Keycloak ou SSO du cabinet). Aucune habilitation de dossier n’est accordée par l’invitation. Seul un administrateur peut inviter un administrateur.",
+        "operationId": "AdministrationController_inviter",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "maxLength": 254,
+                    "format": "email",
+                    "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  },
+                  "nom": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "administrateur",
+                      "associe",
+                      "reviseur",
+                      "collaborateur",
+                      "client_deposant",
+                      "client_lecture",
+                      "support"
+                    ]
+                  },
+                  "validiteJours": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 30
+                  }
+                },
+                "required": [
+                  "email",
+                  "nom",
+                  "role"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Inviter une personne à rejoindre le cabinet (gestionnaires)",
+        "tags": [
+          "Administration du cabinet"
+        ]
+      }
+    },
+    "/v1/cabinet/invitations/{id}": {
+      "delete": {
+        "description": "L’invitation est conservée avec le statut « annulee ».",
+        "operationId": "AdministrationController_annulerInvitation",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Annuler une invitation en attente (gestionnaires)",
         "tags": [
           "Administration du cabinet"
         ]
@@ -2647,6 +2870,18 @@
                       {
                         "type": "string",
                         "maxLength": 10
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "effectifMoyen": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 1000000
                       },
                       {
                         "type": "null"
@@ -4819,6 +5054,307 @@
         ]
       }
     },
+    "/v1/exercices/{id}/liasse": {
+      "get": {
+        "description": "Périmètre : société commerciale à l’IS, PCG, euros, France métropolitaine. Hors périmètre, ou tant qu’une caractéristique du dossier est « à confirmer », la réponse est une ABSTENTION motivée, sans aucun chiffre. Dans le périmètre : toujours « projet », jamais « complet » (les autres tableaux, listés avec les informations qu’ils exigent, ne sont pas couverts ; les codes de cases des formulaires ne sont pas vérifiés et restent « à confirmer »). Calcul sur les écritures importées, AVANT écritures d’inventaire. Aucune télétransmission n’existe.",
+        "operationId": "FiscalController_liasse",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "regime",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "reel_normal",
+                "reel_simplifie"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "PROJET de préparation de la liasse fiscale : tableaux déduits de la balance (2050 à 2053, ou 2033-A et 2033-B)",
+        "tags": [
+          "États fiscaux (projets)"
+        ]
+      }
+    },
+    "/v1/exercices/{id}/annexe": {
+      "get": {
+        "description": "Une rubrique requise n’est « complète » que si une personne habilitée l’a confirmée ; l’annexe n’est « complète » que si toutes le sont. Une confirmation donnée sur une version antérieure des données est signalée « à revoir » et ne compte plus. La catégorie de taille (allègements) est déclarée par le cabinet ; une catégorie indicative, calculée sur des seuils « à confirmer », est fournie à titre d’aide et n’est jamais appliquée d’office.",
+        "operationId": "FiscalController_annexe",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "PROJET d’annexe : rubriques du PCG, pré-remplissage tiré des écritures, informations à saisir, confirmations du cabinet",
+        "tags": [
+          "États fiscaux (projets)"
+        ]
+      }
+    },
+    "/v1/exercices/{id}/annexe/categorie": {
+      "put": {
+        "operationId": "FiscalController_declarerCategorie",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "categorie": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "micro_entreprise",
+                          "petite_entreprise",
+                          "personne_morale_regime_simplifie",
+                          "moyenne_ou_grande_entreprise"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "categorie"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Déclarer (ou effacer) la catégorie de taille retenue pour le projet d’annexe (niveau révision)",
+        "tags": [
+          "États fiscaux (projets)"
+        ]
+      }
+    },
+    "/v1/exercices/{id}/annexe/rubriques/{rubrique}": {
+      "put": {
+        "description": "La confirmation engage la personne qui la donne ; elle est journalisée et rattachée à la version courante des données. Elle ne vaut pas validation des comptes annuels.",
+        "operationId": "FiscalController_confirmer",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "rubrique",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "etat": {
+                    "type": "string",
+                    "enum": [
+                      "complete",
+                      "non_applicable"
+                    ]
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 8000
+                  }
+                },
+                "required": [
+                  "etat"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Confirmer une rubrique du projet d’annexe : « complète » ou « non applicable » (niveau révision)",
+        "tags": [
+          "États fiscaux (projets)"
+        ]
+      },
+      "delete": {
+        "operationId": "FiscalController_retirerConfirmation",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "rubrique",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Retirer la confirmation d’une rubrique du projet d’annexe (niveau révision)",
+        "tags": [
+          "États fiscaux (projets)"
+        ]
+      }
+    },
+    "/v1/exercices/{id}/inventaire/propositions": {
+      "get": {
+        "description": "Calculées par le moteur à partir de règles explicites et versionnées ; chaque proposition porte son origine, sa justification, son calcul, ses écritures sources, ses impacts et ses hypothèses. Rien n’est comptabilisé ni même enregistré : une proposition ne devient une écriture d’inventaire (elle-même un projet à approuver par une autre personne) que si quelqu’un la reprend. Quand une donnée manque, le moteur s’abstient et le dit. Les dotations aux amortissements ne sont pas proposées : le logiciel n’a pas de fichier des immobilisations.",
+        "operationId": "FiscalController_listerPropositions",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Propositions DÉTERMINISTES d’écritures d’inventaire (charges et produits constatés d’avance, factures non parvenues, factures à établir)",
+        "tags": [
+          "États fiscaux (projets)"
+        ]
+      }
+    },
+    "/v1/exercices/{id}/inventaire/propositions/{propositionId}/reprise": {
+      "post": {
+        "description": "La proposition est recalculée par le serveur (rien de ce qu’envoie le client n’est repris) puis enregistrée comme écriture d’inventaire d’origine « proposition_moteur », au statut « proposée » : elle suit ensuite le circuit normal (approbation par une AUTRE personne, export). Une même proposition ne se reprend qu’une fois.",
+        "operationId": "FiscalController_reprendre",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "propositionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Reprendre une proposition du moteur comme écriture d’inventaire PROPOSÉE (niveau collaboration)",
+        "tags": [
+          "États fiscaux (projets)"
+        ]
+      }
+    },
     "/v1/exercices/{id}/ecritures-inventaire": {
       "post": {
         "description": "L’écriture doit être équilibrée (vérifié par le moteur, en décimal exact), datée dans l’exercice, justifiée, avec le détail de son calcul. Elle reste séparée des écritures importées et n’a aucun effet tant qu’elle n’est pas approuvée.",
@@ -5412,6 +5948,268 @@
         "summary": "Annuler une campagne : chacun de ses imports est annulé (réversible, dossier par dossier)",
         "tags": [
           "Imports : annulation, reprise, campagnes"
+        ]
+      }
+    },
+    "/v1/dossiers/{id}/assistant/questions": {
+      "post": {
+        "description": "Périmètre imposé par le serveur : le cabinet et l’utilisateur de la session, ce dossier, la période de l’exercice choisi (à défaut le dernier). La réponse est structurée en segments typés (fait, calcul, hypothèse, interprétation), chacun avec ses citations vers des pièces, écritures, constats, résultats du moteur ou sources officielles. Sans IA connectée — état actuel — la réponse porte « mode: sans_ia » : résultats de recherche et calculs du moteur, sans rédaction par un modèle. Les contenus de pièces sont des données non fiables, restituées en texte brut et jamais interprétées. L’échange est enregistré pour son auteur seulement.",
+        "operationId": "AssistantController_poser",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "question": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 1000
+                  },
+                  "exerciceId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                  }
+                },
+                "required": [
+                  "question"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Poser une question documentée sur un dossier (niveau « lecture » au moins)",
+        "tags": [
+          "Assistant et IA"
+        ]
+      },
+      "get": {
+        "description": "Chacun ne relit que ses propres échanges (règle appliquée par la base).",
+        "operationId": "AssistantController_historique",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mes questions à l’assistant sur ce dossier, les plus récentes d’abord",
+        "tags": [
+          "Assistant et IA"
+        ]
+      }
+    },
+    "/v1/ia": {
+      "get": {
+        "description": "Statut : non_connecte, configure_non_verifie, connecte (appel réel vérifié sur l’hôte officiel) ou simule (tests). Les mesures viennent des traces sans contenu (table en ajout seul) et distinguent toujours les natures « reel », « simulateur » et « sans_ia » : un appel au simulateur n’est jamais compté comme un appel réel. Le coût est une estimation (jetons × tarif configuré et daté), nulle si aucun tarif n’est configuré.",
+        "operationId": "AssistantController_etatIa",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "État RÉEL de la passerelle IA, modèles figés, prompts versionnés et — pour les gestionnaires — mesures",
+        "tags": [
+          "Assistant et IA"
+        ]
+      }
+    },
+    "/v1/documents/{id}/proposition-classement": {
+      "post": {
+        "description": "Types possibles : les natures de documents existantes. Dossiers candidats : ceux où l’utilisateur est habilité. Une incertitude laisse la pièce « à qualifier ». Sans IA connectée — état actuel — le résultat vient d’un repli déterministe étiqueté (rattachement par indice exact, type à qualifier). Rien n’est modifié sur la pièce : la qualification reste une action humaine (PATCH v1/documents/:id).",
+        "operationId": "IaTachesController_classement",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Proposer le type d’une pièce et son dossier de rattachement (proposition, jamais appliquée)",
+        "tags": [
+          "Assistant et IA"
+        ]
+      }
+    },
+    "/v1/constats/{id}/explication": {
+      "post": {
+        "description": "Sans IA connectée — état actuel — le repli étiqueté restitue le message du constat tel que le moteur l’a produit. Le constat n’est pas modifié.",
+        "operationId": "IaTachesController_explication",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Expliquer un constat en langage courant (projet d’explication, sans fait nouveau)",
+        "tags": [
+          "Assistant et IA"
+        ]
+      }
+    },
+    "/v1/exercices/{id}/indicateurs/commentaire": {
+      "post": {
+        "description": "Le modèle ne calcule rien : tout chiffre doit figurer dans les indicateurs du moteur. Sans IA connectée — état actuel — le repli étiqueté restitue les indicateurs par gabarit, sans rédaction.",
+        "operationId": "IaTachesController_commentaire",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Commenter les indicateurs calculés par le moteur (projet de commentaire)",
+        "tags": [
+          "Assistant et IA"
+        ]
+      }
+    },
+    "/v1/lettres/{id}/analyse": {
+      "post": {
+        "description": "Exige une pièce jointe à la lettre et un texte extrait (409 sinon). Aucun repli sans IA n’existe pour cette tâche : sans IA connectée — état actuel — la réponse est « ia_indisponible » et la lettre se saisit à la main.",
+        "operationId": "IaTachesController_lettre",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Analyser le texte de la lettre de mission signée jointe (projet à valider, jamais appliqué à la lettre)",
+        "tags": [
+          "Assistant et IA"
+        ]
+      }
+    },
+    "/v1/exercices/{id}/rapprochements/suggestions": {
+      "post": {
+        "description": "Part du dernier rapprochement à jour de l’exercice. Chaque suggestion du modèle est vérifiée arithmétiquement par le moteur ; une suggestion fausse est écartée. Aucun repli sans IA n’existe (le rapprochement déterministe est celui du moteur) : sans IA connectée — état actuel — la réponse est « ia_indisponible ». Aucun rapprochement n’est créé ni validé.",
+        "operationId": "IaTachesController_rapprochements",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Suggérer des rapprochements parmi les éléments restés sans rapprochement (suggestions vérifiées par le moteur, à valider)",
+        "tags": [
+          "Assistant et IA"
         ]
       }
     }

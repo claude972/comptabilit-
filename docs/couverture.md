@@ -1,6 +1,6 @@
 # Matrice de couverture — état réel
 
-Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (troisième passe).
+Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (quatrième passe, après relecture complète du cahier des charges : `exigences.md`).
 
 ## Légende des états
 
@@ -19,8 +19,8 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (troisi
 | Fonctionnalité | État | Limites |
 |---|---|---|
 | Monorepo, versions figées, environnement local reproductible | Testé | — |
-| Identités OIDC (Keycloak), session côté serveur, PKCE | Testé | Royaume de développement ; MFA et SSO non configurés |
-| Cabinets, appartenances, habilitations par dossier | Testé | La création d'un cabinet et de ses comptes reste un provisionnement de l'éditeur (pas d'invitation) |
+| Identités OIDC (Keycloak), session côté serveur, PKCE | Testé | Royaume de développement sans second facteur (D-016). Gabarit de royaume de PRODUCTION préparé et essayé en local : second facteur (TOTP) obligatoire, pas d'accès direct par mot de passe, emplacement pour le SSO d'un cabinet ; jamais déployé, enrôlement TOTP et connexion fédérée non menés jusqu'au bout |
+| Cabinets, appartenances, habilitations par dossier | Testé | Ouverture d'un cabinet par l'outil de l'éditeur ; entrée des membres par invitation (D-064). Aucun courriel n'est envoyé ; le compte se crée dans le fournisseur d'identité |
 | Isolation entre cabinets et entre dossiers (RLS forcé) | Testé | Voir la limite assumée de la décision D-007 ; pas de test d'intrusion indépendant |
 | Rôle « support » à accès temporaire | Testé | Ouvert par l'éditeur (ligne de commande), 72 h au plus, lecture seule, chaque consultation tracée ; le compte du support doit exister dans le fournisseur d'identité |
 | Moteur décimal, montants en chaînes dans les API | Testé | — |
@@ -28,7 +28,7 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (troisi
 | Journal d'audit en ajout seul, chaîné, consultable | Testé sur base neuve isolée | Défaut de chaînage sous écritures simultanées trouvé et corrigé le 2026-11-19 (D-038). La base locale fictive garde une irrégularité d'ordre historique : la vérification stricte, seule référence, y échoue et c'est affiché. Lecture réservée aux gestionnaires dans la base. Pas d'ancrage ni d'archivage externe protégé |
 | Files de traitements différés, reprise | Testé | Rattrapage automatique pour les pièces seulement |
 | Sauvegarde et restauration | Testé en local | Base (PostgreSQL d'essai séparé), stockage objet (instance isolée, tous les objets référencés relus) et Keycloak (instance isolée, export sans arrêt du service) : essais réalisés, avec contrôle qu'aucun service local n'a redémarré. Chiffrement : jeu chiffré complet et restauration depuis des copies chiffrées essayés avec une clé éphémère, mais non activé faute de décision sur la garde de la clé privée (D-050, D-055). Restauration à un instant donné, conservation hors du poste, mécanismes de l'hébergeur : non couverts. Sur la base locale, l'essai signale le journal d'audit non intègre (D-038) |
-| Intégration continue | Partiel | Une exécution sur GitHub, en échec au démarrage des services (cause inconnue, D-051) ; étapes séparées, diagnostic corrigé et suites navigateur ajoutées depuis, non réexécutées |
+| Intégration continue | Testé | Exécutée sur GitHub à chaque publication (construction, typage, tests unitaires, base, worker, parcours API, navigateur simulé, Chromium, WebKit et Firefox sur pile réelle, OpenTofu) ; dernier résultat dans `rapport-de-tests.md`. Les nombres de tests exécutés en CI ne sont pas relevés (journaux inaccessibles sans compte) |
 | Supervision (OpenTelemetry, Prometheus, Grafana) | Partiel | Métriques exposées par l'API et le worker ; pile Prometheus, Grafana et collecteur préparée (`infra/supervision`) et essayée en local (cibles collectées, 9 règles d'alerte, 2 tableaux) ; non déployée, alertes sans acheminement, traces non instrumentées (`exploitation.md`) |
 | Infrastructure cible (OpenTofu, OVHcloud) | Partiel | Description complète (réseau privé, instances, base managée, buckets dont archives avec Object Lock armé sans rétention, registre) validée syntaxiquement ; composition de production, royaume Keycloak de production et script de déploiement préparés ; jamais planifiée ni appliquée (D-069) |
 
@@ -87,11 +87,11 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (troisi
 | Contrôle de rapprochement bancaire `TRE-003` alimenté par les relevés | Testé | S'abstient si plusieurs comptes bancaires ne peuvent pas être associés aux comptes 512 (pas d'écran de correspondance) |
 | Cohérence entre exercices `CLO-002` alimentée par l'exercice précédent | Testé | Exercé de bout en bout avec deux exercices importés (fichiers synthétiques indépendants : le contrôle relève l'écart de reprise) ; pas de jeu où les à-nouveaux concordent |
 | Contrôles immobilisations, social, césure, TVA déductible | En attente de validation | — |
-| Agrégation bancaire par prestataire | Non implémenté | Aucun prestataire choisi |
-| Abonnements : forfait, tranches, essai, quotas, changement d'offre, résiliation, virement, historique | Testé | Grille de démonstration fictive ; opérations de l'éditeur par module de provisionnement, sans outil d'exploitation ; TVA et facturation légale hors périmètre ; aucun export vers un outil de facturation |
+| Agrégation bancaire par prestataire | En attente de connexion | Port, adaptateur d'un contrat pivot, format pivot lu par le moteur, écran d'état ; vérifié contre SIMULATEUR seulement. Aucun prestataire choisi ni contracté : statut affiché « non connecté » (D-066) |
+| Abonnements : forfait, tranches, essai, quotas, changement d'offre, résiliation, virement, historique | Testé | Grille de démonstration fictive ; opérations de l'éditeur par outil en ligne de commande ; export CSV des éléments de facturation (D-065) ; TVA, facture légale et outil de facturation hors périmètre |
 | Service fermé hors abonnement (dépôts refusés, consultation conservée) | Testé | Les quotas sont affichés mais ne bloquent pas la collecte (décision D-024) |
 | Règles et paramètres propres au cabinet, avec mesure d'impact et approbation | Testé | Mesure d'impact synchrone, sur un seul contrôle et un exercice ; sert aussi à déclarer la correspondance comptes 512 ↔ comptes bancaires de `TRE-003`, sans écran dédié |
-| Administration : dossiers, exercices, habilitations, membres (rôle, désactivation) | Testé | Pas d'invitation ni de création de compte : la création d'un utilisateur reste une opération de l'éditeur dans Keycloak |
+| Administration : dossiers, exercices, habilitations, membres (rôle, désactivation), invitations | Testé | Invitation par adresse et rôle, sans envoi de courriel (D-064) ; effectif moyen saisi sur la fiche du dossier |
 | Export de restitution d'un dossier | Testé | Construit en flux (D-047) ; un original non conforme n'est pas restitué, comme pour le cabinet (D-052) ; mémoire mesurée sur un gros dossier synthétique (rapport de tests) |
 | Correspondance comptes 512 / comptes bancaires | Testé | Proposition soumise au circuit des règles ; IBAN masqué ; par dossier seulement (D-048) |
 | Restitution d'un cabinet entier | Testé | Périmètre limité aux dossiers où le demandeur a le niveau « validation » (les autres sont listés, l'archive est dite incomplète) ; archive en flux ; manifeste vérifiable hors application ; téléchargement réservé au demandeur. Ni chiffrée ni signée. Mesurée en local sur 235 dossiers (D-043) |
@@ -108,7 +108,7 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (troisi
 |---|---|---|
 | Surveillance planifiée de pages officielles, détection de changement | Testé | Dans l'environnement réel, BOFiP est lisible ; Légifrance refuse l'accès automatisé (403) : ces sources sont affichées indisponibles. Une surveillance fiable de Légifrance passe par son API officielle (accès à demander) |
 | Évolutions qualifiées par une personne (résumé, dates, conditions, critères) | En attente de validation | Opération de l'éditeur par provisionnement ; aucune évolution réelle n'a été qualifiée (seulement des évolutions d'essai fictives, retirées) |
-| Applicabilité par dossier, expliquée ; « à confirmer » si une caractéristique manque | Testé | Critères simples (territoire, régime, forme, NAF, référentiel, exercices) ; pas de critère de taille ni d'opération |
+| Applicabilité par dossier, expliquée ; « à confirmer » si une caractéristique manque | Testé | Critères : territoire, régime, forme, NAF, référentiel, exercices, taille (chiffre d'affaires, total du bilan, effectif saisi) et opérations repérées dans les comptes (D-068). Taille tirée des écritures importées, avant inventaire ; une opération repérée est un indice comptable |
 | Suivi d'une évolution par dossier | Testé | — |
 | Recherche textuelle autorisée (pièces, écritures, constats) | Testé | Plein texte français ; pas de recherche vectorielle (pgvector inutilisé) ; portefeuille multi-dossiers non couvert |
 | Assistant documenté | Non implémenté | Dépend de la passerelle IA, non connectée |
@@ -131,8 +131,10 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (troisi
 |---|---|---|
 | Balance générale | Testé | — |
 | Projets de compte de résultat et de bilan | En attente de validation | Table de correspondance lue des intitulés du PCG, non validée par un professionnel ; exercices ouverts avant 2025 non couverts ; comptes ambigus laissés « non affectés » |
-| Écritures d'inventaire proposées, approbation par un tiers, balance ajustée de travail, export CSV, états projetés sur la balance ajustée | Testé | Saisie humaine uniquement : aucune écriture n'est générée automatiquement ; l'intégration dans le logiciel comptable n'est pas faite par ce logiciel |
-| Annexe, liasse fiscale | Non implémenté | — |
+| Écritures d'inventaire proposées, approbation par un tiers, balance ajustée de travail, export CSV, états projetés sur la balance ajustée | Testé | Saisie humaine, ou reprise d'une proposition du moteur (ligne suivante) ; l'intégration dans le logiciel comptable n'est pas faite par ce logiciel |
+| Propositions déterministes d'écritures d'inventaire (charges et produits constatés d'avance, factures non parvenues et à établir) | En attente de validation | Règles explicites et versionnées, sans IA ; rien n'est enregistré d'office ; une proposition reprise suit le circuit d'approbation. Période lue dans le libellé ou fournie ; FNP et FAE seulement à partir des constats de césure. Aucune dotation aux amortissements (pas de fichier des immobilisations) |
+| Préparation de la liasse fiscale : 2050 à 2053 (réel normal), 2033-A et 2033-B (simplifié) | En attente de validation | Périmètre : société commerciale à l'IS, PCG, euros, métropole ; sinon ABSTENTION sans chiffre. Toujours « projet », jamais « complet ». Codes de cases NON vérifiés (site des impôts en maintenance le jour de la vérification) : lignes désignées par leur libellé. Seize autres tableaux listés non couverts, avec les informations qu'ils exigent. Pas de colonne N-1, pas d'arrondi à l'euro, pas de résultat fiscal. Détail : `etats-fiscaux.md` |
+| Projet d'annexe (59 rubriques du PCG, pré-remplissage, confirmations du cabinet) | En attente de validation | Personne morale uniquement ; catégorie de taille déclarée par le cabinet (seuils « à confirmer ») ; une rubrique n'est complète que confirmée par une personne habilitée, et la confirmation tombe si les données changent ; le texte de l'annexe n'est pas rédigé par le logiciel |
 | Télétransmission | Non implémenté, et non autorisée par conception sans périmètre et autorisation spécifiques | — |
 
 ## Écrans
@@ -141,7 +143,7 @@ Tous les domaines ci-dessus ont leurs écrans : collecte (téléphone et ordinat
 
 S'y ajoutent : nouvelle version d'une pièce (historique des versions, validation invalidée affichée), aperçu d'un CSV bancaire avant confirmation du profil, jonction de pièces à un conseil, une lettre ou une écriture d'inventaire, annulation motivée, rétablissement et reprise d'un import, campagnes d'import, rentabilité par mission, affectation d'un travail à une mission, diagnostic consigné affiché dans l'alerte de rupture du journal d'audit, restitution du cabinet (périmètre, archives, empreinte), pages de propositions de rapprochement et de règles, correspondance des comptes de banque, notifications internes (page et décompte dans l'en-tête).
 
-Non faits côté interface : aucune vérification sur appareil réel, sur Safari lui-même ou sur Firefox, ni au lecteur d'écran.
+Non faits côté interface : aucune vérification sur appareil réel, sur Safari lui-même, ni au lecteur d'écran. Firefox n'est exécuté que par l'intégration continue.
 
 ## Couverture par type de dossier
 
@@ -170,4 +172,4 @@ Le territoire fiscal est une donnée explicite du dossier. Hors métropole, ou t
 | 9 | Pièce contenant des instructions malveillantes | Testé — sachant qu'aucune IA ne lit les pièces à ce jour |
 | 10 | Restauration après incident | Testé en local : base, stockage objet et Keycloak restaurés dans des instances isolées et vérifiés ; limites dans `deploiement.md` |
 
-Environnements réellement utilisés : Chromium (ordinateur et émulation Pixel 7) et WebKit (ordinateur et émulation iPhone 15, parcours sur pile réelle seulement) sur macOS. WebKit est le moteur de Safari, pas Safari. Firefox ne peut pas être lancé par l'agent de développement (protections du poste, cause établie en D-059) : sa suite reste à exécuter par l'utilisateur ou par la CI. Aucun appareil réel, aucun lecteur d'écran.
+Environnements réellement utilisés : Chromium (ordinateur et émulation Pixel 7) et WebKit (ordinateur et émulation iPhone 15, parcours sur pile réelle seulement) sur macOS. WebKit est le moteur de Safari, pas Safari. Firefox ne peut pas être lancé par l'agent de développement sur le poste (D-059) : sa suite est exécutée, et réussie, par l'intégration continue (D-063). Aucun appareil réel, aucun lecteur d'écran.

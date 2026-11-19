@@ -3,9 +3,9 @@ import { Controller, Get, Inject } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { type AccesBd, sql } from '@comtaple/db';
 import { evaluerStatutIntegration, type IdFournisseur, type PreuveConnexion } from '@comtaple/mail';
-import { type Config, type ConnecteursMail, type EtatAgregation, fournisseurDepuisBd, type FournisseurBd, PasserelleIa } from '@comtaple/plateforme';
+import { type Config, type ConnecteursMail, type EtatAgregation, fournisseurDepuisBd, type FournisseurBd, type ServicesIa } from '@comtaple/plateforme';
 import { type Acces, AccesCourant } from './acces.js';
-import { AGREGATION, BD, CONFIG, MAIL } from './jetons.js';
+import { AGREGATION, BD, CONFIG, IA, MAIL } from './jetons.js';
 
 function clamdRepond(hote: string, port: number): Promise<boolean> {
   return new Promise((resoudre) => {
@@ -34,6 +34,7 @@ export class IntegrationsController {
     @Inject(BD) private readonly bd: AccesBd,
     @Inject(MAIL) private readonly mail: ConnecteursMail,
     @Inject(AGREGATION) private readonly agregation: EtatAgregation,
+    @Inject(IA) private readonly ia: ServicesIa,
   ) {}
 
   /**
@@ -64,7 +65,8 @@ export class IntegrationsController {
     return {
       antivirus: { statut: (await clamdRepond(this.cfg.CLAMAV_HOST, this.cfg.CLAMAV_PORT)) ? 'disponible' : 'indisponible', obligatoire: this.cfg.ANTIVIRUS_OBLIGATOIRE },
       ocr,
-      ia: { statut: new PasserelleIa(this.cfg).statut(), detail: 'Aucun traitement n’appelle l’IA à ce jour.' },
+      // Statut rendu par la passerelle elle-même : « connecte » exige un appel réel réussi sur l'hôte officiel.
+      ia: { statut: this.ia.statut().statut, detail: this.ia.statut().raisons.join(' ') || 'Connexion réelle vérifiée auprès du fournisseur.' },
       messagerie: { gmail: this.messagerie('gmail', preuves), microsoft365: this.messagerie('microsoft', preuves) },
       agregationBancaire: { statut: this.agregation.statut, detail: this.agregation.detail },
     };

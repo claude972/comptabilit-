@@ -2,7 +2,9 @@ import type { Metadata } from 'next';
 import { ChoixExercice } from '@/components/dossier';
 import { PiecesJointes } from '@/components/document/pieces-jointes';
 import { ErreurAcces } from '@/components/erreurs';
+import { ReprendreProposition } from '@/components/fiscal/actions';
 import { DeciderEcriture, ExporterEcritures, ProposerEcriture } from '@/components/inventaire/actions';
+import { LIBELLE_TYPE_PROPOSITION, type ReponsePropositions } from '@/lib/fiscal';
 import { Alerte, Carte, Etiquette, MentionProjet, SousTitre, Tableau, type Ton } from '@/components/ui/base';
 import { type BalanceAjustee, type EcritureInventaire, LIBELLE_STATUT_ECRITURE, type StatutEcriture, comparerBalances } from '@/lib/inventaire';
 import { formaterDate, formaterHorodatage, formaterMontant } from '@/lib/montants';
@@ -24,10 +26,11 @@ export default async function PageInventaire({ params, searchParams }: { params:
   if (!ex.ok) return <ErreurAcces statut={ex.statut} message={ex.message} retour={`/dossiers/${id}`} />;
   if (!ex.exercice) return <Alerte ton="attention">Aucun exercice n’est défini pour ce dossier.</Alerte>;
   const exercice = ex.exercice;
-  const [liste, balance, moi] = await Promise.all([
+  const [liste, balance, moi, propositions] = await Promise.all([
     tenter<EcritureInventaire[]>(`v1/exercices/${exercice.id}/ecritures-inventaire`),
     tenter<BalanceAjustee>(`v1/exercices/${exercice.id}/balance-ajustee`),
     lireMoi(),
+    tenter<ReponsePropositions>(`v1/exercices/${exercice.id}/inventaire/propositions`),
   ]);
   if (!liste.ok) return <ErreurAcces statut={liste.statut} message={liste.message} retour={`/dossiers/${id}`} />;
   const moiId = moi.ok ? moi.donnees.utilisateur.id : null;
@@ -46,6 +49,92 @@ export default async function PageInventaire({ params, searchParams }: { params:
         Les écritures d’inventaire sont des <strong>propositions</strong>, séparées des écritures importées qui ne sont jamais modifiées. Préparer,
         approuver, exporter et intégrer dans le logiciel comptable sont quatre étapes distinctes ; la dernière n’est pas réalisée par Comtaple.
       </Alerte>
+
+      <section aria-labelledby="titre-propositions-moteur" className="space-y-3" data-testid="propositions-moteur">
+        <SousTitre id="titre-propositions-moteur">Propositions du moteur ({propositions.ok ? propositions.donnees.propositions.length : '—'})</SousTitre>
+        {!propositions.ok ? (
+          <p className="text-texte-doux">{propositions.statut === 409 ? 'Aucune donnée comptable importée pour cet exercice : le moteur ne peut rien proposer.' : `Propositions indisponibles. ${propositions.message}`}</p>
+        ) : (
+          <>
+            <p className="text-sm text-texte-doux">
+              Calculées par des règles explicites et versionnées, sans IA. Rien n’est enregistré tant que personne ne reprend une proposition ; une proposition reprise devient une écriture
+              proposée, à approuver par une autre personne. {propositions.donnees.amortissements.motif}
+            </p>
+            {propositions.donnees.signalCesure !== 'disponible' ? (
+              <Alerte ton="attention" className="text-sm">
+                {propositions.donnees.signalCesure === 'controles_obsoletes'
+                  ? 'Les contrôles sont obsolètes : les factures non parvenues et à établir ne sont pas proposées. Relancez les contrôles dans l’onglet Révision.'
+                  : 'Les contrôles n’ont pas été exécutés sur ces données : les factures non parvenues et à établir ne sont pas proposées.'}
+              </Alerte>
+            ) : null}
+            {propositions.donnees.propositions.length === 0 ? <p className="text-texte-doux">Aucune proposition sur les données actuelles.</p> : null}
+            <ul className="space-y-3">
+              {propositions.donnees.propositions.map((p) => (
+                <li key={p.id} className="space-y-2 rounded-lg border border-bordure bg-surface p-3" data-proposition={p.id}>
+                  <p className="flex flex-wrap items-center gap-2">
+                    <Etiquette ton="info">{LIBELLE_TYPE_PROPOSITION[p.type] ?? p.type}</Etiquette>
+                    <span className="font-medium">{p.libelle}</span>
+                    <span className="text-sm text-texte-doux">
+                      règle {p.origine.regle} v{p.origine.versionRegle} · écriture au {formaterDate(p.dateEcriture)}
+                    </span>
+                  </p>
+                  <p className="text-sm">{p.justification}</p>
+                  <ul className="text-sm text-texte-doux">
+                    {p.calcul.map((c) => (
+                      <li key={c.libelle}>
+                        {c.libelle} : {c.valeur}
+                      </li>
+                    ))}
+                  </ul>
+                  <Tableau legende={`Lignes proposées : ${p.libelle}`}>
+                    <thead>
+                      <tr>
+                        <th scope="col">Compte</th>
+                        <th scope="col" className="text-right">Débit</th>
+                        <th scope="col" className="text-right">Crédit</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {p.lignes.map((l, i) => (
+                        <tr key={i}>
+                          <th scope="row" className="!bg-transparent font-normal">
+                            {l.compteNum} {l.libelle}
+                          </th>
+                          <td className="text-right tabular-nums">{formaterMontant(l.debit)}</td>
+                          <td className="text-right tabular-nums">{formaterMontant(l.credit)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Tableau>
+                  <p className="text-sm">
+                    Impact sur le résultat : {formaterMontant(p.impacts.resultat)}. {p.impacts.commentaire}
+                  </p>
+                  {p.hypotheses.length ? <p className="text-sm text-texte-doux">Hypothèses : {p.hypotheses.join(' ')}</p> : null}
+                  {p.reprise ? (
+                    <p className="text-sm" data-testid="deja-reprise">
+                      Déjà reprise comme écriture d’inventaire ({LIBELLE_STATUT_ECRITURE[p.reprise.statut as StatutEcriture] ?? p.reprise.statut}).
+                    </p>
+                  ) : collaboration ? (
+                    <ReprendreProposition exerciceId={exercice.id} propositionId={p.id} libelle={p.libelle} />
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+            {propositions.donnees.abstentions.length ? (
+              <details>
+                <summary>Le moteur s’est abstenu {propositions.donnees.abstentions.length} fois (données insuffisantes)</summary>
+                <ul className="list-disc pl-5 text-sm">
+                  {propositions.donnees.abstentions.slice(0, 50).map((x, i) => (
+                    <li key={i}>
+                      {LIBELLE_TYPE_PROPOSITION[x.type] ?? x.type} — {x.motif}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
+          </>
+        )}
+      </section>
 
       <section aria-labelledby="titre-ecritures" className="space-y-3">
         <SousTitre id="titre-ecritures">Écritures proposées ({ecritures.length})</SousTitre>

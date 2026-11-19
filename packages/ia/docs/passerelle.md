@@ -1,8 +1,9 @@
 # Passerelle IA interne — `@comtaple/ia`
 
 État au **2026-11-19** : paquet écrit et testé contre un **SIMULATEUR**. **Aucun jeton d'IA n'existe : aucun appel de
-génération n'a jamais été fait sur le service réel.** Rien de ce paquet n'est encore branché dans l'API, le worker ou
-l'interface. Le statut réel de l'intégration est donc `non_connecte`.
+génération n'a jamais été fait sur le service réel.** Le paquet est branché dans l'API, le worker et l'interface
+(section 10), dans l'état réel `non_connecte` : les fonctions marchent en mode « sans IA », étiqueté comme tel, et le
+chemin « modèle » n'est exercé que contre le simulateur, dans les tests.
 
 ## 1. Principe
 
@@ -92,7 +93,7 @@ lettre se saisit à la main.
 | Tâches, assistant, garde-fous | Testés contre le simulateur (92 tests). Comportement du modèle réel inconnu. |
 | Évaluation | Corpus **synthétique**. Tout rapport porte la mention « mesuré contre un SIMULATEUR : ne dit rien de la qualité du modèle réel ». |
 | Coût estimé | Calcul exact (entiers) à partir de tarifs **passés en configuration et datés** (`TarifsIa`). Le code n'embarque aucun tarif. Sans tarif ou sans décompte de jetons : `null`. |
-| Intégration (API, worker, interface, tables d'audit, pgvector) | Non faite. |
+| Intégration (API, worker, interface, tables d'audit, pgvector) | Faite, dans l'état `non_connecte` (section 10). Chemin « modèle » : testé contre le simulateur avec les ports réels, jamais contre un modèle réel. |
 
 ## 6. Vérifications sur la documentation officielle OVHcloud (2026-11-19)
 
@@ -169,4 +170,113 @@ Aucune tâche ne doit être confiée au modèle avant la fin de cette procédure
 - **Découpage** en caractères, non en jetons : 1 200 caractères restent très en deçà de la limite annoncée de `bge-m3`.
 - **Coût** : estimation, non facturation. Jetons du simulateur : approximation (caractères / 4).
 - Pas de diffusion en flux (`stream`), pas d'images, pas de mémoire de conversation entre deux questions.
-- L'ébauche `packages/plateforme/src/passerelle-ia.ts` existe toujours ; elle doit être retirée lors de la bascule.
+- L'ébauche `packages/plateforme/src/passerelle-ia.ts` a été retirée ; la passerelle de l'application est construite par `packages/plateforme/src/ia.ts`.
+
+## 10. Intégration dans l'application (2026-11-19)
+
+### 10.1 Assemblage
+
+| Élément | Où | Rôle |
+|---|---|---|
+| `creerIa(cfg, bd)` | `packages/plateforme/src/ia.ts` | Construit la `PasserelleIa` à partir de `IA_OVH_ENDPOINT`, `IA_OVH_JETON` et `IA_TARIFS` (JSON de `TarifsIa`, vide par défaut : coût non estimé). Sans jeton : aucun fournisseur, `non_connecte`, aucun appel sortant. |
+| `assemblerIa(bd, fournisseur, tarifs)` | idem | Même assemblage sur un fournisseur donné. Hors des tests, seul `creerIa` l'appelle. **Aucune variable de configuration n'active un simulateur** : `SimulateurIa` n'est instancié que dans du code de test (`*.itest.ts`). |
+| `ServicesIa.active()` | idem | Passerelle remise aux tâches et à l'assistant : celle du fournisseur seulement si le statut est `connecte` (ou `simule` dans un test) ; sinon une passerelle sans fournisseur. Un fournisseur configuré mais **non vérifié n'est donc jamais sollicité** (procédure d'activation, section 7). |
+| `JournalIaBd` | idem | `JournalAuditIa` écrivant dans `evenements_ia` : une ligne par `EvenementAuditIa`, sans contenu. Écritures regroupées en arrière-plan ; `vider()` les attend (appelé en fin de requête). |
+
+Correspondance des traces : `nature` vaut `reel`, `simulateur` ou `sans_ia` (aucun fournisseur, ou fonction métier exécutée
+en mode sans IA) ; `resultat` vaut `ok` / `abstention` / `rejet` / `erreur` pour un appel de modèle, `indisponible` quand
+aucun fournisseur n'existe, `executee` / `refusee` / `erreur` pour une fonction métier. `mesures` ne porte que des tailles,
+des décomptes, le nom de la fonction et la référence du prompt.
+
+### 10.2 Routes de l'API
+
+| Route | Habilitation | Comportement aujourd'hui (sans IA) |
+|---|---|---|
+| `POST v1/dossiers/:id/assistant/questions` `{ question, exerciceId? }` | niveau `lecture` sur le dossier, vérifié avant toute recherche (404 si le dossier n'est pas visible, 403 en dessous) | `repondreQuestion` bascule sur `repondreSansIa` : réponse `mode: "sans_ia"`, `iaIndisponible.code = "non_connecte"`. Renvoie `{ echangeId, echangeEnregistre, mode, exercice, reponse, ia }`. Question de 3 à 1 000 caractères, objet strict (aucune clé libre), 20 questions par minute et par utilisateur. |
+| `GET v1/dossiers/:id/assistant/questions?page=` | niveau `lecture` | Ses propres échanges, les plus récents d'abord (20 par page). |
+| `GET v1/ia` | tout membre authentifié ; mesures pour les gestionnaires seulement | Statut, phrase d'état, modèles figés, prompts et versions, tarifs configurés ; `mesures` (par nature, type, tâche, résultat : nombre, durées, jetons, coût estimé) tirées de `evenements_ia`. |
+| `POST v1/documents/:id/proposition-classement` | niveau `collaboration` | `classerPiece` → `ia_indisponible` + repli étiqueté (rattachement par indice exact — SIREN ou raison sociale d'un dossier où l'utilisateur est habilité —, type « à qualifier »). |
+| `POST v1/constats/:id/explication` | `collaboration` | `expliquerConstat` → repli étiqueté = message du moteur. |
+| `POST v1/exercices/:id/indicateurs/commentaire` | `collaboration` | `commenterIndicateurs` sur les indicateurs calculés par `@comtaple/core` → repli étiqueté = restitution par gabarit. |
+| `POST v1/lettres/:id/analyse` | `collaboration` | `analyserLettreMission` sur le texte des pages de la pièce jointe à la lettre ; 409 sans pièce jointe, sans texte, ou au-delà de 40 000 caractères. Pas de repli : `ia_indisponible`, `proposition: null`. |
+| `POST v1/exercices/:id/rapprochements/suggestions` | `collaboration` | `suggererRapprochements` sur les éléments restés sans rapprochement de la dernière exécution à jour (150 par côté au plus), vérification par `verifierSuggestion` de `@comtaple/core` (côté A = mouvements, côté B = écritures de banque) ; 409 sans exécution terminée. Pas de repli : `ia_indisponible`. |
+
+Chaque tâche renvoie `{ tache, statut, origine, etiquette, proposition, preuves, confiance, avertissements, motif, codes,
+propositionId, applique: false, ia }`. `origine` vaut `ia`, `simulateur`, `repli_deterministe` ou `aucune`. Une proposition
+(modèle ou repli) est enregistrée dans `propositions_ia` avec `statut = non_examinee` et `confiance = non_evaluee` ; pour un
+repli, `modele = "aucun (repli déterministe, sans IA)"` et `version_prompt = "sans-ia"` ; pour le simulateur, le modèle est
+préfixé `SIMULATEUR`. **Rien n'est jamais appliqué à la pièce, au constat, à la lettre ni aux rapprochements.**
+Chaque question et chaque tâche est aussi tracée au journal d'audit applicatif (`assistant.question`, `ia.tache`), sans
+le texte de la question.
+
+### 10.3 Ports de l'assistant (`apps/api/src/assistant.service.ts`)
+
+`poserQuestion(dependances, acces, dossierId, demande)` est appelable sans HTTP ; le contrôleur et les tests appellent la
+même fonction. Périmètre imposé : cabinet et utilisateur de l'identité authentifiée, dossier de l'URL validée, période de
+l'exercice choisi (à défaut le dernier ; sans exercice, l'année civile en cours et la comptabilité n'est pas interrogée).
+Chaque port lit ses données dans `bd.avecContexte(acces, …)` — donc sous RLS, avec l'identité de l'utilisateur — et par
+des requêtes à paramètres liés uniquement.
+
+| Port | Données | Identifiant de source |
+|---|---|---|
+| `rechercherDocuments` | plein texte français « l'un des mots » sur `passages_recherche` ; pour une pièce analysée avant l'indexation, sur `pages_document`. Pièces remplacées ou en quarantaine exclues. Les pièces ne sont pas filtrées par période. | `piece:<document>:p<page>` |
+| `rechercherEcritures` | lignes du lot actif de l'exercice, dans la période, plein texte et préfixe de compte | `ecriture:<ligne>` |
+| `lireBalance` | agrégation en base (totaux et soldes par compte, 40 comptes au plus) | `balance:<exercice>:<compte>:<début>:<fin>` |
+| `calculerIndicateur` | `calculerIndicateurs` de `@comtaple/core` sur l'exercice entier (17 indicateurs proposés) | `indicateur:<exercice>:<id>` |
+| `listerConstats` | constats de la dernière exécution terminée des contrôles (20 au plus) | `constat:<id>` |
+| `rechercherSourcesReglementaires` | évolutions de la veille à l'état `verifiee`, puis sources vérifiées du catalogue du moteur (`SOURCES`) | `evolution:<id>`, `source:<clé>` |
+
+`Habilitations.autoriser` relit en base le niveau réel de l'utilisateur sur le dossier à chaque appel de fonction.
+Recherche hybride : le classement vectoriel n'est calculé et fusionné (`fusionnerClassements`) que si la passerelle est
+utilisable **et** que le dossier a des vecteurs de la nature du fournisseur en service ; l'application réelle n'utilise
+donc jamais un vecteur de simulateur.
+
+### 10.4 Worker
+
+Après l'analyse d'une pièce (`apps/worker/src/analyse-document.ts`), `apps/worker/src/passages.ts` découpe le texte de
+chaque page (`decouperEnPassages`, 1 200 caractères, recouvrement 200) et remplace les passages de la pièce dans
+`passages_recherche` (suppression puis insertion dans la transaction de fin d'analyse : idempotent). Les passages de la
+version qu'elle remplace sont retirés. `vecteur`, `modele` et `nature_vecteur` restent NULL tant que la passerelle n'est
+pas utilisable ; sinon `vectoriserPassages` (une panne laisse le texte indexé, sans vecteur).
+
+### 10.5 Tables
+
+| Table | Écrite par | Lue par | Contenu |
+|---|---|---|---|
+| `evenements_ia` | API et worker (ajout seul) | gestionnaires du cabinet | traces sans contenu |
+| `echanges_assistant` | API | l'auteur seulement | question, mode (`sans_ia`, `simulateur`, `ia`), statut, réponse |
+| `passages_recherche` | worker seulement | API, sous la politique du dossier | texte des passages, vecteur éventuel |
+| `propositions_ia` | API | membres habilités du dossier | propositions des tâches, jamais appliquées |
+
+### 10.6 Interface
+
+Onglet « Assistant » du dossier (bandeau d'état tiré de `GET v1/ia`, exercice, question, réponse structurée, citations,
+historique) ; « Proposer un classement » sur la page d'une pièce ; « Expliquer ce constat » sur la page d'un constat ;
+`/administration/ia` pour les gestionnaires (état, modèles, mesures).
+
+### 10.7 Ce qui est sans IA, simulé, connecté
+
+| Élément | État |
+|---|---|
+| Assistant, classement, explication de constat, commentaire d'indicateurs | **Sans IA** en service (repli déterministe étiqueté), testés de bout en bout sur la pile réelle. |
+| Analyse de lettre de mission, suggestions de rapprochement | **`ia_indisponible`** en service (aucun repli) ; contrôles d'accès et d'état testés sur la pile réelle. |
+| Chemin « modèle » de l'assistant (appels de fonctions, citations, refus d'un modèle manipulé, traces) | **Simulé** : `SimulateurIa` avec les ports réels et la base réelle sous RLS (`apps/api/src/parcours-assistant.itest.ts`). |
+| Vecteurs et recherche hybride | **Simulé** : hachage de mots du simulateur (`apps/worker/src/passages.itest.ts`, test d'intégration de l'API). Aucun vecteur réel n'existe. |
+| Chemin « modèle » des cinq tâches dans l'API | Non exercé au-delà des tests du paquet (les contrôleurs appellent les mêmes fonctions, mais aucun test d'intégration ne les passe au simulateur). |
+| Appel d'un modèle réel | **Jamais fait.** |
+
+### 10.8 Limites de l'intégration
+
+- **Preuve de connexion non persistée.** `verifierConnexion()` n'est appelée par aucune route et sa preuve n'a pas de
+  table : avec un jeton configuré, le statut reste `configure_non_verifie` et aucun modèle n'est sollicité. Pour activer,
+  il faudra une route réservée aux gestionnaires et un stockage de la preuve partagé entre l'API et le worker.
+- **Niveau « lecture » et historique.** La politique `acces_dossier` de `echanges_assistant` n'admet l'écriture qu'à
+  partir du niveau `collaboration` : à ce niveau, la réponse est rendue (`echangeEnregistre: false`) mais l'échange
+  n'est pas conservé.
+- Les pièces analysées avant cette intégration n'ont pas de passages : elles sont cherchées par le texte de leurs pages
+  (repli de la requête) jusqu'à leur prochaine ré-analyse.
+- `nomsPersonnes` n'est transmis par aucun appelant : seule la pseudonymisation par motifs s'appliquera.
+- La limite de débit est en mémoire du processus (une par instance de l'API).
+- Le mode sans IA déclenche les fonctions par mots-clés : « compte » ou « facture » lancent aussi une recherche
+  d'écritures sur les mots de la question, ce qui peut ramener des écritures sans rapport.
+

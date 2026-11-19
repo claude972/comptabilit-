@@ -185,6 +185,8 @@ export const exercices = pgTable(
     statut: text('statut').notNull().default('ouvert'),
     /** Incrémenté à chaque modification des données de l'exercice : sert à repérer les résultats obsolètes. */
     versionDonnees: integer('version_donnees').notNull().default(0),
+    /** Catégorie de taille déclarée par le cabinet pour le projet d'annexe (allègements) ; null = à confirmer. */
+    categorieAnnexe: text('categorie_annexe'),
     creeLe: creeLe(),
   },
   (t) => [uniqueIndex('exercices_unique').on(t.entiteId, t.debut, t.fin)],
@@ -766,8 +768,10 @@ export const ecrituresInventaire = pgTable('ecritures_inventaire', {
   exerciceId: uuid('exercice_id').notNull().references(() => exercices.id),
   dateEcriture: date('date_ecriture', { mode: 'string' }).notNull(),
   libelle: text('libelle').notNull(),
-  /** saisie_humaine (seule origine à ce jour) */
+  /** saisie_humaine | proposition_moteur (reprise d'une proposition déterministe, voir `origineDetail`) */
   origine: text('origine').notNull().default('saisie_humaine'),
+  /** Pour une proposition du moteur : { regle, versionRegle, propositionId, hypotheses } ; null pour une saisie humaine. */
+  origineDetail: jsonb('origine_detail'),
   justification: text('justification').notNull(),
   /** Détail du calcul du montant, rédigé par l'auteur. */
   calcul: text('calcul').notNull(),
@@ -1336,4 +1340,31 @@ export const passagesRecherche = pgTable(
     creeLe: creeLe(),
   },
   (t) => [uniqueIndex('passages_recherche_unique').on(t.documentId, t.page, t.rang), index('passages_recherche_dossier').on(t.entiteId)],
+);
+
+// ───────────────────────────── États fiscaux (lot 5) ─────────────────────────────
+
+/**
+ * Projet d'annexe : ce que le cabinet déclare, rubrique par rubrique. Le moteur pré-remplit ce qui se déduit des
+ * écritures ; une rubrique requise n'est « complète » que si une personne habilitée le confirme ici. Une confirmation
+ * est rattachée à la version des données au moment où elle est donnée : si les données changent, elle est « à revoir ».
+ */
+export const confirmationsAnnexe = pgTable(
+  'confirmations_annexe',
+  {
+    id: id(),
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    entiteId: uuid('entite_id').notNull().references(() => entites.id),
+    exerciceId: uuid('exercice_id').notNull().references(() => exercices.id),
+    /** Identifiant de rubrique du modèle d'annexe (ex. « ANX-832-1 »). */
+    rubrique: text('rubrique').notNull(),
+    /** complete | non_applicable */
+    etat: text('etat').notNull(),
+    /** Texte saisi par le cabinet pour cette rubrique (information complémentaire), facultatif. */
+    note: text('note'),
+    versionDonnees: integer('version_donnees').notNull(),
+    confirmeePar: uuid('confirmee_par').notNull().references(() => utilisateurs.id),
+    creeLe: creeLe(),
+  },
+  (t) => [uniqueIndex('confirmations_annexe_unique').on(t.exerciceId, t.rubrique)],
 );

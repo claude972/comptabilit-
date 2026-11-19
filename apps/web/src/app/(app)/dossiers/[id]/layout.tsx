@@ -48,8 +48,11 @@ export default async function MiseEnPageDossier({ children, params }: { children
           { href: `${base}/revision`, libelle: 'Révision' },
           { href: `${base}/analyse`, libelle: 'Analyse' },
           { href: `${base}/inventaire`, libelle: 'Inventaire' },
+          { href: `${base}/fiscal`, libelle: 'États fiscaux' },
           { href: `${base}/mission`, libelle: 'Mission' },
           { href: `${base}/veille`, libelle: 'Veille' },
+          // Assistant documenté : à partir du niveau « lecture » (le layout refuse déjà le simple dépôt ; l'API vérifie).
+          { href: `${base}/assistant`, libelle: 'Assistant' },
           // La restitution exige l'habilitation de validation : l'onglet n'est proposé qu'à ce niveau (l'API vérifie).
           ...(auMoins(ctx.niveau, 'validation') ? [{ href: `${base}/restitution`, libelle: 'Restitution' }] : []),
         ]}

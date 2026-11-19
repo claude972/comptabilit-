@@ -442,6 +442,24 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Recherche dans le nom du fichier",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "versions",
+            "required": false,
+            "in": "query",
+            "description": "« courantes » : exclut les versions remplacées",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2175,16 +2193,37 @@
                     "maxLength": 200
                   },
                   "siren": {
-                    "type": "string",
-                    "pattern": "^\\d{9}$"
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^\\d{9}$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "formeJuridique": {
-                    "type": "string",
-                    "maxLength": 50
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 50
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "regimeFiscal": {
-                    "type": "string",
-                    "maxLength": 50
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 50
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "territoireFiscal": {
                     "type": "string",
@@ -2200,8 +2239,20 @@
                     ]
                   },
                   "codeNaf": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 10
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "referentielComptable": {
                     "type": "string",
-                    "maxLength": 10
+                    "minLength": 1,
+                    "maxLength": 50
                   }
                 },
                 "additionalProperties": false
@@ -4089,6 +4140,15 @@
             "name": "id",
             "required": true,
             "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ajuste",
+            "required": false,
+            "in": "query",
+            "description": "« 1 » : états projetés sur la balance AJUSTÉE (écritures importées + écritures d’inventaire approuvées et à jour)",
             "schema": {
               "type": "string"
             }

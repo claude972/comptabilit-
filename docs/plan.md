@@ -80,9 +80,9 @@ Critères d'acceptation et résultat :
 
 ## Prochaines étapes proposées, par ordre de dépendance
 
-1. Faire valider par un expert-comptable : catalogue des contrôles, table de correspondance des états, conventions d'indicateurs.
-2. Obtenir les accès externes (`acces-externes.md`) : OAuth Google et Microsoft, jeton OVHcloud, API Légifrance, corpus réel autorisé.
-3. Outil d'exploitation de l'éditeur et gestion des membres d'un cabinet.
-4. Écritures d'inventaire et balance ajustée (lot 5), avec le professionnel qui validera.
-5. Images du worker et du web en exploitation, description complète de l'infrastructure, supervision déployée.
+1. Faire valider par un expert-comptable : catalogue des contrôles, table de correspondance des états, conventions d'indicateurs, convention de rentabilité.
+2. Obtenir les accès externes (`acces-externes.md`) : OAuth Google et Microsoft, jeton OVHcloud, API Légifrance, corpus réel autorisé, authentification GitHub pour alimenter le dépôt distant.
+3. Lacunes réalisables en local, sans accès externe : affectation explicite des travaux à une mission ; restitution d'un cabinet entier ; limitation de débit des points d'entrée de notification mail ; pagination des rapprochements et des règles ; rejeu complet des 24 migrations sur une base vide.
+4. Lacunes dépendant d'une validation ou d'un accès : génération assistée d'écritures d'inventaire, annexe et liasse (professionnel) ; assistant et recherche vectorielle (passerelle IA).
+5. Description complète de l'infrastructure, supervision déployée (jeton OVHcloud).
 6. Essais sur appareils réels et évaluation de l'extraction sur pièces réelles.

@@ -39,8 +39,17 @@ jobs:
           node apps/api/dist/main.js > var/api.log 2>&1 &
           node apps/worker/dist/main.js > var/worker.log 2>&1 &
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:4000/v1/sante && break; sleep 1; done
+      - name: Service OCR
+        run: docker compose up -d --build --wait ocr
+      - name: Surveillance des sources (base réelle, HTTP injecté)
+        run: pnpm --filter @comtaple/worker run test:integration
       - name: Parcours de bout en bout
         run: pnpm --filter @comtaple/api run test:integration
       - name: Journaux en cas d'échec
         if: failure()
         run: tail -n 100 var/api.log var/worker.log; docker compose logs --tail 50
+      - name: Description d'infrastructure
+        if: always()
+        uses: opentofu/setup-opentofu@v1
+      - name: Validation OpenTofu
+        run: cd infra/opentofu && tofu init -input=false && tofu validate

@@ -125,8 +125,12 @@ describe('authentification et cloisonnement', () => {
 
   it('le client déposant ne voit que son dossier', async () => {
     const r = await api('client', 'GET', '/v1/dossiers');
-    expect(r.json.map((d: any) => d.id)).toEqual([DEMO.dupain]);
-    expect(r.json[0].niveau).toBe('depot');
+    // D'autres parcours créent des dossiers d'essai : on vérifie ce que le déposant ne doit JAMAIS voir, pas une liste exacte.
+    const ids = r.json.map((d: any) => d.id);
+    expect(ids).toContain(DEMO.dupain);
+    for (const interdit of [DEMO.martin, DEMO.bellevue, DEMO.leroy]) expect(ids).not.toContain(interdit);
+    expect(r.json.find((d: any) => d.id === DEMO.dupain).niveau).toBe('depot');
+    expect(r.json.every((d: any) => d.niveau !== null)).toBe(true);
   });
 
   it('l’administratrice voit le dossier Martin sans y être habilitée, et n’accède pas à son contenu', async () => {
@@ -324,7 +328,8 @@ describe('parcours 9 — pièce contenant des instructions malveillantes, fichie
     expect([f.attendu.totalTtc, null]).toContain(ttc);
     expect(doc.json.extraction.champs.totalHt?.valeur).toBe(f.attendu.totalHt);
     expect(doc.json.extraction.champs.numero?.valeur).toBe(f.attendu.numero);
-    expect((await api('client', 'GET', '/v1/dossiers')).json).toHaveLength(1);
+    const visibles = (await api('client', 'GET', '/v1/dossiers')).json.map((x: any) => x.id);
+    for (const interdit of [DEMO.martin, DEMO.bellevue, DEMO.leroy]) expect(visibles).not.toContain(interdit); // « accès à tous les dossiers » : sans effet
   });
 
   it('un fichier de test antivirus (EICAR) part en quarantaine et n’est jamais servi', async () => {

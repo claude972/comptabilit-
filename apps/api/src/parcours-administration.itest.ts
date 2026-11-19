@@ -72,7 +72,7 @@ describe('dossiers et habilitations', () => {
 
   it('remet les comptes de démonstration dans leur état initial', async () => {
     expect((await api('alice', 'DELETE', `/v1/dossiers/${dossierId}/habilitations/${DEMO.client}`)).statut).toBe(204);
-    expect((await api('client', 'GET', '/v1/dossiers')).json.map((d: any) => d.id)).toEqual([DEMO.dupain]);
+    expect((await api('client', 'GET', '/v1/dossiers')).json.map((d: any) => d.id)).not.toContain(dossierId);
   });
 
   it('liste les cabinets du compte, sans exiger le choix préalable d’un cabinet', async () => {

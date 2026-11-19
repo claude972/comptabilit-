@@ -210,7 +210,11 @@ export const missions = pgTable('missions', {
   creeLe: creeLe(),
 });
 
-/** Lettres de mission et avenants (un avenant référence la lettre qu'il modifie). */
+/**
+ * Lettres de mission et avenants (un avenant référence la lettre qu'il modifie).
+ * `contenu` est la description structurée saisie et relue par le cabinet (périmètre, durée, honoraires, obligations,
+ * livrables, mandats, limites, conditions de révision). Une lettre non validée est un projet et n'a aucun effet.
+ */
 export const lettresMission = pgTable('lettres_mission', {
   id: id(),
   cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
@@ -218,9 +222,85 @@ export const lettresMission = pgTable('lettres_mission', {
   missionId: uuid('mission_id').notNull().references(() => missions.id),
   avenantDe: uuid('avenant_de'),
   documentId: uuid('document_id'),
-  dateEffet: date('date_effet', { mode: 'string' }),
-  analyse: jsonb('analyse'),
-  statut: text('statut').notNull().default('projet'),
+  dateEffet: date('date_effet', { mode: 'string' }).notNull(),
+  contenu: jsonb('contenu').notNull(),
+  /** saisie_humaine | proposition_avenant (préparée par le logiciel à partir d'un travail hors périmètre) */
+  origine: text('origine').notNull().default('saisie_humaine'),
+  version: integer('version').notNull().default(1),
+  statut: text('statut').notNull().default('projet'), // projet | validee | remplacee
+  redigeePar: uuid('redigee_par').references(() => utilisateurs.id),
+  valideePar: uuid('validee_par').references(() => utilisateurs.id),
+  valideeLe: horodatage('validee_le'),
+  creeLe: creeLe(),
+});
+
+/** Travaux et demandes rattachés à la mission applicable à leur date. */
+export const travaux = pgTable('travaux', {
+  id: id(),
+  cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+  entiteId: uuid('entite_id').notNull().references(() => entites.id),
+  dateTravail: date('date_travail', { mode: 'string' }).notNull(),
+  /** Code de prestation du référentiel du cabinet (ex. tenue, revision, fiscal_tva). */
+  prestation: text('prestation').notNull(),
+  description: text('description').notNull(),
+  /** Temps OBSERVÉ, saisi par son auteur ; jamais confondu avec une estimation. */
+  tempsObserveMinutes: integer('temps_observe_minutes'),
+  auteurId: uuid('auteur_id').notNull().references(() => utilisateurs.id),
+  creeLe: creeLe(),
+});
+
+/** Barème de temps du cabinet par prestation : base explicite des estimations. */
+export const baremesTemps = pgTable(
+  'baremes_temps',
+  {
+    id: id(),
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    prestation: text('prestation').notNull(),
+    minutesReference: integer('minutes_reference').notNull(),
+    definiPar: uuid('defini_par').references(() => utilisateurs.id),
+    creeLe: creeLe(),
+  },
+  (t) => [uniqueIndex('baremes_unique').on(t.cabinetId, t.prestation)],
+);
+
+/** Registre des conseils : un conseil reste un projet jusqu'à sa validation, puis exige une autorisation d'envoi. */
+export const conseils = pgTable('conseils', {
+  id: id(),
+  cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+  entiteId: uuid('entite_id').notNull().references(() => entites.id),
+  missionId: uuid('mission_id').references(() => missions.id),
+  dateConseil: date('date_conseil', { mode: 'string' }).notNull(),
+  auteurId: uuid('auteur_id').notNull().references(() => utilisateurs.id),
+  objet: text('objet').notNull(),
+  contenu: text('contenu').notNull(),
+  destinataire: text('destinataire').notNull(),
+  /** Identifiants de documents du dossier joints au conseil. */
+  pieces: jsonb('pieces').notNull().default(sql`'[]'::jsonb`),
+  version: integer('version').notNull().default(1),
+  remplaceConseilId: uuid('remplace_conseil_id'),
+  statut: text('statut').notNull().default('projet'), // projet | valide | envoi_autorise | remplace
+  validePar: uuid('valide_par').references(() => utilisateurs.id),
+  valideLe: horodatage('valide_le'),
+  envoiAutorisePar: uuid('envoi_autorise_par').references(() => utilisateurs.id),
+  envoiAutoriseLe: horodatage('envoi_autorise_le'),
+  creeLe: creeLe(),
+});
+
+/**
+ * Événements constatés autour d'un conseil. Envoi, remise, réception et lecture sont quatre faits distincts :
+ * chacun n'est enregistré que s'il est réellement établi, avec son justificatif.
+ */
+export const evenementsConseil = pgTable('evenements_conseil', {
+  id: id(),
+  cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+  entiteId: uuid('entite_id').notNull().references(() => entites.id),
+  conseilId: uuid('conseil_id').notNull().references(() => conseils.id),
+  type: text('type').notNull(), // envoi | remise | reception | lecture
+  dateEvenement: horodatage('date_evenement').notNull(),
+  canal: text('canal').notNull(),
+  justificatif: text('justificatif').notNull(),
+  justificatifDocumentId: uuid('justificatif_document_id'),
+  saisiPar: uuid('saisi_par').notNull().references(() => utilisateurs.id),
   creeLe: creeLe(),
 });
 

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { PassThrough, Readable, Transform } from 'node:stream';
 import { finished } from 'node:stream/promises';
-import { and, asc, eq, getTableColumns, getTableName, gt, inArray, journaliser, schema as s, sql } from '@comtaple/db';
+import { and, asc, eq, getTableColumns, getTableName, gt, inArray, journaliser, notifier, schema as s, sql } from '@comtaple/db';
 import { cles, type TacheRestitutionCabinet } from '@comtaple/plateforme';
 import yazl from 'yazl';
 import type { Contexte } from './contexte.js';
@@ -297,10 +297,14 @@ export async function genererRestitutionCabinet(c: Contexte, t: TacheRestitution
         cibleId: debut.id,
         details: { taille: tailleArchive, dossiersInclus: inclus.length, dossiersEcartes: perimetre.ecartes.length, originaux, exclus: exclus.length, nonConformes: nonConformes.length },
       });
+      await notifier(tx, [debut.demandePar], { type: 'restitution_cabinet.prete', cibleType: 'restitution_cabinet', cibleId: debut.id });
     });
   } catch (err) {
     sortie.destroy(err instanceof Error ? err : new Error('erreur'));
-    await c.bd.avecContexte(ctx, (tx) => tx.update(s.restitutionsCabinet).set({ statut: 'echec', erreur: err instanceof Error ? err.message.slice(0, 500) : 'erreur' }).where(eq(s.restitutionsCabinet.id, debut.id)));
+    await c.bd.avecContexte(ctx, async (tx) => {
+      await tx.update(s.restitutionsCabinet).set({ statut: 'echec', erreur: err instanceof Error ? err.message.slice(0, 500) : 'erreur' }).where(eq(s.restitutionsCabinet.id, debut.id));
+      await notifier(tx, [debut.demandePar], { type: 'restitution_cabinet.echec', cibleType: 'restitution_cabinet', cibleId: debut.id });
+    });
     throw err;
   }
 }

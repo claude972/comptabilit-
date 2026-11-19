@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { CATALOGUE_CONTROLES, cleCompteBancaire, type Correspondance, decoderTexteReleve, detecterFormatReleve, etatCorrespondanceBanque, masquerCompteBancaire, verifierCorrespondances, PARAMETRES_RAPPROCHEMENT_PAR_DEFAUT, proposerProfilCsv, REGLES_RAPPROCHEMENT, schemaParametresRapprochement } from '@comtaple/core';
-import { type AccesBd, and, asc, count, desc, eq, gte, inArray, journaliser, lte, schema as s, sql, type Tx } from '@comtaple/db';
+import { type AccesBd, and, asc, count, desc, eq, gte, inArray, journaliser, lte, notifierGestionnaires, schema as s, sql, type Tx } from '@comtaple/db';
 import { type Files, parametresApprouves, type Stockage } from '@comtaple/plateforme';
 import { z } from 'zod';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
@@ -268,6 +268,7 @@ export class BanqueController {
         .values({ cabinetId: acces.cabinetId, controleId: 'TRE-003', entiteId: ex.entiteId, parametres, version: max + 1, motif: saisie.motif, proposeePar: acces.utilisateurId })
         .returning();
       await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'regle.proposee', cibleType: 'regle_cabinet', cibleId: r!.id, entiteId: ex.entiteId, details: { controleId: 'TRE-003', version: r!.version, origine: 'correspondance_banque', comptes: verif.correspondances.map((c) => c.compteNum) } });
+      await notifierGestionnaires(tx, { type: 'regle.a_decider', entiteId: ex.entiteId, cibleType: 'regle_cabinet', cibleId: r!.id, donnees: { controleId: 'TRE-003', version: r!.version, origine: 'correspondance_banque' } });
       return { id: r!.id, version: r!.version, statut: r!.statut, mention: 'Proposition enregistrée : sans effet tant qu’elle n’est pas approuvée par un administrateur ou un associé, après mesure de son impact.' };
     });
   }

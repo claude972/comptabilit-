@@ -1183,3 +1183,26 @@ export const restitutionsCabinet = pgTable('restitutions_cabinet', {
   creeLe: creeLe(),
   termineLe: horodatage('termine_le'),
 });
+
+/**
+ * Notifications INTERNES à l'application : aucune n'est envoyée à l'extérieur (ni courriel, ni SMS, ni notification
+ * poussée). Chacun ne lit que les siennes (politique de la base). Elles ne portent que des identifiants et quelques
+ * valeurs non sensibles : le texte est composé à la lecture, selon les droits du lecteur à cet instant.
+ */
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: id(),
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    destinataireId: uuid('destinataire_id').notNull().references(() => utilisateurs.id),
+    type: text('type').notNull(),
+    /** Dossier concerné, s'il y en a un (nommé `entite_id_cible` : l'accès se juge à la lecture, pas à l'écriture). */
+    entiteId: uuid('entite_id_cible').references(() => entites.id),
+    cibleType: text('cible_type'),
+    cibleId: text('cible_id'),
+    donnees: jsonb('donnees').notNull().default(sql`'{}'::jsonb`),
+    creeLe: creeLe(),
+    lueLe: horodatage('lue_le'),
+  },
+  (t) => [index('notifications_destinataire').on(t.destinataireId, t.lueLe, t.creeLe)],
+);

@@ -17,7 +17,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { type ChampsFacture, schemaChaineDecimale, verifierCoherenceFacture } from '@comtaple/core';
-import { type AccesBd, and, asc, desc, eq, journaliser, schema as s, sql, type Tx } from '@comtaple/db';
+import { type AccesBd, and, asc, desc, eq, journaliser, notifier, schema as s, sql, type Tx } from '@comtaple/db';
 import type { Files, Stockage } from '@comtaple/plateforme';
 import type { Response } from 'express';
 import { z } from 'zod';
@@ -248,8 +248,14 @@ export class DocumentsController {
         .returning();
       if (d.type === 'demande_complement') {
         await tx.update(s.documents).set({ statut: 'a_completer', majLe: sql`now()` }).where(eq(s.documents.id, id));
+        // Le déposant de la pièce est prévenu dans l'application (aucun envoi extérieur).
+        const deposants = await tx.select({ deposantId: s.receptions.deposantId }).from(s.receptions).where(eq(s.receptions.documentId, id));
+        await notifier(tx, deposants.map((x) => x.deposantId), { type: 'document.complement_demande', entiteId: doc.entiteId, cibleType: 'document', cibleId: id });
       }
       if (d.type === 'reponse') {
+        // Les auteurs des demandes de complément encore ouvertes sont prévenus de la réponse.
+        const demandeurs = await tx.select({ auteurId: s.echangesDocument.auteurId }).from(s.echangesDocument).where(and(eq(s.echangesDocument.documentId, id), eq(s.echangesDocument.type, 'demande_complement'), eq(s.echangesDocument.resolu, false)));
+        await notifier(tx, demandeurs.map((x) => x.auteurId), { type: 'document.reponse', entiteId: doc.entiteId, cibleType: 'document', cibleId: id });
         await tx
           .update(s.echangesDocument)
           .set({ resolu: true })

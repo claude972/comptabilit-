@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { and, asc, eq, gt, inArray, isNull, journaliser, or, schema as s, sql } from '@comtaple/db';
+import { and, asc, eq, gt, inArray, isNull, journaliser, notifier, or, schema as s, sql } from '@comtaple/db';
 import { cles, type TacheRestitution } from '@comtaple/plateforme';
 import { COLONNES_ECRITURES, csv, objetJson, ouvrirArchive, tableauJson } from './archive.js';
 import type { Contexte } from './contexte.js';
@@ -205,10 +205,14 @@ export async function genererRestitution(c: Contexte, t: TacheRestitution): Prom
     await c.bd.avecContexte(ctx, async (tx) => {
       await tx.update(s.restitutions).set({ statut: 'termine', cleArchive: cle, sha256, taille, resume, termineLe: sql`now()` }).where(eq(s.restitutions.id, debut.id));
       await journaliser(tx, { cabinetId: t.cabinetId, acteurType: 'systeme', action: 'restitution.generee', cibleType: 'restitution', cibleId: debut.id, entiteId: e, details: { taille, originaux: nbOriginaux, exclus: exclus.length } });
+      await notifier(tx, [debut.demandePar], { type: 'restitution.prete', entiteId: e, cibleType: 'restitution', cibleId: debut.id });
     });
   } catch (err) {
     archive.abandonner(err);
-    await c.bd.avecContexte(ctx, (tx) => tx.update(s.restitutions).set({ statut: 'echec', erreur: err instanceof Error ? err.message.slice(0, 500) : 'erreur' }).where(eq(s.restitutions.id, debut.id)));
+    await c.bd.avecContexte(ctx, async (tx) => {
+      await tx.update(s.restitutions).set({ statut: 'echec', erreur: err instanceof Error ? err.message.slice(0, 500) : 'erreur' }).where(eq(s.restitutions.id, debut.id));
+      await notifier(tx, [debut.demandePar], { type: 'restitution.echec', entiteId: e, cibleType: 'restitution', cibleId: debut.id });
+    });
     throw err;
   }
 }

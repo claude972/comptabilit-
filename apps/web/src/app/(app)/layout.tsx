@@ -8,6 +8,7 @@ import { Alerte, Carte, Titre } from '@/components/ui/base';
 import { LIBELLE_ROLE } from '@/lib/libelles';
 import { estGestionnaire } from '@/lib/messagerie';
 import { estDeposant, lireMoi } from '@/lib/serveur/donnees';
+import { tenter } from '@/lib/serveur/api';
 import { lireSession } from '@/lib/serveur/session';
 
 export const dynamic = 'force-dynamic';
@@ -32,6 +33,9 @@ export default async function MiseEnPage({ children }: { children: ReactNode }) 
   }
   const { utilisateur, cabinet, role } = moi.donnees;
   const session = await lireSession(await cookies());
+  // Notifications internes non lues (aucun envoi extérieur) ; une erreur de lecture n'empêche pas d'afficher la page.
+  const decompte = await tenter<{ nonLues: number }>('v1/notifications/decompte');
+  const nonLues = decompte.ok ? decompte.donnees.nonLues : null;
   // Un déposant n'a aucun lien vers l'espace cabinet ; l'API lui en refuse de toute façon l'accès.
   const liens: LienNavigation[] = estDeposant(role)
     ? [
@@ -67,6 +71,9 @@ export default async function MiseEnPage({ children }: { children: ReactNode }) 
                 Changer de cabinet
               </Link>
             ) : null}
+            <Link href="/notifications" prefetch={false} className="inline-flex min-h-11 items-center text-sm" data-testid="lien-notifications" data-non-lues={nonLues ?? ''}>
+              Notifications{nonLues ? ` (${nonLues})` : ''}
+            </Link>
             <p className="text-right text-sm leading-tight">
               <span className="block font-medium" data-testid="utilisateur">{utilisateur.nom}</span>
               <span className="block text-texte-doux">

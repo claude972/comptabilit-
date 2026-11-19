@@ -86,3 +86,27 @@ export async function journaliser(tx: Tx, e: EvenementAudit): Promise<void> {
     details: e.details ?? {},
   });
 }
+
+export interface Notification {
+  type: string;
+  entiteId?: string | null;
+  cibleType?: string | null;
+  cibleId?: string | null;
+  /** Quelques valeurs non sensibles (identifiant de contrôle, version, issue). Jamais de secret ni de contenu de pièce. */
+  donnees?: Record<string, string | number | boolean | null>;
+}
+
+/**
+ * Notification interne à des membres ACTIFS du cabinet du contexte (les autres sont ignorés), l'auteur de l'action
+ * excepté. Passe par une fonction de la base : l'application ne peut pas écrire la table directement.
+ */
+export async function notifier(tx: Tx, destinataires: ReadonlyArray<string | null | undefined>, n: Notification): Promise<void> {
+  const ids = [...new Set(destinataires.filter((x): x is string => typeof x === 'string' && /^[0-9a-f-]{36}$/i.test(x)))];
+  if (!ids.length) return;
+  await tx.execute(sql`select notifier(${`{${ids.join(',')}}`}::uuid[], ${n.type}, ${n.entiteId ?? null}::uuid, ${n.cibleType ?? null}, ${n.cibleId ?? null}, ${JSON.stringify(n.donnees ?? {})}::jsonb)`);
+}
+
+/** Notification interne aux gestionnaires actifs (administrateurs, associés) du cabinet du contexte, l'auteur excepté. */
+export async function notifierGestionnaires(tx: Tx, n: Notification): Promise<void> {
+  await tx.execute(sql`select notifier_gestionnaires(${n.type}, ${n.entiteId ?? null}::uuid, ${n.cibleType ?? null}, ${n.cibleId ?? null}, ${JSON.stringify(n.donnees ?? {})}::jsonb)`);
+}

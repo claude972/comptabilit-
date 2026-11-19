@@ -1,7 +1,7 @@
 import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { CATALOGUE_CONTROLES, executerControles } from '@comtaple/core';
-import { type AccesBd, and, count, desc, eq, inArray, isNull, journaliser, schema as s, sql, type Tx } from '@comtaple/db';
+import { type AccesBd, and, count, desc, eq, inArray, isNull, journaliser, notifier, notifierGestionnaires, schema as s, sql, type Tx } from '@comtaple/db';
 import { lignesDuLot, parametresApprouves, relevesDuDossier } from '@comtaple/plateforme';
 import { z } from 'zod';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
@@ -99,6 +99,7 @@ export class ReglesController {
         .values({ cabinetId: acces.cabinetId, controleId: d.controleId, entiteId: d.entiteId ?? null, parametres: d.parametres, version: max + 1, motif: d.motif, proposeePar: acces.utilisateurId })
         .returning();
       await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'regle.proposee', cibleType: 'regle_cabinet', cibleId: r!.id, entiteId: d.entiteId ?? null, details: { controleId: d.controleId, version: r!.version, parametres: d.parametres } });
+      await notifierGestionnaires(tx, { type: 'regle.a_decider', entiteId: d.entiteId ?? null, cibleType: 'regle_cabinet', cibleId: r!.id, donnees: { controleId: d.controleId, version: r!.version } });
       return r;
     });
   }
@@ -173,6 +174,7 @@ export class ReglesController {
       const [maj] = await tx.update(s.reglesCabinet).set({ statut: 'approuvee', approuveePar: acces.utilisateurId, decideeLe: sql`now()` }).where(eq(s.reglesCabinet.id, id)).returning();
       await this.rendreObsolete(tx, r.entiteId);
       await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'regle.approuvee', cibleType: 'regle_cabinet', cibleId: id, entiteId: r.entiteId, details: { controleId: r.controleId, version: r.version } });
+      await notifier(tx, [r.proposeePar], { type: 'regle.decidee', entiteId: r.entiteId, cibleType: 'regle_cabinet', cibleId: id, donnees: { controleId: r.controleId, version: r.version, decision: 'approuvee' } });
       return maj;
     });
   }
@@ -190,6 +192,7 @@ export class ReglesController {
       if (r.statut !== 'proposee') throw new ConflictException(`Règle au statut « ${r.statut} »`);
       const [maj] = await tx.update(s.reglesCabinet).set({ statut: 'refusee', approuveePar: acces.utilisateurId, decideeLe: sql`now()`, motifDecision: d.motif }).where(eq(s.reglesCabinet.id, id)).returning();
       await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'regle.refusee', cibleType: 'regle_cabinet', cibleId: id, entiteId: r.entiteId, details: { motif: d.motif } });
+      await notifier(tx, [r.proposeePar], { type: 'regle.decidee', entiteId: r.entiteId, cibleType: 'regle_cabinet', cibleId: id, donnees: { controleId: r.controleId, version: r.version, decision: 'refusee' } });
       return maj;
     });
   }

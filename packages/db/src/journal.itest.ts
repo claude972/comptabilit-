@@ -16,7 +16,7 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DEMO, amorcer } from './amorcer.js';
 import { chargerEnvLocal } from './env.js';
-import { type AccesBd, creerAccesBd, journaliser, schema as s, sql, urlBd } from './index.js';
+import { type AccesBd, creerAccesBd, journaliser, notifier, notifierGestionnaires, schema as s, sql, urlBd } from './index.js';
 import { migrer } from './migrer.js';
 import { type AncreJournal, type LigneJournalExportee, empreinteAncre, empreinteLigne, etablirAncre, exporterJournal, lireEtatJournal, serialiserAncre, verifierExport } from './ancre-journal.js';
 import { consignerAnomalieJournal, ecartsJournal } from './provisionnement.js';
@@ -502,5 +502,61 @@ describe('ancres du journal : format et vérification hors base (aucun ancrage e
     expect(r.rupture).toBeNull();
     expect(r.ancres).toEqual([{ rang: 1, conforme: false, motif: 'la ligne figée par l’ancre n’a plus la même empreinte : le journal a été réécrit' }]);
     expect(r.conforme).toBe(false);
+  });
+});
+
+describe('notifications internes : écriture contrôlée, lecture par le seul destinataire', () => {
+  const lues = (cabinet: string, utilisateur: string) => app.avecContexte(ctx(cabinet, utilisateur), (tx) => tx.select().from(s.notifications));
+
+  it('seuls les membres actifs du cabinet du contexte sont notifiés ; l’auteur ne se notifie pas ; chacun ne lit que les siennes', async () => {
+    await app.avecContexte(ctx(DEMO.cabinetA, DEMO.chloe), async (tx) => {
+      // Destinataires : une administratrice du cabinet, l'auteure elle-même, un membre d'un AUTRE cabinet, un inconnu.
+      await notifier(tx, [DEMO.alice, DEMO.chloe, DEMO.bruno, '00000000-0000-4000-8000-000000000000', null], { type: 'essai.notification', cibleType: 'essai', cibleId: 'n1', donnees: { n: 1 } });
+    });
+    expect((await lues(DEMO.cabinetA, DEMO.alice)).filter((n) => n.cibleId === 'n1')).toHaveLength(1);
+    expect((await lues(DEMO.cabinetA, DEMO.chloe)).filter((n) => n.cibleId === 'n1')).toHaveLength(0); // l'auteure
+    expect((await lues(DEMO.cabinetA, DEMO.remi)).filter((n) => n.cibleId === 'n1')).toHaveLength(0); // non destinataire
+    expect(await lues(DEMO.cabinetB, DEMO.bruno)).toEqual([]); // membre d'un autre cabinet : rien n'a été créé pour lui
+    expect((await admin.query(`select count(*)::int as n from notifications where cible_id = 'n1'`)).rows[0].n).toBe(1);
+    // Usurper l'identité d'un autre cabinet ne donne rien à lire.
+    expect(await lues(DEMO.cabinetB, DEMO.alice)).toEqual([]);
+  });
+
+  it('aux gestionnaires : administrateurs et associés actifs seulement, l’auteur excepté', async () => {
+    await app.avecContexte(ctx(DEMO.cabinetA, DEMO.chloe), (tx) => notifierGestionnaires(tx, { type: 'essai.gestionnaires', cibleId: 'g1' }));
+    const destinataires = (await admin.query(`select destinataire_id from notifications where cible_id = 'g1'`)).rows.map((r) => r.destinataire_id);
+    const gestionnaires = (await admin.query(`select utilisateur_id from appartenances where cabinet_id = $1 and actif and role in ('administrateur', 'associe')`, [DEMO.cabinetA])).rows.map((r) => r.utilisateur_id);
+    expect(destinataires.sort()).toEqual(gestionnaires.sort());
+    expect(destinataires).toContain(DEMO.alice);
+    expect(destinataires).not.toContain(DEMO.remi);
+    // Demandée par une gestionnaire : elle ne se notifie pas elle-même.
+    await app.avecContexte(ctx(DEMO.cabinetA, DEMO.alice), (tx) => notifierGestionnaires(tx, { type: 'essai.gestionnaires', cibleId: 'g2' }));
+    expect((await admin.query(`select destinataire_id from notifications where cible_id = 'g2'`)).rows.map((r) => r.destinataire_id)).not.toContain(DEMO.alice);
+  });
+
+  it('refus : écriture directe, dossier d’un autre cabinet, type invalide, données volumineuses, contexte absent', async () => {
+    const direct = sql`insert into notifications (cabinet_id, destinataire_id, type) values (${DEMO.cabinetA}::uuid, ${DEMO.alice}::uuid, 'essai.direct')`;
+    for (const acces of [app, worker]) await expect(acces.avecContexte(ctx(DEMO.cabinetA, DEMO.chloe), (tx) => tx.execute(direct))).rejects.toThrow();
+    const dans = (fn: Parameters<AccesBd['avecContexte']>[1]) => app.avecContexte(ctx(DEMO.cabinetA, DEMO.chloe), fn);
+    await expect(dans((tx) => notifier(tx, [DEMO.alice], { type: 'essai.etranger', entiteId: DEMO.leroy }))).rejects.toThrow(); // dossier du cabinet B
+    await expect(dans((tx) => notifier(tx, [DEMO.alice], { type: 'Type Invalide' }))).rejects.toThrow();
+    await expect(dans((tx) => notifier(tx, [DEMO.alice], { type: 'essai.gros', donnees: { x: 'y'.repeat(5000) } }))).rejects.toThrow();
+    await expect(app.avecContexte({}, (tx) => notifier(tx, [DEMO.alice], { type: 'essai.sans_contexte' }))).rejects.toThrow();
+    expect((await admin.query(`select count(*)::int as n from notifications where type in ('essai.direct', 'essai.etranger', 'essai.gros', 'essai.sans_contexte')`)).rows[0].n).toBe(0);
+  });
+
+  it('le destinataire ne peut que marquer « lue » ; ni réécrire, ni supprimer, ni lire ou marquer celles des autres', async () => {
+    const [n] = (await lues(DEMO.cabinetA, DEMO.alice)).filter((x) => x.cibleId === 'n1');
+    const alice = (requete: ReturnType<typeof sql>) => app.avecContexte(ctx(DEMO.cabinetA, DEMO.alice), (tx) => tx.execute(requete));
+    await expect(alice(sql`update notifications set type = 'essai.reecrit' where id = ${n!.id}::uuid`)).rejects.toThrow();
+    await expect(alice(sql`update notifications set destinataire_id = ${DEMO.remi}::uuid where id = ${n!.id}::uuid`)).rejects.toThrow();
+    await expect(alice(sql`delete from notifications where id = ${n!.id}::uuid`)).rejects.toThrow();
+    // Rémi ne peut pas marquer la notification d'Alice : elle n'existe pas pour lui.
+    const parRemi = await app.avecContexte(ctx(DEMO.cabinetA, DEMO.remi), (tx) => tx.execute(sql`update notifications set lue_le = now() where id = ${n!.id}::uuid`));
+    expect(parRemi.rowCount).toBe(0);
+    expect((await alice(sql`update notifications set lue_le = now() where id = ${n!.id}::uuid`)).rowCount).toBe(1);
+    const apres = (await admin.query('select type, destinataire_id, lue_le from notifications where id = $1', [n!.id])).rows[0];
+    expect(apres).toMatchObject({ type: 'essai.notification', destinataire_id: DEMO.alice });
+    expect(apres.lue_le).not.toBeNull();
   });
 });

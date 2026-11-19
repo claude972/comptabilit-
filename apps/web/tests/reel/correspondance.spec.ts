@@ -133,6 +133,19 @@ test('correspondance : indéterminée, proposée par la collaboratrice sans effe
   expect(impact.json.avant.statut).toBe('non_realise');
   expect(impact.json.apres.statut).not.toBe('non_realise');
   const alice = await ouvrir(browser, ALICE_MAIL, `/dossiers/${dossier}/banque/correspondance?exercice=${exercice}`);
+  // Notification interne : l'administratrice est prévenue dans l'application qu'une correspondance attend sa décision.
+  expect(Number(await alice.getByTestId('lien-notifications').getAttribute('data-non-lues'))).toBeGreaterThan(0);
+  await alice.getByTestId('lien-notifications').click();
+  await expect(alice.getByRole('heading', { name: 'Notifications', level: 1 })).toBeVisible();
+  await expect(alice.getByTestId('mention-notifications')).toContainText('rien n’est envoyé par courriel, SMS ou notification sur votre appareil');
+  const notification = alice.locator('li[data-type="regle.a_decider"][data-lue="false"]').filter({ hasText: `Essai deux banques ${SEL}` });
+  await expect(notification).toHaveCount(1);
+  await expect(notification).toContainText('Une correspondance de comptes de banque attend une décision');
+  await expect(notification).toContainText('contrôle TRE-003, version 1');
+  await expect(notification.getByRole('link', { name: 'Ouvrir' })).toHaveAttribute('href', '/regles');
+  await notification.getByRole('button', { name: 'Marquer comme lue' }).click();
+  await expect(alice.locator('li[data-type="regle.a_decider"][data-lue="true"]').filter({ hasText: `Essai deux banques ${SEL}` })).toHaveCount(1);
+  await alice.goto(`/dossiers/${dossier}/banque/correspondance?exercice=${exercice}`);
   await expect(alice.getByTestId('propositions-correspondance').locator('[data-proposition]')).toContainText('impact mesuré, en attente d’approbation');
   expect((await bff(alice, 'POST', `v1/regles/${regleId}/approuver`)).statut).toBe(200);
   await alice.reload();
@@ -143,6 +156,9 @@ test('correspondance : indéterminée, proposée par la collaboratrice sans effe
   await expect(alice.getByTestId('en-vigueur')).toContainText('Règle approuvée, version 1 (propre à ce dossier)');
   await expect(alice.getByTestId('propositions-correspondance').locator('[data-proposition]')).toHaveCount(0);
   for (const iban of [IBAN_A, IBAN_B]) expect(await alice.content()).not.toContain(iban);
+  // L'auteure de la proposition est prévenue de la décision, dans l'application seulement.
+  await chloe.goto('/notifications');
+  await expect(chloe.locator('li[data-type="regle.decidee"]').filter({ hasText: `Essai deux banques ${SEL}` })).toContainText('Votre proposition de règle a été approuvée');
   await alice.context().close();
   await chloe.context().close();
 });

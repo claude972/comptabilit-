@@ -15,7 +15,7 @@ import {
   schemaProfilCsvBanque,
   TAILLE_MAX_RELEVE,
 } from '@comtaple/core';
-import { and, asc, eq, gte, journaliser, lte, schema as s, sql, type Tx } from '@comtaple/db';
+import { and, asc, eq, gte, inArray, journaliser, lte, schema as s, sql, type Tx } from '@comtaple/db';
 import { lignesDuLot, type TacheImportReleve, type TacheRapprochement } from '@comtaple/plateforme';
 import type { Contexte } from './contexte.js';
 
@@ -29,6 +29,7 @@ export async function importerReleve(c: Contexte, t: TacheImportReleve): Promise
   const init = await c.bd.avecContexte(ctx, async (tx) => {
     const [lot] = await tx.select().from(s.lotsImport).where(eq(s.lotsImport.id, t.lotImportId));
     if (!lot?.fichierId || lot.type !== 'releve_bancaire') return null;
+    if (lot.statut === 'annule') return null;
     const [fichier] = await tx.select().from(s.fichiers).where(eq(s.fichiers.id, lot.fichierId));
     if (!fichier) return null;
     await tx.update(s.lotsImport).set({ statut: 'en_cours', progression: 0 }).where(eq(s.lotsImport.id, lot.id));
@@ -133,6 +134,15 @@ export async function importerReleve(c: Contexte, t: TacheImportReleve): Promise
         .returning({ id: s.mouvementsBancaires.id });
       nouveaux += inseres.length;
     }
+    // Chaque mouvement du fichier est rattaché à CE lot, qu'il soit nouveau ou déjà connu : annuler un autre relevé
+    // qui le contenait aussi ne le fera pas disparaître.
+    for (let i = 0; i < rapport.mouvements.length; i += 500) {
+      const cles = rapport.mouvements.slice(i, i + 500).map((m) => m.cleIdempotence);
+      const connus = await tx.select({ id: s.mouvementsBancaires.id }).from(s.mouvementsBancaires).where(and(eq(s.mouvementsBancaires.entiteId, lot.entiteId), inArray(s.mouvementsBancaires.cleIdempotence, cles)));
+      if (connus.length) {
+        await tx.insert(s.mouvementsLots).values(connus.map((m) => ({ cabinetId: t.cabinetId, entiteId: lot.entiteId, mouvementId: m.id, lotImportId: lot.id }))).onConflictDoNothing();
+      }
+    }
     // Les rapprochements calculés avant cet import ne reflètent plus les mouvements connus.
     if (nouveaux > 0) await tx.update(s.executionsRapprochement).set({ obsolete: true }).where(eq(s.executionsRapprochement.entiteId, lot.entiteId));
     const { mouvements: _m, ...resume } = rapport;
@@ -162,8 +172,19 @@ export { lignesDuLot } from '@comtaple/plateforme';
 
 /** Reconstitue, pour les contrôles, les relevés du dossier tels que lus par le moteur (relevés + leurs mouvements). */
 export async function relevesDuDossier(tx: Tx, entiteId: string): Promise<RapportReleve[]> {
-  const releves = await tx.select().from(s.relevesBancaires).where(eq(s.relevesBancaires.entiteId, entiteId)).orderBy(asc(s.relevesBancaires.dateCloture));
+  // Seuls les relevés des lots ACTIFS comptent (un relevé annulé est conservé mais écarté).
+  const releves = await tx
+    .select({ r: s.relevesBancaires })
+    .from(s.relevesBancaires)
+    .innerJoin(s.lotsImport, and(eq(s.lotsImport.id, s.relevesBancaires.lotImportId), eq(s.lotsImport.actif, true)))
+    .where(eq(s.relevesBancaires.entiteId, entiteId))
+    .orderBy(asc(s.relevesBancaires.dateCloture))
+    .then((lignes) => lignes.map((l) => l.r));
   if (releves.length === 0) return [];
+  // Chaque mouvement est restitué dans le relevé de chaque lot actif qui le contient.
+  const liens = await tx.select().from(s.mouvementsLots).where(eq(s.mouvementsLots.entiteId, entiteId));
+  const lotsDe = new Map<string, string[]>();
+  for (const l of liens) lotsDe.set(l.mouvementId, [...(lotsDe.get(l.mouvementId) ?? []), l.lotImportId]);
   const mouvements = await tx.select().from(s.mouvementsBancaires).where(eq(s.mouvementsBancaires.entiteId, entiteId)).orderBy(asc(s.mouvementsBancaires.dateOperation), asc(s.mouvementsBancaires.rang));
   const parLot = new Map<string, RapportReleve>();
   for (const r of releves) {
@@ -172,7 +193,7 @@ export async function relevesDuDossier(tx: Tx, entiteId: string): Promise<Rappor
     parLot.set(r.lotImportId, rapport);
   }
   for (const m of mouvements) {
-    if (m.lotImportId && parLot.has(m.lotImportId)) parLot.get(m.lotImportId)!.mouvements.push(m.brut as MouvementBancaire);
+    for (const lotId of lotsDe.get(m.id) ?? []) if (parLot.has(lotId)) parLot.get(lotId)!.mouvements.push(m.brut as MouvementBancaire);
   }
   return [...parLot.values()];
 }
@@ -196,7 +217,7 @@ export async function executerRapprochement(c: Contexte, t: TacheRapprochement):
     const mouvements = await tx
       .select()
       .from(s.mouvementsBancaires)
-      .where(and(eq(s.mouvementsBancaires.entiteId, execution.entiteId), gte(s.mouvementsBancaires.dateOperation, exercice.debut), lte(s.mouvementsBancaires.dateOperation, exercice.fin)))
+      .where(and(eq(s.mouvementsBancaires.entiteId, execution.entiteId), gte(s.mouvementsBancaires.dateOperation, exercice.debut), lte(s.mouvementsBancaires.dateOperation, exercice.fin), sql`mouvement_pris_en_compte(${s.mouvementsBancaires.id})`))
       .orderBy(asc(s.mouvementsBancaires.dateOperation), asc(s.mouvementsBancaires.rang));
     // Le moteur identifie un mouvement par sa clé stable ; on la retraduit en identifiant de ligne à l'enregistrement.
     const idParCle = new Map(mouvements.map((m) => [m.cleIdempotence, m.id]));

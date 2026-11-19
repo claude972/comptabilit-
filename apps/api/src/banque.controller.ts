@@ -38,8 +38,15 @@ export class BanqueController {
         .from(s.lotsImport)
         .where(and(eq(s.lotsImport.entiteId, entiteId), eq(s.lotsImport.type, 'releve_bancaire')))
         .orderBy(desc(s.lotsImport.creeLe));
-      const releves = await tx.select().from(s.relevesBancaires).where(eq(s.relevesBancaires.entiteId, entiteId)).orderBy(desc(s.relevesBancaires.dateCloture));
-      const [{ n } = { n: 0 }] = (await tx.execute(sql`select count(*)::int as n from mouvements_bancaires where entite_id = ${entiteId}::uuid`)).rows as Array<{ n: number }>;
+      // Relevés et mouvements PRIS EN COMPTE : ceux des imports actifs. Un import annulé reste listé, ses données sont écartées.
+      const releves = await tx
+        .select({ r: s.relevesBancaires })
+        .from(s.relevesBancaires)
+        .innerJoin(s.lotsImport, and(eq(s.lotsImport.id, s.relevesBancaires.lotImportId), eq(s.lotsImport.actif, true)))
+        .where(eq(s.relevesBancaires.entiteId, entiteId))
+        .orderBy(desc(s.relevesBancaires.dateCloture))
+        .then((l) => l.map((x) => x.r));
+      const [{ n } = { n: 0 }] = (await tx.execute(sql`select count(*)::int as n from mouvements_bancaires m where m.entite_id = ${entiteId}::uuid and mouvement_pris_en_compte(m.id)`)).rows as Array<{ n: number }>;
       return { imports, releves: releves.map(({ brut: _b, ...r }) => r), nbMouvements: n };
     });
   }
@@ -56,7 +63,7 @@ export class BanqueController {
     const TAILLE = 100;
     return this.bd.avecContexte(acces, async (tx) => {
       await exigerNiveau(tx, entiteId, 'lecture');
-      const conditions = [eq(s.mouvementsBancaires.entiteId, entiteId)];
+      const conditions = [eq(s.mouvementsBancaires.entiteId, entiteId), sql`mouvement_pris_en_compte(${s.mouvementsBancaires.id})`];
       if (du) conditions.push(gte(s.mouvementsBancaires.dateOperation, du));
       if (au) conditions.push(lte(s.mouvementsBancaires.dateOperation, au));
       const lignes = await tx
@@ -162,7 +169,7 @@ export class BanqueController {
       const [lot] = await tx.select().from(s.lotsImport).where(and(eq(s.lotsImport.exerciceId, id), eq(s.lotsImport.type, 'fec'), eq(s.lotsImport.actif, true)));
       if (!lot) throw new ConflictException('Aucune donnée comptable importée pour cet exercice : le rapprochement ne peut pas être réalisé');
       const [{ n } = { n: 0 }] = (
-        await tx.execute(sql`select count(*)::int as n from mouvements_bancaires where entite_id = ${ex.entiteId}::uuid and date_operation between ${ex.debut}::date and ${ex.fin}::date`)
+        await tx.execute(sql`select count(*)::int as n from mouvements_bancaires m where m.entite_id = ${ex.entiteId}::uuid and m.date_operation between ${ex.debut}::date and ${ex.fin}::date and mouvement_pris_en_compte(m.id)`)
       ).rows as Array<{ n: number }>;
       if (n === 0) throw new ConflictException('Aucun mouvement bancaire importé sur la période de l’exercice : le rapprochement ne peut pas être réalisé');
       const [e] = await tx

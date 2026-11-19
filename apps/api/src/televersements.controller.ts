@@ -39,6 +39,8 @@ const ouverture = z.object({
   profilCsv: z.record(z.string(), z.unknown()).optional(),
   /** Pièce : ce dépôt est une NOUVELLE VERSION du document indiqué (≠ doublon binaire : le fichier doit différer). */
   remplaceDocumentId: uuid.optional(),
+  /** Import comptable ou bancaire : campagne d'import (plusieurs dossiers) à laquelle rattacher le lot. */
+  campagneId: uuid.optional(),
   nature: z.enum(s.natureDocument.enumValues).default('a_qualifier'),
   commentaire: z.string().max(2000).optional(),
   exerciceId: uuid.optional(),
@@ -86,6 +88,12 @@ export class TeleversementsController {
     return this.bd.avecContexte(acces, async (tx) => {
       await exigerNiveau(tx, d.entiteId, d.usage === 'piece' ? 'depot' : 'collaboration');
       await exigerServiceOuvert(tx);
+      if (d.campagneId) {
+        const [campagne] = await tx.select().from(s.campagnesImport).where(eq(s.campagnesImport.id, d.campagneId));
+        if (!campagne) throw new NotFoundException('Campagne d’import introuvable');
+        if (campagne.statut !== 'ouverte') throw new ConflictException('Cette campagne n’accepte plus de fichiers');
+        if (campagne.type !== (d.usage === 'fec' ? 'fec' : d.usage === 'banque' ? 'releve_bancaire' : '')) throw new BadRequestException('Ce fichier ne correspond pas au type de la campagne');
+      }
       if (d.remplaceDocumentId) {
         if (d.usage !== 'piece') throw new BadRequestException('Seule une pièce peut recevoir une nouvelle version');
         const [ancien] = await tx.select().from(s.documents).where(eq(s.documents.id, d.remplaceDocumentId));
@@ -136,6 +144,7 @@ export class TeleversementsController {
           commentaire: d.commentaire ?? null,
           usage: d.usage,
           remplaceDocumentId: d.remplaceDocumentId ?? null,
+          campagneId: d.campagneId ?? null,
           parametres: d.profilCsv ? { profilCsv: d.profilCsv } : null,
           exerciceId: d.exerciceId ?? null,
           statutDonnees: d.statutDonnees ?? null,
@@ -259,6 +268,7 @@ export class TeleversementsController {
               version: max + 1,
               actif: false,
               lancePar: acces.utilisateurId,
+              campagneId: t.campagneId,
               rapport: { nomFichier: t.nomFichier },
             })
             .returning();
@@ -293,6 +303,7 @@ export class TeleversementsController {
               cleIdempotence: cle,
               actif: false,
               lancePar: acces.utilisateurId,
+              campagneId: t.campagneId,
               rapport: { nomFichier: t.nomFichier, ...((t.parametres as Record<string, unknown> | null) ?? {}) },
             })
             .returning();

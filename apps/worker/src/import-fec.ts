@@ -5,6 +5,9 @@ import type { Contexte } from './contexte.js';
 
 const TAILLE_LOT = 1000;
 
+/** Levée quand l'utilisateur a annulé l'import pendant son exécution. */
+class ImportAnnule extends Error {}
+
 /**
  * Import d'un FEC ou d'une extraction de travail : lecture en flux, normalisation, rapport ligne par ligne.
  * Idempotent : relancer la tâche remplace les lignes de CE lot sans jamais dupliquer.
@@ -65,7 +68,13 @@ export async function importerFec(c: Contexte, t: TacheImportFec): Promise<void>
         tampon = [];
         if (total % 10_000 === 0) {
           // Progression visible hors transaction (connexion distincte, même contexte cabinet).
-          await c.bd.avecContexte(ctx, (tx2) => tx2.update(s.lotsImport).set({ progression: total }).where(eq(s.lotsImport.id, lot.id)));
+          // Progression visible hors transaction, et prise en compte d'une ANNULATION demandée pendant l'import :
+          // la transaction en cours est alors abandonnée, aucune ligne n'est conservée, les données actives restent intactes.
+          const etat = await c.bd.avecContexte(ctx, async (tx2) => {
+            const [maj] = await tx2.update(s.lotsImport).set({ progression: total }).where(and(eq(s.lotsImport.id, lot.id), ne(s.lotsImport.statut, 'annule'))).returning({ id: s.lotsImport.id });
+            return maj ? 'en_cours' : 'annule';
+          });
+          if (etat === 'annule') throw new ImportAnnule();
         }
       };
       const rapport = await analyserFec(flux as AsyncIterable<Uint8Array>, {
@@ -142,6 +151,7 @@ export async function importerFec(c: Contexte, t: TacheImportFec): Promise<void>
     if (executionId) await c.taches.executerControles({ cabinetId: t.cabinetId, executionId });
     void rapport;
   } catch (e) {
+    if (e instanceof ImportAnnule) return; // annulation demandée : statut déjà « annule », rien à signaler comme échec
     await c.bd.avecContexte(ctx, (tx) =>
       tx
         .update(s.lotsImport)

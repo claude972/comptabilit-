@@ -328,6 +328,21 @@ export const fichiers = pgTable(
   (t) => [index('fichiers_empreinte').on(t.cabinetId, t.sha256)],
 );
 
+/**
+ * Campagne d'import : un même type de fichier importé pour de nombreux dossiers en une opération suivie.
+ * Chaque dossier garde son propre lot, traité isolément : l'échec de l'un n'affecte pas les autres.
+ */
+export const campagnesImport = pgTable('campagnes_import', {
+  id: id(),
+  cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+  libelle: text('libelle').notNull(),
+  type: text('type').notNull(), // fec | releve_bancaire
+  /** ouverte | close | annulee */
+  statut: text('statut').notNull().default('ouverte'),
+  creePar: uuid('cree_par').notNull().references(() => utilisateurs.id),
+  creeLe: creeLe(),
+});
+
 export const lotsImport = pgTable('lots_import', {
   id: id(),
   cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
@@ -345,6 +360,12 @@ export const lotsImport = pgTable('lots_import', {
   progression: integer('progression').notNull().default(0),
   rapport: jsonb('rapport'),
   lancePar: uuid('lance_par').references(() => utilisateurs.id),
+  campagneId: uuid('campagne_id').references(() => campagnesImport.id),
+  /** Annulation RÉVERSIBLE : les données du lot sont conservées, seulement écartées ; ce champ permet de le rétablir. */
+  statutAvantAnnulation: text('statut_avant_annulation'),
+  annulePar: uuid('annule_par').references(() => utilisateurs.id),
+  annuleLe: horodatage('annule_le'),
+  motifAnnulation: text('motif_annulation'),
   creeLe: creeLe(),
   termineLe: horodatage('termine_le'),
 }, (t) => [uniqueIndex('lots_idempotence').on(t.cabinetId, t.cleIdempotence)]);
@@ -370,6 +391,8 @@ export const televersements = pgTable('televersements', {
   lotImportId: uuid('lot_import_id'),
   /** Pièce : document dont ce dépôt est une nouvelle version. */
   remplaceDocumentId: uuid('remplace_document_id'),
+  /** Campagne d'import à laquelle ce dépôt appartient, le cas échéant. */
+  campagneId: uuid('campagne_id'),
   /** Paramètres propres à l'usage (ex. profil de colonnes confirmé pour un relevé CSV). */
   parametres: jsonb('parametres'),
   statut: statutTeleversement('statut').notNull().default('ouvert'),
@@ -544,6 +567,21 @@ export const mouvementsBancaires = pgTable(
     creeLe: creeLe(),
   },
   (t) => [uniqueIndex('mouvements_idempotence').on(t.entiteId, t.cleIdempotence), index('mouvements_date').on(t.entiteId, t.dateOperation)],
+);
+
+/**
+ * Chaque lot dans lequel un mouvement bancaire a été vu. Un mouvement est PRIS EN COMPTE tant qu'au moins un des lots
+ * qui le contiennent est actif : annuler un relevé n'efface rien et ne retire pas un mouvement présent dans un autre.
+ */
+export const mouvementsLots = pgTable(
+  'mouvements_lots',
+  {
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    entiteId: uuid('entite_id').notNull().references(() => entites.id),
+    mouvementId: uuid('mouvement_id').notNull().references(() => mouvementsBancaires.id),
+    lotImportId: uuid('lot_import_id').notNull().references(() => lotsImport.id),
+  },
+  (t) => [uniqueIndex('mouvements_lots_unique').on(t.mouvementId, t.lotImportId), index('mouvements_lots_lot').on(t.lotImportId)],
 );
 
 /** Factures, avoirs, échéances : alimenté par les extractions validées. */

@@ -134,6 +134,20 @@
       "when": 1795074623244,
       "tag": "0018_versions_documents",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1795074862282,
+      "tag": "0019_annulation_campagnes",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1795074979755,
+      "tag": "0020_campagne_decompte",
+      "breakpoints": true
     }
   ]
 }

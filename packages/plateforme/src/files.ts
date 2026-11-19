@@ -80,7 +80,9 @@ export class Files {
     return this.documents.add('analyser', t, { jobId: `doc-${t.documentId}-${Date.now()}` });
   }
   importerFec(t: TacheImportFec) {
-    return this.comptabilite.add('importer-fec', t, { jobId: `fec-${t.lotImportId}` });
+    // Identifiant unique par tentative : une REPRISE doit être traitée (la file ignore un identifiant déjà vu).
+    // L'idempotence est garantie par le statut du lot, vérifié au début du traitement, pas par l'identifiant de tâche.
+    return this.comptabilite.add('importer-fec', t, { jobId: `fec-${t.lotImportId}-${Date.now()}` });
   }
   executerControles(t: TacheControles) {
     return this.comptabilite.add('controles', t, { jobId: `ctl-${t.executionId}` });

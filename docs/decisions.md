@@ -236,6 +236,8 @@ Faits établis, dans l'ordre :
 - Correction : `enable_mkldnn=False` dans le moteur OCR. Le service journalise désormais le message d'un échec de CHARGEMENT (avant toute lecture de pièce ; la règle « jamais de message d'exception » reste entière pour le traitement des documents). Conséquence non mesurée : sans oneDNN, l'OCR peut être plus lent sur x86_64.
 - run 44558586387 : OCR sain en 7 s ; échec du test `limite-volume` du worker, qui supposait un import comptable déjà présent dans la base. Il crée désormais son propre import (inactif, retiré à la fin).
 - run 44560095560 (af548a9) : TOUTES les étapes réussies, y compris les suites navigateur Chromium et WebKit sur pile réelle, pour la première fois sur GitHub.
+- run 44565575352 : première exécution de Firefox (impossible sur le poste, D-059) : 31 parcours réussis sur 32. Échec établi : au rechargement, Firefox rétablit l'état antérieur des cases à cocher par-dessus celui rendu par le serveur ; la case d'une préférence de notification pouvait donc afficher autre chose que le réglage enregistré. Correction : `autoComplete="off"` sur ces cases. Les autres formulaires n'ont pas montré ce défaut dans les parcours ; ils n'ont pas été revus un à un.
+- run 44571948858 (c58ecbe) : TOUTES les étapes réussies, Firefox compris.
 Limite : sans les journaux, les nombres de tests exécutés en CI ne sont pas relevés ; seul le succès de chaque étape est constaté.
 
 ## Écarts par rapport au cahier des charges

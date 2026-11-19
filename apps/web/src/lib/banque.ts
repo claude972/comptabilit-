@@ -147,6 +147,8 @@ export interface DernierRapprochement {
   exercice: Exercice;
   execution: ExecutionRapprochement | null;
   rapprochements: Proposition[];
+  /** Page courante de propositions ; les décomptes portent sur TOUTES les propositions de l'exécution. */
+  pagination?: { page: number; taillePage: number; total: number; suite: boolean; parStatut: Record<string, number>; parRegle: Array<{ regle: string; n: number }> };
   ecritures: Record<string, EcritureRapprochee>;
   mouvements: Record<string, MouvementRapproche>;
   nonRapproches: { ecritures: string[]; mouvements: string[]; nbEcritures: number; nbMouvements: number };
@@ -293,6 +295,18 @@ export function synthesePropositions(propositions: readonly Pick<Proposition, 'r
   const statuts = { propose: 0, valide: 0, rejete: 0 };
   for (const p of propositions) if (p.statut in statuts) statuts[p.statut]++;
   return { parRegle: ordre.map((id) => ({ id, niveau: regles.find((r) => r.id === id)?.niveau ?? null, nombre: parRegle.get(id)! })), statuts, total: propositions.length };
+}
+
+/** Même synthèse, à partir des décomptes du serveur (toutes les propositions de l'exécution, pas seulement la page affichée). */
+export function syntheseDepuisDecomptes(pagination: NonNullable<DernierRapprochement['pagination']>, regles: ReferenceRapprochement['regles']) {
+  const parRegle = new Map(pagination.parRegle.map((r) => [r.regle, r.n]));
+  const ordre = [...regles.map((r) => r.id).filter((id) => parRegle.has(id)), ...[...parRegle.keys()].filter((id) => !regles.some((r) => r.id === id))];
+  const total = Object.values(pagination.parStatut).reduce((t, n) => t + n, 0);
+  return {
+    parRegle: ordre.map((id) => ({ id, niveau: regles.find((r) => r.id === id)?.niveau ?? null, nombre: parRegle.get(id)! })),
+    statuts: { propose: pagination.parStatut.propose ?? 0, valide: pagination.parStatut.valide ?? 0, rejete: pagination.parStatut.rejete ?? 0 },
+    total,
+  };
 }
 
 // ───────────── Aperçu d'un relevé importé (`GET v1/imports/:id/apercu`) ─────────────

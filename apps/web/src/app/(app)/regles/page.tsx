@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { ErreurAcces } from '@/components/erreurs';
 import { DecisionRegle, MesurerImpact, ProposerRegle } from '@/components/regles/actions';
 import { EtiquetteStatutControle } from '@/components/revision-affichage';
@@ -6,7 +7,7 @@ import { Alerte, Carte, Etiquette, MentionProjet, SousTitre, Titre, type Ton } f
 import type { MembreCabinet } from '@/lib/administration';
 import { estGestionnaire } from '@/lib/messagerie';
 import { formaterHorodatage } from '@/lib/montants';
-import { EXPLICATION_REGLEMENTAIRE, LIBELLE_STATUT_REGLE, ORDRE_STATUTS_REGLE, REGLES_DU_JEU, type RegleCabinet, type StatutRegle, TITRE_STATUT_REGLE, afficherParametre } from '@/lib/regles';
+import { EXPLICATION_REGLEMENTAIRE, LIBELLE_STATUT_REGLE, ORDRE_STATUTS_REGLE, REGLES_DU_JEU, type PageRegles, type StatutRegle, TITRE_STATUT_REGLE, afficherParametre } from '@/lib/regles';
 import { tenter } from '@/lib/serveur/api';
 import { lireDossiers, lireMoi } from '@/lib/serveur/donnees';
 import { type ControleCatalogue, auMoins } from '@/lib/types-api';
@@ -15,14 +16,16 @@ export const metadata: Metadata = { title: 'Règles du cabinet' };
 
 const TON: Record<StatutRegle, Ton> = { proposee: 'attention', approuvee: 'succes', retiree: 'neutre', refusee: 'neutre' };
 
-export default async function PageRegles() {
+export default async function PageRegles({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const brute = (await searchParams).page;
+  const page = Math.max(1, Number.parseInt((Array.isArray(brute) ? brute[0] : brute) ?? '1', 10) || 1);
   const moi = await lireMoi();
   if (!moi.ok) return <ErreurAcces statut={moi.statut} message={moi.message} />;
   const { role, utilisateur } = moi.donnees;
   if (role === 'client_deposant' || role === 'client_lecture') return <ErreurAcces statut={403} message="Les règles du cabinet sont réservées aux membres du cabinet." />;
   const gestionnaire = estGestionnaire(role);
   const [regles, catalogue, dossiers, membres] = await Promise.all([
-    tenter<RegleCabinet[]>('v1/regles'),
+    tenter<PageRegles>(`v1/regles?page=${page}`),
     tenter<ControleCatalogue[]>('v1/reference/controles'),
     lireDossiers(),
     gestionnaire ? tenter<MembreCabinet[]>('v1/cabinet/membres') : null,
@@ -66,14 +69,24 @@ export default async function PageRegles() {
         </Carte>
       ) : null}
 
+      {regles.donnees.total > regles.donnees.taillePage || page > 1 ? (
+        <nav aria-label="Pages de règles" className="flex flex-wrap items-center gap-3" data-testid="pagination-regles">
+          {page > 1 ? <Link href={`/regles?page=${page - 1}`} prefetch={false} rel="prev">← Plus récentes</Link> : <span className="text-texte-doux">← Plus récentes</span>}
+          <span>
+            Page {page} — {regles.donnees.regles.length} règle(s) affichée(s) sur {regles.donnees.total}, des plus récentes aux plus anciennes
+          </span>
+          {regles.donnees.suite ? <Link href={`/regles?page=${page + 1}`} prefetch={false} rel="next">Plus anciennes →</Link> : <span className="text-texte-doux">Plus anciennes →</span>}
+        </nav>
+      ) : null}
       {ORDRE_STATUTS_REGLE.map((statut) => {
-        const liste = regles.donnees.filter((r) => r.statut === statut);
+        const liste = regles.donnees.regles.filter((r) => r.statut === statut);
+        const totalStatut = regles.donnees.parStatut[statut] ?? 0;
         return (
           <section key={statut} aria-labelledby={`titre-${statut}`} className="space-y-2" data-statut-regles={statut}>
             <SousTitre id={`titre-${statut}`}>
-              {TITRE_STATUT_REGLE[statut]} ({liste.length})
+              {TITRE_STATUT_REGLE[statut]} ({totalStatut})
             </SousTitre>
-            {liste.length === 0 ? <p className="text-texte-doux">Aucune.</p> : null}
+            {totalStatut === 0 ? <p className="text-texte-doux">Aucune.</p> : liste.length === 0 ? <p className="text-texte-doux">Aucune sur cette page.</p> : null}
             <ul className="space-y-3">
               {liste.map((r) => {
                 const c = titreDe.get(r.controleId);

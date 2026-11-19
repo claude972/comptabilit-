@@ -1829,7 +1829,11 @@ function routerBanque(r: Requete, a: Acces): unknown {
       const ex = chargerExercice(a, id, 'lecture');
       const execution = etat.rapprochementsExec.filter((x) => x.exerciceId === id).at(-1);
       if (!execution) return { exercice: ex, execution: null, rapprochements: [], ecritures: {}, mouvements: {}, nonRapproches: { ecritures: [], mouvements: [], nbEcritures: 0, nbMouvements: 0 } };
-      const rapprochements = etat.propositions.filter((x) => x.executionId === execution.id).sort((x, y) => x.niveau.localeCompare(y.niveau) || x.regle.localeCompare(y.regle)).slice(0, 2000);
+      // Comme l'API : pages de 200, décomptes sur toutes les propositions de l'exécution.
+      const toutes = etat.propositions.filter((x) => x.executionId === execution.id).sort((x, y) => x.niveau.localeCompare(y.niveau) || x.regle.localeCompare(y.regle));
+      const pageR = Math.max(Number(r.query.get('page')) || 1, 1);
+      const rapprochements = toutes.slice((pageR - 1) * 200, pageR * 200);
+      const pagination = { page: pageR, taillePage: 200, total: toutes.length, suite: toutes.length > pageR * 200, parStatut: compterPar(toutes, (x) => x.statut), parRegle: Object.entries(compterPar(toutes, (x) => x.regle)).map(([regle, n]) => ({ regle, n })) };
       const PLAFOND = 300;
       const nonE: string[] = (execution.nonRapprochesEcritures ?? []).filter((x: string) => UUID.test(x));
       const nonM: string[] = (execution.nonRapprochesMouvements ?? []).filter((x: string) => UUID.test(x));
@@ -1837,7 +1841,7 @@ function routerBanque(r: Requete, a: Acces): unknown {
       for (const p of rapprochements) for (const x of [...p.cotesEcritures, ...p.cotesMouvements]) ids.add(x);
       for (const g of (execution.ambiguites ?? []).slice(0, 100)) for (const x of g.ids) ids.add(x);
       return {
-        exercice: ex, execution, rapprochements,
+        exercice: ex, execution, rapprochements, pagination,
         ecritures: Object.fromEntries(etat.lignes.filter((l) => ids.has(l.id)).map((l) => [l.id, { id: l.id, date: l.ecritureDate, journal: l.journalCode, numero: l.ecritureNum, compte: l.compteNum, piece: l.pieceRef, libelle: l.ecritureLib, debit: l.debit, credit: l.credit }])),
         mouvements: Object.fromEntries(etat.mouvements.filter((x) => ids.has(x.id)).map((x) => [x.id, { id: x.id, date: x.dateOperation, montant: x.montant, libelle: x.libelle, reference: x.referenceBoutEnBout, contrepartie: x.contrepartieNom, iban: x.iban }])),
         nonRapproches: { ecritures: nonE.slice(0, PLAFOND), mouvements: nonM.slice(0, PLAFOND), nbEcritures: nonE.length, nbMouvements: nonM.length },
@@ -2013,6 +2017,8 @@ function lignesInventaire(ecritures: Enr[]): LigneEcriture[] {
     })),
   ) as unknown as LigneEcriture[];
 }
+/** Décompte d'une liste par clé (pagination : décomptes par statut ou par règle). */
+const compterPar = (liste: Enr[], cle: (x: Enr) => string) => liste.reduce<Record<string, number>>((t, x) => ({ ...t, [cle(x)]: (t[cle(x)] ?? 0) + 1 }), {});
 const lettresDatees = (entiteId: string): LettreDatee[] => suite.lettres.filter((l) => l.entiteId === entiteId).map((l) => ({ id: l.id, dateEffet: l.dateEffet, statut: l.statut, version: l.version, contenu: l.contenu as ContenuLettre }));
 const horodatagePg = (decalageMs = 0) => new Date(Date.now() + decalageMs).toISOString().replace('T', ' ').replace('Z', '+00');
 /** Archive ZIP vide mais valide (enregistrement de fin de répertoire central), suivie d'un commentaire propre à la demande. */
@@ -2067,7 +2073,15 @@ function routerSuite(r: Requete, a: Acces): unknown {
     const duCabinet = suite.regles.filter((x) => x.cabinetId === a.cabinetId);
     if (m === 'GET' && s.length === 1) {
       if (estClient(a)) throw new ErreurHttp(403, 'Réservé aux membres du cabinet');
-      return duCabinet.toReversed();
+      // Comme l'API : avec « page », réponse paginée (50 par page) et décomptes par statut ; sans, tableau (ancienne forme).
+      const pageBrute = r.query.get('page');
+      if (pageBrute === null) return duCabinet.toReversed().slice(0, 500);
+      if (!/^[1-9]\d{0,5}$/.test(pageBrute)) throw new ErreurHttp(400, 'Page invalide');
+      const statut = r.query.get('statut');
+      const toutes = duCabinet.toReversed();
+      const selection = statut ? toutes.filter((x) => x.statut === statut) : toutes;
+      const debut = (Number(pageBrute) - 1) * 50;
+      return { page: Number(pageBrute), taillePage: 50, total: selection.length, suite: selection.length > debut + 50, parStatut: compterPar(toutes, (x) => x.statut), regles: selection.slice(debut, debut + 50) };
     }
     if (m === 'POST' && s.length === 1) {
       const d = r.json();

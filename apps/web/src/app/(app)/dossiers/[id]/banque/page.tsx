@@ -12,7 +12,7 @@ import { Alerte, Carte, Etiquette, Libelle, MentionProjet, Saisie, SousTitre, Ta
 import { Bouton } from '@/components/ui/bouton';
 import {
   type Cadrage, type DernierRapprochement, type EcritureRapprochee, type EtatBanque, LIBELLE_CADRAGE, LIBELLE_FORMAT_RELEVE, LIBELLE_STATUT_PROPOSITION, type MouvementRapproche, type PageMouvements,
-  type ReferenceRapprochement, estNul, masquerCompte, sensMouvement, synthesePropositions,
+  type ReferenceRapprochement, estNul, masquerCompte, sensMouvement, synthesePropositions, syntheseDepuisDecomptes,
 } from '@/lib/banque';
 import type { MembreDossier } from '@/lib/administration';
 import { actionsImport } from '@/lib/imports';
@@ -101,7 +101,9 @@ export default async function PageBanque({ params, searchParams }: { params: Pro
   const collaboration = auMoins(ctx.niveau, 'collaboration');
   const revision = auMoins(ctx.niveau, 'revision');
   const exercice = ex.ok ? ex.exercice : null;
-  const dernier = exercice ? await tenter<DernierRapprochement>(`v1/exercices/${exercice.id}/rapprochements`) : null;
+  const pageR = Math.max(1, Number.parseInt(parametre(sp.pageR) ?? '1', 10) || 1);
+  const dernier = exercice ? await tenter<DernierRapprochement>(`v1/exercices/${exercice.id}/rapprochements?page=${pageR}`) : null;
+  const lienPageR = (p: number) => `${base}?pageR=${p}${page > 1 ? `&page=${page}` : ''}${filtre}${exercice ? `&exercice=${exercice.id}` : ''}#titre-propositions`;
   const regles = reference.ok ? reference.donnees.regles : [];
   const libelleRegle = (regle: string) => regles.find((r) => r.id === regle)?.description ?? null;
   const lienPage = (p: number) => `${base}?page=${p}${filtre}${exercice ? `&exercice=${exercice.id}` : ''}#mouvements`;
@@ -310,7 +312,7 @@ export default async function PageBanque({ params, searchParams }: { params: Pro
             <ChoixExercice exercices={ex.exercices} courant={exercice.id} />
             {collaboration && reference.ok ? <LancerRapprochement key={exercice.id} exerciceId={exercice.id} defauts={reference.donnees.parametresParDefaut} /> : null}
             {dernier && !dernier.ok ? <Alerte ton="attention">Le dernier rapprochement n’a pas pu être chargé. {dernier.message}</Alerte> : null}
-            {dernier?.ok ? <Rapprochement d={dernier.donnees} regles={regles} libelleRegle={libelleRegle} revision={revision} /> : null}
+            {dernier?.ok ? <Rapprochement d={dernier.donnees} regles={regles} libelleRegle={libelleRegle} revision={revision} lienPage={lienPageR} /> : null}
           </>
         )}
       </section>
@@ -318,10 +320,12 @@ export default async function PageBanque({ params, searchParams }: { params: Pro
   );
 }
 
-function Rapprochement({ d, regles, libelleRegle, revision }: { d: DernierRapprochement; regles: ReferenceRapprochement['regles']; libelleRegle: (r: string) => string | null; revision: boolean }) {
+function Rapprochement({ d, regles, libelleRegle, revision, lienPage }: { d: DernierRapprochement; regles: ReferenceRapprochement['regles']; libelleRegle: (r: string) => string | null; revision: boolean; lienPage: (p: number) => string }) {
   const e = d.execution;
   if (!e) return <p className="text-texte-doux">Aucun rapprochement n’a encore été lancé pour cet exercice.</p>;
-  const synthese = synthesePropositions(d.rapprochements, regles);
+  // Synthèse sur TOUTES les propositions (décomptes du serveur), et non sur la seule page affichée.
+  const pg = d.pagination;
+  const synthese = pg ? syntheseDepuisDecomptes(pg, regles) : synthesePropositions(d.rapprochements, regles);
   const ambiguites = e.ambiguites ?? [];
   const abandons = e.abandons ?? [];
   const designer = (id: string) => (d.ecritures[id] ? `écriture du ${formaterDate(d.ecritures[id].date)} (${formaterMontant(d.ecritures[id].debit)} / ${formaterMontant(d.ecritures[id].credit)})` : d.mouvements[id] ? `mouvement du ${formaterDate(d.mouvements[id].date)} (${formaterMontant(d.mouvements[id].montant)})` : 'élément non communiqué');
@@ -366,8 +370,16 @@ function Rapprochement({ d, regles, libelleRegle, revision }: { d: DernierRappro
           </Carte>
 
           <section aria-labelledby="titre-propositions" className="space-y-2">
-            <SousTitre id="titre-propositions" className="text-base">Propositions ({d.rapprochements.length})</SousTitre>
-            {d.rapprochements.length >= 2000 ? <p className="text-sm text-texte-doux">Seules les 2 000 premières propositions sont renvoyées par le serveur.</p> : null}
+            <SousTitre id="titre-propositions" className="text-base">Propositions ({pg ? pg.total : d.rapprochements.length})</SousTitre>
+            {pg && (pg.total > pg.taillePage || pg.page > 1) ? (
+              <nav aria-label="Pages de propositions" className="flex flex-wrap items-center gap-3" data-testid="pagination-propositions">
+                {pg.page > 1 ? <Link href={lienPage(pg.page - 1)} prefetch={false} rel="prev">← Précédentes</Link> : <span className="text-texte-doux">← Précédentes</span>}
+                <span>
+                  Page {pg.page} — {d.rapprochements.length} proposition(s) affichée(s) sur {pg.total}
+                </span>
+                {pg.suite ? <Link href={lienPage(pg.page + 1)} prefetch={false} rel="next">Suivantes →</Link> : <span className="text-texte-doux">Suivantes →</span>}
+              </nav>
+            ) : null}
             {d.rapprochements.length === 0 ? <p className="text-texte-doux">Aucune proposition.</p> : null}
             <ul className="space-y-3" data-testid="propositions">
               {d.rapprochements.map((p) => (

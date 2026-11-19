@@ -1,7 +1,7 @@
 import { BadRequestException, Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { decoderTexteReleve, detecterFormatReleve, PARAMETRES_RAPPROCHEMENT_PAR_DEFAUT, proposerProfilCsv, REGLES_RAPPROCHEMENT, schemaParametresRapprochement } from '@comtaple/core';
-import { type AccesBd, and, asc, desc, eq, gte, inArray, journaliser, lte, schema as s, sql, type Tx } from '@comtaple/db';
+import { type AccesBd, and, asc, count, desc, eq, gte, inArray, journaliser, lte, schema as s, sql, type Tx } from '@comtaple/db';
 import type { Files, Stockage } from '@comtaple/plateforme';
 import { z } from 'zod';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
@@ -188,15 +188,43 @@ export class BanqueController {
   @ApiOperation({
     summary: 'Dernier rapprochement : propositions avec critères et explication, éléments non rapprochés, ambiguïtés, abandons',
     description:
-      'Une ambiguïté (plusieurs solutions équivalentes) n’est jamais tranchée par le moteur. Un abandon signale une recherche interrompue par la borne de combinaisons. « obsolete » indique que les données ont changé depuis le calcul.',
+      'Une ambiguïté (plusieurs solutions équivalentes) n’est jamais tranchée par le moteur. Un abandon signale une recherche interrompue par la borne de combinaisons. « obsolete » indique que les données ont changé depuis le calcul. Les propositions sont renvoyées par pages de 200, dans un ordre stable ; `pagination` donne le total et les décomptes par statut et par règle, calculés sur TOUTES les propositions (et non sur la page).',
   })
-  async dernier(@AccesCourant() acces: Acces, @Param('id') id: string) {
+  @ApiQuery({ name: 'page', required: false, description: 'Page de propositions (1 par défaut)' })
+  @ApiQuery({ name: 'statut', required: false, description: 'propose | valide | rejete' })
+  async dernier(@AccesCourant() acces: Acces, @Param('id') id: string, @Query('page') pageBrute?: string, @Query('statut') statut?: string) {
     exigerUuid(id);
+    if (pageBrute !== undefined && !/^[1-9]\d{0,5}$/.test(pageBrute)) throw new BadRequestException('Page invalide');
+    if (statut !== undefined && !['propose', 'valide', 'rejete'].includes(statut)) throw new BadRequestException('Statut inconnu');
+    const page = Number(pageBrute ?? 1);
+    const TAILLE_PAGE = 200;
     return this.bd.avecContexte(acces, async (tx) => {
       const ex = await this.exercice(tx, id, 'lecture');
       const [execution] = await tx.select().from(s.executionsRapprochement).where(eq(s.executionsRapprochement.exerciceId, id)).orderBy(desc(s.executionsRapprochement.creeLe)).limit(1);
-      if (!execution) return { exercice: ex, execution: null, rapprochements: [], ecritures: {}, mouvements: {}, nonRapproches: { ecritures: [], mouvements: [], nbEcritures: 0, nbMouvements: 0 } };
-      const rapprochements = await tx.select().from(s.rapprochements).where(eq(s.rapprochements.executionId, execution.id)).orderBy(asc(s.rapprochements.niveau), asc(s.rapprochements.regle), asc(s.rapprochements.creeLe)).limit(2000);
+      const vide = { page, taillePage: TAILLE_PAGE, total: 0, suite: false, parStatut: {}, parRegle: [] };
+      if (!execution) return { exercice: ex, execution: null, rapprochements: [], pagination: vide, ecritures: {}, mouvements: {}, nonRapproches: { ecritures: [], mouvements: [], nbEcritures: 0, nbMouvements: 0 } };
+      // Décomptes sur TOUTES les propositions de l'exécution ; l'identifiant départage les égalités pour un ordre stable.
+      const decomptes = await tx
+        .select({ regle: s.rapprochements.regle, statut: s.rapprochements.statut, n: count() })
+        .from(s.rapprochements)
+        .where(eq(s.rapprochements.executionId, execution.id))
+        .groupBy(s.rapprochements.regle, s.rapprochements.statut);
+      const parStatut: Record<string, number> = {};
+      const parRegleMap = new Map<string, number>();
+      for (const d of decomptes) {
+        parStatut[d.statut] = (parStatut[d.statut] ?? 0) + d.n;
+        parRegleMap.set(d.regle, (parRegleMap.get(d.regle) ?? 0) + d.n);
+      }
+      const total = statut ? (parStatut[statut] ?? 0) : decomptes.reduce((t, d) => t + d.n, 0);
+      const lus = await tx
+        .select()
+        .from(s.rapprochements)
+        .where(and(eq(s.rapprochements.executionId, execution.id), statut ? eq(s.rapprochements.statut, statut) : undefined))
+        .orderBy(asc(s.rapprochements.niveau), asc(s.rapprochements.regle), asc(s.rapprochements.creeLe), asc(s.rapprochements.id))
+        .limit(TAILLE_PAGE + 1)
+        .offset((page - 1) * TAILLE_PAGE);
+      const rapprochements = lus.slice(0, TAILLE_PAGE);
+      const pagination = { page, taillePage: TAILLE_PAGE, total, suite: lus.length > TAILLE_PAGE, parStatut, parRegle: [...parRegleMap].map(([regle, n]) => ({ regle, n })).sort((a, b) => a.regle.localeCompare(b.regle)) };
       const PLAFOND = 300;
       const nonE = ((execution.nonRapprochesEcritures as string[] | null) ?? []).filter((x) => UUID.test(x));
       const nonM = ((execution.nonRapprochesMouvements as string[] | null) ?? []).filter((x) => UUID.test(x));
@@ -225,6 +253,7 @@ export class BanqueController {
         exercice: ex,
         execution,
         rapprochements,
+        pagination,
         ecritures: Object.fromEntries(ecritures.map((e) => [e.id, e])),
         mouvements: Object.fromEntries(mouvements.map((m) => [m.id, m])),
         nonRapproches: { ecritures: nonE.slice(0, PLAFOND), mouvements: nonM.slice(0, PLAFOND), nbEcritures: nonE.length, nbMouvements: nonM.length },

@@ -118,3 +118,13 @@ export function parametresDepuis(champs: readonly ChampParametre[], saisies: Sai
   if (!Object.keys(parametres).length) return { ok: false, erreurs: ['Modifiez au moins un paramètre : une règle identique aux valeurs par défaut n’a pas d’objet.'] };
   return { ok: true, parametres };
 }
+
+/** Page de règles (`GET v1/regles?page=N`) : décomptes par statut calculés sur toutes les règles, pas sur la page. */
+export interface PageRegles {
+  page: number;
+  taillePage: number;
+  total: number;
+  suite: boolean;
+  parStatut: Partial<Record<StatutRegle, number>>;
+  regles: RegleCabinet[];
+}

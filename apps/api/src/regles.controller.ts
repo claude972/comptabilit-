@@ -1,7 +1,7 @@
-import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post, Query } from '@nestjs/common';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { CATALOGUE_CONTROLES, executerControles } from '@comtaple/core';
-import { type AccesBd, and, desc, eq, inArray, isNull, journaliser, schema as s, sql, type Tx } from '@comtaple/db';
+import { type AccesBd, and, count, desc, eq, inArray, isNull, journaliser, schema as s, sql, type Tx } from '@comtaple/db';
 import { lignesDuLot, parametresApprouves } from '@comtaple/plateforme';
 import { z } from 'zod';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
@@ -32,16 +32,38 @@ export class ReglesController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Règles et paramètres propres au cabinet : propositions, règles approuvées, règles retirées (versions conservées)' })
-  async lister(@AccesCourant() acces: Acces) {
+  @ApiOperation({
+    summary: 'Règles et paramètres propres au cabinet : propositions, règles approuvées, règles retirées (versions conservées)',
+    description:
+      'Avec `page` : réponse paginée `{ page, taillePage, total, suite, parStatut, regles }` (50 par page, ordre stable, filtres `statut` et `controleId`). Sans `page` : ancienne forme, un tableau limité aux 500 règles les plus récentes — conservée pour compatibilité, à ne plus utiliser.',
+  })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'statut', required: false, description: 'proposee | approuvee | retiree | refusee' })
+  @ApiQuery({ name: 'controleId', required: false })
+  async lister(@AccesCourant() acces: Acces, @Query('page') pageBrute?: string, @Query('statut') statut?: string, @Query('controleId') controleId?: string) {
     if (acces.role === 'client_deposant' || acces.role === 'client_lecture') throw new ForbiddenException('Réservé aux membres du cabinet');
+    if (pageBrute !== undefined && !/^[1-9]\d{0,5}$/.test(pageBrute)) throw new BadRequestException('Page invalide');
+    if (statut !== undefined && !['proposee', 'approuvee', 'retiree', 'refusee'].includes(statut)) throw new BadRequestException('Statut inconnu');
+    if (controleId !== undefined && !/^[A-Z]{2,5}-\d{3}$/.test(controleId)) throw new BadRequestException('Contrôle invalide');
+    const TAILLE_PAGE = 50;
     return this.bd.avecContexte(acces, async (tx) => {
-      const regles = await tx.select().from(s.reglesCabinet).orderBy(desc(s.reglesCabinet.creeLe)).limit(500);
+      const filtre = and(statut ? eq(s.reglesCabinet.statut, statut) : undefined, controleId ? eq(s.reglesCabinet.controleId, controleId) : undefined);
+      const ordre = [desc(s.reglesCabinet.creeLe), desc(s.reglesCabinet.id)] as const;
+      const lues = pageBrute === undefined
+        ? await tx.select().from(s.reglesCabinet).where(filtre).orderBy(...ordre).limit(500)
+        : await tx.select().from(s.reglesCabinet).where(filtre).orderBy(...ordre).limit(TAILLE_PAGE + 1).offset((Number(pageBrute) - 1) * TAILLE_PAGE);
+      const regles = pageBrute === undefined ? lues : lues.slice(0, TAILLE_PAGE);
       // Noms des auteurs (membres du cabinet), pour qu'un réviseur sache qui a proposé et qui a décidé.
       const ids = [...new Set(regles.flatMap((r) => [r.proposeePar, r.approuveePar]).filter((x): x is string => Boolean(x)))];
       const noms = ids.length ? await tx.select({ id: s.utilisateurs.id, nom: s.utilisateurs.nom }).from(s.utilisateurs).where(inArray(s.utilisateurs.id, ids)) : [];
       const nomDe = new Map(noms.map((n) => [n.id, n.nom]));
-      return regles.map((r) => ({ ...r, proposeeParNom: r.proposeePar ? (nomDe.get(r.proposeePar) ?? null) : null, decideeParNom: r.approuveePar ? (nomDe.get(r.approuveePar) ?? null) : null }));
+      const enrichies = regles.map((r) => ({ ...r, proposeeParNom: r.proposeePar ? (nomDe.get(r.proposeePar) ?? null) : null, decideeParNom: r.approuveePar ? (nomDe.get(r.approuveePar) ?? null) : null }));
+      if (pageBrute === undefined) return enrichies;
+      // Décomptes par statut sur toutes les règles visibles (hors filtre de statut), et total de la sélection courante.
+      const decomptes = await tx.select({ statut: s.reglesCabinet.statut, n: count() }).from(s.reglesCabinet).where(controleId ? eq(s.reglesCabinet.controleId, controleId) : undefined).groupBy(s.reglesCabinet.statut);
+      const parStatut = Object.fromEntries(decomptes.map((d) => [d.statut, d.n]));
+      const total = statut ? (parStatut[statut] ?? 0) : decomptes.reduce((t, d) => t + d.n, 0);
+      return { page: Number(pageBrute), taillePage: TAILLE_PAGE, total, suite: lues.length > TAILLE_PAGE, parStatut, regles: enrichies };
     });
   }
 

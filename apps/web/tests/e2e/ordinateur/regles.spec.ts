@@ -147,6 +147,27 @@ test.describe('règles du cabinet — gestionnaire et client', () => {
     await expect(page.locator('[data-statut-regles="proposee"]')).toContainText('(0)');
   });
 
+  test('au-delà d’une page : décomptes sur toutes les règles, pages « plus anciennes » et « plus récentes »', async ({ page }) => {
+    await page.goto('/regles');
+    for (let i = 0; i < 53; i++) {
+      expect(await statutBff(page, 'POST', 'v1/regles', { controleId: 'TIE_001', entiteId: ID.dupain, motif: `Proposition d’essai n° ${i + 1}`, parametres: { seuil: `${i + 1}.00` } })).toBe(201);
+    }
+    await page.goto('/regles');
+    const proposees = page.locator('section[data-statut-regles="proposee"]');
+    await expect(proposees.getByRole('heading')).toContainText('(53)'); // total, pas le nombre affiché
+    await expect(proposees.getByRole('listitem').filter({ hasText: 'Proposition d’essai n° 53' })).toHaveCount(1);
+    await expect(page.getByTestId('pagination-regles')).toContainText('Page 1 — 50 règle(s) affichée(s) sur 53');
+    await expect(page.getByText(/Proposition d’essai n° 3(?!\d)/)).toHaveCount(0); // sur la page suivante
+    await page.getByRole('link', { name: 'Plus anciennes →' }).click();
+    await expect(page).toHaveURL(/\/regles\?page=2$/);
+    await expect(page.getByTestId('pagination-regles')).toContainText('Page 2 — 3 règle(s) affichée(s) sur 53');
+    await expect(proposees.getByRole('heading')).toContainText('(53)');
+    for (const n of [1, 2, 3]) await expect(proposees.getByText(new RegExp(`Proposition d’essai n° ${n}(?!\\d)`))).toHaveCount(1);
+    await expect(page.getByText(/Proposition d’essai n° 53/)).toHaveCount(0);
+    await page.getByRole('link', { name: '← Plus récentes' }).click();
+    await expect(page).toHaveURL(/\/regles\?page=1$/);
+  });
+
   test('refusé aux clients : écran et API', async ({ browser }) => {
     const client = await (await browser.newContext({ storageState: etatDe('client') })).newPage();
     await client.goto('http://localhost:3000/regles');

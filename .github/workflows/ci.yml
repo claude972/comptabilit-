@@ -1,4 +1,6 @@
-# Intégration continue. ÉTAT : écrite, jamais exécutée sur GitHub à ce jour (voir docs/rapport-de-tests.md).
+# Intégration continue. ÉTAT : première exécution en échec le 2026-11-19 (run 44509674342, étape des services), cause
+# non établie faute d'accès aux journaux ; étapes séparées et diagnostic corrigés depuis, non réexécutée.
+# Voir docs/rapport-de-tests.md.
 name: ci
 on:
   push:
@@ -26,8 +28,15 @@ jobs:
         run: pnpm run test
       - name: Secrets locaux éphémères
         run: sh scripts/generer-env.sh
-      - name: Services (PostgreSQL, Redis, Keycloak, S3, ClamAV)
-        run: docker compose up -d --build --wait
+      # La première exécution (run 44509674342) a échoué au bout de 5 min dans une étape unique « construire et démarrer
+      # tout », sans journal exploitable. Les étapes sont désormais séparées et bornées : celle qui échoue désigne
+      # d'elle-même la construction ou le service en cause, et l'étape « Journaux en cas d'échec » en donne le détail.
+      - name: Construction des images (Keycloak, OCR)
+        run: docker compose --progress plain build
+      - name: Services de base (PostgreSQL, Redis, S3, Keycloak)
+        run: docker compose up -d --wait --wait-timeout 420 postgres redis s3 keycloak
+      - name: Antivirus (ClamAV, téléchargement des signatures au premier démarrage)
+        run: docker compose up -d --wait --wait-timeout 780 clamav
       - run: pnpm run db:migrate && pnpm run db:seed
       - name: Tests d'intégration base de données (isolation, audit)
         run: pnpm --filter @comtaple/db run test:integration
@@ -40,14 +49,34 @@ jobs:
           node apps/worker/dist/main.js > var/worker.log 2>&1 &
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:4000/v1/sante && break; sleep 1; done
       - name: Service OCR
-        run: docker compose up -d --build --wait ocr
+        run: docker compose up -d --wait --wait-timeout 300 ocr
       - name: Surveillance des sources (base réelle, HTTP injecté)
         run: pnpm --filter @comtaple/worker run test:integration
       - name: Parcours de bout en bout
         run: pnpm --filter @comtaple/api run test:integration
       - name: Journaux en cas d'échec
         if: failure()
-        run: tail -n 100 var/api.log var/worker.log; docker compose logs --tail 50
+        # Aucune commande ne doit interrompre ce diagnostic : la première exécution (run 44509674342) s'est arrêtée sur
+        # « tail » parce que var/api.log n'existait pas encore, sans jamais afficher l'état des conteneurs.
+        run: |
+          set +e
+          echo "::group::État des conteneurs"
+          docker compose ps -a
+          docker compose ps -a --format '{{.Name}}' | while read -r nom; do
+            echo "--- $nom : $(docker inspect -f '{{.State.Status}} / santé {{if .State.Health}}{{.State.Health.Status}}{{else}}sans sonde{{end}} / code {{.State.ExitCode}} / redémarrages {{.RestartCount}}' "$nom")"
+            docker inspect -f '{{if .State.Health}}{{range .State.Health.Log}}{{.ExitCode}} {{.Output}}{{end}}{{end}}' "$nom" | tail -n 5
+          done
+          echo "::endgroup::"
+          echo "::group::Journaux des conteneurs"
+          docker compose logs --tail 80 --no-color
+          echo "::endgroup::"
+          echo "::group::Ressources de la machine"
+          df -h / | tail -n 1; free -m | head -n 2
+          echo "::endgroup::"
+          for f in var/api.log var/worker.log; do
+            if [ -f "$f" ]; then echo "::group::$f"; tail -n 100 "$f"; echo "::endgroup::"; else echo "$f : absent (étape non atteinte)"; fi
+          done
+          exit 0
       - name: Description d'infrastructure
         if: always()
         uses: opentofu/setup-opentofu@v1

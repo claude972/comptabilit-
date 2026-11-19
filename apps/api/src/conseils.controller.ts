@@ -67,11 +67,14 @@ export class ConseilsController {
         .where(eq(s.conseils.entiteId, id))
         .orderBy(desc(s.conseils.dateConseil), desc(s.conseils.creeLe));
       const evenements = await tx.select().from(s.evenementsConseil).where(eq(s.evenementsConseil.entiteId, id)).orderBy(asc(s.evenementsConseil.dateEvenement));
+      const idsPieces = [...new Set([...liste.flatMap(({ conseil: c }) => c.pieces as string[]), ...evenements.map((e) => e.justificatifDocumentId).filter((x): x is string => Boolean(x))])];
+      const docs = idsPieces.length ? await tx.select({ id: s.documents.id, nomOrigine: s.documents.nomOrigine, statut: s.documents.statut, version: s.documents.version }).from(s.documents).where(inArray(s.documents.id, idsPieces)) : [];
+      const parId = new Map(docs.map((d) => [d.id, d]));
       return liste.map(({ conseil: c, auteur }) => {
         const siens = evenements.filter((e) => e.conseilId === c.id);
         const fait = (type: string) => siens.find((e) => e.type === type)?.dateEvenement ?? null;
         // Quatre faits distincts : l'absence d'un événement signifie « non établi », jamais « n'a pas eu lieu ».
-        return { ...c, auteur, faits: { envoi: fait('envoi'), remise: fait('remise'), reception: fait('reception'), lecture: fait('lecture') }, evenements: siens };
+        return { ...c, auteur, piecesJointes: (c.pieces as string[]).map((p) => parId.get(p) ?? { id: p, nomOrigine: null, statut: null, version: null }), faits: { envoi: fait('envoi'), remise: fait('remise'), reception: fait('reception'), lecture: fait('lecture') }, evenements: siens.map((e) => ({ ...e, justificatifDocument: e.justificatifDocumentId ? (parId.get(e.justificatifDocumentId) ?? null) : null })) };
       });
     });
   }

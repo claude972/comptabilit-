@@ -63,6 +63,25 @@ export class Stockage {
     return Buffer.concat(morceaux);
   }
 
+  /** Lit seulement le DÉBUT d'un objet (requête par plage) : pour un aperçu, sans charger le fichier. */
+  async lireDebut(cle: string, octets: number): Promise<Buffer> {
+    const r = await this.s3.send(new GetObjectCommand({ Bucket: this.cfg.S3_BUCKET, Key: cle, Range: `bytes=0-${Math.max(0, octets - 1)}` }));
+    if (!r.Body) return Buffer.alloc(0);
+    const morceaux: Buffer[] = [];
+    let total = 0;
+    for await (const m of r.Body as Readable) {
+      const b = Buffer.from(m as Uint8Array);
+      morceaux.push(b);
+      total += b.length;
+      // Garde-fou si le stockage ignore la plage demandée.
+      if (total >= octets) {
+        (r.Body as Readable).destroy();
+        break;
+      }
+    }
+    return Buffer.concat(morceaux).subarray(0, octets);
+  }
+
   async existe(cle: string): Promise<boolean> {
     try {
       await this.s3.send(new HeadObjectCommand({ Bucket: this.cfg.S3_BUCKET, Key: cle }));

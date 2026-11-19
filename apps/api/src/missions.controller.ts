@@ -1,7 +1,7 @@
 import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { type ContenuLettre, estimerTemps, type LettreDatee, PRESTATIONS, schemaContenuLettre, situerTravail } from '@comtaple/core';
-import { type AccesBd, and, asc, desc, eq, journaliser, schema as s, sql, type Tx } from '@comtaple/db';
+import { type AccesBd, and, asc, desc, eq, inArray, journaliser, schema as s, sql, type Tx } from '@comtaple/db';
 import { z } from 'zod';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
 import { BD } from './jetons.js';
@@ -48,7 +48,10 @@ export class MissionsController {
       await exigerNiveau(tx, id, 'lecture');
       const missions = await tx.select().from(s.missions).where(eq(s.missions.entiteId, id)).orderBy(asc(s.missions.creeLe));
       const lettres = await tx.select().from(s.lettresMission).where(eq(s.lettresMission.entiteId, id)).orderBy(asc(s.lettresMission.dateEffet), asc(s.lettresMission.version));
-      return missions.map((m) => ({ ...m, lettres: lettres.filter((l) => l.missionId === m.id) }));
+      const ids = [...new Set(lettres.map((l) => l.documentId).filter((x): x is string => Boolean(x)))];
+      const docs = ids.length ? await tx.select({ id: s.documents.id, nomOrigine: s.documents.nomOrigine, statut: s.documents.statut, version: s.documents.version }).from(s.documents).where(inArray(s.documents.id, ids)) : [];
+      const parId = new Map(docs.map((d) => [d.id, d]));
+      return missions.map((m) => ({ ...m, lettres: lettres.filter((l) => l.missionId === m.id).map((l) => ({ ...l, document: l.documentId ? (parId.get(l.documentId) ?? null) : null })) }));
     });
   }
 
@@ -68,6 +71,10 @@ export class MissionsController {
       if (d.avenantDe) {
         const [base] = await tx.select().from(s.lettresMission).where(and(eq(s.lettresMission.id, d.avenantDe), eq(s.lettresMission.missionId, id)));
         if (!base) throw new BadRequestException('La lettre modifiée par cet avenant est introuvable dans cette mission');
+      }
+      if (d.documentId) {
+        const [doc] = await tx.select({ entiteId: s.documents.entiteId }).from(s.documents).where(eq(s.documents.id, d.documentId));
+        if (!doc || doc.entiteId !== m.entiteId) throw new BadRequestException('Le document joint n’appartient pas à ce dossier');
       }
       const [{ max } = { max: 0 }] = (await tx.execute(sql`select coalesce(max(version), 0)::int as max from lettres_mission where mission_id = ${id}::uuid`)).rows as Array<{ max: number }>;
       const [l] = await tx

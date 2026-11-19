@@ -114,7 +114,19 @@ export class InventaireController {
       const ex = await this.exercice(tx, id, 'lecture');
       const liste = await tx.select().from(s.ecrituresInventaire).where(eq(s.ecrituresInventaire.exerciceId, id)).orderBy(asc(s.ecrituresInventaire.creeLe));
       // Une proposition faite sur une version antérieure des données importées est signalée « à revoir ».
-      return liste.map((e) => ({ ...e, aRevoir: e.versionDonnees !== ex.versionDonnees }));
+      const idsPieces = [...new Set(liste.flatMap((e) => e.pieces as string[]))];
+      const docs = idsPieces.length ? await tx.select({ id: s.documents.id, nomOrigine: s.documents.nomOrigine, statut: s.documents.statut, version: s.documents.version }).from(s.documents).where(inArray(s.documents.id, idsPieces)) : [];
+      const parId = new Map(docs.map((d) => [d.id, d]));
+      const personnes = [...new Set(liste.flatMap((e) => [e.proposeePar, e.decideePar]).filter((x): x is string => Boolean(x)))];
+      const noms = personnes.length ? await tx.select({ id: s.utilisateurs.id, nom: s.utilisateurs.nom }).from(s.utilisateurs).where(inArray(s.utilisateurs.id, personnes)) : [];
+      const nomDe = new Map(noms.map((n) => [n.id, n.nom]));
+      return liste.map((e) => ({
+        ...e,
+        aRevoir: e.versionDonnees !== ex.versionDonnees,
+        proposeeParNom: nomDe.get(e.proposeePar) ?? null,
+        decideeParNom: e.decideePar ? (nomDe.get(e.decideePar) ?? null) : null,
+        piecesJointes: (e.pieces as string[]).map((p) => parId.get(p) ?? { id: p, nomOrigine: null, statut: null, version: null }),
+      }));
     });
   }
 

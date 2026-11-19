@@ -84,6 +84,14 @@ describe('import de relevés bancaires', () => {
     expect(mouvements.every((m) => typeof m.montant === 'string' && /^-?\d+\.\d{2}$/.test(m.montant))).toBe(true);
   });
 
+  it('l’aperçu d’un relevé non CSV dit qu’aucun profil n’est nécessaire, et ne lit que le début du fichier', async () => {
+    const r = await api('remi', 'GET', `/v1/imports/${lotReleve}/apercu`);
+    expect(r.json.format).toBe('camt.053');
+    expect(r.json.profilPropose).toBeNull();
+    expect(r.json.lignes.length).toBeLessThanOrEqual(15);
+    expect(JSON.stringify(r.json).length).toBeLessThan(20_000);
+  });
+
   it('réimporter le même relevé ne duplique aucun mouvement', async () => {
     const d = await deposer('remi', D.entite, Buffer.from(releve.contenu, 'utf8'), banque(), releve.nomFichier);
     expect(d.fin.json).toMatchObject({ recu: true, dejaImporte: true, lotImportId: lotReleve });
@@ -106,6 +114,19 @@ describe('import de relevés bancaires', () => {
     const echec = await attendreLot('remi', id);
     expect(echec.json.statut).toBe('echec');
     expect(echec.json.rapport.profilAConfirmer).toBe(true);
+    // Aperçu pour confirmer le profil : début du fichier seulement, texte brut, séparateur plausible, aucune proposition forcée.
+    const apercu = await api('remi', 'GET', `/v1/imports/${id}/apercu`);
+    expect(apercu.statut).toBe(200);
+    expect(apercu.json.format).toBe('csv');
+    expect(apercu.json.lignes[0]).toBe('Quand;Quoi;Combien');
+    expect(apercu.json.lignes).toHaveLength(3);
+    expect(apercu.json.separateurs).toHaveLength(1);
+    expect(apercu.json.separateurs[0]).toMatchObject({ separateur: ';', nbColonnes: 3 });
+    expect(apercu.json.separateurs[0].cellules[1][2]).toBe('-12,50');
+    expect(apercu.json.profilPropose).toBeNull();
+    expect(apercu.json.raisons.length).toBeGreaterThan(0);
+    expect((await api('client', 'GET', `/v1/imports/${id}/apercu`)).statut).toBe(404);
+    expect((await api('bruno', 'GET', `/v1/imports/${id}/apercu`)).statut).toBe(404);
     const profilCsv = { separateur: ';', lignesEntete: 1, colonnes: { date: 'Quand', libelle: 'Quoi', montant: 'Combien' }, formatDate: 'JJ/MM/AAAA', decimale: ',' };
     expect((await api('client', 'POST', `/v1/imports/${id}/relancer`, { profilCsv })).statut).toBe(404);
     expect((await api('remi', 'POST', `/v1/imports/${id}/relancer`, { profilCsv })).statut).toBe(202);

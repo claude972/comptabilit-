@@ -1,11 +1,11 @@
 import { BadRequestException, Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { PARAMETRES_RAPPROCHEMENT_PAR_DEFAUT, REGLES_RAPPROCHEMENT, schemaParametresRapprochement } from '@comtaple/core';
+import { decoderTexteReleve, detecterFormatReleve, PARAMETRES_RAPPROCHEMENT_PAR_DEFAUT, proposerProfilCsv, REGLES_RAPPROCHEMENT, schemaParametresRapprochement } from '@comtaple/core';
 import { type AccesBd, and, asc, desc, eq, gte, inArray, journaliser, lte, schema as s, sql, type Tx } from '@comtaple/db';
-import type { Files } from '@comtaple/plateforme';
+import type { Files, Stockage } from '@comtaple/plateforme';
 import { z } from 'zod';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
-import { BD, TACHES } from './jetons.js';
+import { BD, STOCKAGE, TACHES } from './jetons.js';
 import { schemaOpenApi, valider } from './validation.js';
 
 const lancement = z.object({ parametres: schemaParametresRapprochement.partial().optional() });
@@ -21,6 +21,7 @@ export class BanqueController {
   constructor(
     @Inject(BD) private readonly bd: AccesBd,
     @Inject(TACHES) private readonly taches: Files,
+    @Inject(STOCKAGE) private readonly stockage: Stockage,
   ) {}
 
   @Get('dossiers/:entiteId/banque')
@@ -67,6 +68,47 @@ export class BanqueController {
         .offset((page - 1) * TAILLE);
       return { page, taillePage: TAILLE, suite: lignes.length > TAILLE, mouvements: lignes.slice(0, TAILLE).map(({ brut: _b, ...m }) => m) };
     });
+  }
+
+  @Get('imports/:id/apercu')
+  @ApiOperation({
+    summary: 'Aperçu des premières lignes d’un relevé importé et profil de colonnes proposé (pour confirmer un CSV)',
+    description:
+      'Lit seulement le début du fichier original. Les cellules sont un contenu non fiable, renvoyé en texte brut et tronqué. Le profil proposé est une aide : c’est l’utilisateur qui le confirme.',
+  })
+  async apercu(@AccesCourant() acces: Acces, @Param('id') id: string) {
+    exigerUuid(id);
+    const fichier = await this.bd.avecContexte(acces, async (tx) => {
+      const [lot] = await tx.select().from(s.lotsImport).where(eq(s.lotsImport.id, id));
+      if (!lot || lot.type !== 'releve_bancaire' || !lot.fichierId) throw new NotFoundException('Import de relevé introuvable');
+      await exigerNiveau(tx, lot.entiteId, 'collaboration');
+      const [f] = await tx.select().from(s.fichiers).where(eq(s.fichiers.id, lot.fichierId));
+      if (!f) throw new NotFoundException('Fichier introuvable');
+      return f;
+    });
+    const TAILLE = 32 * 1024;
+    const { texte, encodage } = decoderTexteReleve(new Uint8Array(await this.stockage.lireDebut(fichier.cleStockage, TAILLE)));
+    const format = detecterFormatReleve(texte.slice(0, 8192));
+    const tronque = fichier.taille > TAILLE;
+    // La dernière ligne peut être coupée par la lecture partielle : on l'écarte.
+    const brutes = texte.split(/\r\n|\n|\r/);
+    if (tronque) brutes.pop();
+    const lignes = brutes.filter((l) => l.trim() !== '').slice(0, 15).map((l) => (l.length > 400 ? `${l.slice(0, 400)}…` : l));
+    if (format !== 'csv') return { format, encodage, tronque, lignes, separateurs: [], profilPropose: null, raisons: ['Ce fichier n’est pas un CSV : aucun profil de colonnes n’est nécessaire.'] };
+    const separateurs = [';', ',', '\t']
+      .map((sep) => ({ separateur: sep, colonnes: lignes.slice(0, 5).map((l) => l.split(sep).length) }))
+      .filter((x) => x.colonnes.length > 0 && x.colonnes[0]! > 1 && x.colonnes.every((n) => n === x.colonnes[0]));
+    const proposition = proposerProfilCsv(texte);
+    return {
+      format,
+      encodage,
+      tronque,
+      lignes,
+      // Séparateurs donnant le même nombre de colonnes sur les premières lignes, avec ce découpage (aide à la saisie).
+      separateurs: separateurs.map((x) => ({ separateur: x.separateur, nbColonnes: x.colonnes[0], cellules: lignes.slice(0, 6).map((l) => l.split(x.separateur).map((c) => c.slice(0, 80))) })),
+      profilPropose: proposition.profil,
+      raisons: proposition.raisons,
+    };
   }
 
   @Post('imports/:id/relancer')

@@ -143,3 +143,50 @@ describe('registre des conseils', () => {
     expect(registre.find((c: any) => c.id === n.json.id).statut).toBe('valide');
   });
 });
+
+describe('pièces jointes aux conseils, lettres et écritures d’inventaire', () => {
+  it('une pièce du dossier se joint et est restituée avec son nom ; une pièce d’un autre dossier est refusée', async () => {
+    const contenu = Buffer.from(`%PDF-1.4 justificatif ${SEL}`);
+    const corps = { entiteId, nomFichier: 'lettre-signee.pdf', taille: contenu.length, sha256: (await import('./essais/outils.js')).sha(contenu), canal: 'ordinateur' };
+    const o = await api('chloe', 'POST', '/v1/televersements', corps);
+    await api('chloe', 'PUT', `/v1/televersements/${o.json.id}/morceaux?decalage=0`, contenu);
+    const piece = (await api('chloe', 'POST', `/v1/televersements/${o.json.id}/terminer`)).json.documentId;
+    const ailleurs = (await api('chloe', 'GET', `/v1/documents?entiteId=${DEMO.dupain}`)).json.documents[0].id;
+
+    // Conseil
+    const conseil = { dateConseil: '2025-06-01', objet: 'Pièce jointe', contenu: 'Voir la pièce jointe.', destinataire: 'Gérant' };
+    expect((await api('chloe', 'POST', `/v1/dossiers/${entiteId}/conseils`, { ...conseil, pieces: [ailleurs] })).statut).toBe(400);
+    const c = await api('chloe', 'POST', `/v1/dossiers/${entiteId}/conseils`, { ...conseil, pieces: [piece] });
+    expect(c.statut).toBe(201);
+    const registre = (await api('remi', 'GET', `/v1/dossiers/${entiteId}/conseils`)).json.find((x: any) => x.id === c.json.id);
+    expect(registre.piecesJointes).toEqual([{ id: piece, nomOrigine: 'lettre-signee.pdf', statut: expect.any(String), version: 1 }]);
+
+    // Lettre de mission : document signé joint
+    expect((await api('chloe', 'POST', `/v1/missions/${missionId}/lettres`, { dateEffet: '2026-01-01', contenu: contenu2(), documentId: ailleurs })).statut).toBe(400);
+    const l = await api('chloe', 'POST', `/v1/missions/${missionId}/lettres`, { dateEffet: '2026-01-01', contenu: contenu2(), documentId: piece });
+    expect(l.statut).toBe(201);
+    const missions = (await api('remi', 'GET', `/v1/dossiers/${entiteId}/missions`)).json;
+    expect(missions[0].lettres.find((x: any) => x.id === l.json.id).document).toMatchObject({ id: piece, nomOrigine: 'lettre-signee.pdf' });
+
+    // Écriture d'inventaire : pièce justificative, auteur nommé
+    const ex = (await api('chloe', 'POST', `/v1/dossiers/${entiteId}/exercices`, { debut: '2025-01-01', fin: '2025-12-31' })).json.id;
+    const ecriture = {
+      dateEcriture: '2025-12-31', libelle: 'Charge constatée d’avance', justification: 'Abonnement annuel payé en décembre, couvrant l’exercice suivant.', calcul: '600,00 × 11/12',
+      lignes: [{ compteNum: '486', compteLib: 'Charges constatées d’avance', debit: '550.00', credit: '0.00' }, { compteNum: '6135', compteLib: 'Locations mobilières', debit: '0.00', credit: '550.00' }],
+    };
+    expect((await api('chloe', 'POST', `/v1/exercices/${ex}/ecritures-inventaire`, { ...ecriture, pieces: [ailleurs] })).statut).toBe(400);
+    expect((await api('chloe', 'POST', `/v1/exercices/${ex}/ecritures-inventaire`, { ...ecriture, pieces: [piece] })).statut).toBe(201);
+    const liste = (await api('remi', 'GET', `/v1/exercices/${ex}/ecritures-inventaire`)).json;
+    expect(liste[0].piecesJointes[0]).toMatchObject({ id: piece, nomOrigine: 'lettre-signee.pdf' });
+    expect(liste[0].proposeeParNom).toBe('Chloé Collab');
+  });
+});
+
+function contenu2() {
+  return {
+    perimetre: [{ prestation: 'tenue' }],
+    duree: { debut: '2026-01-01', fin: null, taciteReconduction: true },
+    honoraires: { mode: 'forfait', montantAnnuelHt: '3900.00', tauxHoraireHt: null, conditionsRevision: '' },
+    obligationsCabinet: '', obligationsClient: '', livrables: [], mandats: [], limites: '',
+  };
+}

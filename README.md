@@ -53,6 +53,18 @@ Le mot de passe commun est la valeur `DEV_MDP_UTILISATEURS` du fichier `.env`.
 | `client.depot@client-a.test` | Alpha | Client déposant | Dépôt sur Dupain |
 | `bruno.admin@cabinet-b.test` | Bêta | Administrateur | Validation sur Leroy |
 
+## Opérations de l'éditeur
+
+Les opérations qui ne relèvent pas d'un cabinet (grille tarifaire, essais, échéances, virements, sources et évolutions de veille) passent par un outil en ligne de commande qui utilise le rôle d'administration de la base :
+
+```bash
+node scripts/editeur.mjs            # affiche l'aide
+node scripts/editeur.mjs cabinets
+node scripts/editeur.mjs sources
+```
+
+Les parcours de test créent des dossiers d'essai qui s'accumulent dans la base locale. Pour repartir d'une base propre (DESTRUCTIF, local uniquement, confirmation demandée) : `scripts/reinitialiser-base-locale.sh`.
+
 ## Tests
 
 ```bash

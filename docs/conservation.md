@@ -7,7 +7,7 @@
 | Catégorie | Emplacement | Comportement réel |
 |---|---|---|
 | Originaux des pièces et des fichiers comptables | Stockage objet, clé = empreinte SHA-256 | Jamais réécrits ni modifiés. Aucune suppression automatique. |
-| Morceaux de téléversement | Stockage objet, préfixe `tmp/` | Supprimés dès la clôture du téléversement. Les morceaux d'un téléversement abandonné ne sont PAS encore purgés (tâche de purge à écrire). |
+| Morceaux de téléversement | Stockage objet, préfixe `tmp/` | Supprimés dès la clôture ou l'abandon explicite du téléversement. Un téléversement jamais terminé expire après 7 jours ; ses morceaux sont alors purgés par le worker (purge non exercée par un test). |
 | Données extraites, lignes d'écriture, constats, décisions | PostgreSQL | Versionnées ; les anciennes versions sont conservées. Aucune purge. |
 | Journal d'audit | PostgreSQL, ajout seul, chaîné par empreinte | Ni modification ni suppression possibles, y compris par le propriétaire des tables. Pas encore d'archivage externe protégé. |
 | Sauvegardes | Script local `scripts/sauvegarder.sh` | Développement uniquement. La politique de production est à définir. |
@@ -30,11 +30,13 @@ Conséquence de conception : les buckets de production destinés aux éléments 
 
 ## Restitution
 
-Non implémentée comme fonction unique. Le dossier de révision exportable (PDF + JSON + inventaire des pièces avec empreintes) couvre un exercice. L'export complet prévu par le cahier des charges (originaux, données, liens, constats, décisions, règles propres au cabinet) reste à développer.
+Export de restitution par dossier (habilitation de validation) : archive ZIP contenant les originaux non modifiés (relus et comparés à leur empreinte), les données structurées (pièces et leurs versions d'extraction, imports, révision, décisions, banque, rapprochements, règles du cabinet applicables, journal d'audit du dossier), les écritures normalisées en CSV, et un manifeste d'empreintes SHA-256. Les originaux écartés par l'antivirus ne sont pas restitués ; le manifeste les liste. L'export reste possible quand l'abonnement est suspendu ou résilié.
+
+Non couvert : restitution d'un cabinet entier en une opération ; restitution des sauvegardes et des journaux techniques ; format d'échange normalisé avec un autre logiciel.
 
 ## Suppression à la résiliation
 
-Non implémentée. À définir par catégorie, en conciliant suppression, obligations de conservation et restitution, sauvegardes et journaux compris.
+Non implémentée. La résiliation d'un abonnement ferme les dépôts à son échéance mais ne supprime aucune donnée. Le devenir de chaque catégorie (suppression, conservation obligatoire, sauvegardes, journaux) reste à définir.
 
 ## Durées à faire valider
 

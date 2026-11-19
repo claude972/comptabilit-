@@ -15,6 +15,8 @@ Le logiciel ne se substitue ni à un expert-comptable ni à un avocat. Ce regist
 | V7 | Secret professionnel, responsabilités contractuelles, conditions générales | Avocat | Non réalisé |
 | V8 | Durées de conservation par catégorie et leur fondement | Avocat / expert-comptable | Non définies (voir `conservation.md`) |
 | V9 | Autorisation de mise en production | Éditeur | Non demandée |
+| V11 | Table de correspondance comptes → rubriques des projets de bilan et de compte de résultat ; conventions des indicateurs financiers | Expert-comptable | En attente |
+| V12 | Référentiel de prestations et formulation des signalements « hors périmètre » | Expert-comptable | En attente |
 | V10 | Conditions des fournisseurs d'IA et d'hébergement (région, conservation, non-réutilisation) | Éditeur / avocat | Non vérifiées |
 
 Aucune certification, conformité à une norme ou validation par une autorité n'est revendiquée.
@@ -34,4 +36,10 @@ Aucune certification, conformité à une norme ou validation par une autorité n
 | R9 | Conservation illimitée des données par absence de purge | Moyenne | Aucune suppression destructive automatique | Politique de conservation et purge (V8) |
 | R10 | Seuils internes non calibrés (lisibilité, couche texte, tolérances) | Moyenne | Documentés comme règles internes | Calibration sur corpus réel |
 | R11 | Le navigateur du téléphone purge les dépôts en attente | Faible | Comportement expliqué à l'utilisateur ; « reçu » seulement après confirmation serveur | Essais sur appareils réels |
+| R13 | Un rapprochement proposé à tort est validé sans examen | Élevée | Propositions expliquées avec leurs critères ; ambiguïtés non tranchées ; validation réservée au réviseur ; rien n'est écrit en comptabilité | Mesure du taux de faux appariements sur relevés réels |
+| R14 | Projet de bilan ou indicateur pris pour un état validé | Élevée | Mention « projet » ; table de correspondance marquée en attente de validation ; comptes non affectés et écarts affichés, jamais forcés | Validation professionnelle de la table (V11) |
+| R15 | Veille incomplète prise pour une absence de nouveauté | Élevée | Source indisponible affichée comme telle avec sa dernière vérification réussie ; détections brutes jamais présentées comme évolutions | Accès à l'API officielle de Légifrance ; élargir les sources |
+| R16 | Fonctions SQL à droits du propriétaire mal bornées | Élevée | Chaque fonction vérifie l'appelant, ne renvoie qu'identifiants ou décomptes, et n'est exécutable que par un rôle (décision D-022) | Revue de sécurité indépendante de ces fonctions |
+| R17 | Signal « à examiner » lu comme un diagnostic de difficulté | Moyenne | Formulé en question, avec la mention qu'il n'est ni un diagnostic ni une appréciation de la continuité d'exploitation | Validation des formulations par un professionnel |
+| R18 | Règle de cabinet masquant des constats pertinents | Moyenne | Mesure d'impact obligatoire, approbation par une autre personne, trace dans chaque résultat, retrait réversible | Revue périodique des règles approuvées |
 | R12 | Dépendances très récentes (NestJS 12, Next 16, pnpm 12) | Faible | Versions figées, verrou versionné | Veille des correctifs de sécurité |

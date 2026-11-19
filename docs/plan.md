@@ -30,33 +30,51 @@ Critères d'acceptation et résultat :
 - [ ] Évaluation de l'extraction sur un corpus réel autorisé.
 - [ ] Validation métier des contrôles.
 
-## Lot 2 — Révision avancée : moteur réalisé, application à brancher
+## Lot 2 — Révision avancée : réalisé en local
 
-- [x] Lecture CAMT.053, OFX, CSV ; rapprochements exacts et par règles ; 7 contrôles supplémentaires (moteur).
-- [ ] Import bancaire dans l'API, le worker et l'interface.
-- [ ] Écran de rapprochement, validation des rapprochements proposés.
-- [ ] Fourniture de l'exercice précédent et des relevés aux contrôles `CLO-002` et `TRE-003`.
-- [ ] Abonnements : forfaits, tranches, essai, quotas, virement, historique.
-- [ ] Règles et paramètres par cabinet, approuvés et réversibles.
-- [ ] Imports par lots, annulation contrôlée.
-- [ ] Purge des téléversements abandonnés ; export complet de restitution.
+- [x] Relevés bancaires (camt.053, OFX, CSV), rapprochements, validation, obsolescence — base, API, worker, écrans, parcours réels.
+- [x] Relevés fournis à `TRE-003`, exercice précédent fourni à `CLO-002`.
+- [x] Abonnements : moteur, provisionnement éditeur, API cabinet, service fermé hors abonnement.
+- [x] Règles et paramètres par cabinet, avec mesure d'impact, approbation et retrait.
+- [x] Administration : dossiers, exercices, habilitations, membres, audit.
+- [x] Export de restitution d'un dossier ; purge des téléversements abandonnés.
+- [x] Métriques techniques ; image de conteneur de l'API ; ébauche OpenTofu validée.
+- [ ] Correspondance explicite comptes 512 ↔ comptes bancaires quand il y en a plusieurs.
+- [ ] Invitation, changement de rôle et désactivation d'un membre.
+- [ ] Outil d'exploitation de l'éditeur (cabinets, grille, échéances, virements, qualification de la veille).
+- [ ] Imports par lots, annulation contrôlée, restitution d'un cabinet entier.
+- [ ] Agrégation bancaire (prestataire à choisir) ; export vers l'outil de facturation de l'éditeur.
 
-## Lot 3 — Veille et assistant : non commencé
+## Lot 3 — Veille et assistant : veille et recherche réalisées, assistant bloqué
 
-Dépend de la passerelle IA (jeton et vérifications contractuelles) pour l'assistant ; la collecte des sources officielles versionnées peut démarrer sans elle.
+- [x] Surveillance des sources, détection de changement, évolutions à qualifier par une personne.
+- [x] Applicabilité par dossier, suivi par dossier.
+- [x] Recherche textuelle autorisée.
+- [ ] Accès à l'API officielle de Légifrance (le site refuse l'accès automatisé).
+- [ ] Qualification réelle d'évolutions par une personne compétente.
+- [ ] Assistant documenté (dépend de la passerelle IA).
+- [ ] Recherche vectorielle.
 
-## Lot 4 — Missions et performance : non commencé
+## Lot 4 — Missions et performance : réalisé en local, à valider
 
-Les indicateurs calculés par le moteur (soldes intermédiaires de gestion, BFR, délais) ne dépendent d'aucun accès externe.
+- [x] Missions, lettres et avenants structurés, travaux, hors-périmètre, projet d'avenant, barème.
+- [x] Registre des conseils.
+- [x] Indicateurs financiers du dossier ; indicateurs d'activité du cabinet.
+- [ ] Analyse automatique d'une lettre de mission existante (dépend de l'IA).
+- [ ] Rentabilité par mission.
+- [ ] Validation professionnelle des conventions d'indicateurs.
 
-## Lot 5 — États et fiscalité : non commencé
+## Lot 5 — États et fiscalité : amorcé
 
-À n'engager qu'après stabilisation de la collecte et des contrôles, et avec un expert-comptable pour valider les correspondances comptes → rubriques.
+- [x] Balance, projets de compte de résultat et de bilan.
+- [ ] Validation professionnelle de la table de correspondance comptes → rubriques.
+- [ ] Écritures d'inventaire, balance ajustée, annexe, liasse.
 
 ## Prochaines étapes proposées, par ordre de dépendance
 
-1. Brancher le lot 2 du moteur dans l'application (imports bancaires, rapprochements).
-2. Corriger les manques de l'API relevés par l'interface (membres d'un dossier, pagination, choix du cabinet).
-3. Abonnements et quotas.
-4. Supervision, images de conteneurs applicatives, description de l'infrastructure.
-5. Lots 3 à 5.
+1. Faire valider par un expert-comptable : catalogue des contrôles, table de correspondance des états, conventions d'indicateurs.
+2. Obtenir les accès externes (`acces-externes.md`) : OAuth Google et Microsoft, jeton OVHcloud, API Légifrance, corpus réel autorisé.
+3. Outil d'exploitation de l'éditeur et gestion des membres d'un cabinet.
+4. Écritures d'inventaire et balance ajustée (lot 5), avec le professionnel qui validera.
+5. Images du worker et du web en exploitation, description complète de l'infrastructure, supervision déployée.
+6. Essais sur appareils réels et évaluation de l'extraction sur pièces réelles.

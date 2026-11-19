@@ -58,6 +58,7 @@ Le mot de passe commun est la valeur `DEV_MDP_UTILISATEURS` du fichier `.env`.
 ```bash
 pnpm run test                                         # tests unitaires de tous les paquets
 pnpm --filter @comtaple/db run test:integration       # isolation RLS et journal d'audit sur PostgreSQL réel
+pnpm --filter @comtaple/worker run test:integration   # surveillance des sources (base réelle, HTTP injecté)
 pnpm --filter @comtaple/api run test:integration      # parcours de bout en bout (services, API et worker démarrés)
 pnpm --filter @comtaple/web run test:e2e              # navigateur, API simulée
 pnpm --filter @comtaple/web exec playwright test -c playwright.reel.config.ts   # navigateur, pile réelle
@@ -70,7 +71,7 @@ Résultats de la dernière exécution : [docs/rapport-de-tests.md](docs/rapport-
 
 | Dossier | Contenu |
 |---|---|
-| `packages/core` | Moteur métier déterministe : montants, FEC, contrôles, extraction de factures, banque et rapprochements, jeux synthétiques |
+| `packages/core` | Moteur métier déterministe : montants, FEC, contrôles, extraction de factures, banque et rapprochements, abonnements, missions, veille, états et indicateurs, jeux synthétiques |
 | `packages/db` | Schéma, migrations SQL, sécurité RLS, audit, amorçage |
 | `packages/plateforme` | Configuration, stockage S3, files de tâches |
 | `packages/mail` | Connecteurs Gmail et Microsoft 365 (lecture seule) |
@@ -78,7 +79,8 @@ Résultats de la dernière exécution : [docs/rapport-de-tests.md](docs/rapport-
 | `apps/worker` | Traitements différés |
 | `apps/web` | Application web et PWA |
 | `services/ocr` | Service OCR local (PaddleOCR) |
-| `infra` | Royaume Keycloak de développement, infrastructure cible |
+| `infra` | Royaume Keycloak de développement, ébauche OpenTofu de l'infrastructure cible |
+| `Dockerfile` | Images de l'API, du worker et du web |
 | `scripts` | Secrets locaux, démarrage, sauvegarde, essai de restauration |
 | `docs` | Documentation |
 
@@ -89,6 +91,7 @@ Résultats de la dernière exécution : [docs/rapport-de-tests.md](docs/rapport-
 - [Architecture et modèle de données](docs/architecture.md)
 - [Décisions et hypothèses](docs/decisions.md)
 - [Catalogue des contrôles et sources](docs/catalogue-controles.md)
+- [Catalogue des indicateurs](docs/catalogue-indicateurs.md)
 - [API (OpenAPI)](docs/openapi.json) — aussi servie par l'API sur `/docs`
 - [Rapport de tests](docs/rapport-de-tests.md)
 - [Déploiement, sauvegarde et restauration](docs/deploiement.md)

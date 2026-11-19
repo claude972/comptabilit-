@@ -1,6 +1,6 @@
 # Matrice de couverture — état réel
 
-Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19.
+Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (seconde passe).
 
 ## Légende des états
 
@@ -20,17 +20,17 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19.
 |---|---|---|
 | Monorepo, versions figées, environnement local reproductible | Testé | — |
 | Identités OIDC (Keycloak), session côté serveur, PKCE | Testé | Royaume de développement ; MFA et SSO non configurés |
-| Cabinets, appartenances, habilitations par dossier | Testé | Pas d'écran d'administration : provisionnement par script d'amorçage. Invitation d'utilisateurs non implémentée |
+| Cabinets, appartenances, habilitations par dossier | Testé | La création d'un cabinet et de ses premiers comptes reste un provisionnement de l'éditeur. Invitation d'utilisateurs non implémentée |
 | Isolation entre cabinets et entre dossiers (RLS forcé) | Testé | Voir la limite assumée de la décision D-007 ; pas de test d'intrusion indépendant |
 | Rôle « support » à accès temporaire | Partiel | Expiration de l'appartenance prise en compte ; aucun parcours d'attribution |
 | Moteur décimal, montants en chaînes dans les API | Testé | — |
 | Stockage documentaire par empreinte | Testé | S3 local de développement ; Object Lock non testé |
-| Journal d'audit en ajout seul, chaîné | Testé | Pas d'archivage externe protégé |
+| Journal d'audit en ajout seul, chaîné, consultable | Testé | Pas d'archivage externe protégé |
 | Files de traitements différés, reprise | Testé | Rattrapage automatique pour les pièces seulement |
 | Sauvegarde et restauration | Partiel | Base : essai réussi en local. Stockage objet, Keycloak et restauration à un instant donné : non couverts |
 | Intégration continue | Partiel | Fichier écrit, jamais exécuté sur GitHub |
-| Supervision (OpenTelemetry, Prometheus, Grafana) | Non implémenté | — |
-| Infrastructure cible (OpenTofu, OVHcloud) | Non implémenté | — |
+| Supervision (OpenTelemetry, Prometheus, Grafana) | Partiel | Métriques Prometheus exposées par l'API et le worker ; pas de collecte déployée ni de traces |
+| Infrastructure cible (OpenTofu, OVHcloud) | Partiel | Ébauche validée syntaxiquement (base managée, buckets) ; jamais appliquée |
 
 ## Lot 1 — Collecte et première révision
 
@@ -57,8 +57,8 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19.
 | Rapport FEC : lisible / conforme / suffisant, ligne par ligne | En attente de validation | Contrôles de conformité non implémentés listés dans le rapport lui-même |
 | Imports par lots de plusieurs centaines de dossiers | Non implémenté | Import dossier par dossier |
 | Annulation contrôlée d'un import | Non implémenté | — |
-| Contrôles déterministes (19 au catalogue) | En attente de validation | Tous exécutés à chaque import ; `TRE-003` et `CLO-002` restent « non réalisés » faute de relevés et d'exercice précédent fournis |
-| Revue des constats : affectation, commentaires, décisions motivées | Testé | L'affectation à un tiers n'est pas proposée par l'interface |
+| Contrôles déterministes (19 au catalogue) | En attente de validation | Tous exécutés à chaque import ; `TRE-003` et `CLO-002` sont réalisés quand des relevés et l'exercice précédent existent, sinon « non réalisés » avec leur motif |
+| Revue des constats : affectation, commentaires, décisions motivées | Testé | — |
 | Détection des travaux à revoir après modification des données | Testé | — |
 | Dossier de révision : PDF, données structurées, inventaire | Testé | Toujours « projet » ; pas de validation d'ensemble du dossier |
 
@@ -68,9 +68,9 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19.
 |---|---|---|
 | Bibliothèque `@comtaple/mail` | En attente de connexion | 57 tests contre simulateur |
 | Routes d'API (connexion, configuration, suivi, déconnexion, notifications), synchronisation dans le worker, verrou par connexion, rattrapage périodique | En attente de connexion | 20 parcours de bout en bout contre simulateur |
-| File des pièces à qualifier et affectation à un dossier | En attente de connexion | API seulement, pas d'écran |
-| Signalement des factures disponibles derrière un lien | En attente de connexion | API seulement |
-| Écrans de gestion des connexions mail et page de retour OAuth | Non implémenté | Bloquant pour une connexion réelle |
+| File des pièces à qualifier et affectation à un dossier | En attente de connexion | Pas de rejet d'une pièce sans rapport avec un dossier |
+| Signalement des factures disponibles derrière un lien | En attente de connexion | — |
+| Écrans de gestion des connexions mail et page de retour OAuth | En attente de connexion | Vérifiés contre simulateur ; sur la pile réelle, seul l'état « non connecté / connecteur non configuré » est vérifié |
 | Boîte partagée Microsoft | Partiel | Couverte par les tests de la bibliothèque, pas de bout en bout |
 | Connexion à une vraie boîte Gmail ou Microsoft 365 | Jamais réalisée | Aucune application OAuth n'existe ; le statut affiché reste « non connecté » |
 
@@ -78,37 +78,63 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19.
 
 | Fonctionnalité | État | Limites |
 |---|---|---|
-| Lecture de relevés CAMT.053, OFX, CSV | Partiel | Moteur testé (jeux synthétiques) ; NON branché dans l'API ni l'interface ; schémas ISO 20022 non consultés |
-| Rapprochements exacts et par règles (groupés, partiels, compensations, tolérances) | Partiel | Idem : moteur seul. Appariements par somme parfois fortuits sur données dégradées (signalé par le moteur) |
-| Suggestions IA de rapprochement vérifiées par le moteur | Partiel | Vérification arithmétique prête ; aucune suggestion IA |
-| Contrôles immobilisations, social, césure, cohérence entre exercices, TVA déductible | En attente de validation | Dans le catalogue ; `CLO-002` et `TRE-003` restent « non réalisés » tant que l'exercice précédent et les relevés ne sont pas fournis par l'application |
+| Import de relevés camt.053, OFX, CSV (sans prestataire bancaire) | Testé | Jeux synthétiques ; schémas ISO 20022 des versions .03 à .08 non consultés ; relevés de carte OFX, CFONB 120 et MT940 non lus ; aucun relevé réel |
+| Idempotence des mouvements, cadrage des soldes | Testé | Deux exports chevauchants sans référence bancaire peuvent créer un doublon (décision D-020) |
+| CSV ambigu : abstention puis profil confirmé par un humain | Testé | Pas d'aperçu du fichier à l'écran |
+| Rapprochement banque ↔ comptabilité (exact, groupé, partiel, compensation, tolérance) | En attente de validation | Propositions seulement ; appariements par somme parfois fortuits sur données dégradées (signalés) ; aucune écriture ni lettrage produit |
+| Validation et rejet des rapprochements, obsolescence quand les données changent | Testé | — |
+| Suggestions IA de rapprochement | Non implémenté | La vérification arithmétique d'une suggestion existe dans le moteur ; aucune IA |
+| Contrôle de rapprochement bancaire `TRE-003` alimenté par les relevés | Testé | S'abstient si plusieurs comptes bancaires ne peuvent pas être associés aux comptes 512 (pas d'écran de correspondance) |
+| Cohérence entre exercices `CLO-002` alimentée par l'exercice précédent | Partiel | Branché ; non exercé de bout en bout avec deux exercices importés |
+| Contrôles immobilisations, social, césure, TVA déductible | En attente de validation | — |
 | Agrégation bancaire par prestataire | Non implémenté | Aucun prestataire choisi |
-| Abonnements, quotas, facturation | Non implémenté | Tables modélisées uniquement |
-| Règles et paramètres propres au cabinet | Non implémenté | Table modélisée uniquement |
+| Abonnements : forfait, tranches, essai, quotas, changement d'offre, résiliation, virement, historique | Testé | Grille de démonstration fictive ; opérations de l'éditeur par module de provisionnement, sans outil d'exploitation ; TVA et facturation légale hors périmètre ; aucun export vers un outil de facturation |
+| Service fermé hors abonnement (dépôts refusés, consultation conservée) | Testé | Les quotas sont affichés mais ne bloquent pas la collecte (décision D-024) |
+| Règles et paramètres propres au cabinet, avec mesure d'impact et approbation | Testé | Mesure d'impact synchrone, sur un seul contrôle et un exercice |
+| Administration : dossiers, exercices, habilitations, membres | Testé | Pas d'invitation d'utilisateur, de changement de rôle ni de désactivation d'un membre |
+| Export de restitution d'un dossier | Testé | Par dossier seulement ; données structurées assemblées en mémoire |
+| Purge des téléversements abandonnés | Partiel | Écrite dans le rattrapage du worker ; non exercée par un test (délai de 7 jours) |
+| Imports par lots de centaines de dossiers, annulation contrôlée | Non implémenté | — |
+| Métriques techniques (Prometheus) | Partiel | Points de collecte vérifiés ; ni Prometheus ni Grafana déployés ; pas de traces OpenTelemetry |
+| Images de conteneurs | Partiel | API : construite et démarrée. Worker et web : voir `rapport-de-tests.md` |
+| Description d'infrastructure OpenTofu | Partiel | Base managée et buckets seulement ; validée syntaxiquement, jamais planifiée ni appliquée |
 
 ## Lot 3 — Veille et assistant
 
-| Fonctionnalité | État |
-|---|---|
-| Surveillance des sources officielles, veille par dossier | Non implémenté |
-| Recherche documentaire (texte et vecteurs) | Non implémenté (extension pgvector installée, inutilisée) |
-| Assistant documenté | Non implémenté |
+| Fonctionnalité | État | Limites |
+|---|---|---|
+| Surveillance planifiée de pages officielles, détection de changement | Testé | Dans l'environnement réel, BOFiP est lisible ; Légifrance refuse l'accès automatisé (403) : ces sources sont affichées indisponibles. Une surveillance fiable de Légifrance passe par son API officielle (accès à demander) |
+| Évolutions qualifiées par une personne (résumé, dates, conditions, critères) | En attente de validation | Opération de l'éditeur par provisionnement ; aucune évolution réelle n'a été qualifiée (seulement des évolutions d'essai fictives, retirées) |
+| Applicabilité par dossier, expliquée ; « à confirmer » si une caractéristique manque | Testé | Critères simples (territoire, régime, forme, NAF, référentiel, exercices) ; pas de critère de taille ni d'opération |
+| Suivi d'une évolution par dossier | Testé | — |
+| Recherche textuelle autorisée (pièces, écritures, constats) | Testé | Plein texte français ; pas de recherche vectorielle (pgvector inutilisé) ; portefeuille multi-dossiers non couvert |
+| Assistant documenté | Non implémenté | Dépend de la passerelle IA, non connectée |
 
 ## Lot 4 — Missions et performance
 
-| Fonctionnalité | État |
-|---|---|
-| Lettres de mission, avenants, travaux hors périmètre | Non implémenté (tables modélisées) |
-| Registre des conseils | Non implémenté |
-| Indicateurs dossier, cabinet, logiciel | Non implémenté |
+| Fonctionnalité | État | Limites |
+|---|---|---|
+| Missions, lettres et avenants structurés (projet → validée) | Testé | Contenu SAISI par le cabinet : aucune analyse automatique d'une lettre existante |
+| Rattachement des travaux à la lettre applicable à leur date, hors-périmètre signalé | En attente de validation | Référentiel de prestations interne ; signalement, pas conclusion contractuelle |
+| Projet d'avenant avec estimation de temps sur base nommée | Testé | Honoraires de l'avenant à compléter par le cabinet ; explication par gabarit, sans IA |
+| Registre des conseils : validation, autorisation d'envoi, faits constatés distincts | Testé | Le logiciel n'envoie rien ; les faits sont saisis avec justificatif |
+| Indicateurs financiers du dossier (25, avec formule et traçabilité) | En attente de validation | Avant écritures d'inventaire ; SIG hors modèle réglementaire depuis la réforme du PCG (conventions internes) ; délais seulement avec un taux de TVA fourni |
+| Indicateurs d'activité du cabinet et du logiciel | Testé | Par cabinet et par dossier, jamais par personne ; ne mesurent pas la qualité des extractions |
+| Rentabilité par mission | Non implémenté | Temps observés disponibles ; pas de rapprochement avec les honoraires |
 
 ## Lot 5 — États et fiscalité
 
-| Fonctionnalité | État |
-|---|---|
-| Écritures d'inventaire, balance ajustée, projets de bilan et de compte de résultat | Non implémenté |
-| Annexe, liasse fiscale | Non implémenté |
-| Télétransmission | Non implémenté, et non autorisée par conception sans périmètre et autorisation spécifiques |
+| Fonctionnalité | État | Limites |
+|---|---|---|
+| Balance générale | Testé | — |
+| Projets de compte de résultat et de bilan | En attente de validation | Table de correspondance lue des intitulés du PCG, non validée par un professionnel ; exercices ouverts avant 2025 non couverts ; comptes ambigus laissés « non affectés » |
+| Propositions d'écritures d'inventaire, balance ajustée | Non implémenté | — |
+| Annexe, liasse fiscale | Non implémenté | — |
+| Télétransmission | Non implémenté, et non autorisée par conception sans périmètre et autorisation spécifiques | — |
+
+## Écrans
+
+L'état ci-dessus décrit l'API et les traitements. Côté interface : collecte, revue, comptabilité, révision, banque, rapprochements, administration et messagerie ont leurs écrans, testés (voir `rapport-de-tests.md`). Les écrans d'abonnement, de règles, de missions et conseils, de veille, de recherche, d'états et d'indicateurs, et de restitution sont décrits dans `rapport-de-tests.md` selon leur état réel à la date du rapport.
 
 ## Couverture par type de dossier
 

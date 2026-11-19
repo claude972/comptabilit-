@@ -139,3 +139,42 @@ test('cloisonnement dans l’interface : l’administratrice ne peut pas ouvrir 
   await expect(page.getByRole('main')).not.toContainText('GEN-001');
   await contexte.close();
 });
+
+test('messagerie : « non connecté » et « connecteur non configuré » pour l’administratrice ; refus pour le réviseur et le déposant', async ({ browser }) => {
+  // État RÉEL de l'installation : sans application OAuth configurée, aucune boîte ne peut être connectée.
+  const admin = await browser.newContext({ ...devices['Desktop Chrome'] });
+  const page = await admin.newPage();
+  await seConnecter(page, 'alice.admin@cabinet-a.test', '/messagerie');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Messagerie');
+  await expect(page.getByTestId('bandeau-non-connecte')).toContainText('Aucune boîte réelle n’a été connectée');
+  for (const f of ['gmail', 'microsoft']) {
+    const carte = page.locator(`[data-connecteur="${f}"]`);
+    await expect(carte).toContainText('Non connecté');
+    await expect(carte.getByTestId('connecteur-non-configure')).toContainText('connecteur non configuré');
+  }
+  await expect(page.getByRole('link', { name: 'Connecter une boîte' })).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: 'Navigation principale' }).getByRole('link', { name: 'Messagerie' })).toBeVisible();
+  // L'API réelle refuse de démarrer une connexion : 503 « connecteur_non_configure », relayé par le BFF.
+  const reponse = await page.evaluate(async () => {
+    const r = await fetch('/api/bff/v1/mail/connexions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Comtaple-Csrf': '1' }, body: JSON.stringify({ fournisseur: 'gmail' }) });
+    return { statut: r.status, corps: (await r.json()) as { code?: string } };
+  });
+  expect(reponse.statut).toBe(503);
+  expect(reponse.corps.code).toBe('connecteur_non_configure');
+  // Un retour OAuth sans demande préalable n'aboutit à rien et ne laisse aucun code dans l'adresse.
+  await page.goto('/connexions-mail/retour?state=inconnu&code=inconnu');
+  await expect(page).toHaveURL(/\/messagerie\?retour=(connecteur_non_configure|state_invalide)$/);
+  await expect(page.getByTestId('retour-oauth')).toBeVisible();
+  await admin.close();
+
+  for (const email of ['remi.reviseur@cabinet-a.test', 'client.depot@client-a.test']) {
+    const contexte = await browser.newContext({ ...devices['Desktop Chrome'] });
+    const p = await contexte.newPage();
+    await seConnecter(p, email, '/messagerie');
+    await expect(p.getByRole('heading', { name: 'Accès refusé' })).toBeVisible();
+    await expect(p.getByRole('main')).toContainText('réservée aux gestionnaires du cabinet');
+    await expect(p.locator('a[href^="/messagerie"]')).toHaveCount(0);
+    expect(await p.evaluate(async () => (await fetch('/api/bff/v1/mail/connexions')).status)).toBe(403);
+    await contexte.close();
+  }
+});

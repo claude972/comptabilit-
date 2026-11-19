@@ -9,6 +9,8 @@ function estPublic(chemin: string): boolean {
     chemin === '/connexion' ||
     chemin === '/hors-ligne' ||
     chemin.startsWith('/api/auth/') ||
+    // Retour OAuth de messagerie : la route vérifie elle-même la session (sans jamais renvoyer le code dans une URL).
+    chemin === '/connexions-mail/retour' ||
     chemin === '/manifest.webmanifest' ||
     chemin === '/sw.js' ||
     chemin === '/favicon.ico' ||
@@ -30,6 +32,8 @@ export async function proxy(req: NextRequest): Promise<NextResponse> {
   const chemin = req.nextUrl.pathname;
   const nonce = Buffer.from(crypto.getRandomValues(new Uint8Array(18))).toString('base64');
   const securite = entetesSecurite(nonce);
+  // L'URL de retour OAuth porte un code d'autorisation : elle ne doit apparaître dans aucun référent.
+  if (chemin === '/connexions-mail/retour') securite['Referrer-Policy'] = 'no-referrer';
   const finir = (reponse: NextResponse, cookies: CookieAPoser[] = []) => {
     for (const [nom, valeur] of Object.entries(securite)) reponse.headers.set(nom, valeur);
     for (const c of cookies) reponse.cookies.set(c.nom, c.valeur, c.options);

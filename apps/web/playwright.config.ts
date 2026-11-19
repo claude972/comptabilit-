@@ -50,7 +50,7 @@ export default defineConfig({
       url: `http://127.0.0.1:${PORT_API}/v1/sante`,
       reuseExistingServer: false,
       stdout: 'pipe',
-      env: { FAUX_API_PORT: String(PORT_API), OIDC_ISSUER: process.env.OIDC_ISSUER ?? '', OIDC_AUDIENCE: process.env.OIDC_AUDIENCE ?? 'comtaple-api', TAILLE_MORCEAU: '32768', FAUX_API_DELAI_MS: '1200' },
+      env: { WEB_URL: ORIGINE, FAUX_API_PORT: String(PORT_API), OIDC_ISSUER: process.env.OIDC_ISSUER ?? '', OIDC_AUDIENCE: process.env.OIDC_AUDIENCE ?? 'comtaple-api', TAILLE_MORCEAU: '32768', FAUX_API_DELAI_MS: '1200' },
     },
     {
       command: `pnpm exec next build && pnpm exec next start --port ${PORT_WEB}`,

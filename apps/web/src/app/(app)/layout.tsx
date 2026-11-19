@@ -4,6 +4,7 @@ import { BoutonDeconnexion } from '@/components/deconnexion';
 import { type LienNavigation, Navigation } from '@/components/navigation';
 import { Alerte, Carte, Titre } from '@/components/ui/base';
 import { LIBELLE_ROLE } from '@/lib/libelles';
+import { estGestionnaire } from '@/lib/messagerie';
 import { estDeposant, lireMoi } from '@/lib/serveur/donnees';
 
 export const dynamic = 'force-dynamic';
@@ -37,6 +38,8 @@ export default async function MiseEnPage({ children }: { children: ReactNode }) 
         { href: '/deposer', libelle: 'Déposer' },
         { href: '/depots', libelle: 'Pièces déposées' },
         { href: '/reference/controles', libelle: 'Catalogue des contrôles' },
+        // Connexions de messagerie : gestionnaires du cabinet uniquement (l'API refuse les autres rôles).
+        ...(estGestionnaire(role) ? [{ href: '/messagerie', libelle: 'Messagerie' }] : []),
       ];
   return (
     <div className="flex min-h-dvh flex-col">

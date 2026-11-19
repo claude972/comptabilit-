@@ -97,17 +97,17 @@ export default async function PageConstat({ params }: { params: Promise<{ id: st
                 <tbody>
                   {lignes.map((l) => (
                     <tr key={l.id}>
-                      <td className="tabular-nums">{l.numero_ligne}</td>
-                      <td className="whitespace-nowrap">{formaterDate(String(l.ecriture_date))}</td>
-                      <td>{l.journal_code}</td>
-                      <td>{l.ecriture_num}</td>
+                      <td className="tabular-nums">{l.numeroLigne}</td>
+                      <td className="whitespace-nowrap">{formaterDate(l.ecritureDate)}</td>
+                      <td>{l.journalCode}</td>
+                      <td>{l.ecritureNum}</td>
                       <td>
-                        {l.compte_num}
-                        {l.comp_aux_num ? ` / ${l.comp_aux_num}` : ''}
-                        <span className="block text-sm text-texte-doux">{l.compte_lib}</span>
+                        {l.compteNum}
+                        {l.compAuxNum ? ` / ${l.compAuxNum}` : ''}
+                        <span className="block text-sm text-texte-doux">{l.compteLib}</span>
                       </td>
-                      <td className="break-all">{l.piece_ref}</td>
-                      <td className="break-words">{l.ecriture_lib}</td>
+                      <td className="break-all">{l.pieceRef}</td>
+                      <td className="break-words">{l.ecritureLib}</td>
                       <td className="text-right tabular-nums">{formaterMontant(l.debit)}</td>
                       <td className="text-right tabular-nums">{formaterMontant(l.credit)}</td>
                     </tr>

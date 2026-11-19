@@ -238,18 +238,18 @@ export interface Revue {
   resultats: ResultatControle[];
   constats: Constat[];
 }
-/** Ligne d'écriture telle que renvoyée par une requête SQL brute : noms de colonnes en `snake_case`. */
+/** Ligne d'écriture concernée par un constat (sélection de `lignes_ecriture`, noms en camelCase). */
 export interface LigneEcritureBrute {
   id: string;
-  numero_ligne: number;
-  journal_code: string;
-  ecriture_num: string;
-  ecriture_date: string;
-  compte_num: string;
-  compte_lib: string;
-  comp_aux_num: string | null;
-  piece_ref: string;
-  ecriture_lib: string;
+  numeroLigne: number;
+  journalCode: string;
+  ecritureNum: string;
+  ecritureDate: string;
+  compteNum: string;
+  compteLib: string;
+  compAuxNum: string | null;
+  pieceRef: string;
+  ecritureLib: string;
   debit: string;
   credit: string;
 }

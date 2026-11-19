@@ -98,6 +98,27 @@ export async function lireTransaction(cookies: LecteurCookies): Promise<Transact
   return brut ? dechiffrer<TransactionOidc>(brut, await clefs().oidc) : null;
 }
 
+export const COOKIE_RETOUR_MAIL = 'comtaple_mail_retour';
+export const CHEMIN_RETOUR_MAIL = '/connexions-mail/retour';
+/** Paramètres d'un retour OAuth de messagerie reçus sans session : gardés chiffrés le temps de la connexion, jamais dans une URL. */
+export interface RetourMailEnAttente {
+  state: string;
+  code?: string;
+  error?: string;
+}
+let cleRetourMail: Promise<Uint8Array> | undefined;
+const clefRetourMail = () => (cleRetourMail ??= deriverCle(env().SESSION_SECRET, 'comtaple-mail-retour-v1'));
+
+export async function cookieRetourMail(r: RetourMailEnAttente): Promise<CookieAPoser> {
+  const valeur = await chiffrer(r, await clefRetourMail(), maintenant() + DUREE_TRANSACTION_OIDC_S);
+  return { nom: COOKIE_RETOUR_MAIL, valeur, options: options(DUREE_TRANSACTION_OIDC_S, '/connexions-mail') };
+}
+export async function lireRetourMail(cookies: LecteurCookies): Promise<RetourMailEnAttente | null> {
+  const brut = cookies.get(COOKIE_RETOUR_MAIL)?.value;
+  return brut ? dechiffrer<RetourMailEnAttente>(brut, await clefRetourMail()) : null;
+}
+export const effacementRetourMail = (): CookieAPoser => ({ nom: COOKIE_RETOUR_MAIL, valeur: '', options: options(0, '/connexions-mail') });
+
 /** Vrai lorsque le jeton d'accès doit être renouvelé avant d'être utilisé. */
 export function doitRafraichir(s: Session, marge: number = env().SESSION_MARGE_RAFRAICHISSEMENT_S): boolean {
   return s.expireA - marge <= maintenant();

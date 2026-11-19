@@ -182,3 +182,50 @@ test('cloisonnement : l’onglet Banque est refusé à une personne non habilit�
   expect(await page.evaluate(async (id) => (await fetch(`/api/bff/v1/dossiers/${id}/banque/mouvements`)).status, dossier)).toBe(404);
   await page.context().close();
 });
+
+test('analyse : balance équilibrée, projets d’états et un indicateur tracé jusqu’aux comptes (vraie API, FEC importé plus haut)', async ({ browser }) => {
+  const page = await ouvrir(browser, 'remi.reviseur@cabinet-a.test', `/dossiers/${dossier}/analyse`);
+  await expect(page.getByTestId('mention-etats')).toContainText('PROJET');
+  await expect(page.getByTestId('balance-equilibre')).toHaveText('Équilibrée');
+  const totaux = await page.getByTestId('totaux-balance').innerText();
+  const m = /débits : ([\d\s  ]+,\d{2}) · Total des crédits : ([\d\s  ]+,\d{2})/.exec(totaux)!;
+  expect(m[1]).toBe(m[2]);
+  await expect(page.getByTestId('correspondance')).toContainText('en attente de validation professionnelle');
+  for (const id of ['compte-de-resultat', 'bilan']) {
+    await expect(page.getByTestId(id).getByTestId('mention-projet-etat')).toHaveText('PROJET');
+    await expect(page.getByTestId(id).getByTestId('controles-internes')).toBeVisible();
+  }
+  await expect(page.getByTestId('bilan').getByRole('columnheader', { name: 'Amortissements et dépréciations' })).toBeVisible();
+  const calcule = page.locator('[data-indicateur][data-statut="calcule"]').filter({ has: page.getByTestId('composantes') }).first();
+  await expect(calcule.getByTestId('valeur-indicateur')).toHaveText(/\d/);
+  await calcule.getByText(/^Composantes \(\d+\)$/).click();
+  await calcule.getByText(/^\d+ comptes?$/).first().click();
+  await expect(calcule.getByTestId('comptes-composante').first().locator('li').first()).toHaveText(/^\d{3,} : −?[\d\s  ]+,\d{2}$/);
+  // Sans taux de TVA, les délais ne sont pas calculables : motif affiché, jamais un zéro.
+  await expect(page.locator('[data-indicateur][data-statut="non_calculable"]').first().getByTestId('non-calculable')).toContainText('Non calculable');
+  await expect(page.locator('[data-famille="signal"]').getByTestId('phrase-signaux')).toContainText('ni un diagnostic');
+  await page.goto('/reference/indicateurs');
+  await expect(page.locator('[data-definition]').first()).toContainText('Formule');
+  await page.context().close();
+});
+
+test('abonnement : affiché à l’administratrice avec « montants de démonstration fictifs », refusé au réviseur (aucune modification)', async ({ browser }) => {
+  // Lecture seule : ce parcours ne change pas d'offre et ne résilie pas (les autres parcours dépendent de cet abonnement).
+  const page = await ouvrir(browser, 'alice.admin@cabinet-a.test', '/administration/abonnement');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Abonnement du cabinet');
+  await expect(page.getByTestId('situation-abonnement')).toHaveText(/Période d’essai|Abonnement actif/);
+  await expect(page.getByTestId('montants-fictifs').first()).toHaveText('Montants de démonstration fictifs');
+  await expect(page.getByTestId('quota-non-bloquant')).toContainText('n’empêche pas la collecte');
+  await expect(page.getByTestId('paiement-editeur')).toContainText('rapprochés par l’éditeur');
+  await expect(page.getByTestId('estimation')).toBeVisible();
+  await expect(page.getByTestId('service-ferme')).toHaveCount(0);
+  await page.goto('/deposer');
+  await expect(page.getByRole('heading', { name: 'Déposer une pièce' })).toBeVisible();
+  await expect(page.getByTestId('service-ferme')).toHaveCount(0); // service ouvert : aucun bandeau
+  await page.context().close();
+
+  const remi = await ouvrir(browser, 'remi.reviseur@cabinet-a.test', '/administration/abonnement');
+  await expect(remi.getByRole('heading', { name: 'Accès refusé' })).toBeVisible();
+  expect(await remi.evaluate(async () => [(await fetch('/api/bff/v1/abonnement')).status, (await fetch('/api/bff/v1/abonnement/situation')).status])).toEqual([403, 200]);
+  await remi.context().close();
+});

@@ -49,6 +49,7 @@ export function transition(etat: EtatDepot, ev: Evenement): EtatDepot {
         case 'refuse':
           return 'refuse';
         case 'session_expiree':
+        case 'service_ferme':
         case 'interrompu':
         case 'annule':
           return 'interrompu';

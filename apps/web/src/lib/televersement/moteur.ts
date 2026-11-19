@@ -50,6 +50,8 @@ export type IssueEnvoi =
   | { issue: 'refuse'; statut: number; message: string }
   /** Erreur du serveur ou désaccords répétés : l'envoi est interrompu, la reprise reste possible. */
   | { issue: 'interrompu'; televersementId: string | null; octetsConfirmes: number; message: string }
+  /** Abonnement du cabinet fermé (403 `abonnement_inactif`) : rien n'est envoyé, le dépôt est conservé pour plus tard. */
+  | { issue: 'service_ferme'; situation: string; televersementId: string | null; octetsConfirmes: number }
   | { issue: 'annule'; televersementId: string | null; octetsConfirmes: number };
 
 export interface ParametresEnvoi {
@@ -150,6 +152,8 @@ export async function televerser(p: ParametresEnvoi): Promise<IssueEnvoi> {
     if (e instanceof ErreurReseau) return { issue: 'coupure', televersementId: id, octetsConfirmes: confirmes };
     if (e instanceof ErreurHttp) {
       if (e.statut === 401) return { issue: 'session_expiree', televersementId: id, octetsConfirmes: confirmes };
+      const corps = e.corps as { code?: unknown; situation?: unknown } | null;
+      if (e.statut === 403 && corps?.code === 'abonnement_inactif') return { issue: 'service_ferme', situation: typeof corps.situation === 'string' ? corps.situation : '', televersementId: id, octetsConfirmes: confirmes };
       if (e.statut >= 500 || e.statut === 429) return { issue: 'interrompu', televersementId: id, octetsConfirmes: confirmes, message: e.message };
       return { issue: 'refuse', statut: e.statut, message: e.message };
     }

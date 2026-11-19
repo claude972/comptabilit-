@@ -180,3 +180,83 @@ describe('cohérence entre exercices (CLO-002) avec deux exercices importés', (
     expect(ind.json.indicateurs.some((i: any) => i.precedent && i.precedent.valeur !== null)).toBe(true);
   });
 });
+
+describe('écritures d’inventaire proposées et balance ajustée', () => {
+  const fnp = {
+    dateEcriture: '2025-12-31',
+    libelle: 'Facture non parvenue — fournitures de décembre',
+    justification: 'Livraison du 18 décembre reçue, facture non parvenue à la clôture (bon de livraison au dossier).',
+    calcul: 'Bon de livraison : 1 200,00 € HT',
+    lignes: [
+      { compteNum: '6061', compteLib: 'Fournitures non stockables', debit: '1200.00', credit: '0.00' },
+      { compteNum: '408', compteLib: 'Fournisseurs — factures non parvenues', debit: '0.00', credit: '1200.00' },
+    ],
+  };
+  let ecritureId = '';
+  const proposer = (qui: string, corps: unknown) => api(qui, 'POST', `/v1/exercices/${exerciceId}/ecritures-inventaire`, corps);
+
+  it('une proposition doit être équilibrée, datée dans l’exercice et justifiée ; elle n’a aucun effet avant approbation', async () => {
+    expect((await proposer('client', fnp)).statut).toBe(404);
+    const desequilibre = await proposer('chloe', { ...fnp, lignes: [fnp.lignes[0], { ...fnp.lignes[1], credit: '1199.99' }] });
+    expect(desequilibre.statut).toBe(400);
+    expect(desequilibre.json.ecart).toBe('0.01');
+    expect((await proposer('chloe', { ...fnp, lignes: [{ ...fnp.lignes[0], credit: '5.00' }, fnp.lignes[1]] })).statut).toBe(400); // débit et crédit sur la même ligne
+    expect((await proposer('chloe', { ...fnp, dateEcriture: '2026-01-05' })).statut).toBe(400);
+    expect((await proposer('chloe', { ...fnp, lignes: [{ ...fnp.lignes[0], debit: 1200 }, fnp.lignes[1]] })).statut).toBe(400); // nombre au lieu d'une chaîne décimale
+    expect((await proposer('chloe', { ...fnp, justification: 'ok' })).statut).toBe(400);
+    const p = await proposer('chloe', fnp);
+    expect(p.statut).toBe(201);
+    expect(p.json).toMatchObject({ statut: 'proposee', totalDebit: '1200.00', origine: 'saisie_humaine' });
+    ecritureId = p.json.id;
+    const b = (await api('remi', 'GET', `/v1/exercices/${exerciceId}/balance-ajustee`)).json;
+    expect(b.ecrituresPrisesEnCompte).toEqual([]);
+    expect(b.impact.variation).toBe('0.00');
+  });
+
+  it('approbation par un réviseur autre que l’auteur ; la balance ajustée intègre l’écriture sans toucher aux données importées', async () => {
+    expect((await api('chloe', 'POST', `/v1/ecritures-inventaire/${ecritureId}/decision`, { decision: 'approuver' })).statut).toBe(403);
+    const sienne = await proposer('remi', { ...fnp, libelle: 'Auto-approbation' });
+    expect((await api('remi', 'POST', `/v1/ecritures-inventaire/${sienne.json.id}/decision`, { decision: 'approuver' })).statut).toBe(403);
+    expect((await api('alice', 'POST', `/v1/ecritures-inventaire/${sienne.json.id}/decision`, { decision: 'rejeter' })).statut).toBe(400); // motif requis
+    expect((await api('alice', 'POST', `/v1/ecritures-inventaire/${sienne.json.id}/decision`, { decision: 'rejeter', motif: 'Doublon' })).json.statut).toBe('rejetee');
+    expect((await api('remi', 'POST', `/v1/ecritures-inventaire/${ecritureId}/decision`, { decision: 'approuver' })).json).toMatchObject({ statut: 'approuvee', decideePar: DEMO.remi });
+
+    const b = (await api('remi', 'GET', `/v1/exercices/${exerciceId}/balance-ajustee`)).json;
+    expect(b.mention).toMatch(/PROJET/);
+    expect(b.ecrituresPrisesEnCompte.map((e: any) => e.id)).toEqual([ecritureId]); // la rejetée ne compte pas
+    expect(b.impact.variation).toBe('-1200.00'); // une charge de plus : le résultat baisse d'autant
+    expect(b.balanceAjustee.equilibree).toBe(true);
+    const total = (x: any) => BigInt(x.totalDebit.replace('.', ''));
+    expect(total(b.balanceAjustee) - total(b.balanceImportee)).toBe(120000n);
+    // Les écritures importées sont intactes : la balance « importée » est celle des états de travail.
+    const etats = (await api('remi', 'GET', `/v1/exercices/${exerciceId}/etats`)).json;
+    expect(b.balanceImportee.totalDebit).toBe(etats.balance.totalDebit);
+    expect(b.balanceImportee.lignes.some((l: any) => l.compteNum === '408')).toBe(etats.balance.lignes.some((l: any) => l.compteNum === '408'));
+  });
+
+  it('exporter n’est pas intégrer : un fichier est remis, les écritures passent « exportées »', async () => {
+    expect((await api('chloe', 'POST', `/v1/exercices/${exerciceId}/ecritures-inventaire/export`)).statut).toBe(403);
+    const csv = await api('remi', 'POST', `/v1/exercices/${exerciceId}/ecritures-inventaire/export`);
+    expect(csv.statut).toBe(200);
+    const lignes = csv.brut.toString('utf8').trim().split('\r\n');
+    expect(lignes[0]).toBe('JournalCode;EcritureNum;EcritureDate;CompteNum;CompteLib;EcritureLib;Debit;Credit');
+    expect(lignes).toHaveLength(3);
+    expect(lignes[1]).toMatch(/^INV;INV-[0-9a-f]{8};20251231;6061;.*;1200,00;0,00$/);
+    const liste = (await api('remi', 'GET', `/v1/exercices/${exerciceId}/ecritures-inventaire`)).json;
+    expect(liste.find((e: any) => e.id === ecritureId)).toMatchObject({ statut: 'exportee', aRevoir: false });
+    expect(liste.find((e: any) => e.id === ecritureId).exporteeLe).toBeTruthy();
+  });
+
+  it('si les données importées changent, les propositions antérieures sont « à revoir » et sortent de la balance ajustée', async () => {
+    const autre = genererFecSynthetique({ exercice: { debut: '2025-01-01', fin: '2025-12-31' }, nbEcritures: 220, graine: Number.parseInt(SEL.slice(0, 6), 16) + 321 });
+    const d = await deposer('chloe', entiteId, Buffer.from(autre.contenu), { usage: 'fec', exerciceId, statutDonnees: 'fec' }, autre.nomFichier);
+    await attendreLot('chloe', d.fin.json.lotImportId);
+    const liste = (await api('remi', 'GET', `/v1/exercices/${exerciceId}/ecritures-inventaire`)).json;
+    expect(liste.find((e: any) => e.id === ecritureId).aRevoir).toBe(true);
+    const b = (await api('remi', 'GET', `/v1/exercices/${exerciceId}/balance-ajustee`)).json;
+    expect(b.ecrituresPrisesEnCompte).toEqual([]);
+    expect(b.ecrituresEcarteesCarDonneesModifiees).toBe(1);
+    const neuve = await proposer('chloe', fnp);
+    expect((await api('remi', 'POST', `/v1/ecritures-inventaire/${neuve.json.id}/decision`, { decision: 'approuver' })).json.statut).toBe('approuvee');
+  });
+});

@@ -1,9 +1,15 @@
 import { cache } from 'react';
+import type { SituationAbonnement } from '../abonnement';
 import type { Dossier, Exercice, Moi, Role } from '../types-api';
 import { type Resultat, tenter } from './api';
 
 /** Lectures partagées entre la mise en page et la page d'une même requête (mémoïsation par requête uniquement). */
 export const lireMoi = cache((): Promise<Resultat<Moi>> => tenter<Moi>('v1/moi'));
+/** Situation de l'abonnement du cabinet (lisible par tout membre). En cas d'échec de lecture, le service est présumé ouvert : l'API tranchera. */
+export const lireSituation = cache(async (): Promise<SituationAbonnement | null> => {
+  const r = await tenter<SituationAbonnement>('v1/abonnement/situation');
+  return r.ok ? r.donnees : null;
+});
 export const lireDossiers = cache((): Promise<Resultat<Dossier[]>> => tenter<Dossier[]>('v1/dossiers'));
 export const lireExercices = cache((entiteId: string): Promise<Resultat<Exercice[]>> => tenter<Exercice[]>(`v1/dossiers/${entiteId}/exercices`));
 

@@ -11,7 +11,8 @@ import { cn } from '@/lib/cn';
 import { LIBELLE_STATUT_DONNEES, LIBELLE_STATUT_LOT } from '@/lib/libelles';
 import { formaterDate, formaterHorodatage, formaterMontant } from '@/lib/montants';
 import { tenter } from '@/lib/serveur/api';
-import { parametre } from '@/lib/serveur/donnees';
+import { ServiceFerme } from '@/components/service-ferme';
+import { lireSituation, parametre } from '@/lib/serveur/donnees';
 import { contexteDossier, contexteExercice } from '@/lib/serveur/dossier';
 import { type LotImport, type RapportFec, auMoins } from '@/lib/types-api';
 
@@ -227,6 +228,8 @@ export default async function PageComptabilite({ params, searchParams }: { param
   const exercice = ex.exercice;
   const lots = await tenter<LotImport[]>(`v1/exercices/${exercice.id}/imports`);
   if (!lots.ok) return <ErreurAcces statut={lots.statut} message={lots.message} retour={`/dossiers/${id}`} />;
+  const situation = await lireSituation();
+  const ferme = situation && !situation.serviceOuvert ? situation.situation : null;
   const base = `/dossiers/${id}/comptabilite?exercice=${exercice.id}`;
   const voulu = parametre(sp.lot);
   const choisi = lots.donnees.find((l) => l.id === voulu) ?? lots.donnees.find((l) => l.actif) ?? lots.donnees[0];
@@ -237,7 +240,9 @@ export default async function PageComptabilite({ params, searchParams }: { param
   return (
     <div className="space-y-4">
       <ChoixExercice exercices={ex.exercices} courant={exercice.id} />
-      {auMoins(ctx.niveau, 'collaboration') ? (
+      {ferme ? (
+        <ServiceFerme situation={ferme} />
+      ) : auMoins(ctx.niveau, 'collaboration') ? (
         <Carte>
           <ImportComptable entiteId={id} exerciceId={exercice.id} cheminRetour={base} />
         </Carte>

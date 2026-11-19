@@ -15,7 +15,8 @@ import {
 import { LIBELLE_STATUT_LOT } from '@/lib/libelles';
 import { formaterDate, formaterHorodatage, formaterMontant } from '@/lib/montants';
 import { tenter } from '@/lib/serveur/api';
-import { parametre } from '@/lib/serveur/donnees';
+import { ServiceFerme } from '@/components/service-ferme';
+import { lireSituation, parametre } from '@/lib/serveur/donnees';
 import { contexteDossier, contexteExercice } from '@/lib/serveur/dossier';
 import { auMoins } from '@/lib/types-api';
 
@@ -89,6 +90,8 @@ export default async function PageBanque({ params, searchParams }: { params: Pro
     tenter<ReferenceRapprochement>('v1/reference/rapprochement'),
   ]);
   if (!etat.ok) return <ErreurAcces statut={etat.statut} message={etat.message} retour={`/dossiers/${id}`} />;
+  const situation = await lireSituation();
+  const ferme = situation && !situation.serviceOuvert ? situation.situation : null;
   const collaboration = auMoins(ctx.niveau, 'collaboration');
   const revision = auMoins(ctx.niveau, 'revision');
   const exercice = ex.ok ? ex.exercice : null;
@@ -99,7 +102,9 @@ export default async function PageBanque({ params, searchParams }: { params: Pro
 
   return (
     <div className="space-y-6">
-      {collaboration ? (
+      {ferme ? (
+        <ServiceFerme situation={ferme} />
+      ) : collaboration ? (
         <Carte>
           <ImportReleve entiteId={id} />
         </Carte>

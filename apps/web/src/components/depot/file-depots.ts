@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { messageServiceFerme } from '@/lib/abonnement';
 import { type DepotLocal, enregistrerDepot, listerDepots, modifierDepot, purgerDepots, stockageDisponible, supprimerDepot } from '@/lib/depots-locaux';
 import { type EtatDepot, repriseAutomatique, transition } from '@/lib/televersement/etats';
 import { type IssueEnvoi, televerser } from '@/lib/televersement/moteur';
@@ -24,6 +25,10 @@ function messageIssue(issue: IssueEnvoi): string | null {
   switch (issue.issue) {
     case 'session_expiree':
       return 'Votre session a expiré. Reconnectez-vous, puis reprenez l’envoi.';
+    case 'service_ferme': {
+      const m = messageServiceFerme(issue.situation);
+      return `${m.cause} ${m.suite} Ce dépôt reste en attente sur cet appareil : il n’est pas supprimé.`;
+    }
     case 'interrompu':
     case 'refuse':
       return issue.message;

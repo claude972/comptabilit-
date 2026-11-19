@@ -2,12 +2,12 @@ import type { Metadata } from 'next';
 import { Deposer } from '@/components/depot/deposer';
 import { ErreurAcces } from '@/components/erreurs';
 import { Alerte, Titre } from '@/components/ui/base';
-import { lireDossiers, lireMoi } from '@/lib/serveur/donnees';
+import { lireDossiers, lireMoi, lireSituation } from '@/lib/serveur/donnees';
 
 export const metadata: Metadata = { title: 'Déposer une pièce' };
 
 export default async function PageDeposer() {
-  const [moi, dossiers] = await Promise.all([lireMoi(), lireDossiers()]);
+  const [moi, dossiers, situation] = await Promise.all([lireMoi(), lireDossiers(), lireSituation()]);
   if (!moi.ok) return <ErreurAcces statut={moi.statut} message={moi.message} />;
   if (!dossiers.ok) return <ErreurAcces statut={dossiers.statut} message={dossiers.message} />;
   // Seuls les dossiers où l'utilisateur est habilité (niveau non nul) sont proposés.
@@ -22,5 +22,5 @@ export default async function PageDeposer() {
       </div>
     );
   }
-  return <Deposer utilisateurId={moi.donnees.utilisateur.id} dossiers={autorises} />;
+  return <Deposer utilisateurId={moi.donnees.utilisateur.id} dossiers={autorises} serviceFerme={situation && !situation.serviceOuvert ? situation.situation : null} />;
 }

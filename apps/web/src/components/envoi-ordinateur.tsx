@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { type DragEvent, useCallback, useId, useRef, useState } from 'react';
 import { Alerte, Etiquette, Libelle, Liste, SousTitre } from '@/components/ui/base';
 import { Bouton } from '@/components/ui/bouton';
+import { messageServiceFerme } from '@/lib/abonnement';
 import { cn } from '@/lib/cn';
 import { LIBELLE_NATURE, LIBELLE_STATUT_DONNEES } from '@/lib/libelles';
 import { formaterTaille } from '@/lib/montants';
@@ -57,7 +58,8 @@ function useEnvois(surRecu?: (v: VueTerminee) => void) {
             surProgression: (p) => appliquer(e.id, { octetsConfirmes: p.octetsConfirmes, televersementId: p.televersementId }),
           });
           const etat = transition('envoi', { type: 'issue', issue, enLigne: navigator.onLine });
-          const message = issue.issue === 'refuse' || issue.issue === 'interrompu' ? issue.message : issue.issue === 'session_expiree' ? 'Session expirée : rechargez la page pour vous reconnecter.' : null;
+          const ferme = issue.issue === 'service_ferme' ? messageServiceFerme(issue.situation) : null;
+          const message = ferme ? `${ferme.cause} ${ferme.suite}` : issue.issue === 'refuse' || issue.issue === 'interrompu' ? issue.message : issue.issue === 'session_expiree' ? 'Session expirée : rechargez la page pour vous reconnecter.' : null;
           appliquer(e.id, { etat, message, resultat: issue.issue === 'recu' ? issue.vue : null });
           if (issue.issue === 'recu') surRecu?.(issue.vue);
         } catch {

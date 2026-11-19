@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, Camera, CircleCheck, FileText, FolderOpen, Pencil, 
 import Link from 'next/link';
 import { type ChangeEvent, useEffect, useId, useRef, useState } from 'react';
 import { InviteInstallation } from '@/components/pwa';
+import { ServiceFerme } from '@/components/service-ferme';
 import { Alerte, Carte, Etiquette, Libelle, Liste, SousTitre, Titre, ZoneTexte } from '@/components/ui/base';
 import { Bouton, styleBouton } from '@/components/ui/bouton';
 import { cn } from '@/lib/cn';
@@ -48,7 +49,7 @@ function nomAssemblage(): string {
 
 const estPdf = (f: File) => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
 
-export function Deposer({ utilisateurId, dossiers }: { utilisateurId: string; dossiers: Array<{ id: string; raisonSociale: string }> }) {
+export function Deposer({ utilisateurId, dossiers, serviceFerme = null }: { utilisateurId: string; dossiers: Array<{ id: string; raisonSociale: string }>; serviceFerme?: string | null }) {
   const file = useDepots(utilisateurId);
   const [entiteId, setEntiteId] = useState(dossiers.length === 1 ? dossiers[0]!.id : '');
   const [pages, setPages] = useState<PageEnCours[]>([]);
@@ -224,7 +225,8 @@ export function Deposer({ utilisateurId, dossiers }: { utilisateurId: string; do
         </Alerte>
       ) : null}
 
-      <Carte className="space-y-4">
+      {serviceFerme ? <ServiceFerme situation={serviceFerme} complement="Un dépôt déjà en attente sur cet appareil n’est pas supprimé : il partira quand le service sera rouvert." /> : null}
+      <Carte className={cn('space-y-4', serviceFerme && 'hidden')} aria-hidden={serviceFerme ? true : undefined}>
         <div>
           <Libelle htmlFor={`${idBase}-dossier`}>Dossier</Libelle>
           {dossiers.length === 1 ? (

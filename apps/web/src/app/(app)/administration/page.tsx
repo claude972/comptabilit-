@@ -24,6 +24,15 @@ export default async function PageAdministration() {
   return (
     <div className="space-y-6">
       <Titre>Administration du cabinet</Titre>
+      <nav aria-label="Autres écrans d’administration">
+        <ul className="flex flex-wrap gap-3">
+          <li>
+            <Link href="/administration/abonnement" prefetch={false}>
+              Abonnement du cabinet
+            </Link>
+          </li>
+        </ul>
+      </nav>
 
       <section aria-labelledby="titre-membres" className="space-y-2">
         <SousTitre id="titre-membres">Membres du cabinet ({membres.donnees.length})</SousTitre>

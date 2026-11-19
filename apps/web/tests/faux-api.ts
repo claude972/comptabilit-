@@ -16,7 +16,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import http from 'node:http';
 import {
-  type LigneEcriture, type LigneFec, type MouvementBancaire, PARAMETRES_RAPPROCHEMENT_PAR_DEFAUT, REGLES_RAPPROCHEMENT, type RapportReleve, analyserFec, decoderTexteReleve, detecterFormatReleve, elementDepuisMouvement,
+  CATALOGUE_INDICATEURS, type LigneEcriture, type LigneFec, type MouvementBancaire, type Offre, PARAMETRES_RAPPROCHEMENT_PAR_DEFAUT, calculerBalance, calculerEcheance, calculerIndicateurs, correspondancePour, etatQuota, projeterBilan, projeterCompteDeResultat, serviceOuvert, situationAbonnement, REGLES_RAPPROCHEMENT, type RapportReleve, analyserFec, decoderTexteReleve, detecterFormatReleve, elementDepuisMouvement,
   elementsBanqueDepuisEcritures, enBlocs, lireCamt053, lireCsvBanque, lireOfx, proposerProfilCsv, rapprocher, schemaParametresRapprochement, schemaProfilCsvBanque,
 } from '@comtaple/core';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
@@ -502,6 +502,10 @@ async function routerV1(r: Requete): Promise<unknown> {
     if (admin !== undefined || r.res.writableEnded) return admin;
     const banque = routerBanque(r, a);
     if (banque !== undefined) return banque;
+    const abonnement = routerAbonnement(r, a);
+    if (abonnement !== undefined) return abonnement;
+    const etats = routerEtats(r, a);
+    if (etats !== undefined) return etats;
   }
 
   if (m === 'GET' && chemin === 'moi') return { utilisateur: { id: a.utilisateurId, nom: a.nom, email: a.email }, cabinet: CABINETS.find((c) => c.id === a.cabinetId), role: a.role };
@@ -551,6 +555,7 @@ async function routerV1(r: Requete): Promise<unknown> {
       if (d.taille > TAILLE_MAX_PIECE * (usage === 'fec' ? 10 : 1)) throw new ErreurHttp(413, 'Fichier trop volumineux');
       if (usage === 'fec' && (!d.exerciceId || !d.statutDonnees)) throw new ErreurHttp(400, 'exerciceId et statutDonnees sont requis pour un import comptable');
       exigerNiveau(a, d.entiteId, usage === 'piece' ? 'depot' : 'collaboration');
+      exigerServiceOuvert(a);
       if (d.exerciceId && !etat.exercices.some((x) => x.id === d.exerciceId && x.entiteId === d.entiteId)) throw new ErreurHttp(404, 'Exercice introuvable pour ce dossier');
       const existant = etat.televersements.findLast((t) => t.entiteId === d.entiteId && t.utilisateurId === a.utilisateurId && t.sha256Attendu === d.sha256 && t.usage === usage && t.statut === 'ouvert');
       if (existant && existant.tailleAttendue === d.taille) return vueT(existant);
@@ -1478,6 +1483,118 @@ function routerBanque(r: Requete, a: Acces): unknown {
   return undefined;
 }
 
+// ───────────── Abonnement, états et indicateurs ─────────────
+// Calqué sur abonnement.controller.ts et etats.controller.ts ; situation, échéance, balance, projets d'états et
+// indicateurs sont calculés par le VRAI moteur (@comtaple/core). La grille tarifaire est FICTIVE.
+const OFFRES_FICTIVES: Offre[] = [
+  { code: 'demo-essentiel', libelle: 'Essentiel (démonstration)', forfaitMensuel: '49.00', dossiersInclus: 2, tranches: [{ jusqua: 10, prixParDossier: '4.00' }, { jusqua: null, prixParDossier: '3.00' }], quotas: { piecesParMois: 5, stockageGo: 10 }, joursEssai: 30, fictif: true },
+  { code: 'demo-etendu', libelle: 'Étendu (démonstration)', forfaitMensuel: '129.00', dossiersInclus: 20, tranches: [{ jusqua: null, prixParDossier: '2.50' }], quotas: { piecesParMois: null, stockageGo: null }, joursEssai: 30, fictif: true },
+];
+const jourIso = (decalage = 0) => new Date(Date.now() + decalage * 86400_000).toISOString().slice(0, 10);
+type Abo = { abonnements: Map<string, Enr>; echeances: Enr[]; historique: Enr[] };
+function aboInitial(): Abo {
+  const abonnements = new Map<string, Enr>();
+  for (const cabinetId of [DEMO.cabinetA, DEMO.cabinetB]) abonnements.set(cabinetId, { id: randomUUID(), cabinetId, offre: 'demo-essentiel', statut: 'essai', debut: jourIso(), finEssai: jourIso(30), fin: null, offreDemandee: null, motifResiliation: null, quotas: {}, creeLe: '2026-11-18T08:00:00.000Z' });
+  const a = abonnements.get(DEMO.cabinetA)!;
+  return {
+    abonnements,
+    echeances: [{ id: randomUUID(), cabinetId: DEMO.cabinetA, abonnementId: a.id, periodeDebut: '2026-10-01', periodeFin: '2026-10-31', offre: 'demo-essentiel', dossiersActifs: 2, lignes: [{ nature: 'forfait', libelle: 'Forfait mensuel Essentiel (démonstration)', quantite: 1, prixUnitaire: '49.00', montant: '49.00' }], totalHt: '49.00', fictif: true, statutPaiement: 'en_attente_virement', referenceVirement: 'CMT-ALPHA-2026-10', payeLe: null, creeLe: '2026-11-01T08:00:00.000Z' }],
+    historique: [{ id: randomUUID(), cabinetId: DEMO.cabinetA, abonnementId: a.id, type: 'essai_ouvert', montant: null, detail: { offre: 'demo-essentiel' }, creeLe: '2026-11-18T08:00:00.000Z' }],
+  };
+}
+let abo: Abo = aboInitial();
+function situationDe(cabinetId: string) {
+  const a = abo.abonnements.get(cabinetId);
+  const etatAbo = a ? { statut: a.statut, debut: a.debut, finEssai: a.finEssai, fin: a.fin } : null;
+  return { etat: etatAbo, situation: situationAbonnement(etatAbo as Parameters<typeof situationAbonnement>[0], jourIso()) };
+}
+const MESSAGES_FERMETURE: Record<string, string> = { aucun: 'Aucun abonnement n’est ouvert pour ce cabinet.', essai_expire: 'La période d’essai est terminée.', suspendu: 'L’abonnement est suspendu.', resilie: 'L’abonnement est résilié.' };
+function exigerServiceOuvert(a: Acces): void {
+  const { situation } = situationDe(a.cabinetId);
+  if (!serviceOuvert(situation)) throw new ErreurHttp(403, { code: 'abonnement_inactif', situation, message: `${MESSAGES_FERMETURE[situation] ?? 'Service fermé.'} Les nouveaux dépôts et imports sont suspendus ; la consultation et la restitution des données restent accessibles.` });
+}
+
+function routerAbonnement(r: Requete, a: Acces): unknown {
+  const { methode: m, segments: s } = r;
+  if (s[0] !== 'abonnement') return undefined;
+  const { etat: e, situation } = situationDe(a.cabinetId);
+  if (m === 'GET' && s[1] === 'situation' && s.length === 2) return { situation, serviceOuvert: serviceOuvert(situation), finEssai: e?.finEssai ?? null, fin: e?.fin ?? null };
+  if (a.role !== 'administrateur' && a.role !== 'associe') throw new ErreurHttp(403, 'Réservé aux administrateurs et associés du cabinet');
+  const abonnement = abo.abonnements.get(a.cabinetId);
+  if (m === 'GET' && s.length === 1) {
+    if (!abonnement) return { situation, serviceOuvert: false, abonnement: null, offre: null, usage: null, estimation: null };
+    const offre = OFFRES_FICTIVES.find((o) => o.code === abonnement.offre)!;
+    const dossiersActifs = ENTITES.filter((x) => x.cabinetId === a.cabinetId).length;
+    return {
+      situation, serviceOuvert: serviceOuvert(situation), abonnement, offre,
+      usage: { dossiersActifs, dossiersInclus: offre.dossiersInclus, piecesCeMois: etatQuota(etat.documents.filter((d) => d.cabinetId === a.cabinetId).length + 3, offre.quotas.piecesParMois), stockageGo: etatQuota(0.02, offre.quotas.stockageGo) },
+      estimation: calculerEcheance(offre, dossiersActifs),
+    };
+  }
+  if (m === 'GET' && s[1] === 'offres' && s.length === 2) return OFFRES_FICTIVES;
+  if (m === 'GET' && s[1] === 'echeances' && s.length === 2) return abo.echeances.filter((x) => x.cabinetId === a.cabinetId);
+  if (m === 'GET' && s[1] === 'historique' && s.length === 2) return abo.historique.filter((x) => x.cabinetId === a.cabinetId).reverse();
+  if (m === 'POST' && s[1] === 'changement' && s.length === 2) {
+    const d = r.json();
+    if (typeof d.offre !== 'string' || !d.offre || d.offre.length > 40) throw invalide('offre', 'chaîne attendue');
+    if (!abonnement) throw new ErreurHttp(409, 'Aucun abonnement à modifier');
+    if (abonnement.statut === 'resilie') throw new ErreurHttp(409, 'Abonnement résilié');
+    if (!OFFRES_FICTIVES.some((o) => o.code === d.offre)) throw new ErreurHttp(400, 'Offre inconnue');
+    abonnement.offreDemandee = d.offre === abonnement.offre ? null : d.offre;
+    abo.historique.push({ id: randomUUID(), cabinetId: a.cabinetId, abonnementId: abonnement.id, type: 'changement_offre_demande', montant: null, detail: { de: abonnement.offre, vers: d.offre }, creeLe: instant() });
+    r.res.statusCode = 200;
+    return abonnement;
+  }
+  if (m === 'POST' && s[1] === 'resiliation' && s.length === 2) {
+    const d = r.json();
+    if (typeof d.motif !== 'string' || d.motif.length < 1 || d.motif.length > 2000) throw invalide('motif', 'chaîne de 1 à 2000 caractères attendue');
+    if (!abonnement) throw new ErreurHttp(409, 'Aucun abonnement à résilier');
+    if (abonnement.statut === 'resilie') throw new ErreurHttp(409, 'Abonnement déjà résilié');
+    const j = jourIso();
+    const fin = new Date(Date.UTC(Number(j.slice(0, 4)), Number(j.slice(5, 7)), 0)).toISOString().slice(0, 10);
+    Object.assign(abonnement, { statut: 'resilie', fin, motifResiliation: d.motif, offreDemandee: null });
+    abo.historique.push({ id: randomUUID(), cabinetId: a.cabinetId, abonnementId: abonnement.id, type: 'resiliation', montant: null, detail: { fin }, creeLe: instant() });
+    r.res.statusCode = 200;
+    return abonnement;
+  }
+  return undefined;
+}
+
+const MENTION_ETATS = 'PROJET — état de travail calculé à partir des écritures importées, avant écritures d’inventaire. Il ne constitue ni des comptes annuels ni une validation.';
+function donneesEtats(a: Acces, exerciceId: string) {
+  const exercice = chargerExercice(a, exerciceId, 'lecture');
+  const lot = etat.lots.find((l) => l.exerciceId === exerciceId && l.type === 'fec' && l.actif);
+  if (!lot) throw new ErreurHttp(409, 'Aucune donnée comptable importée pour cet exercice : état non calculable');
+  return { exercice, lot, lignes: etat.lignes.filter((l) => l.lotImportId === lot.id).sort((x, y) => x.numeroLigne - y.numeroLigne) as unknown as LigneEcriture[] };
+}
+function routerEtats(r: Requete, a: Acces): unknown {
+  const { methode: m, segments: s } = r;
+  if (m !== 'GET') return undefined;
+  if (s.join('/') === 'reference/indicateurs') return CATALOGUE_INDICATEURS;
+  if (s[0] !== 'exercices' || s.length !== 3) return undefined;
+  if (s[2] === 'etats') {
+    const { exercice, lot, lignes } = donneesEtats(a, exigerUuid(s[1]));
+    const balance = calculerBalance(lignes);
+    const base = { mention: MENTION_ETATS, exercice, donnees: { lotImportId: lot.id, version: lot.version, versionDonnees: exercice.versionDonnees, statutDonnees: lot.statutDonnees }, balance };
+    const correspondance = correspondancePour(exercice.debut);
+    if (!correspondance) return { ...base, correspondance: null, compteDeResultat: null, bilan: null, motif: 'Aucune table de correspondance vérifiée pour un exercice ouvert avant le 1er janvier 2025 : seuls la balance et certains indicateurs sont disponibles.' };
+    return { ...base, correspondance: { id: correspondance.id, version: correspondance.version, periodeApplication: correspondance.periodeApplication, etat: correspondance.etat, source: correspondance.source }, compteDeResultat: projeterCompteDeResultat(balance, correspondance), bilan: projeterBilan(balance, correspondance), motif: null };
+  }
+  if (s[2] === 'indicateurs') {
+    const tv = r.query.get('tauxTvaVentes') ?? undefined;
+    const ta = r.query.get('tauxTvaAchats') ?? undefined;
+    for (const t of [tv, ta]) if (t !== undefined && !DECIMAL.test(t)) throw new ErreurHttp(400, 'Taux de TVA : chaîne décimale attendue (ex. 20 ou 5.5)');
+    const { exercice, lot, lignes } = donneesEtats(a, exigerUuid(s[1]));
+    const tauxTvaMoyen = tv || ta ? { ...(tv ? { ventes: tv } : {}), ...(ta ? { achats: ta } : {}) } : null;
+    return {
+      mention: 'Indicateurs calculés par le moteur à partir des écritures importées, avant écritures d’inventaire : aide à la revue, pas un diagnostic.',
+      exercice, donnees: { lotImportId: lot.id, versionDonnees: exercice.versionDonnees, exercicePrecedentFourni: false },
+      indicateurs: calculerIndicateurs({ lignes, exercice: { debut: exercice.debut, fin: exercice.fin }, exercicePrecedent: null, tauxTvaMoyen }),
+    };
+  }
+  return undefined;
+}
+
 // ───────────── Imitation des traitements du worker (minuteries) ─────────────
 function imiterImport(lotId: string): void {
   const reference = etat;
@@ -1557,6 +1674,7 @@ const serveur = http.createServer(async (req, res) => {
         APPARTENANCES_EN_PLUS = [];
         audit = [];
         ruptureAudit = null;
+        abo = aboInitial();
         etat = etatInitial();
         tracerAudit({ cabinetId: DEMO.cabinetA }, 'import.fec.termine', 'lot_import', etat.lots[0]!.id, DEMO.dupain, { lignes: 1250, lisible: true, anomalies: { CHAMP_VIDE: 60 } });
         mail = mailInitial();
@@ -1564,6 +1682,12 @@ const serveur = http.createServer(async (req, res) => {
         compteurMorceaux = 0;
         journal = [];
         resultat = { ok: true };
+      } else if (methode === 'POST' && segments[1] === 'abonnement') {
+        // Pilotage de l'abonnement simulé du cabinet Alpha : statut, dates, ou absence d'abonnement.
+        const d = json();
+        if (d.aucun) abo.abonnements.delete(DEMO.cabinetA);
+        else if (Object.keys(d).length) Object.assign(abo.abonnements.get(DEMO.cabinetA) ?? {}, d);
+        resultat = { abonnement: abo.abonnements.get(DEMO.cabinetA) ?? null, situation: situationDe(DEMO.cabinetA).situation };
       } else if (methode === 'POST' && segments[1] === 'administration') {
         // Pilotage : appartenance supplémentaire (compte multi-cabinets), rupture simulée de la chaîne d'audit, masse de documents.
         const d = json();
@@ -1578,6 +1702,7 @@ const serveur = http.createServer(async (req, res) => {
           }
         }
         if (d.obsoleteRapprochement) for (const x of etat.rapprochementsExec) x.obsolete = true;
+        if (d.exercice) Object.assign(etat.exercices[0]!, d.exercice); // ex. exercice ouvert avant 2025 (pas de table de correspondance)
         resultat = { entites: ENTITES.map((e) => ({ id: e.id, raisonSociale: e.raisonSociale, territoireFiscal: e.territoireFiscal ?? 'metropole' })), habilitations: HABILITATIONS, exercices: etat.exercices.map((x) => ({ id: x.id, entiteId: x.entiteId, debut: x.debut, fin: x.fin })), televersements: etat.televersements.map((t) => ({ id: t.id, statut: t.statut })), propositions: etat.propositions.map((x) => ({ id: x.id, statut: x.statut, motif: x.motif, regle: x.regle })) };
       } else if (methode === 'POST' && segments[1] === 'mail') {
         // Pilotage de la messagerie simulée : connecteur configuré ou non, jeu de données fictif.

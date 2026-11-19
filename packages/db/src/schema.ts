@@ -691,6 +691,37 @@ export const exportsRevision = pgTable('exports_revision', {
   termineLe: horodatage('termine_le'),
 });
 
+/**
+ * Écritures d'inventaire PROPOSÉES : strictement séparées des écritures importées (qui ne sont jamais modifiées).
+ * Préparer, approuver, exporter et intégrer dans le logiciel comptable sont des étapes distinctes ; l'intégration
+ * dans un logiciel tiers n'est pas réalisée par ce logiciel.
+ */
+export const ecrituresInventaire = pgTable('ecritures_inventaire', {
+  id: id(),
+  cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+  entiteId: uuid('entite_id').notNull().references(() => entites.id),
+  exerciceId: uuid('exercice_id').notNull().references(() => exercices.id),
+  dateEcriture: date('date_ecriture', { mode: 'string' }).notNull(),
+  libelle: text('libelle').notNull(),
+  /** saisie_humaine (seule origine à ce jour) */
+  origine: text('origine').notNull().default('saisie_humaine'),
+  justification: text('justification').notNull(),
+  /** Détail du calcul du montant, rédigé par l'auteur. */
+  calcul: text('calcul').notNull(),
+  pieces: jsonb('pieces').notNull().default(sql`'[]'::jsonb`),
+  /** Lignes [{ compteNum, compteLib, debit, credit }] en chaînes décimales, équilibrées (vérifié par le moteur). */
+  lignes: jsonb('lignes').notNull(),
+  totalDebit: montant('total_debit').notNull(),
+  statut: text('statut').notNull().default('proposee'), // proposee | approuvee | rejetee | exportee
+  versionDonnees: integer('version_donnees').notNull(),
+  proposeePar: uuid('proposee_par').notNull().references(() => utilisateurs.id),
+  decideePar: uuid('decidee_par').references(() => utilisateurs.id),
+  decideeLe: horodatage('decidee_le'),
+  motifDecision: text('motif_decision'),
+  exporteeLe: horodatage('exportee_le'),
+  creeLe: creeLe(),
+});
+
 /** Export de restitution complet d'un dossier (originaux + données + décisions), archive ZIP avec manifeste d'empreintes. */
 export const restitutions = pgTable('restitutions', {
   id: id(),

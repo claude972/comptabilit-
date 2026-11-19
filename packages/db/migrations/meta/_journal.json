@@ -120,6 +120,13 @@
       "when": 1795070589852,
       "tag": "0016_indicateurs_cabinet",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1795071543592,
+      "tag": "0017_ecritures_inventaire",
+      "breakpoints": true
     }
   ]
 }

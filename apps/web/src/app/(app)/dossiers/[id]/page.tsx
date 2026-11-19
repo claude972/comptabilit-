@@ -8,7 +8,8 @@ import { cn } from '@/lib/cn';
 import { LIBELLE_NATURE, LIBELLE_STATUT_DOCUMENT, ORDRE_STATUTS_DOCUMENT } from '@/lib/libelles';
 import { formaterHorodatage } from '@/lib/montants';
 import { tenter } from '@/lib/serveur/api';
-import { parametre } from '@/lib/serveur/donnees';
+import { ServiceFerme } from '@/components/service-ferme';
+import { lireSituation, parametre } from '@/lib/serveur/donnees';
 import { contexteDossier } from '@/lib/serveur/dossier';
 import type { ListeDocuments, StatutDocument } from '@/lib/types-api';
 
@@ -34,6 +35,8 @@ export default async function PagePieces({ params, searchParams }: { params: Pro
   for (const d of tous) comptes.set(d.statut, (comptes.get(d.statut) ?? 0) + 1);
   const rang = (s: StatutDocument) => ORDRE_STATUTS_DOCUMENT.indexOf(s);
   const affiches = complet ? tous.filter((d) => !statut || d.statut === statut).sort((a, b) => rang(a.statut) - rang(b.statut) || b.creeLe.localeCompare(a.creeLe)) : courante.donnees.documents;
+  const situation = await lireSituation();
+  const ferme = situation && !situation.serviceOuvert ? situation.situation : null;
   const base = `/dossiers/${id}`;
   const nombre = (n: number) => (complet ? ` (${n})` : '');
   const lienPage = (p: number) => `${base}?page=${p}${statut ? `&statut=${statut}` : ''}`;
@@ -41,9 +44,13 @@ export default async function PagePieces({ params, searchParams }: { params: Pro
 
   return (
     <div className="space-y-6">
-      <Carte>
-        <DepotOrdinateur entiteId={id} />
-      </Carte>
+      {ferme ? (
+        <ServiceFerme situation={ferme} />
+      ) : (
+        <Carte>
+          <DepotOrdinateur entiteId={id} />
+        </Carte>
+      )}
       <section aria-labelledby="titre-file" className="space-y-3">
         <SousTitre id="titre-file">File des pièces</SousTitre>
         <nav aria-label="Filtrer par statut">

@@ -17,6 +17,7 @@ import {
 import type { MembreDossier } from '@/lib/administration';
 import { actionsImport } from '@/lib/imports';
 import { LIBELLE_STATUT_LOT } from '@/lib/libelles';
+import { AgregationBancaire, type EtatAgregation } from '@/components/banque/agregation';
 import { formaterDate, formaterHorodatage, formaterMontant } from '@/lib/montants';
 import { tenter } from '@/lib/serveur/api';
 import { ServiceFerme } from '@/components/service-ferme';
@@ -99,6 +100,7 @@ export default async function PageBanque({ params, searchParams }: { params: Pro
   const situation = await lireSituation();
   const ferme = situation && !situation.serviceOuvert ? situation.situation : null;
   const collaboration = auMoins(ctx.niveau, 'collaboration');
+  const agregation = collaboration ? await tenter<EtatAgregation>(`v1/dossiers/${id}/banque/agregation`) : { ok: false as const };
   const revision = auMoins(ctx.niveau, 'revision');
   const exercice = ex.ok ? ex.exercice : null;
   const pageR = Math.max(1, Number.parseInt(parametre(sp.pageR) ?? '1', 10) || 1);
@@ -113,8 +115,9 @@ export default async function PageBanque({ params, searchParams }: { params: Pro
       {ferme ? (
         <ServiceFerme situation={ferme} />
       ) : collaboration ? (
-        <Carte>
+        <Carte className="space-y-4">
           <ImportReleve entiteId={id} />
+          {agregation.ok ? <AgregationBancaire entiteId={id} etat={agregation.donnees} /> : null}
         </Carte>
       ) : (
         <Alerte ton="neutre">Votre habilitation (lecture) ne permet pas d’importer un relevé ni de lancer un rapprochement.</Alerte>

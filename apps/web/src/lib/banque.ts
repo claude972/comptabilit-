@@ -154,7 +154,7 @@ export interface DernierRapprochement {
   nonRapproches: { ecritures: string[]; mouvements: string[]; nbEcritures: number; nbMouvements: number };
 }
 
-export const LIBELLE_FORMAT_RELEVE: Record<string, string> = { 'camt.053': 'camt.053 (XML ISO 20022)', ofx: 'OFX', csv: 'CSV' };
+export const LIBELLE_FORMAT_RELEVE: Record<string, string> = { 'camt.053': 'camt.053 (XML ISO 20022)', ofx: 'OFX', csv: 'CSV', agregation: 'Prestataire d’agrégation' };
 /** Trois états de cadrage. « Non vérifiable » n'est ni un succès ni un écart : il lui faut son propre rendu. */
 export const LIBELLE_CADRAGE: Record<Cadrage, string> = { ok: 'Cadré', ecart: 'Écart', non_verifiable: 'Non vérifiable (solde manquant)' };
 export const LIBELLE_STATUT_PROPOSITION: Record<string, string> = { propose: 'Proposé', valide: 'Validé', rejete: 'Rejeté' };

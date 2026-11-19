@@ -406,6 +406,17 @@ test.describe('espace cabinet — administratrice non habilitée sur un dossier'
     await expect(martin.getByRole('link')).toHaveCount(0);
     await expect(page.locator(`tr[data-dossier="${ID.dupain}"]`).getByRole('link')).toHaveCount(1);
     await expect(page.locator(`tr[data-dossier="${ID.dupain}"]`)).toContainText('Validation');
+    // Recherche par nom (sans tenir compte des accents ni de la casse) et filtre « habilité », par l'adresse : sans script.
+    await page.getByRole('search', { name: 'Rechercher un dossier' }).getByLabel('Nom du dossier').fill('BOULANGERIE');
+    await page.getByRole('search', { name: 'Rechercher un dossier' }).getByRole('button', { name: 'Rechercher' }).click();
+    await expect(page).toHaveURL(/\/dossiers\?q=BOULANGERIE/);
+    await expect(page.locator('tr[data-dossier]')).toHaveCount(1);
+    await expect(page.getByTestId('decompte-dossiers')).toContainText('1 dossier sur');
+    await page.goto('/dossiers?habilites=1');
+    await expect(page.locator(`tr[data-dossier="${ID.martin}"]`)).toHaveCount(0);
+    await page.goto('/dossiers?q=introuvable-xyz');
+    await expect(page.getByText('Aucun dossier ne correspond à cette recherche.')).toBeVisible();
+    await page.goto('/dossiers');
     for (const suffixe of ['', '/comptabilite', '/revision']) {
       await page.goto(`/dossiers/${ID.martin}${suffixe}`);
       await expect(page.getByTestId('erreur-403')).toContainText('Vous n’êtes pas habilité à consulter ce dossier');

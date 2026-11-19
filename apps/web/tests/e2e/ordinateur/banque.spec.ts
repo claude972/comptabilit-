@@ -47,6 +47,11 @@ test.describe('banque — collaboratrice (collaboration)', () => {
     await page.goto(banque);
     await expect(page.getByRole('navigation', { name: 'Sections du dossier' }).getByRole('link', { name: 'Banque' })).toHaveAttribute('aria-current', 'page');
     await expect(page.getByText('cela ne dépend d’aucune connexion bancaire')).toBeVisible();
+    // Agrégation bancaire : aucun prestataire n'est connecté, l'écran le dit et ne propose aucune récupération automatique.
+    const agregation = page.getByTestId('agregation-bancaire');
+    await expect(agregation).toContainText('Agrégation bancaire : Non connectée');
+    await expect(agregation).toContainText('Aucun prestataire d’agrégation choisi ni contracté');
+    await expect(agregation.getByRole('button')).toHaveCount(0);
     await expect(page.getByText('camt.053')).toBeVisible();
     await expect(page.getByText('Aucun relevé importé pour ce dossier.')).toBeVisible();
 

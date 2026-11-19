@@ -1791,6 +1791,10 @@ function routerImports(r: Requete, a: Acces): unknown {
 function routerBanque(r: Requete, a: Acces): unknown {
   const { methode: m, segments: s } = r;
   if (m === 'GET' && s.join('/') === 'reference/rapprochement') return { regles: REGLES_RAPPROCHEMENT, parametresParDefaut: PARAMETRES_RAPPROCHEMENT_PAR_DEFAUT };
+  if (m === 'GET' && s[0] === 'dossiers' && s[2] === 'banque' && s[3] === 'agregation' && s.length === 4) {
+    exigerNiveau(a, exigerUuid(s[1]), 'collaboration');
+    return { statut: 'non_connecte', detail: 'Aucun prestataire d’agrégation choisi ni contracté. Les imports de fichiers bancaires n’en dépendent pas.', prestataire: null, comptes: [] };
+  }
   if (m === 'GET' && s[0] === 'dossiers' && s[2] === 'banque') {
     const entiteId = exigerUuid(s[1]);
     if (s.length === 3) {

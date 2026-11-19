@@ -23,10 +23,12 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run build
-      - run: pnpm run typecheck
+      - name: Construction
+        run: sh scripts/ci-etape.sh "Construction" sh -c 'pnpm run build'
+      - name: Typage
+        run: sh scripts/ci-etape.sh "Typage" sh -c 'pnpm run typecheck'
       - name: Tests unitaires
-        run: pnpm run test
+        run: sh scripts/ci-etape.sh "Tests unitaires" pnpm run test
       - name: Secrets locaux éphémères
         run: sh scripts/generer-env.sh
       # La première exécution (run 44509674342) a échoué au bout de 5 min dans une étape unique « construire et démarrer
@@ -38,9 +40,10 @@ jobs:
         run: docker compose up -d --wait --wait-timeout 420 postgres redis s3 keycloak
       - name: Antivirus (ClamAV, téléchargement des signatures au premier démarrage)
         run: docker compose up -d --wait --wait-timeout 780 clamav
-      - run: pnpm run db:migrate && pnpm run db:seed
+      - name: Migrations et jeu d'essai
+        run: sh scripts/ci-etape.sh "Migrations et jeu d'essai" sh -c 'pnpm run db:migrate && pnpm run db:seed'
       - name: Tests d'intégration base de données (isolation, audit)
-        run: pnpm --filter @comtaple/db run test:integration
+        run: sh scripts/ci-etape.sh "Tests base" pnpm --filter @comtaple/db run test:integration
       - name: Navigateur pour le rendu PDF
         run: pnpm --filter @comtaple/worker exec playwright install --with-deps chromium
       - name: API et worker
@@ -52,14 +55,14 @@ jobs:
       - name: Service OCR
         run: docker compose up -d --wait --wait-timeout 300 ocr
       - name: Surveillance des sources (base réelle, HTTP injecté)
-        run: pnpm --filter @comtaple/worker run test:integration
+        run: sh scripts/ci-etape.sh "Tests worker" pnpm --filter @comtaple/worker run test:integration
       - name: Parcours de bout en bout
-        run: pnpm --filter @comtaple/api run test:integration
+        run: sh scripts/ci-etape.sh "Parcours API" pnpm --filter @comtaple/api run test:integration
       # ── Suites navigateur (ajoutées le 2026-11-19 ; jamais exécutées sur GitHub à ce jour) ──
       - name: Navigateurs pour les parcours (Chromium, WebKit)
         run: pnpm --filter @comtaple/web exec playwright install --with-deps chromium webkit
       - name: Navigateur, API simulée (vrai Keycloak, simulateur d'API)
-        run: pnpm --filter @comtaple/web run test:e2e
+        run: sh scripts/ci-etape.sh "Navigateur simulé" pnpm --filter @comtaple/web run test:e2e
       - name: Application web sur la pile réelle
         run: |
           pnpm --filter @comtaple/web run build
@@ -67,9 +70,9 @@ jobs:
           for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:3100/connexion && break; sleep 1; done
           curl -sf -o /dev/null http://localhost:3100/connexion
       - name: Navigateur Chromium, pile réelle
-        run: pnpm --filter @comtaple/web exec playwright test --config playwright.reel.config.ts
+        run: sh scripts/ci-etape.sh "Chromium réel" pnpm --filter @comtaple/web exec playwright test --config playwright.reel.config.ts
       - name: Navigateur WebKit, pile réelle
-        run: pnpm --filter @comtaple/web exec playwright test --config playwright.navigateurs.config.ts --project=webkit
+        run: sh scripts/ci-etape.sh "WebKit réel" pnpm --filter @comtaple/web exec playwright test --config playwright.navigateurs.config.ts --project=webkit
       - name: Traces des parcours navigateur en cas d'échec
         if: failure()
         uses: actions/upload-artifact@v4

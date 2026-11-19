@@ -1,7 +1,6 @@
 /**
  * Limite de volume des traitements qui chargent des lignes d'écriture en mémoire — PostgreSQL réel.
- * Les exécutions créées ici le sont sur un import comptable existant de la base locale, puis retirées à la fin
- * (elles n'appartiennent qu'à ce test). La limite est abaissée dans le contexte du test, pas dans la configuration.
+ * L'import comptable et les exécutions sont créés par ce test puis retirés à la fin (ils n'appartiennent qu'à lui). La limite est abaissée dans le contexte du test, pas dans la configuration.
  */
 import { CATALOGUE_CONTROLES } from '@comtaple/core';
 import { creerAccesBd, urlBd } from '@comtaple/db';
@@ -32,15 +31,31 @@ beforeAll(async () => {
   admin = new pg.Client({ connectionString: urlBd('admin') });
   await admin.connect();
   c = { cfg, bd: creerAccesBd(urlBd('worker')), stockage: new Stockage(cfg), taches: new Files(connexionRedis(cfg.REDIS_URL), `essai-volume-${Date.now()}`) };
-  // Un import comptable actif et petit, déjà présent dans la base locale.
-  lot = (
-    await admin.query(
-      `select l.id, l.cabinet_id, l.entite_id, l.exercice_id, (select count(*)::int from lignes_ecriture x where x.lot_import_id = l.id) as n
-         from lots_import l where l.type = 'fec' and l.actif and l.statut in ('termine', 'termine_avec_erreurs') and l.exercice_id is not null and l.progression between 200 and 3000
-        order by l.cree_le desc limit 1`,
-    )
-  ).rows[0];
-  expect(lot, 'un import comptable de test doit exister dans la base locale').toBeTruthy();
+  // Un import comptable PROPRE À CE TEST (aucune dépendance aux données déjà présentes : la base de la CI n'a que le
+  // jeu d'amorçage). Il est rattaché à un exercice existant mais INACTIF et « en attente » : l'application ne le
+  // présente nulle part, il ne déclenche aucune notification, et il est retiré à la fin.
+  const exercice = (await admin.query('select id, cabinet_id, entite_id, debut from exercices order by cree_le limit 1')).rows[0];
+  expect(exercice, 'le jeu d’amorçage doit fournir au moins un exercice').toBeTruthy();
+  const N = 300;
+  const id = (
+    await admin.query(`insert into lots_import (cabinet_id, entite_id, exercice_id, type, cle_idempotence, actif, statut, progression) values ($1, $2, $3, 'fec', $4, false, 'en_attente', $5) returning id`, [
+      exercice.cabinet_id,
+      exercice.entite_id,
+      exercice.id,
+      `essai-volume-${Date.now()}-${process.pid}`,
+      N,
+    ])
+  ).rows[0].id;
+  // 150 écritures équilibrées de deux lignes (achat : 606 au débit, 401 au crédit).
+  await admin.query(
+    `insert into lignes_ecriture (cabinet_id, entite_id, exercice_id, lot_import_id, numero_ligne, journal_code, journal_lib, ecriture_num, ecriture_date, compte_num, compte_lib, piece_ref, ecriture_lib, debit, credit)
+     select $1, $2, $3, $4, g, 'AC', 'Achats', 'AC' || ((g + 1) / 2), $5::date + ((g + 1) / 2), case when g % 2 = 1 then '606000' else '401000' end,
+            case when g % 2 = 1 then 'Achats non stockés' else 'Fournisseurs' end, 'P' || ((g + 1) / 2), 'Achat d’essai ' || ((g + 1) / 2),
+            case when g % 2 = 1 then 100 + (g + 1) / 2 else 0 end, case when g % 2 = 1 then 0 else 100 + (g + 1) / 2 end
+       from generate_series(1, $6::int) g`,
+    [exercice.cabinet_id, exercice.entite_id, exercice.id, id, exercice.debut, N],
+  );
+  lot = { id, cabinet_id: exercice.cabinet_id, entite_id: exercice.entite_id, exercice_id: exercice.id, n: N };
 });
 afterAll(async () => {
   if (creees.length) {
@@ -49,6 +64,10 @@ afterAll(async () => {
     await admin.query('delete from executions_controles where id = any($1)', [creees]);
   }
   if (rapprochements.length) await admin.query('delete from executions_rapprochement where id = any($1)', [rapprochements]);
+  if (lot) {
+    await admin.query('delete from lignes_ecriture where lot_import_id = $1', [lot.id]);
+    await admin.query('delete from lots_import where id = $1', [lot.id]);
+  }
   await c.taches.fermer();
   await c.bd.fermer();
   await admin.end();

@@ -18,6 +18,7 @@ import http from 'node:http';
 import {
   CATALOGUE_INDICATEURS, type LigneEcriture, type LigneFec, type MouvementBancaire, type Offre, PARAMETRES_RAPPROCHEMENT_PAR_DEFAUT, calculerBalance, calculerEcheance, calculerIndicateurs, correspondancePour, etatQuota, projeterBilan, projeterCompteDeResultat, serviceOuvert, situationAbonnement, REGLES_RAPPROCHEMENT, type RapportReleve, analyserFec, decoderTexteReleve, detecterFormatReleve, elementDepuisMouvement,
   elementsBanqueDepuisEcritures, enBlocs, lireCamt053, lireCsvBanque, lireOfx, proposerProfilCsv, rapprocher, schemaParametresRapprochement, schemaProfilCsvBanque,
+  type DecisionFacture, type DecisionTiers, type FicheFacture, type PieceFacture, cleEcriture, suivreTiersEtFactures,
   type ContenuLettre, type LettreDatee, PRESTATIONS, calculerRentabiliteMission, schemaChaineDecimale, dec, estimerTemps, evaluerApplicabilite, schemaContenuLettre, schemaCriteresEvolution, situerTravail, somme, versChaine,
 } from '@comtaple/core';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
@@ -606,6 +607,8 @@ async function routerV1(r: Requete): Promise<unknown> {
     if (etats !== undefined) return etats;
     const imports = routerImports(r, a);
     if (imports !== undefined) return imports;
+    const tiers = routerTiers(r, a);
+    if (tiers !== undefined) return tiers;
     const ajouts = routerSuite(r, a);
     if (ajouts !== undefined || r.res.writableEnded) return ajouts;
   }
@@ -2058,6 +2061,223 @@ function routerEtats(r: Requete, a: Acces): unknown {
   return undefined;
 }
 
+// ───────────── Tiers, factures suivies, échéances et règlements ─────────────
+// Calqué sur tiers.controller.ts. Le calcul est fait par le VRAI moteur (`suivreTiersEtFactures`) sur un jeu fictif propre
+// à ces écrans (il n'utilise pas les écritures simulées des autres écrans) ; seules les décisions sont gardées en mémoire.
+const TIERS_SIREN = { dupont: '732829320', code: '552100554' } as const;
+const TIERS_DOC = {
+  f1: 'dddddddd-0000-4000-8000-000000000001', f2: 'dddddddd-0000-4000-8000-000000000002', double: 'dddddddd-0000-4000-8000-000000000003', sansEcheance: 'dddddddd-0000-4000-8000-000000000004',
+  vente: 'dddddddd-0000-4000-8000-000000000005',
+} as const;
+interface TiersSim { decisionsTiers: DecisionTiers[]; decisionsFactures: Array<DecisionFacture & { motif: string | null; auteur: string; creeLe: string }> }
+let tiersSim: TiersSim = { decisionsTiers: [], decisionsFactures: [] };
+const TIERS_JEU = (() => {
+  const lignes: LigneEcriture[] = [];
+  const compteurs: Record<string, number> = {};
+  const ecrire = (journal: string, date: string, piece: string, lib: string, ls: Array<{ compte: string; aux?: [string, string]; debit?: string; credit?: string; lettre?: string }>) => {
+    compteurs[journal] = (compteurs[journal] ?? 0) + 1;
+    const num = `${journal}${String(compteurs[journal]).padStart(4, '0')}`;
+    for (const l of ls) {
+      lignes.push({
+        id: `tiers-${lignes.length + 1}`, numeroLigne: lignes.length + 2, journalCode: journal, journalLib: journal, ecritureNum: num, ecritureDate: date, compteNum: l.compte, compteLib: `Compte ${l.compte}`, compAuxNum: l.aux?.[0] ?? null,
+        compAuxLib: l.aux?.[1] ?? null, pieceRef: piece, pieceDate: date, ecritureLib: lib, debit: l.debit ?? '0.00', credit: l.credit ?? '0.00', ecritureLet: l.lettre ?? null, dateLet: null, validDate: date, montantDevise: null, idevise: null,
+      });
+    }
+  };
+  const achat = (aux: [string, string], date: string, piece: string, ttc: string, lettre?: string) => ecrire('ACH', date, piece, `Facture ${aux[1]}`, [{ compte: '606100', debit: ttc }, { compte: '401000', aux, credit: ttc, lettre }]);
+  const paiement = (aux: [string, string], date: string, montant: string, lib: string, lettre?: string) => ecrire('BQ', date, 'VIR', lib, [{ compte: '401000', aux, debit: montant, lettre }, { compte: '512000', credit: montant }]);
+  const DUPONT: [string, string] = ['FDUPONT', 'Dupont Matériaux'];
+  const CODE: [string, string] = [`F${TIERS_SIREN.code}`, 'Fournitures du Centre (fictif)'];
+  achat(DUPONT, '2025-03-10', 'FA-2025-0042', '1200.00', 'AA');
+  paiement(DUPONT, '2025-04-05', '1200.00', 'Virement Dupont', 'AA');
+  achat(CODE, '2025-03-01', 'FS-001', '600.00');
+  paiement(CODE, '2025-03-20', '200.00', 'Acompte FS-001');
+  paiement(CODE, '2025-04-20', '400.00', 'Virement fournisseur');
+  achat(CODE, '2025-07-01', 'FS-002', '900.00');
+  achat(CODE, '2025-07-03', 'FS-002', '900.00');
+  achat(CODE, '2025-09-01', 'FS-003', '360.00');
+  achat(['F1', 'Bernard'], '2025-05-01', 'B-1', '10.00');
+  achat(['F2', 'BERNARD SARL'], '2025-05-02', 'B-2', '20.00');
+  ecrire('VTE', '2025-05-10', 'FV-2025-010', 'Facture client', [{ compte: '411000', aux: ['CMARTIN', 'Martin SA (fictif)'], debit: '2400.00', lettre: 'CC' }, { compte: '706000', credit: '2400.00' }]);
+  ecrire('BQ', '2025-06-01', 'REM', 'Encaissement client', [{ compte: '512000', debit: '2400.00' }, { compte: '411000', aux: ['CMARTIN', 'Martin SA (fictif)'], credit: '2400.00', lettre: 'CC' }]);
+  const piece = (documentId: string, nomFichier: string, p: Partial<PieceFacture>): PieceFacture => ({
+    documentId, nomFichier, versionPiece: 1, versionExtraction: 1, nature: 'facture_achat', statutExtraction: 'projet', typeDocument: 'facture', numero: null, dateEmission: null, dateEcheance: null, emetteurNom: 'Fournitures du Centre',
+    emetteurSiren: TIERS_SIREN.code, emetteurSiret: null, emetteurTva: null, totalHt: null, totalTva: null, totalTtc: null, devise: 'EUR', ...p,
+  });
+  const pieces: PieceFacture[] = [
+    piece(TIERS_DOC.f1, 'facture-dupont.pdf', { numero: 'FA-2025-0042', dateEmission: '2025-03-10', dateEcheance: '2025-04-09', totalHt: '1000.00', totalTva: '200.00', totalTtc: '1200.00', emetteurNom: 'DUPONT MATERIAUX SARL', emetteurSiren: TIERS_SIREN.dupont, statutExtraction: 'valide' }),
+    piece(TIERS_DOC.f2, 'facture-fs-001.pdf', { numero: 'FS-001', dateEmission: '2025-03-01', dateEcheance: '2025-03-31', totalHt: '500.00', totalTva: '100.00', totalTtc: '600.00' }),
+    piece(TIERS_DOC.double, 'facture-fs-002.pdf', { numero: 'FS-002', dateEmission: '2025-07-01', dateEcheance: '2025-07-31', totalHt: '750.00', totalTva: '150.00', totalTtc: '900.00' }),
+    piece(TIERS_DOC.sansEcheance, 'facture-fs-003.pdf', { numero: 'FS-003', dateEmission: '2025-09-01', totalHt: '300.00', totalTva: '60.00', totalTtc: '360.00' }),
+    piece(TIERS_DOC.vente, 'facture-vente-010.pdf', { nature: 'facture_vente', numero: 'FV-2025-010', dateEmission: '2025-05-10', dateEcheance: '2025-06-09', totalHt: '2000.00', totalTva: '400.00', totalTtc: '2400.00', emetteurNom: 'Boulangerie Dupain', emetteurSiren: null }),
+  ];
+  return { lignes, pieces };
+})();
+
+function routerTiers(r: Requete, a: Acces): unknown {
+  const { methode: m, segments: s } = r;
+  if (s[0] !== 'exercices' || !['tiers', 'factures', 'tiers-factures', 'suspicions'].includes(s[2] ?? '')) return undefined;
+  if (m !== 'GET' && m !== 'PUT') return undefined;
+  const id = exigerUuid(s[1]);
+  const exercice = chargerExercice(a, id, m === 'GET' ? 'lecture' : s[2] === 'suspicions' ? 'revision' : 'collaboration');
+  const niveau = niveauSur(a, exercice.entiteId)!;
+  const dateBrute = r.query.get('date') ?? undefined;
+  if (dateBrute !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(dateBrute)) throw new ErreurHttp(400, 'date : AAAA-MM-JJ attendue');
+  const avecDonnees = id === DEMO.exDupain2025;
+  const calculer = () =>
+    suivreTiersEtFactures({
+      lignes: avecDonnees ? TIERS_JEU.lignes : [], exercice: { debut: exercice.debut, fin: exercice.fin }, dateAppreciation: dateBrute ?? exercice.fin, origineDateAppreciation: dateBrute === undefined ? 'cloture_exercice' : 'fournie',
+      deviseDossier: 'EUR', sirenDossier: null, pieces: avecDonnees ? TIERS_JEU.pieces : [], rapprochementsValides: [], decisionsTiers: tiersSim.decisionsTiers, decisionsFactures: avecDonnees ? tiersSim.decisionsFactures : [],
+    });
+  const res = calculer();
+  const entete = {
+    niveau, exercice: { id, entiteId: exercice.entiteId, debut: exercice.debut, fin: exercice.fin, versionDonnees: exercice.versionDonnees }, donnees: avecDonnees ? { lotImportId: 'lot-tiers', version: 1, statutDonnees: 'travail_avant_cloture' } : null,
+    dateAppreciation: res.dateAppreciation, origineDateAppreciation: res.origineDateAppreciation, devise: 'EUR', nature: 'aide_a_la_revision', reserves: res.reserves, piecesEcartees: { horsExercice: 0, extractionRejetee: 0, sansExtraction: 0, auDelaDuPlafond: 0 },
+  };
+  const pageBrute = r.query.get('page');
+  if (pageBrute !== null && !/^[1-9]\d{0,5}$/.test(pageBrute)) throw new ErreurHttp(400, 'Page invalide');
+  const p = Number(pageBrute ?? 1);
+  const paginer = <T,>(liste: T[], taille = 50) => ({ elements: liste.slice((p - 1) * taille, p * taille), pagination: { page: p, taillePage: taille, total: liste.length, suite: liste.length > p * taille } });
+  const norm = (v: string) => v.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const noms = new Map(res.tiers.map((t) => [t.cle, t.nom]));
+  const resume = (f: FicheFacture) => ({
+    id: f.id, nomFichier: f.nomFichier, type: f.type, sens: f.sens, numero: f.numero, dateEmission: f.dateEmission, dateEcheance: f.dateEcheance, montant: f.montant, devise: f.devise, statutExtraction: f.statutExtraction, tiersCle: f.tiersCle,
+    tiersNom: (f.tiersCle && noms.get(f.tiersCle)) || f.tiersPiece?.nom || null, comptabilisation: f.comptabilisation.statut, montantRegle: f.montantRegle, resteDu: f.resteDu, etat: f.etat, motifEtat: f.motifEtat, echue: f.echue,
+    joursDeRetard: f.joursDeRetard, nbSuspicions: f.suspicions.length, nbPropositions: f.comptabilisation.propositions.length + f.propositionsImputation.length,
+  });
+  const q = norm((r.query.get('q') ?? '').trim().slice(0, 100));
+
+  if (m === 'GET' && s[2] === 'tiers' && s.length === 3) {
+    const type = r.query.get('type');
+    if (type !== null && !['client', 'fournisseur', 'mixte', 'indetermine'].includes(type)) throw new ErreurHttp(400, 'type inconnu');
+    const parType: Record<string, number> = {};
+    for (const t of res.tiers) parType[t.type] = (parType[t.type] ?? 0) + 1;
+    const filtres = res.tiers.filter((t) => (type === null || t.type === type) && (q === '' || norm(`${t.nom} ${t.compteAuxiliaire ?? ''} ${t.libelles.join(' ')} ${t.identifiants.map((i) => i.valeur).join(' ')}`).includes(q)));
+    const { elements, pagination } = paginer(filtres);
+    return { ...entete, pagination: { ...pagination, parType, totalSansFiltre: res.tiers.length }, nbPropositions: res.propositionsTiers.length, tiers: elements.map((t) => ({ ...t, nbPieces: t.pieces.length, pieces: undefined })) };
+  }
+  if (m === 'GET' && s[2] === 'tiers' && s[3] === 'fiche' && s.length === 4) {
+    const cle = r.query.get('cle');
+    if (!cle || cle.length < 3) throw new ErreurHttp(400, 'cle attendue');
+    const fiche = res.tiers.find((t) => t.cle === cle);
+    if (!fiche) throw new ErreurHttp(404, 'Tiers introuvable dans les données actuelles');
+    const mouvements = TIERS_JEU.lignes.filter((l) => avecDonnees && /^(401|411)/.test(l.compteNum) && `aux:${l.compAuxNum ?? ''}` === cle);
+    const { elements, pagination } = paginer(mouvements, 100);
+    const factures = res.factures.filter((f) => f.tiersCle === cle);
+    return {
+      ...entete, tiers: fiche,
+      mouvements: elements.map((l) => ({ id: l.id, cle: cleEcriture(l), journalCode: l.journalCode, ecritureNum: l.ecritureNum, date: l.ecritureDate, compteNum: l.compteNum, pieceRef: l.pieceRef, libelle: l.ecritureLib, debit: l.debit, credit: l.credit, lettrage: l.ecritureLet })),
+      paginationMouvements: pagination, factures: factures.map(resume),
+      resteDuTotal: versChaine(factures.reduce((t, f) => (f.type === 'facture' && f.resteDu !== null ? t.plus(dec(f.resteDu)) : t), dec('0.00'))),
+      propositions: res.propositionsTiers.filter((x) => `piece:${x.clePiece}` === cle || x.candidats.some((k) => k.cle === cle)),
+    };
+  }
+  if (m === 'GET' && s[2] === 'factures' && s.length === 3) {
+    const etatDemande = r.query.get('etat');
+    const tiers = r.query.get('tiers');
+    if (etatDemande !== null && !['non_echue', 'echue_non_reglee', 'partiellement_reglee', 'reglee', 'trop_percu', 'non_determinable', 'avoir_impute', 'avoir_partiellement_impute', 'avoir_non_impute'].includes(etatDemande)) throw new ErreurHttp(400, 'etat inconnu');
+    const hors = res.factures.filter((f) => (tiers === null || f.tiersCle === tiers) && (q === '' || norm(`${f.numero ?? ''} ${f.nomFichier} ${(f.tiersCle && noms.get(f.tiersCle)) || ''} ${f.tiersPiece?.nom ?? ''}`).includes(q)));
+    const parEtat: Record<string, { n: number; resteDu: string }> = {};
+    for (const f of hors) {
+      const e = (parEtat[f.etat] ??= { n: 0, resteDu: '0.00' });
+      e.n++;
+      if (f.type === 'facture' && f.resteDu !== null) e.resteDu = versChaine(dec(e.resteDu).plus(dec(f.resteDu)));
+    }
+    const filtrees = hors.filter((f) => etatDemande === null || f.etat === etatDemande).sort((x, y) => (x.dateEcheance ?? '9999').localeCompare(y.dateEcheance ?? '9999') || (x.dateEmission ?? '9999').localeCompare(y.dateEmission ?? '9999') || x.id.localeCompare(y.id));
+    const { elements, pagination } = paginer(filtrees);
+    return { ...entete, pagination: { ...pagination, parEtat, totalSansFiltre: res.factures.length }, factures: elements.map(resume) };
+  }
+  if (m === 'GET' && s[2] === 'factures' && s.length === 4) {
+    const documentId = exigerUuid(s[3], 'documentId');
+    const f = res.factures.find((x) => x.id === documentId);
+    if (!f) throw new ErreurHttp(404, 'Facture introuvable : la pièce n’est pas suivie sur cet exercice (remplacée, hors exercice, extraction rejetée ou nature autre)');
+    const tiers = f.tiersCle ? (res.tiers.find((t) => t.cle === f.tiersCle) ?? null) : null;
+    const cles = new Set([f.comptabilisation.ecriture?.cle, ...f.comptabilisation.propositions.map((x) => x.ecriture.cle)].filter((x): x is string => !!x));
+    const lignesEcritures: Record<string, unknown[]> = {};
+    for (const l of TIERS_JEU.lignes) {
+      const k = cleEcriture(l);
+      if (cles.has(k)) (lignesEcritures[k] ??= []).push({ id: l.id, compteNum: l.compteNum, compteLib: l.compteLib, compAuxNum: l.compAuxNum, libelle: l.ecritureLib, debit: l.debit, credit: l.credit, lettrage: l.ecritureLet });
+    }
+    return {
+      ...entete, facture: f, tiers: tiers && { cle: tiers.cle, nom: tiers.nom, type: tiers.type, compteAuxiliaire: tiers.compteAuxiliaire }, lignesEcritures, suspicions: res.suspicions.filter((x) => f.suspicions.includes(x.cle)),
+      decisions: tiersSim.decisionsFactures.filter((d) => d.objet === documentId).map((d) => ({ type: d.type, cible: d.cible, decision: d.decision, montant: d.montant ?? null, motif: d.motif, versionExtraction: d.versionExtraction ?? null, creeLe: d.creeLe, auteur: d.auteur })),
+    };
+  }
+  if (m === 'GET' && s[2] === 'tiers-factures' && s[3] === 'a-traiter' && s.length === 4) {
+    const liens = res.factures.filter((f) => f.comptabilisation.statut === 'a_confirmer' || f.comptabilisation.statut === 'ambigu');
+    const reglements = res.factures.filter((f) => f.propositionsImputation.length > 0);
+    return {
+      ...entete,
+      totaux: { propositionsTiers: res.propositionsTiers.length, liensAConfirmer: liens.length, reglementsProposes: reglements.length, suspicions: res.suspicions.length, suspicionsAExaminer: res.suspicions.filter((x) => x.statut === 'a_examiner').length, decisionsARevoir: res.decisionsARevoir.length },
+      propositionsTiers: res.propositionsTiers, liensAConfirmer: liens.map((f) => ({ ...resume(f), motif: f.comptabilisation.motif, propositions: f.comptabilisation.propositions })),
+      reglementsProposes: reglements.map((f) => ({ ...resume(f), propositions: f.propositionsImputation })), suspicions: res.suspicions, decisionsARevoir: res.decisionsARevoir,
+    };
+  }
+  if (m !== 'PUT') return undefined;
+  const d = r.json();
+  const decision = d.decision as 'confirme' | 'infirme' | 'retirer';
+  if (!['confirme', 'infirme', 'retirer'].includes(decision)) throw invalide('decision', 'valeur inconnue');
+  const motif = typeof d.motif === 'string' && d.motif.trim() ? d.motif.trim() : null;
+  const exigerPour = () => {
+    if (decision !== 'confirme' && !auMoins(niveau, 'revision')) throw new ErreurHttp(403, 'Infirmer ou retirer une décision est réservé au niveau révision');
+    if (decision === 'infirme' && !motif) throw new ErreurHttp(400, 'Un motif est requis pour infirmer');
+  };
+  if (s[2] === 'tiers' && s[3] === 'liens' && s.length === 4) {
+    if (typeof d.cleComptable !== 'string' || !/^aux:.{1,100}$/.test(d.cleComptable)) throw invalide('cleComptable', 'clé de tiers comptable attendue (« aux:… »)');
+    if (typeof d.clePiece !== 'string' || !/^(siren:\d{9}|tva:[A-Z0-9]{4,15}|nom:.{1,140})$/.test(d.clePiece)) throw invalide('clePiece', 'clé de tiers de pièce attendue');
+    exigerPour();
+    const i = tiersSim.decisionsTiers.findIndex((x) => x.cleComptable === d.cleComptable && x.clePiece === d.clePiece);
+    if (decision === 'retirer') {
+      if (i < 0) throw new ErreurHttp(404, 'Aucune décision enregistrée pour ce couple');
+      tiersSim.decisionsTiers.splice(i, 1);
+    } else {
+      if (!res.tiers.some((t) => t.cle === d.cleComptable && t.origine === 'comptable')) throw new ErreurHttp(404, 'Tiers comptable introuvable dans les écritures actuelles');
+      if (i >= 0) tiersSim.decisionsTiers.splice(i, 1);
+      tiersSim.decisionsTiers.push({ cleComptable: d.cleComptable, clePiece: d.clePiece, decision });
+    }
+    tracerAudit(a, `tiers.lien_${decision}`, 'exercice', id, exercice.entiteId, { cleComptable: d.cleComptable, clePiece: d.clePiece });
+    return { cleComptable: d.cleComptable, clePiece: d.clePiece, decision };
+  }
+  if (s[2] === 'factures' && s[4] === 'liens' && s.length === 5) {
+    const documentId = exigerUuid(s[3], 'documentId');
+    const type = d.type as 'comptabilisation' | 'imputation';
+    if (type !== 'comptabilisation' && type !== 'imputation') throw invalide('type', 'valeur inconnue');
+    if (typeof d.cible !== 'string' || !/^[^|]+\|.+$/.test(d.cible)) throw invalide('cible', 'clé d’écriture attendue (« JOURNAL|NUMÉRO »)');
+    exigerPour();
+    const i = tiersSim.decisionsFactures.findIndex((x) => x.type === type && x.objet === documentId && x.cible === d.cible);
+    if (decision === 'retirer') {
+      if (i < 0) throw new ErreurHttp(404, 'Aucune décision enregistrée pour ce lien');
+      tiersSim.decisionsFactures.splice(i, 1);
+    } else {
+      const f = res.factures.find((x) => x.id === documentId);
+      if (!f) throw new ErreurHttp(404, 'Facture introuvable : la pièce n’est pas suivie sur cet exercice');
+      if (!TIERS_JEU.lignes.some((l) => cleEcriture(l) === d.cible && /^(401|411)/.test(l.compteNum))) throw new ErreurHttp(404, 'Écriture introuvable dans les données actuelles, ou sans ligne de compte de tiers');
+      if (type === 'imputation' && decision === 'confirme' && !f.comptabilisation.ecriture) throw new ErreurHttp(409, 'L’écriture qui comptabilise cette facture n’est pas établie : confirmez-la d’abord');
+      if (i >= 0) tiersSim.decisionsFactures.splice(i, 1);
+      tiersSim.decisionsFactures.push({ type, objet: documentId, cible: d.cible, decision, montant: null, versionExtraction: f.versionExtraction, motif, auteur: a.nom, creeLe: instant() });
+    }
+    tracerAudit(a, `facture.${type}_${decision}`, 'document', documentId, exercice.entiteId, { exerciceId: id, cible: d.cible });
+    const apres = calculer().factures.find((x) => x.id === documentId);
+    return { documentId, type, cible: d.cible, decision, facture: apres ? resume(apres) : null };
+  }
+  if (s[2] === 'suspicions' && s.length === 3) {
+    if (typeof d.cle !== 'string' || !/^[EP]:/.test(d.cle)) throw invalide('cle', 'clé de suspicion attendue');
+    if (decision === 'infirme' && !motif) throw new ErreurHttp(400, 'Un motif est requis pour écarter une suspicion');
+    const i = tiersSim.decisionsFactures.findIndex((x) => x.type === 'suspicion' && x.objet === d.cle);
+    if (decision === 'retirer') {
+      if (i < 0) throw new ErreurHttp(404, 'Aucune décision enregistrée pour cette suspicion');
+      tiersSim.decisionsFactures.splice(i, 1);
+    } else {
+      if (!res.suspicions.some((x) => x.cle === d.cle)) throw new ErreurHttp(404, 'Suspicion introuvable dans les données actuelles');
+      if (i >= 0) tiersSim.decisionsFactures.splice(i, 1);
+      tiersSim.decisionsFactures.push({ type: 'suspicion', objet: d.cle, cible: 'suspicion', decision, motif, auteur: a.nom, creeLe: instant() });
+    }
+    tracerAudit(a, `suspicion.${decision}`, 'exercice', id, exercice.entiteId, { cle: d.cle });
+    return { cle: d.cle, statut: decision === 'confirme' ? 'confirmee' : decision === 'infirme' ? 'ecartee' : 'a_examiner' };
+  }
+  return undefined;
+}
+
 // ───────────── Règles du cabinet, inventaire, missions, conseils, veille, recherche, restitution ─────────────
 // Calqué sur regles/inventaire/missions/conseils/veille/recherche/restitution.controller.ts. Le rattachement des travaux,
 // l'estimation de temps, l'applicabilité d'une évolution, la balance et l'équilibre d'une écriture utilisent le VRAI
@@ -2909,6 +3129,7 @@ const serveur = http.createServer(async (req, res) => {
       // Routes de pilotage des tests : absentes de l'API réelle.
       if (methode === 'POST' && segments[1] === 'reinitialiser') {
         suite = suiteInitiale();
+        tiersSim = { decisionsTiers: [], decisionsFactures: [] };
         ENTITES = structuredClone(ENTITES_INITIALES);
         HABILITATIONS = structuredClone(HABILITATIONS_INITIALES);
         APPARTENANCES_EN_PLUS = [];
@@ -2963,6 +3184,9 @@ const serveur = http.createServer(async (req, res) => {
       } else if (methode === 'GET' && segments[1] === 'suite') {
         // Lecture de l'état des écrans ajoutés (règles, inventaire, missions, conseils, veille, restitutions, membres).
         resultat = { regles: suite.regles, ecritures: suite.ecritures, missions: suite.missions, lettres: suite.lettres, travaux: suite.travaux, baremes: suite.baremes, conseils: suite.conseils, evenements: suite.evenements, suivis: suite.suivis, restitutions: suite.restitutions, echangesAssistant: suite.echangesAssistant, membres: [...suite.membres.entries()], habilitations: HABILITATIONS, campagnes: suite.campagnes, lots: etat.lots.map((l) => ({ id: l.id, entiteId: l.entiteId, type: l.type, statut: l.statut, actif: l.actif, campagneId: l.campagneId ?? null, motifAnnulation: l.motifAnnulation ?? null, statutAvantAnnulation: l.statutAvantAnnulation ?? null })), coutHoraire: suite.coutsHoraires.get(DEMO.cabinetA)?.coutHoraireInterneHt ?? null };
+      } else if (methode === 'GET' && segments[1] === 'tiers') {
+        // Décisions enregistrées par les écrans « Tiers et factures ».
+        resultat = tiersSim;
       } else if (methode === 'GET' && segments[1] === 'journal') resultat = journal;
       else if (methode === 'GET' && segments[1] === 'etat') {
         resultat = {

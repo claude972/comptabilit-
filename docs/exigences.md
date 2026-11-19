@@ -180,11 +180,11 @@ notées « limite assumée » ou absentes de la matrice ; elles sont rouvertes e
 | Supervision OpenTelemetry (§5) | Aucune trace émise par l'API ni le worker | Fait (D-074) : traces de l'API et du worker, propagées jusqu'aux travaux, sans donnée comptable ; reste un entrepôt de traces et le déploiement |
 | Fichiers volumineux en flux (§17) | Contrôles non réalisés au-delà de 500 000 lignes | Fait (D-075) : 19 contrôles en flux, égalité prouvée, mesuré sur 1 060 006 lignes ; reste borné par un budget explicite pour trois d'entre eux |
 | Isolation des traitements PDF, image et XML (§16) | Analyseurs exécutés dans le processus du worker | Fait pour les pièces (D-076) : processus enfant borné par fichier ; pas d'isolation par le noyau ; relevés, FEC et mail restent dans le worker |
-| Tiers, factures, échéances et règlements (§7) | Pas de table des tiers ni de suivi des règlements par facture | À faire |
+| Tiers, factures, échéances et règlements (§7) | Pas de table des tiers ni de suivi des règlements par facture | Fait (D-077) : tiers, factures et avoirs suivis, échéances, règlements partiels et groupés, suspicion de double comptabilisation ; ventes à confirmer à la main, euro seulement ; règles à valider **(externe)** |
 | Assistant sur un portefeuille autorisé (§15) | Un seul dossier à la fois | À faire |
 | Notifications discrètes sur téléphone (§8A) | Notifications internes seulement, aucune notification poussée | À faire |
 | Amélioration contrôlée à partir des corrections (§13) | Les règles ne sont proposées que par saisie humaine ; aucune proposition tirée des corrections | À faire |
-| Devenir des données à la résiliation (§16) | Documenté, mais aucune procédure exécutable | À faire, en simulation seulement : aucune purge réelle n'est activée |
+| Devenir des données à la résiliation (§16) | Documenté, mais aucune procédure exécutable | Fait en partie (D-078) : procédure de l'éditeur en simulation par défaut, prouvée sur base isolée, non activée ; durées à arrêter **(externe)** ; sauvegardes et fournisseur d'identité non traités |
 
 ## Reste réel, hors dépendances externes
 

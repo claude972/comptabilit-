@@ -46,6 +46,7 @@ export default async function MiseEnPageDossier({ children, params }: { children
           { href: base, libelle: 'Pièces' },
           { href: `${base}/comptabilite`, libelle: 'Comptabilité' },
           { href: `${base}/banque`, libelle: 'Banque' },
+          { href: `${base}/tiers`, libelle: 'Tiers et factures' },
           { href: `${base}/revision`, libelle: 'Révision' },
           { href: `${base}/analyse`, libelle: 'Analyse' },
           { href: `${base}/inventaire`, libelle: 'Inventaire' },

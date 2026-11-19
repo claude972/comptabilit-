@@ -1392,3 +1392,66 @@ export const immobilisations = pgTable(
   },
   (t) => [index('immobilisations_dossier').on(t.entiteId)],
 );
+
+// ───────────────────────────── Tiers, factures suivies, règlements ─────────────────────────────
+
+/**
+ * DÉCISION HUMAINE sur le rattachement d'un tiers comptable (compte auxiliaire des écritures) à un tiers de pièce
+ * (émetteur lu sur les factures). Le référentiel des tiers lui-même n'est PAS stocké : il est recalculé à chaque lecture
+ * à partir des écritures du lot actif et des extractions en vigueur, pour ne jamais diverger des écritures. Seul ce
+ * qu'une personne a confirmé ou infirmé est conservé ici. Une ligne par couple ; l'historique est dans le journal d'audit.
+ */
+export const liensTiers = pgTable(
+  'liens_tiers',
+  {
+    id: id(),
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    entiteId: uuid('entite_id').notNull().references(() => entites.id),
+    /** « aux:NUMÉRO » : compte auxiliaire des écritures. */
+    cleComptable: text('cle_comptable').notNull(),
+    /** « siren:… », « tva:… » ou « nom:… » : identité de l'émetteur lue sur les pièces. */
+    clePiece: text('cle_piece').notNull(),
+    /** confirme | infirme */
+    decision: text('decision').notNull(),
+    motif: text('motif'),
+    decidePar: uuid('decide_par').notNull().references(() => utilisateurs.id),
+    creeLe: creeLe(),
+  },
+  (t) => [uniqueIndex('liens_tiers_unique').on(t.entiteId, t.cleComptable, t.clePiece)],
+);
+
+/**
+ * DÉCISION HUMAINE sur une facture ou un avoir suivi (la fiche elle-même est recalculée à la lecture) :
+ *  - comptabilisation : la pièce `document_id` est (ou n'est pas) comptabilisée par l'écriture `cible` (« JOURNAL|NUMÉRO ») ;
+ *  - imputation : l'écriture de règlement ou d'avoir `cible` règle (ou ne règle pas) la pièce `document_id` ;
+ *  - suspicion : la suspicion de double comptabilisation `objet` est confirmée ou écartée.
+ * Rien n'est comptabilisé ni lettré : le logiciel de production reste la référence. Une décision porte sur une VERSION
+ * de pièce (`document_id`) et d'extraction : une nouvelle version de la pièce ou une correction des champs la rend
+ * « à revoir » et elle n'est plus appliquée (même principe que D-031).
+ */
+export const liensFactures = pgTable(
+  'liens_factures',
+  {
+    id: id(),
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    entiteId: uuid('entite_id').notNull().references(() => entites.id),
+    exerciceId: uuid('exercice_id').notNull().references(() => exercices.id),
+    /** comptabilisation | imputation | suspicion */
+    type: text('type').notNull(),
+    /** Identifiant de la pièce (comptabilisation, imputation) ou clé de la suspicion. */
+    objet: text('objet').notNull(),
+    documentId: uuid('document_id').references(() => documents.id),
+    /** Clé de l'écriture visée ; « suspicion » pour une décision sur une suspicion. */
+    cible: text('cible').notNull(),
+    /** confirme | infirme */
+    decision: text('decision').notNull(),
+    /** Imputation : montant imputé saisi par la personne (facultatif ; sinon calculé par le moteur). */
+    montant: montant('montant'),
+    motif: text('motif'),
+    versionExtraction: integer('version_extraction'),
+    versionDonnees: integer('version_donnees').notNull(),
+    decidePar: uuid('decide_par').notNull().references(() => utilisateurs.id),
+    creeLe: creeLe(),
+  },
+  (t) => [uniqueIndex('liens_factures_unique').on(t.exerciceId, t.type, t.objet, t.cible), index('liens_factures_dossier').on(t.entiteId)],
+);

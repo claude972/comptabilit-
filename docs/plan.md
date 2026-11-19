@@ -98,10 +98,10 @@ Reste réalisable sans intervention extérieure, non fait (par ordre d'utilité)
 1. Persistance de la preuve de connexion de la passerelle IA et route de vérification (inutile tant qu'aucun jeton n'existe).
 2. Amortissements autres que linéaires ; reprise du fichier des immobilisations depuis le logiciel comptable (aujourd'hui : saisie par le cabinet).
 3. Assistant sur un portefeuille de plusieurs dossiers ; recherche multi-dossiers.
-4. Table des tiers et suivi des règlements par facture (aujourd'hui : comptes auxiliaires des écritures et rapprochement bancaire).
+4. Tiers et factures (D-077) : extraction du destinataire pour apparier les ventes ; tolérances de montant ; règlements groupés non lettrés ; sort de l'ancienne table `factures`, jamais alimentée.
 5. Entrepôt de traces et acheminement vers le collecteur en production (les traces sont émises, D-074).
 6. Isolation par le noyau des analyseurs ; même isolement pour les relevés bancaires, les FEC et le mail (D-076) ; plafonds des écrans de l'API qui chargent encore les lignes en mémoire (D-075) ; dépôt d'une archive répartie entre dossiers ; notifications poussées.
-7. Purge effective à l'issue des durées de conservation (à ne pas écrire avant que les durées soient arrêtées).
+7. Fin de contrat (D-078), avant toute activation : arrêter les durées et le délai de grâce, exercer la suppression d'objets sur un stockage d'essai distinct, mesurer sur un volume réaliste, définir la rotation des sauvegardes, traiter les comptes du fournisseur d'identité, concevoir la fin de vie du journal et des éléments conservés. Purge à l'échéance des durées : non écrite.
 
 Le reste dépend d'une intervention extérieure : liste en tête de `acces-externes.md`.
 
@@ -117,4 +117,4 @@ Pour reprendre le travail sans relire l'historique :
 - **Données d'essai volumineuses ajoutées** : cabinet Bêta, 200 dossiers « Mesure … » et un dossier « Mesure restitution … » (603 Mo d'originaux, plusieurs archives de 576 Mo) ; cabinet Alpha, deux archives de restitution de 359 Mo ; nombreux cabinets et dossiers d'essai créés par les parcours. Le stockage local sauvegardé pèse environ 8 Go.
 - **Reste local connu** : liste ci-dessus (« Reste réalisable sans intervention extérieure »). Ce qui exige une intervention extérieure : `acces-externes.md`, section « En bref ».
 - **IA** : aucune n'est connectée ; l'assistant répond « sans IA ». Ne jamais activer un jeton sans les vérifications de `packages/ia/docs/passerelle.md` § 7.
-- **Migrations** : 0000 à 0036 ; les tests de base les rejouent toutes sur une base neuve.
+- **Migrations** : 0000 à 0038 (0038 crée le registre des fins de contrat, vide : aucune fin de contrat n'a été exécutée) ; les tests de base les rejouent toutes sur une base neuve.

@@ -260,6 +260,20 @@
       "when": 1795117161439,
       "tag": "0036_immobilisations",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1795126743507,
+      "tag": "0037_tiers_factures",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1795126744507,
+      "tag": "0038_fin_de_contrat",
+      "breakpoints": true
     }
   ]
 }

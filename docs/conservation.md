@@ -2,7 +2,7 @@
 
 > **PROJET — à faire valider par un DPO / avocat. Aucune approbation juridique n'a été donnée.**
 
-État : cadre technique en place pour une partie. Des durées sont PROPOSÉES plus bas avec leur fondement (section « Durées proposées ») ; aucune n'est arrêtée, et elles sont à valider par un professionnel du droit et par un expert-comptable avant toute mise en service. Aucune durée n'est appliquée automatiquement à ce jour, et aucune purge n'existe hors celles décrites ci-dessous.
+État : cadre technique en place pour une partie. Des durées sont PROPOSÉES plus bas avec leur fondement (section « Durées proposées ») ; aucune n'est arrêtée, et elles sont à valider par un professionnel du droit et par un expert-comptable avant toute mise en service. Aucune durée n'est appliquée automatiquement à ce jour, et aucune purge n'existe hors celles décrites ci-dessous. La procédure de fin de contrat (section « Fin de contrat ») existe mais n'est pas activée : elle n'a été appliquée que sur des bases d'essai.
 
 ## Ce que le logiciel fait aujourd'hui
 
@@ -17,7 +17,7 @@
 
 ## Ce qui est modélisé mais pas appliqué
 
-La table `politiques_conservation` permet de déclarer, par cabinet et par catégorie, une durée, son fondement et le caractère immuable. Aucun traitement ne la lit encore. L'immuabilité est désactivée par défaut : une conservation irréversible n'est jamais appliquée sans durée ni responsable définis.
+La table `politiques_conservation` permet de déclarer, par cabinet et par catégorie, une durée, son fondement et le caractère immuable. Aucun traitement ne l'applique ; la procédure de fin de contrat la lit seulement pour refuser de supprimer une catégorie qu'une déclaration protège. L'immuabilité est désactivée par défaut : une conservation irréversible n'est jamais appliquée sans durée ni responsable définis.
 
 ## Object Lock
 
@@ -38,9 +38,70 @@ Restitution d'un cabinet entier (décision D-043, voir `couverture.md`) : réser
 
 Non couvert : restitution des sauvegardes et des journaux techniques ; format d'échange normalisé avec un autre logiciel.
 
-## Suppression à la résiliation
+## Fin de contrat : suppression à la résiliation
 
-Non implémentée. La résiliation d'un abonnement ferme les dépôts à son échéance mais ne supprime aucune donnée. Le devenir de chaque catégorie (suppression, conservation obligatoire, sauvegardes, journaux) reste à définir.
+La résiliation d'un abonnement ferme les dépôts à son échéance et ne supprime, par elle-même, aucune donnée. Une PROCÉDURE de fin de contrat existe depuis le 2026-11-19 (`packages/db/src/provisionnement.ts`, fonctions `inventaireFinDeContrat`, `finDeContrat`, `objetsFinDeContrat` ; migration `0038_fin_de_contrat.sql`). **Elle n'est pas activée** : aucun traitement ne la lance, l'API ne l'expose pas, et elle n'a jamais été appliquée à des données conservées. Les durées qu'elle cite sont les propositions de ce document, non arrêtées.
+
+### Devenir de chaque catégorie
+
+Politique versionnée (`POLITIQUE_FIN_DE_CONTRAT`, version `2026-11-19.2`), reprise dans chaque procès-verbal. Quatre devenirs : `supprimer`, `restituer_puis_supprimer` (présent dans l'archive de restitution exigée avant toute suppression), `anonymiser`, `conserver_jusqu_a` (durée PROPOSÉE, non arrêtée). Toute table portant `cabinet_id` appartient à une catégorie : un test échoue, et la procédure refuse de s'exécuter, si une table en est dépourvue.
+
+| Catégorie | Tables | Devenir | Durée proposée et fondement (non arrêtés) |
+|---|---|---|---|
+| Comptes : appartenances, habilitations, invitations | `appartenances`, `habilitations_dossier`, `invitations` | supprimer | — |
+| Dossiers | `entites`, `etablissements`, `exercices` | restituer puis supprimer | — |
+| Pièces et fichiers | `fichiers`, `documents`, `receptions`, `pages_document`, `extractions`, `echanges_document`, `televersements`, `passages_recherche`, `factures` | restituer puis supprimer | Les objets du stockage suivent une étape séparée |
+| Écritures importées | `campagnes_import`, `lots_import`, `lignes_ecriture` | restituer puis supprimer | — |
+| Relevés, mouvements, rapprochements | `releves_bancaires`, `mouvements_bancaires`, `mouvements_lots`, `executions_rapprochement`, `rapprochements` | restituer puis supprimer | — |
+| Contrôles et constats | `executions_controles`, `resultats_controles`, `constats`, `exports_revision` | restituer puis supprimer | — |
+| Décisions et validations | `decisions`, `commentaires`, `ecritures_inventaire`, `confirmations_annexe`, `immobilisations`, `suivis_evolution`, `liens_tiers`, `liens_factures` | restituer puis supprimer | — |
+| Missions et conseils | `missions`, `lettres_mission`, `travaux`, `baremes_temps`, `conseils`, `evenements_conseil` | restituer puis supprimer | — |
+| Règles et paramètres | `regles_cabinet`, `parametres_cabinet` | restituer puis supprimer | — |
+| Messagerie et jetons | `connexions_mail`, `demandes_connexion_mail`, `pieces_mail_vues`, `pieces_a_qualifier`, `signalements_mail`, `messages_mail` | supprimer | Les jetons ne sont jamais restitués |
+| Notifications et préférences | `notifications`, `preferences_notification` | supprimer | — |
+| Assistant et propositions d'IA | `echanges_assistant`, `propositions_ia` | supprimer | — |
+| Traces de la passerelle d'IA (sans contenu) | `evenements_ia` | anonymiser (personne et dossier effacés) | 6 mois, mesures d'exploitation — valeur de travail |
+| Abonnement et facturation | `abonnements`, `echeances_abonnement`, `evenements_facturation` | conserver | 10 ans — Code de commerce, art. L. 123-22 ; LPF, art. L. 102 B (documents de l'Éditeur) |
+| Restitutions par dossier (registre) | `restitutions` | supprimer | — |
+| Restitutions du cabinet (registre, empreinte) | `restitutions_cabinet` | conserver | 5 ans — prescription (Code civil, art. 2224 ; Code de commerce, art. L. 110-4) |
+| Journal d'audit et anomalies consignées | `journal_audit`, `anomalies_journal` | conserver | 12 mois (traces d'accès) à 10 ans (actes métier) ; tant que le journal n'est pas scindé, la plus longue s'applique |
+| Politiques de conservation déclarées | `politiques_conservation` | conserver | 5 ans — idem |
+| Procès-verbaux de fin de contrat | `fins_de_contrat` | conserver | 5 ans — idem |
+
+Hors de ces tables, et NON traités par la procédure : la ligne `cabinets` (conservée : partie au contrat) ; la table `utilisateurs`, commune à tous les cabinets (les comptes qui n'appartiennent plus à aucun cabinet sont seulement décomptés) ; les comptes du fournisseur d'identité ; les journaux techniques ; les sauvegardes.
+
+### Pré-conditions, toutes vérifiées avant la moindre suppression
+
+1. Toute table portant `cabinet_id` a un devenir, et aucune table conservée ne référence une table supprimée.
+2. Le registre des procès-verbaux existe (migration 0038) et la fin de contrat n'a pas déjà été exécutée pour ce cabinet.
+3. L'abonnement est au statut « résilié » et sa date de fin est dépassée d'un délai de grâce paramétrable (90 jours par défaut — proposition ; 30 au minimum).
+4. Une restitution du cabinet est terminée, complète (aucun dossier écarté ni hors périmètre), son empreinte SHA-256 est enregistrée et sa génération consignée au journal, et elle a été demandée APRÈS la dernière modification des données (horodatages des tables restituées ; actes inscrits au journal, hors consultations, restitutions et résiliation).
+5. Le journal d'audit se vérifie par la vérification STRICTE. S'il ne se vérifie pas, la procédure s'arrête et le dit ; elle ne répare ni ne consigne rien.
+6. Aucune politique de conservation déclarée pour le cabinet (`politiques_conservation`) ne s'oppose à la suppression d'une catégorie : conservation immuable, durée encore en cours (comptée, faute de mieux, depuis sa déclaration), ou catégorie non reconnue.
+7. Une confirmation nomme le cabinet : son identifiant ET son nom exact.
+
+### Exécution
+
+`node scripts/editeur.mjs fin-de-contrat <cabinetId>` SIMULE : inventaire, pré-conditions et plan ordonné, dans une transaction en lecture seule — la base elle-même y refuse toute écriture. Avec `--nom="<nom exact>" --appliquer`, et si toutes les pré-conditions sont réunies, une seule transaction : anonymisation des traces d'IA ; suppression table par table, les tables qui en référencent d'autres d'abord (ordre calculé d'après les clés étrangères), chaque décompte étant comparé au plan ; inscription de la dernière ligne du journal ; nouvelle vérification stricte ; inscription du procès-verbal. Un échec ou une interruption à n'importe quelle étape annule tout.
+
+**Journal d'audit.** Il est conservé, jamais réécrit ni supprimé, et reçoit une dernière ligne `fin_de_contrat.executee` chaînée comme les autres : il reste vérifiable, en base et hors base. Raisons : c'est la preuve des diligences du Cabinet et de l'exécution de la fin de contrat ; sa durée n'est pas arrêtée (12 mois à 10 ans selon les lignes, non scindées) ; et le supprimer supposerait de désactiver ses protections d'ajout seul, ce que rien ne distinguerait d'une altération. Sa destruction à son terme (export scellé, puis purge) n'est pas conçue.
+
+**Procès-verbal.** Document JSON canonique (clés triées) : cabinet, date, rôle exécutant, politique et sa version, abonnement, restitution et son empreinte, décomptes avant/après par catégorie et par table, état du journal, objets restant à supprimer, limite des sauvegardes, réserves. Son empreinte SHA-256 se recalcule à partir du seul document. Il est écrit dans un fichier, à remettre au Cabinet, et inscrit au registre `fins_de_contrat` (ajout seul, sans aucun droit pour les rôles de l'application).
+
+**Objets du stockage.** Étape séparée (`objetsFinDeContrat`) : clés sous les préfixes `cabinets/<cabinet>/` et `tmp/<cabinet>/`, simulation par défaut, exécution seulement après la base, refusée si une ligne d'un autre cabinet référence un de ces objets, consignée au journal. L'outil de l'éditeur n'en propose que la simulation (`fin-de-contrat-objets`). Une clé référencée hors de ces préfixes n'est jamais supprimée : elle est décomptée.
+
+**Sauvegardes.** Elles ne sont pas modifiables une à une : les données supprimées y subsistent jusqu'à leur rotation (30 à 90 jours proposés, politique de production non définie). La procédure ne les purge pas ; le procès-verbal le mentionne. Une restauration postérieure à une fin de contrat devrait la rejouer.
+
+### Ce qui est réellement exercé
+
+| | État au 2026-11-19 |
+|---|---|
+| Inventaire, pré-conditions, plan (simulation) | Testés sur une base neuve isolée ; simulés en lecture seule sur la base locale (aucun cabinet n'y remplit les pré-conditions) |
+| Suppression en base, journal, procès-verbal | Exécutés uniquement sur des bases d'essai créées puis supprimées par les tests. **Jamais sur la base locale ni sur des données conservées.** La migration 0038 n'a pas été appliquée à la base locale par ce développement |
+| Suppression des objets | Exercée uniquement contre un stockage factice en mémoire. **Jamais contre un stockage S3**, local ou distant |
+| Sauvegardes, comptes du fournisseur d'identité, journaux techniques | Non traités |
+| Volumes réels | Non mesurés : la durée de la transaction et ses verrous sur un cabinet de plusieurs centaines de milliers de lignes ne sont pas connus |
+| Durées, délai de grâce | Proposés, non arrêtés, sans validation juridique |
 
 ## Notifications internes : archivage et rétention
 
@@ -114,9 +175,9 @@ Cette section remplace l'ancienne mention « aucune durée chiffrée ». Elle PR
 
 ### Conséquences pour le logiciel (rien n'est fait)
 
-1. La table `politiques_conservation` devrait porter ces catégories, avec une durée, un point de départ et un fondement par cabinet ; aucun traitement ne la lit.
+1. La table `politiques_conservation` devrait porter ces catégories, avec une durée, un point de départ et un fondement par cabinet ; seule la procédure de fin de contrat la lit, pour refuser une suppression.
 2. Le point de départ « clôture de l'exercice » suppose de rattacher chaque pièce à un exercice : c'est le cas des écritures et des lots, pas de toutes les pièces.
-3. Il manque : l'archivage intermédiaire (retrait des travaux courants avec accès restreint), la purge à l'échéance, la suppression à la résiliation, la rotation des sauvegardes, le traitement du journal d'audit.
+3. Il manque : l'archivage intermédiaire (retrait des travaux courants avec accès restreint), la purge à l'échéance, la rotation des sauvegardes, le traitement du journal d'audit à son terme. La suppression à la résiliation dispose d'une procédure, non activée (section « Fin de contrat »).
 4. Un original est adressé par son empreinte et peut être partagé entre réceptions (doublon binaire) : une purge doit vérifier qu'aucune autre référence ne subsiste.
 5. Toute purge devra être simulable, journalisée, réversible pendant un délai de grâce, et laisser une trace de ce qui a été détruit sans en conserver le contenu.
 

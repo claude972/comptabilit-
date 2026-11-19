@@ -5287,9 +5287,158 @@
         ]
       }
     },
+    "/v1/dossiers/{entiteId}/immobilisations": {
+      "get": {
+        "description": "Sert uniquement à proposer les dotations aux amortissements linéaires. Ce n’est pas le fichier des immobilisations du logiciel de production comptable, qui reste la référence ; rien n’y est importé ni exporté.",
+        "operationId": "FiscalController_listerImmobilisations",
+        "parameters": [
+          {
+            "name": "entiteId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Fichier des immobilisations SAISI par le cabinet pour un dossier",
+        "tags": [
+          "États fiscaux (projets)"
+        ]
+      },
+      "post": {
+        "description": "Base amortissable strictement positive, en chaîne décimale ; durée en mois ; compte de classe 2. Aucune écriture n’est créée : seules des PROPOSITIONS de dotation en découleront.",
+        "operationId": "FiscalController_saisirImmobilisation",
+        "parameters": [
+          {
+            "name": "entiteId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "libelle": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "compteImmobilisation": {
+                    "type": "string",
+                    "pattern": "^2\\d{2,11}$"
+                  },
+                  "baseAmortissable": {
+                    "type": "string",
+                    "pattern": "^-?\\d{1,13}(\\.\\d{1,6})?$"
+                  },
+                  "dateMiseEnService": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "dureeMois": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1200
+                  },
+                  "amortissementsAnterieurs": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^-?\\d{1,13}(\\.\\d{1,6})?$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "libelle",
+                  "compteImmobilisation",
+                  "baseAmortissable",
+                  "dateMiseEnService",
+                  "dureeMois"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Saisir une immobilisation (niveau collaboration)",
+        "tags": [
+          "États fiscaux (projets)"
+        ]
+      }
+    },
+    "/v1/dossiers/{entiteId}/immobilisations/{immobilisationId}": {
+      "delete": {
+        "description": "Ne touche à aucune écriture : seules les propositions de dotation futures en tiennent compte. Le retrait est journalisé.",
+        "operationId": "FiscalController_retirerImmobilisation",
+        "parameters": [
+          {
+            "name": "entiteId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "immobilisationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Retirer une immobilisation du fichier saisi (niveau collaboration)",
+        "tags": [
+          "États fiscaux (projets)"
+        ]
+      }
+    },
     "/v1/exercices/{id}/inventaire/propositions": {
       "get": {
-        "description": "Calculées par le moteur à partir de règles explicites et versionnées ; chaque proposition porte son origine, sa justification, son calcul, ses écritures sources, ses impacts et ses hypothèses. Rien n’est comptabilisé ni même enregistré : une proposition ne devient une écriture d’inventaire (elle-même un projet à approuver par une autre personne) que si quelqu’un la reprend. Quand une donnée manque, le moteur s’abstient et le dit. Les dotations aux amortissements ne sont pas proposées : le logiciel n’a pas de fichier des immobilisations.",
+        "description": "Calculées par le moteur à partir de règles explicites et versionnées ; chaque proposition porte son origine, sa justification, son calcul, ses écritures sources, ses impacts et ses hypothèses. Rien n’est comptabilisé ni même enregistré : une proposition ne devient une écriture d’inventaire (elle-même un projet à approuver par une autre personne) que si quelqu’un la reprend. Quand une donnée manque, le moteur s’abstient et le dit. Les dotations aux amortissements (linéaires seulement) ne sont proposées que pour les immobilisations saisies par le cabinet dans le fichier du dossier.",
         "operationId": "FiscalController_listerPropositions",
         "parameters": [
           {
@@ -6210,6 +6359,519 @@
         "summary": "Suggérer des rapprochements parmi les éléments restés sans rapprochement (suggestions vérifiées par le moteur, à valider)",
         "tags": [
           "Assistant et IA"
+        ]
+      }
+    },
+    "/v1/exercices/{id}/tiers": {
+      "get": {
+        "description": "Aide à la révision. Les soldes et mouvements sont tirés des écritures du lot actif à chaque lecture : rien n’est stocké, rien ne peut diverger. Un tiers de pièce n’est rattaché à un tiers comptable que par un identifiant fort (SIREN) ou par la confirmation d’une personne ; le rapprochement par nom n’est qu’une proposition ; les homonymes sont signalés et jamais fusionnés. Pages de 50.",
+        "operationId": "TiersController_tiers",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Recherche dans le nom, le compte auxiliaire et les identifiants",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "client",
+                "fournisseur",
+                "mixte",
+                "indetermine"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "required": false,
+            "in": "query",
+            "description": "Date d’appréciation AAAA-MM-JJ ; par défaut, la clôture de l’exercice",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Référentiel des tiers du dossier, RECALCULÉ à partir des comptes auxiliaires des écritures et des émetteurs lus sur les pièces",
+        "tags": [
+          "Tiers, factures et règlements (aide à la révision)"
+        ]
+      }
+    },
+    "/v1/exercices/{id}/tiers/fiche": {
+      "get": {
+        "operationId": "TiersController_fiche",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cle",
+            "required": true,
+            "in": "query",
+            "description": "Clé du tiers (« aux:… », « general:… » ou « piece:… »)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "Page des mouvements (100 lignes)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Fiche d’un tiers : identifiants et leur origine, solde et mouvements de l’exercice (écritures), factures et pièces rattachées, propositions à confirmer",
+        "tags": [
+          "Tiers, factures et règlements (aide à la révision)"
+        ]
+      }
+    },
+    "/v1/exercices/{id}/factures": {
+      "get": {
+        "description": "États : non échue, échue non réglée, partiellement réglée, réglée, trop-perçu, non déterminable (avec son motif) ; pour un avoir : imputé, partiellement imputé, non imputé. Une échéance absente n’est jamais inventée ; sans écriture identifiée, l’état est « non déterminable ». Triées par échéance (les échéances inconnues en dernier). Décomptes et restes dus calculés sur TOUT le filtre, pas sur la page. Pages de 50.",
+        "operationId": "TiersController_factures",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "etat",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "non_echue",
+                "echue_non_reglee",
+                "partiellement_reglee",
+                "reglee",
+                "trop_percu",
+                "non_determinable",
+                "avoir_impute",
+                "avoir_partiellement_impute",
+                "avoir_non_impute"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "tiers",
+            "required": false,
+            "in": "query",
+            "description": "Clé d’un tiers",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Recherche dans le numéro, le nom du fichier et le nom du tiers",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "required": false,
+            "in": "query",
+            "description": "Date d’appréciation AAAA-MM-JJ ; par défaut, la clôture de l’exercice (jamais la date du jour en silence)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Échéancier des factures et avoirs suivis : échéance, règlements identifiés, reste dû et état à la date d’appréciation",
+        "tags": [
+          "Tiers, factures et règlements (aide à la révision)"
+        ]
+      }
+    },
+    "/v1/exercices/{id}/factures/{documentId}": {
+      "get": {
+        "operationId": "TiersController_facture",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Détail d’une facture ou d’un avoir : pièce, écriture de comptabilisation et critères, règlements et avoirs imputés avec leur preuve bancaire, propositions à confirmer, suspicions",
+        "tags": [
+          "Tiers, factures et règlements (aide à la révision)"
+        ]
+      }
+    },
+    "/v1/exercices/{id}/tiers-factures/a-traiter": {
+      "get": {
+        "description": "La suspicion de double comptabilisation (une même facture — même tiers, même numéro, même montant — portée par plusieurs écritures, ou deux pièces distinctes portant la même facture) est distincte du doublon binaire (même fichier reçu deux fois) et de la nouvelle version d’une pièce. Chaque liste est plafonnée à 200 éléments ; les totaux portent sur l’ensemble.",
+        "operationId": "TiersController_aTraiter",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Ce qui attend une personne : rapprochements de tiers proposés, liens pièce ↔ écriture à confirmer ou ambigus, règlements proposés, suspicions de double comptabilisation, décisions à revoir",
+        "tags": [
+          "Tiers, factures et règlements (aide à la révision)"
+        ]
+      }
+    },
+    "/v1/exercices/{id}/tiers/liens": {
+      "put": {
+        "description": "La décision vaut pour le dossier (tous exercices). Elle ne modifie aucune écriture et aucune pièce ; elle est journalisée. Un motif est requis pour infirmer.",
+        "operationId": "TiersController_decider",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "cleComptable": {
+                    "type": "string",
+                    "pattern": "^aux:.{1,100}$"
+                  },
+                  "clePiece": {
+                    "type": "string",
+                    "pattern": "^(siren:\\d{9}|tva:[A-Z0-9]{4,15}|nom:.{1,140})$"
+                  },
+                  "decision": {
+                    "type": "string",
+                    "enum": [
+                      "confirme",
+                      "infirme",
+                      "retirer"
+                    ]
+                  },
+                  "motif": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "cleComptable",
+                  "clePiece",
+                  "decision"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Confirmer (collaboration), infirmer ou retirer (révision) le rattachement d’un tiers de pièce à un tiers comptable",
+        "tags": [
+          "Tiers, factures et règlements (aide à la révision)"
+        ]
+      }
+    },
+    "/v1/exercices/{id}/factures/{documentId}/liens": {
+      "put": {
+        "description": "Rien n’est comptabilisé ni lettré : la décision n’existe que dans cet outil d’aide à la révision. Elle porte sur la version courante de la pièce et de son extraction : une nouvelle version de la pièce ou une correction des champs la rend « à revoir » et elle n’est plus appliquée. Un motif est requis pour infirmer.",
+        "operationId": "TiersController_lier",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "comptabilisation",
+                      "imputation"
+                    ]
+                  },
+                  "cible": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 300,
+                    "pattern": "^[^|]+\\|.+$"
+                  },
+                  "decision": {
+                    "type": "string",
+                    "enum": [
+                      "confirme",
+                      "infirme",
+                      "retirer"
+                    ]
+                  },
+                  "montant": {
+                    "type": "string",
+                    "pattern": "^-?\\d{1,13}(\\.\\d{1,6})?$"
+                  },
+                  "motif": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "type",
+                  "cible",
+                  "decision"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Confirmer (collaboration), infirmer ou retirer (révision) le lien d’une facture avec l’écriture qui la comptabilise ou avec une écriture de règlement ou d’avoir",
+        "tags": [
+          "Tiers, factures et règlements (aide à la révision)"
+        ]
+      }
+    },
+    "/v1/exercices/{id}/suspicions": {
+      "put": {
+        "description": "Confirmer ne corrige rien : la correction se fait dans le logiciel de production comptable. Écarter exige un motif (opérations répétées légitimes, par exemple).",
+        "operationId": "TiersController_statuer",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "cle": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 1000,
+                    "pattern": "^[EP]:"
+                  },
+                  "decision": {
+                    "type": "string",
+                    "enum": [
+                      "confirme",
+                      "infirme",
+                      "retirer"
+                    ]
+                  },
+                  "motif": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "cle",
+                  "decision"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Statuer sur une suspicion de double comptabilisation (niveau révision) : confirmée, écartée (motif requis) ou décision retirée",
+        "tags": [
+          "Tiers, factures et règlements (aide à la révision)"
         ]
       }
     }

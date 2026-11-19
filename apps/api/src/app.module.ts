@@ -28,9 +28,10 @@ import { ReglesController } from './regles.controller.js';
 import { NotificationsController } from './notifications.controller.js';
 import { RestitutionController } from './restitution.controller.js';
 import { TeleversementsController } from './televersements.controller.js';
+import { TiersController } from './tiers.controller.js';
 
 @Module({
-  controllers: [NotificationsController, ProfilController, TeleversementsController, DocumentsController, ComptabiliteController, ReferenceController, AuditController, IntegrationsController, MailController, BanqueController, AdministrationController, AbonnementController, ReglesController, RestitutionController, MissionsController, ConseilsController, VeilleController, RechercheController, EtatsController, FiscalController, InventaireController, ImportsController, AssistantController, IaTachesController],
+  controllers: [NotificationsController, ProfilController, TeleversementsController, DocumentsController, ComptabiliteController, ReferenceController, AuditController, IntegrationsController, MailController, BanqueController, AdministrationController, AbonnementController, ReglesController, RestitutionController, MissionsController, ConseilsController, VeilleController, RechercheController, EtatsController, FiscalController, InventaireController, ImportsController, AssistantController, IaTachesController, TiersController],
   providers: [
     { provide: CONFIG, useFactory: () => lireConfig() },
     // Le serveur interactif se connecte avec le rôle comtaple_app : jamais propriétaire, jamais BYPASSRLS.

@@ -76,7 +76,7 @@ test('préparation : dossier neuf, habilitations (validation, révision, collabo
   await alice.context().close();
 
   const chloe = await ouvrir(browser, CHLOE_MAIL, `/dossiers/${dossier}/comptabilite`);
-  await expect(chloe.getByRole('navigation', { name: 'Sections du dossier' }).getByRole('link')).toHaveText(['Pièces', 'Comptabilité', 'Banque', 'Révision', 'Analyse', 'Inventaire', 'États fiscaux', 'Mission', 'Veille', 'Assistant']);
+  await expect(chloe.getByRole('navigation', { name: 'Sections du dossier' }).getByRole('link')).toHaveText(['Pièces', 'Comptabilité', 'Banque', 'Tiers et factures', 'Révision', 'Analyse', 'Inventaire', 'États fiscaux', 'Mission', 'Veille', 'Assistant']);
   await chloe.getByTestId('entree-fec').setInputFiles({ name: fec.nomFichier, mimeType: 'text/plain', buffer: Buffer.from(fec.contenu) });
   await chloe.getByRole('radio', { name: 'Données de travail avant clôture' }).check();
   await chloe.getByRole('button', { name: 'Importer' }).click();

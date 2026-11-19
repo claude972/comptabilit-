@@ -20,6 +20,14 @@
  *   node scripts/editeur.mjs journal-anomalie <cabinetId> <premièreLigne> <dernièreLigne> "<cause>"   (irréversible)
  *   node scripts/editeur.mjs notifications-retention [jours avant archivage=30] [jours avant suppression=180] [--appliquer]
  *       SIMULATION sans « --appliquer ». Avec : archive les notifications lues anciennes, SUPPRIME les archivées anciennes (irréversible).
+ *   node scripts/editeur.mjs fin-de-contrat <cabinetId> [--grace=<jours, 90 par défaut>] [--nom="<nom exact du cabinet>"] [--pv=<fichier.json>] [--appliquer]
+ *       SIMULATION sans « --appliquer » : inventaire par catégorie, pré-conditions, plan ordonné ; RIEN n'est modifié.
+ *       Avec « --appliquer » ET « --nom » (nom exact) : SUPPRIME les données du cabinet (IRRÉVERSIBLE), en une transaction,
+ *       si toutes les pré-conditions sont réunies ; conserve le journal d'audit et la facturation ; écrit le procès-verbal.
+ *       Durées PROPOSÉES, non arrêtées (docs/conservation.md). Les sauvegardes ne sont pas purgées.
+ *   node scripts/editeur.mjs fin-de-contrat-objets <cabinetId>
+ *       SIMULATION uniquement : liste les objets du stockage sous les préfixes du cabinet. La suppression réelle des objets
+ *       n'est pas branchée dans cet outil (fonction objetsFinDeContrat, jamais exercée contre un stockage réel).
  *   node scripts/editeur.mjs sources
  *   node scripts/editeur.mjs surveiller "<émetteur>" "<libellé>" <url https d'un domaine officiel>
  *   node scripts/editeur.mjs evolutions [a_qualifier|verifiee|ecartee]
@@ -124,6 +132,50 @@ try {
       const lignes = await p.retentionNotifications(client, { archiverApresJours: j1 === undefined ? undefined : Number(j1), supprimerApresJours: j2 === undefined ? undefined : Number(j2), appliquer });
       console.table(lignes);
       console.log(appliquer ? 'Rétention APPLIQUÉE : les suppressions ci-dessus sont irréversibles.' : 'SIMULATION : rien n’a été modifié. Ajouter « --appliquer » pour exécuter (la suppression des notifications archivées est irréversible).');
+      break;
+    }
+    case 'fin-de-contrat': {
+      exiger(1, 'fin-de-contrat <cabinetId> [--grace=<jours>] [--nom="<nom exact>"] [--pv=<fichier.json>] [--appliquer]');
+      const option = (nom) => args.find((x) => x.startsWith(`--${nom}=`))?.slice(nom.length + 3);
+      const appliquer = args.includes('--appliquer');
+      const nom = option('nom');
+      const afficher = (plan) => {
+        console.log(`Cabinet : ${plan.inventaire.cabinet.nom} (${plan.inventaire.cabinet.id}) — politique ${plan.inventaire.politique.version} (${plan.inventaire.politique.statut})`);
+        console.table(plan.inventaire.categories.map((c) => ({ catégorie: c.code, devenir: c.devenir, lignes: c.lignes, 'durée proposée (non arrêtée)': c.conservation?.duree ?? '' })));
+        if (plan.inventaire.tablesSansCategorie.length) console.log(`TABLES SANS CATÉGORIE : ${plan.inventaire.tablesSansCategorie.join(', ')}`);
+        console.table(plan.preconditions.map((x) => ({ 'pré-condition': x.libelle, satisfaite: x.satisfaite ? 'oui' : 'NON', détail: x.detail })));
+        console.table(plan.etapes.map((e) => ({ rang: e.rang, opération: e.operation, table: e.table ?? '', lignes: e.lignes, détail: e.detail })));
+        const o = plan.inventaire.objets;
+        console.log(`Objets du stockage (étape séparée) : ${o.referencesEnBase} clé(s) référencée(s) en base, ${o.volumeOctetsConnu} octets connus, préfixes ${o.prefixes.join(' et ')}${o.clesHorsPrefixes ? ` — ${o.clesHorsPrefixes} clé(s) référencée(s) HORS de ces préfixes, jamais supprimées par la procédure` : ''}.`);
+        console.log(`Hors tables : ${plan.inventaire.horsTables.utilisateursSansAutreCabinet.nombre} compte(s) sans autre cabinet, non traités. ${plan.inventaire.horsTables.fournisseurIdentite}`);
+        console.log(plan.sauvegardes);
+      };
+      try {
+        const r = await p.finDeContrat(client, { cabinetId: args[0], delaiGraceJours: option('grace') === undefined ? undefined : Number(option('grace')), confirmation: nom === undefined ? undefined : { cabinetId: args[0], nom }, appliquer });
+        afficher(r.plan);
+        if (r.simulation) console.log(`SIMULATION : rien n’a été modifié. ${r.plan.executable ? 'Toutes les pré-conditions sont réunies.' : 'Exécution IMPOSSIBLE en l’état (voir les pré-conditions).'} Pour exécuter : --nom="<nom exact>" --appliquer (IRRÉVERSIBLE).`);
+        else {
+          const fichier = option('pv') ?? `proces-verbal-fin-de-contrat-${args[0]}.json`;
+          (await import('node:fs')).writeFileSync(fichier, `${p.jsonCanonique(r.procesVerbal)}\n`, { mode: 0o600 });
+          console.log(`Fin de contrat EXÉCUTÉE (irréversible). Procès-verbal : ${fichier}, empreinte ${r.procesVerbal.empreinte} (également au registre fins_de_contrat).`);
+          console.log('Restent à faire, hors de cet outil : la suppression des objets du stockage, la désactivation des comptes du fournisseur d’identité. Les sauvegardes ne sont pas purgées.');
+        }
+      } catch (e) {
+        if (e.name !== 'RefusFinDeContrat') throw e;
+        afficher(e.plan);
+        throw e;
+      }
+      break;
+    }
+    case 'fin-de-contrat-objets': {
+      exiger(1, 'fin-de-contrat-objets <cabinetId>');
+      if (args.includes('--appliquer')) throw new Error('La suppression réelle des objets n’est pas branchée dans cet outil : elle n’a jamais été exercée contre un stockage réel.');
+      const { Stockage } = await import('../packages/plateforme/dist/stockage.js');
+      const { S3_ENDPOINT, S3_REGION, S3_BUCKET, S3_ACCESS_KEY, S3_SECRET_KEY } = process.env;
+      const r = await p.objetsFinDeContrat(client, new Stockage({ S3_ENDPOINT, S3_REGION, S3_BUCKET, S3_ACCESS_KEY, S3_SECRET_KEY }), { cabinetId: args[0] });
+      console.log(`SIMULATION : ${r.cles.length} objet(s) sous ${r.prefixes.join(' et ')} (empreinte de la liste : ${r.empreinteListeCles}). Rien n’a été supprimé.`);
+      for (const k of r.cles.slice(0, 20)) console.log(`  ${k}`);
+      if (r.cles.length > 20) console.log(`  … et ${r.cles.length - 20} autre(s)`);
       break;
     }
     case 'sources':

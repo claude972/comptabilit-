@@ -23,6 +23,7 @@ import {
   text,
   timestamp,
   uniqueIndex,
+  vector,
   uuid,
 } from 'drizzle-orm/pg-core';
 
@@ -1254,4 +1255,85 @@ export const invitations = pgTable(
     creeLe: creeLe(),
   },
   (t) => [index('invitations_email').on(t.email, t.statut)],
+);
+
+// ───────────────────────────── IA : traces, assistant, recherche vectorielle ─────────────────────────────
+
+/**
+ * Traces de la passerelle IA et des fonctions métier appelées par l'assistant. AUCUN CONTENU : ni question, ni réponse,
+ * ni argument. Ajout seul. Lecture réservée aux gestionnaires. Sert aux mesures (appels, abstentions, rejets, coût estimé).
+ */
+export const evenementsIa = pgTable(
+  'evenements_ia',
+  {
+    id: id(),
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    entiteIdCible: uuid('entite_id_cible').references(() => entites.id),
+    utilisateurId: uuid('utilisateur_id').references(() => utilisateurs.id),
+    /** appel_ia | fonction_metier */
+    type: text('type').notNull(),
+    tache: text('tache').notNull(),
+    /** reel | simulateur | sans_ia : un appel au simulateur n'est jamais compté comme un appel réel. */
+    nature: text('nature').notNull(),
+    modele: text('modele'),
+    /** ok | abstention | rejet | erreur | executee | refusee | indisponible */
+    resultat: text('resultat').notNull(),
+    codes: jsonb('codes').notNull().default(sql`'[]'::jsonb`),
+    dureeMs: integer('duree_ms'),
+    jetonsEntree: integer('jetons_entree'),
+    jetonsSortie: integer('jetons_sortie'),
+    /** Estimation (jetons × tarif configuré et daté), jamais une facture. */
+    coutEstime: numeric('cout_estime', { precision: 18, scale: 6 }),
+    devise: text('devise'),
+    empreintePrompt: text('empreinte_prompt'),
+    /** Tailles et décomptes uniquement. */
+    mesures: jsonb('mesures').notNull().default(sql`'{}'::jsonb`),
+    creeLe: creeLe(),
+  },
+  (t) => [index('evenements_ia_cabinet').on(t.cabinetId, t.creeLe)],
+);
+
+/**
+ * Questions posées à l'assistant et réponses structurées rendues. Chacun ne relit que SES échanges. La réponse porte
+ * son mode (« ia », « simulateur », « sans_ia ») : une réponse sans IA n'est jamais présentée comme rédigée par un modèle.
+ */
+export const echangesAssistant = pgTable(
+  'echanges_assistant',
+  {
+    id: id(),
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    entiteId: uuid('entite_id').notNull().references(() => entites.id),
+    utilisateurId: uuid('utilisateur_id').notNull().references(() => utilisateurs.id),
+    exerciceId: uuid('exercice_id').references(() => exercices.id),
+    question: text('question').notNull(),
+    mode: text('mode').notNull(),
+    statut: text('statut').notNull(),
+    reponse: jsonb('reponse').notNull(),
+    creeLe: creeLe(),
+  },
+  (t) => [index('echanges_assistant_auteur').on(t.utilisateurId, t.entiteId, t.creeLe)],
+);
+
+/**
+ * Passages de texte des pièces et leur vecteur (bge-m3, 1024 dimensions) pour la recherche hybride. Le vecteur reste
+ * NULL tant qu'aucun fournisseur d'embeddings n'est connecté : la recherche est alors purement textuelle, et le dit.
+ */
+export const passagesRecherche = pgTable(
+  'passages_recherche',
+  {
+    id: id(),
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    entiteId: uuid('entite_id').notNull().references(() => entites.id),
+    documentId: uuid('document_id').notNull().references(() => documents.id),
+    page: integer('page').notNull(),
+    rang: integer('rang').notNull(),
+    texte: text('texte').notNull(),
+    /** Identifiant figé du modèle qui a produit le vecteur ; NULL si aucun vecteur. */
+    modele: text('modele'),
+    /** reel | simulateur : un vecteur de simulateur ne sert qu'aux tests. */
+    natureVecteur: text('nature_vecteur'),
+    vecteur: vector('vecteur', { dimensions: 1024 }),
+    creeLe: creeLe(),
+  },
+  (t) => [uniqueIndex('passages_recherche_unique').on(t.documentId, t.page, t.rang), index('passages_recherche_dossier').on(t.entiteId)],
 );

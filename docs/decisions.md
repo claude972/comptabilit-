@@ -102,6 +102,18 @@ Une préférence de cabinet ou une exception de dossier est un jeu de paramètre
 ### D-026 — Restitution (2026-11-19)
 Archive ZIP par dossier, au niveau d'habilitation « validation ». Les originaux sont relus et comparés à leur empreinte avant d'entrer dans l'archive ; ceux que l'antivirus a écartés sont exclus et listés. Les noms d'origine ne déterminent jamais les chemins. Limite : les données structurées sont assemblées en mémoire (les écritures sont lues par tranches) ; une restitution de tout un cabinet en une fois n'existe pas.
 
+### D-027 — Un téléversement déjà ouvert se termine même si le service ferme (2026-11-19)
+La situation de l'abonnement est vérifiée à l'OUVERTURE d'un téléversement, pas à sa clôture : une pièce en cours de transmission au moment où le service ferme (essai expiré, suspension) est reçue et conservée plutôt que perdue. Aucun nouveau téléversement ne peut être ouvert ensuite.
+
+### D-028 — Écritures d'inventaire : proposer, approuver, exporter, intégrer (2026-11-19)
+Quatre étapes distinctes. Une écriture proposée est séparée des écritures importées, équilibrée (vérifié en décimal exact), justifiée, et sans effet tant qu'un réviseur autre que son auteur ne l'a pas approuvée. La balance ajustée de travail additionne les importées et les approuvées sans modifier les premières. L'export produit un fichier remis à l'utilisateur ; l'intégration dans le logiciel comptable n'est pas faite par ce logiciel. Une proposition antérieure à un changement des données importées est « à revoir » et sort de la balance ajustée. Seule l'origine « saisie humaine » existe : aucune écriture n'est générée automatiquement.
+
+### D-029 — Veille : détecter n'est pas résumer (2026-11-19)
+La surveillance compare l'empreinte du texte d'une page officielle à la précédente. Un changement crée une évolution « détectée, à qualifier » sans résumé ; seule une personne de l'éditeur, après lecture, la qualifie (résumé, dates, conditions, critères). Les cabinets ne voient que les évolutions qualifiées. Une source injoignable est « indisponible », avec sa dernière vérification réussie ; au-delà de 7 jours sans succès, la veille sur cette source n'est plus dite assurée (seuil interne). Seuls des domaines officiels en https sont interrogés.
+
+### D-030 — Indicateurs et états : traçabilité et abstention (2026-11-19)
+Chaque indicateur porte sa formule, sa convention et les comptes qui le composent ; non calculable, il vaut `null` avec son motif, jamais zéro. Les soldes intermédiaires de gestion ne figurent plus dans le PCG en vigueur : ils sont des conventions internes, présentées comme telles. La table de correspondance comptes → rubriques est une lecture des intitulés du PCG, marquée « en attente de validation professionnelle » ; un compte que l'on ne sait pas rattacher avec certitude reste « non affecté » et rend l'état incomplet. Aucune égalité n'est forcée. Les indicateurs d'activité du cabinet sont agrégés par cabinet et par dossier, jamais par personne.
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

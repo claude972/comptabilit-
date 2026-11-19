@@ -118,6 +118,8 @@ describe('états de travail et indicateurs du dossier', () => {
     const { compteDeResultat: cr, bilan } = r.json;
     expect(cr.statut).toBe('projet');
     expect(bilan.statut).toBe('projet');
+    expect(cr.rubriques.every((x: any) => ['resultat_charges', 'resultat_produits'].includes(x.nature))).toBe(true);
+    expect(bilan.rubriques.every((x: any) => ['bilan_actif', 'bilan_passif'].includes(x.nature) || x.nature === null)).toBe(true);
     // Aucun compte n'est compté deux fois : rubriques + comptes non affectés recouvrent exactement la balance.
     const comptesBalance = new Set(r.json.balance.lignes.filter((l: any) => l.soldeDebiteur !== '0.00' || l.soldeCrediteur !== '0.00').map((l: any) => l.compteNum));
     const affectes = [...cr.rubriques, ...bilan.rubriques].flatMap((x: any) => x.comptes.map((c: any) => c.compteNum));

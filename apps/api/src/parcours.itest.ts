@@ -174,6 +174,11 @@ describe('journal d’audit', () => {
     expect(r.statut).toBe(200);
     expect(r.json.integrite.rupture).toBeNull();
     expect(r.json.lignes.every((l: any) => l.cabinetId === DEMO.cabinetA && l.empreinte)).toBe(true);
+    expect(r.json.lignes.some((l: any) => typeof l.acteurNom === 'string')).toBe(true);
+    // Pagination vers les lignes plus anciennes, sans chevauchement.
+    expect(r.json.suivant).toBeTruthy();
+    const page2 = await api('alice', 'GET', `/v1/audit?limite=5&avant=${r.json.suivant}`);
+    expect(page2.json.lignes.every((l: any) => l.id < r.json.suivant)).toBe(true);
     expect((await api('remi', 'GET', '/v1/audit')).statut).toBe(403);
     expect((await api('client', 'GET', '/v1/audit')).statut).toBe(403);
   });

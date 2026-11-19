@@ -42,11 +42,21 @@ export class EtatsController {
       if (!correspondance) {
         return { ...base, correspondance: null, compteDeResultat: null, bilan: null, motif: 'Aucune table de correspondance vérifiée pour un exercice ouvert avant le 1er janvier 2025 : seuls la balance et certains indicateurs sont disponibles.' };
       }
+      // Chaque rubrique projetée est complétée par sa nature, son parent et son ordre (issus de la table de
+      // correspondance), pour que l'interface n'ait rien à déduire.
+      const definitions = new Map(correspondance.rubriques.map((r) => [r.code, r]));
+      const enrichir = <T extends { rubriques: Array<{ code: string }> }>(etat: T) => ({
+        ...etat,
+        rubriques: etat.rubriques.map((r) => {
+          const def = definitions.get(r.code);
+          return { ...r, nature: def?.etat ?? null, parent: def?.parent ?? null, ordre: def?.ordre ?? null };
+        }),
+      });
       return {
         ...base,
         correspondance: { id: correspondance.id, version: correspondance.version, periodeApplication: correspondance.periodeApplication, etat: correspondance.etat, source: correspondance.source },
-        compteDeResultat: projeterCompteDeResultat(balance, correspondance),
-        bilan: projeterBilan(balance, correspondance),
+        compteDeResultat: enrichir(projeterCompteDeResultat(balance, correspondance)),
+        bilan: enrichir(projeterBilan(balance, correspondance)),
         motif: null,
       };
     });

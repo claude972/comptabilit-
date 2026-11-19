@@ -93,6 +93,7 @@ try {
     if (/PRIVATE/.test(clePubliquePem)) throw new Error('Ce fichier contient une clé PRIVÉE : seule la clé publique sert à chiffrer.');
     const dump = resolve(args[0]);
     const manifeste = dump.replace(/\.dump$/, '.objets.json');
+    if (existsSync(dump.replace(/\.dump$/, '.en-cours'))) throw new Error('Sauvegarde interrompue (témoin « en-cours » présent, pas de descripteur de jeu) : rien n’est chiffré.');
     if (!existsSync(dump) || !existsSync(manifeste)) throw new Error('Sauvegarde ou manifeste des objets introuvable');
     const dest = resolve(destination);
     if (dest === dirname(dump)) throw new Error('Refus : le jeu chiffré se constitue dans un AUTRE dossier que les sauvegardes d’origine.');

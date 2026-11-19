@@ -68,7 +68,12 @@ describe('calculerRentabiliteMission', () => {
 
   it('s’abstient quand un prix manque, et signale un résultat partiel quand des temps manquent', () => {
     const sansMontant = calculerRentabiliteMission({ periode: annee, lettres: [lettre('L1', '2025-01-01', ['tenue'], {})], travaux: [{ date: '2025-02-01', prestation: 'tenue', minutes: 60 }], coutHoraire: '50.00' });
-    expect(sansMontant.honoraires).toMatchObject({ statut: 'non_calculable', total: null });
+    // Aucune somme partielle à côté du motif : ni forfait, ni temps passé, ni total.
+    expect(sansMontant.honoraires).toMatchObject({ statut: 'non_calculable', total: null, forfait: null, tempsPasse: null });
+    // Lettre mixte dont seul le taux horaire manque : le forfait, calculable isolément, n'est pas renvoyé non plus.
+    const mixteSansTaux = calculerRentabiliteMission({ periode: annee, lettres: [lettre('L2', '2025-01-01', ['tenue'], { mode: 'mixte', montantAnnuelHt: '1200.00', tauxHoraireHt: null })], travaux: [{ date: '2025-02-01', prestation: 'tenue', minutes: 60 }] });
+    expect(mixteSansTaux.honoraires).toMatchObject({ statut: 'non_calculable', total: null, forfait: null, tempsPasse: null });
+    expect(mixteSansTaux.honoraires.motif).toMatch(/taux horaire/);
     expect(sansMontant.tauxHoraireRealise.valeur).toBeNull();
     expect(sansMontant.marge.valeur).toBeNull();
     const sansLettre = calculerRentabiliteMission({ periode: annee, lettres: [], travaux: [] });

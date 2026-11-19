@@ -23,9 +23,10 @@ export interface RentabiliteMission {
     statut: 'calcule' | 'non_calculable';
     motif: string | null;
     /** Part forfaitaire, au prorata des jours couverts par chaque lettre validée. */
-    forfait: ChaineDecimale;
+    /** null quand les honoraires ne sont pas calculables : aucune somme partielle n'est renvoyée à côté du motif. */
+    forfait: ChaineDecimale | null;
     /** Part au temps passé : temps observés dans le périmètre × taux horaire de la lettre applicable. */
-    tempsPasse: ChaineDecimale;
+    tempsPasse: ChaineDecimale | null;
     total: ChaineDecimale | null;
     detail: Array<{ lettreId: string; du: string; au: string; jours: number; mode: string; montant: ChaineDecimale }>;
   };
@@ -164,7 +165,7 @@ export function calculerRentabiliteMission(entree: {
 
   return {
     periode,
-    honoraires: { statut: total === null ? 'non_calculable' : 'calcule', motif: motifHonoraires, forfait: versChaine(forfait), tempsPasse: versChaine(tempsPasse), total: total === null ? null : versChaine(total), detail },
+    honoraires: { statut: total === null ? 'non_calculable' : 'calcule', motif: motifHonoraires, forfait: total === null ? null : versChaine(forfait), tempsPasse: total === null ? null : versChaine(tempsPasse), total: total === null ? null : versChaine(total), detail },
     temps,
     tauxHoraireRealise: taux,
     marge,

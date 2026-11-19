@@ -65,7 +65,7 @@ Points d'attention déjà identifiés :
 
 ### Ce qui est vérifié (local, 2026-11-19)
 
-**Sauvegarde** — `scripts/sauvegarder.sh` produit dans `var/sauvegardes/` (hors dépôt) : la base (`pg_dump`, format personnalisé) puis TOUS les objets du stockage (fichiers adressés par empreinte SHA-256, jamais dupliqués d'une sauvegarde à l'autre, et un manifeste clé / taille / empreinte), chacun avec son empreinte. L'ordre compte : les originaux n'étant jamais réécrits ni supprimés, un stockage copié après la base contient tout ce qu'elle référence.
+**Sauvegarde** — `scripts/sauvegarder.sh` produit dans `var/sauvegardes/` (hors dépôt) un JEU décrit par un fichier `.jeu.json` écrit en dernier : la base (`pg_dump`, exportée depuis un instantané pris pendant que Keycloak était figé), l'export Keycloak (à partir d'une copie faite pendant ce même gel, d'environ un dixième de seconde, sans arrêt du service), puis TOUS les objets du stockage (fichiers adressés par empreinte, manifeste clé / taille / empreinte). Le descripteur porte les empreintes des trois fichiers, les instants de capture, et ce qui est garanti ou non : la base et Keycloak sont alignés à l'instant du gel, les objets sont postérieurs et contiennent tout ce que la base référence ; ce n'est pas une capture atomique de l'ensemble (D-060). Un jeu sans descripteur est une sauvegarde interrompue : il n'est ni chiffré ni restauré comme un tout, et n'est pas supprimé.
 
 **Essai de restauration de la base et du stockage objet** — `scripts/essai-restauration.sh`, sans jamais écrire dans la base ni dans le stockage de l'application :
 
@@ -73,7 +73,7 @@ Points d'attention déjà identifiés :
 2. restauration dans un PostgreSQL d'essai SÉPARÉ (autre conteneur, autre volume, sans port publié, ressources plafonnées) ; volumes de lignes ;
 3. journal d'audit : (a) fidélité — le résultat de la vérification stricte est identique à l'origine, cabinet par cabinet ; (b) intégrité — vérification stricte, seule référence (D-038) ;
 4. RLS activé et forcé sur toutes les tables portant `cabinet_id` ; nombre de politiques ;
-5. stockage objet : rechargement de la sauvegarde dans une instance SÉPARÉE (autre conteneur, autre volume, autres identifiants générés pour l'essai, autre port, accès anonyme refusé), puis relecture de TOUS les objets référencés par la base restaurée (originaux, exports de révision, archives de restitution) et comparaison à l'empreinte enregistrée en base ; l'instance est détruite ensuite.
+5. stockage objet, par tranches de 2 000 Mo au plus (une instance d'essai neuve par tranche, D-062) : rechargement de la sauvegarde dans une instance SÉPARÉE (autre conteneur, autre volume, autres identifiants générés pour l'essai, autre port, accès anonyme refusé), puis relecture de TOUS les objets référencés par la base restaurée (originaux, exports de révision, archives de restitution) et comparaison à l'empreinte enregistrée en base ; l'instance est détruite ensuite.
 
 6. aucun service de l'application n'a redémarré pendant l'essai (instants de démarrage comparés avant et après).
 

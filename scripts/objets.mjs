@@ -111,9 +111,31 @@ async function sauvegarder(cheminManifeste) {
   console.log(`Stockage objet : ${objets.length} objet(s), ${(octets / 1e6).toFixed(1)} Mo au manifeste ; ${lus} relu(s) et copié(s), ${objets.length - lus} déjà au dépôt.`);
 }
 
+/**
+ * Répartition des objets d'un manifeste en tranches de taille voisine (objets triés par clé, donc répartition stable).
+ * TRANCHE=i/n dans l'environnement limite `restaurer` et `verifier` à la tranche i : un stockage plus gros que le disque
+ * de la machine d'essai se restaure et se vérifie alors tranche par tranche, l'instance d'essai étant recréée entre deux.
+ */
+function trancheDe(objetsTries) {
+  const total = objetsTries.reduce((t, o) => t + o.taille, 0);
+  const [i, n] = (process.env.TRANCHE ?? '1/1').split('/').map(Number);
+  if (!Number.isInteger(i) || !Number.isInteger(n) || i < 1 || i > n) throw new Error('TRANCHE invalide (attendu i/n)');
+  const taille = total / n;
+  const dans = new Map();
+  let cumul = 0;
+  for (const o of objetsTries) {
+    dans.set(o.cle, Math.min(n, Math.floor(cumul / taille) + 1));
+    cumul += o.taille;
+  }
+  return { i, n, dans };
+}
+const trier = (objets) => [...objets].sort((a, b) => (a.cle < b.cle ? -1 : a.cle > b.cle ? 1 : 0));
+
 async function restaurer(cheminManifeste) {
   const dst = cible();
-  const { objets } = JSON.parse(readFileSync(cheminManifeste, 'utf8'));
+  const tous = trier(JSON.parse(readFileSync(cheminManifeste, 'utf8')).objets);
+  const t = trancheDe(tous);
+  const objets = tous.filter((o) => t.dans.get(o.cle) === t.i);
   try {
     await dst.s3.send(new HeadBucketCommand({ Bucket: dst.bucket }));
   } catch {
@@ -126,13 +148,17 @@ async function restaurer(cheminManifeste) {
     await dst.s3.send(new PutObjectCommand({ Bucket: dst.bucket, Key: o.cle, Body: createReadStream(fichier), ContentLength: o.taille }));
     octets += o.taille;
   }
-  console.log(`Stockage d'essai : ${objets.length} objet(s) rechargé(s), ${(octets / 1e6).toFixed(1)} Mo.`);
+  console.log(`Stockage d'essai${t.n > 1 ? ` (tranche ${t.i}/${t.n})` : ''} : ${objets.length} objet(s) rechargé(s), ${(octets / 1e6).toFixed(1)} Mo.`);
 }
 
 async function verifier(cheminReferences, cheminManifeste) {
   const dst = cible();
-  const parCle = new Map(JSON.parse(readFileSync(cheminManifeste, 'utf8')).objets.map((o) => [o.cle, o]));
-  const references = readFileSync(cheminReferences, 'utf8').split('\n').filter(Boolean).map((l) => l.split(' '));
+  const tous = trier(JSON.parse(readFileSync(cheminManifeste, 'utf8')).objets);
+  const parCle = new Map(tous.map((o) => [o.cle, o]));
+  const t = trancheDe(tous);
+  // Une référence appartient à la tranche de son objet ; une référence absente du manifeste est comptée (comme absente)
+  // avec la première tranche, pour n'être signalée qu'une fois.
+  const references = readFileSync(cheminReferences, 'utf8').split('\n').filter(Boolean).map((l) => l.split(' ')).filter(([cle]) => (t.dans.get(cle) ?? 1) === t.i);
   const presents = new Set((await lister(dst)).map((o) => o.cle));
   let conformes = 0;
   let parLaBase = 0;
@@ -151,7 +177,7 @@ async function verifier(cheminReferences, cheminManifeste) {
       if (attenduBase !== '-') parLaBase++;
     }
   }
-  console.log(`Objets référencés par la base restaurée : ${references.length} ; relus et conformes dans le stockage d'essai : ${conformes} (dont ${parLaBase} comparés à l'empreinte enregistrée en base, ${conformes - parLaBase} à celle du manifeste).`);
+  console.log(`Objets référencés par la base restaurée${t.n > 1 ? ` (tranche ${t.i}/${t.n})` : ''} : ${references.length} ; relus et conformes dans le stockage d'essai : ${conformes} (dont ${parLaBase} comparés à l'empreinte enregistrée en base, ${conformes - parLaBase} à celle du manifeste).`);
   if (absents.length) console.log(`ABSENTS du stockage restauré : ${absents.length} (ex. …${absents[0].slice(-40)})`);
   if (differents.length) console.log(`EMPREINTE DIFFÉRENTE : ${differents.length} (ex. …${differents[0].slice(-40)})`);
   if (absents.length || differents.length) process.exit(1);
@@ -159,7 +185,11 @@ async function verifier(cheminReferences, cheminManifeste) {
 
 const [commande, a, b] = process.argv.slice(2);
 try {
-  if (commande === 'sauvegarder' && a) await sauvegarder(a);
+  if (commande === 'tranches' && a && b) {
+    // Nombre de tranches nécessaires pour ne jamais recharger plus de <b> Mo à la fois.
+    const total = JSON.parse(readFileSync(a, 'utf8')).objets.reduce((t, o) => t + o.taille, 0);
+    console.log(Math.max(1, Math.ceil(total / (Number(b) * 1e6))));
+  } else if (commande === 'sauvegarder' && a) await sauvegarder(a);
   else if (commande === 'restaurer' && a) await restaurer(a);
   else if (commande === 'verifier' && a && b) await verifier(a, b);
   else {

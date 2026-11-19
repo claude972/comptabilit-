@@ -54,7 +54,12 @@ OCTETS_OBJETS=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(proce
 OCTETS_BASE=$(wc -c < "$SAUVEGARDE" | tr -d ' ')
 # Besoin estimé sur le disque de la machine Docker : objets rechargés + base restaurée (environ 10 fois la sauvegarde
 # compressée) + 2 Go de marge laissés aux services de l'application.
-BESOIN_KO=$(( (OCTETS_OBJETS + OCTETS_BASE * 10) / 1024 + 2 * 1024 * 1024 ))
+# Le stockage est rechargé par TRANCHES de ESSAI_TRANCHE_MO au plus (2 000 Mo par défaut), l'instance d'essai étant recréée
+# entre deux tranches : l'espace nécessaire ne dépend plus de la taille totale du stockage sauvegardé.
+TRANCHE_MO="${ESSAI_TRANCHE_MO:-2000}"
+NB_TRANCHES=$(node scripts/objets.mjs tranches "$MANIFESTE" "$TRANCHE_MO")
+OCTETS_TRANCHE=$(( OCTETS_OBJETS / NB_TRANCHES + 256 * 1024 * 1024 ))
+BESOIN_KO=$(( (OCTETS_TRANCHE + OCTETS_BASE * 10) / 1024 + 2 * 1024 * 1024 ))
 LIBRE_KO=$(docker compose exec -T postgres df -Pk /var/lib/postgresql | awk 'NR==2 {print $4}')
 if [ "$LIBRE_KO" -lt "$BESOIN_KO" ]; then
   echo "REFUS : espace libre insuffisant sur la machine Docker ($((LIBRE_KO / 1024)) Mo libres, $((BESOIN_KO / 1024)) Mo nécessaires marge comprise). L'essai n'est pas lancé."
@@ -107,27 +112,33 @@ else
 fi
 
 # ── Stockage objet : instance d'essai séparée, ressources plafonnées ──
-echo "--- stockage objet : restauration dans une instance isolée ---"
+echo "--- stockage objet : restauration dans une instance isolée, en $NB_TRANCHES tranche(s) ---"
 export ESSAI_S3_ENDPOINT="http://127.0.0.1:${ESSAI_S3_PORT:-8334}" ESSAI_S3_BUCKET="comtaple-essai-restauration"
-export ESSAI_S3_ACCESS_KEY="essai$(openssl rand -hex 8)" ESSAI_S3_SECRET_KEY="$(openssl rand -hex 24)"
-printf '{"identities":[{"name":"essai","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List"]}]}' "$ESSAI_S3_ACCESS_KEY" "$ESSAI_S3_SECRET_KEY" > var/sauvegardes/.s3-essai.json
-docker create --name comtaple-essai-s3 --init --cpus 1 --memory 1g -p "127.0.0.1:${ESSAI_S3_PORT:-8334}:8333" -v comtaple_essai_s3:/data "$IMAGE_S3" \
-  server -dir=/data -ip.bind=0.0.0.0 -volume.max=60 -master.volumeSizeLimitMB=256 -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json >/dev/null
-docker cp var/sauvegardes/.s3-essai.json comtaple-essai-s3:/etc/seaweedfs/s3.json
-docker start comtaple-essai-s3 >/dev/null
-i=0; until curl -s -o /dev/null -m 2 "$ESSAI_S3_ENDPOINT"; do i=$((i + 1)); [ "$i" -gt 60 ] && { echo "ÉCHEC : le stockage d'essai ne démarre pas"; exit 1; }; sleep 1; done; sleep 3
-# Sans identifiants, l'instance d'essai doit refuser la lecture (elle n'est pas ouverte, même sur la boucle locale).
-ANONYME=$(curl -s -o /dev/null -w '%{http_code}' -m 5 "$ESSAI_S3_ENDPOINT/$ESSAI_S3_BUCKET/")
-DEBUT=$(date +%s)
-node scripts/objets.mjs restaurer "$MANIFESTE"
-echo "Rechargement : $(( $(date +%s) - DEBUT )) s ; accès anonyme à l'instance d'essai : HTTP $ANONYME"
 $PSQL -F ' ' -c "select cle_stockage, sha256 from fichiers
   union all select cle_pdf, coalesce(sha256_pdf, '-') from exports_revision where cle_pdf is not null
   union all select cle_donnees, coalesce(sha256_donnees, '-') from exports_revision where cle_donnees is not null
   union all select cle_archive, coalesce(sha256, '-') from restitutions where cle_archive is not null
   union all select cle_archive, coalesce(sha256, '-') from restitutions_cabinet where cle_archive is not null" > var/sauvegardes/.references
 OBJETS_OK=1
-node scripts/objets.mjs verifier var/sauvegardes/.references "$MANIFESTE" || OBJETS_OK=0
+DEBUT=$(date +%s)
+t=1
+while [ "$t" -le "$NB_TRANCHES" ]; do
+  # Instance d'essai NEUVE pour chaque tranche (conteneur, volume et identifiants propres), détruite ensuite.
+  docker rm -f comtaple-essai-s3 >/dev/null 2>&1 || true; docker volume rm comtaple_essai_s3 >/dev/null 2>&1 || true
+  export ESSAI_S3_ACCESS_KEY="essai$(openssl rand -hex 8)" ESSAI_S3_SECRET_KEY="$(openssl rand -hex 24)"
+  printf '{"identities":[{"name":"essai","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List"]}]}' "$ESSAI_S3_ACCESS_KEY" "$ESSAI_S3_SECRET_KEY" > var/sauvegardes/.s3-essai.json
+  docker create --name comtaple-essai-s3 --init --cpus 1 --memory 1g -p "127.0.0.1:${ESSAI_S3_PORT:-8334}:8333" -v comtaple_essai_s3:/data "$IMAGE_S3" \
+    server -dir=/data -ip.bind=0.0.0.0 -volume.max=60 -master.volumeSizeLimitMB=256 -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json >/dev/null
+  docker cp var/sauvegardes/.s3-essai.json comtaple-essai-s3:/etc/seaweedfs/s3.json
+  docker start comtaple-essai-s3 >/dev/null
+  i=0; until curl -s -o /dev/null -m 2 "$ESSAI_S3_ENDPOINT"; do i=$((i + 1)); [ "$i" -gt 60 ] && { echo "ÉCHEC : le stockage d'essai ne démarre pas"; exit 1; }; sleep 1; done; sleep 3
+  # Sans identifiants, l'instance d'essai doit refuser la lecture (elle n'est pas ouverte, même sur la boucle locale).
+  [ "$t" = "1" ] && echo "Accès anonyme à l'instance d'essai : HTTP $(curl -s -o /dev/null -w '%{http_code}' -m 5 "$ESSAI_S3_ENDPOINT/$ESSAI_S3_BUCKET/")"
+  TRANCHE="$t/$NB_TRANCHES" node scripts/objets.mjs restaurer "$MANIFESTE"
+  TRANCHE="$t/$NB_TRANCHES" node scripts/objets.mjs verifier var/sauvegardes/.references "$MANIFESTE" || OBJETS_OK=0
+  t=$((t + 1))
+done
+echo "Rechargement et vérification du stockage : $(( $(date +%s) - DEBUT )) s pour $NB_TRANCHES tranche(s)"
 
 APRES="$(temoins)"
 trap - EXIT INT TERM

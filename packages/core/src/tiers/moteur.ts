@@ -371,7 +371,14 @@ export function suivreTiersEtFactures(demande: DemandeTiersFactures): ResultatTi
       aRevoir.push({ type: d.type, objet: d.objet, cible: d.cible, motif: 'La pièce a été remplacée par une nouvelle version, retirée ou requalifiée : la décision ne s’applique plus.' });
       continue;
     }
-    if (d.versionExtraction !== undefined && d.versionExtraction !== null && d.versionExtraction !== t.piece.versionExtraction) {
+    // Une décision reste valable tant que les champs HORS destinataire n'ont pas changé depuis (D-091) : la correction ou la
+    // lecture du destinataire d'une pièce ne défait jamais une décision humaine ; elle est seulement signalée sur la fiche.
+    const valableDepuis = t.piece.decisionsValablesDepuis ?? t.piece.versionExtraction;
+    const dansLaChaine = d.versionExtraction !== undefined && d.versionExtraction !== null && d.versionExtraction >= valableDepuis && d.versionExtraction < t.piece.versionExtraction;
+    if (dansLaChaine) {
+      const note = `Décision humaine (${d.type === 'comptabilisation' ? 'comptabilisation' : 'imputation'}, ${d.decision === 'confirme' ? 'confirmée' : 'infirmée'}) prise sur la version ${d.versionExtraction} de l’extraction, avant la lecture ou la correction du destinataire : elle est conservée telle quelle. Sens relu d’après les identifiants : ${t.fiche.sensLu}. Vérifiez qu’elle reste cohérente avec le destinataire.`;
+      if (!t.fiche.reserves.includes(note)) t.fiche.reserves.push(note);
+    } else if (d.versionExtraction !== undefined && d.versionExtraction !== null && d.versionExtraction !== t.piece.versionExtraction) {
       aRevoir.push({ type: d.type, objet: d.objet, cible: d.cible, motif: 'Les champs extraits de la pièce ont changé depuis la décision : elle n’est plus appliquée.' });
       continue;
     }

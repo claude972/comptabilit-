@@ -57,6 +57,12 @@ export interface PieceFacture {
   destinataireSiren?: string | null;
   destinataireSiret?: string | null;
   destinataireTva?: string | null;
+  /**
+   * Version de l'extraction depuis laquelle les champs HORS destinataire n'ont pas changé (D-091). Les décisions humaines
+   * prises sur une version comprise entre celle-ci et la version en vigueur restent appliquées (signalées sur la fiche) ;
+   * absent : seules les décisions prises sur la version en vigueur s'appliquent.
+   */
+  decisionsValablesDepuis?: number | null;
   totalHt: ChaineDecimale | null;
   totalTva: ChaineDecimale | null;
   totalTtc: ChaineDecimale | null;

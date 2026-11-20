@@ -21,6 +21,7 @@ import {
   type DecisionFacture, type DecisionTiers, type FicheFacture, type PieceFacture, cleEcriture, suivreTiersEtFactures,
   type ContenuLettre, type LettreDatee, PRESTATIONS, calculerRentabiliteMission, schemaChaineDecimale, dec, estimerTemps, evaluerApplicabilite, schemaContenuLettre, schemaCriteresEvolution, situerTravail, somme, versChaine,
   type ControleAmelioration, type CorrectionExtraction, type DecisionRapprochementRevue, CRITERES_AMELIORATION, PARAMETRES_SEUIL_MONTANT, suggererAmeliorations,
+  VERSION_ANALYSEUR_FACTURE, appliquerCorrectionDestinataire, destinataireNonLu, determinerSensPiece, fusionnerReanalyseDestinataire, inchangeDepuis, lignesDestinataire, champsFactureVides,
   PHRASES_POUSSEES, SERVICES_NOTIFICATION, estDateIso, MOTIF_DEGRESSIF_NON_ACTIVE, proposerEcrituresInventaire, reduireAgentUtilisateur, verifierPointAcces,
 } from '@comtaple/core';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
@@ -645,6 +646,8 @@ async function routerV1(r: Requete): Promise<unknown> {
     if (etats !== undefined) return etats;
     const imports = routerImports(r, a);
     if (imports !== undefined) return imports;
+    const destinataire = routerDestinataire(r, a);
+    if (destinataire !== undefined || r.res.writableEnded) return destinataire;
     const tiers = routerTiers(r, a);
     if (tiers !== undefined) return tiers;
     const ajouts = routerSuite(r, a);
@@ -2148,6 +2151,201 @@ const TIERS_JEU = (() => {
   return { lignes, pieces };
 })();
 
+
+// ───────────── Destinataire des pièces et réanalyse explicite (D-091) ─────────────
+// Les calculs (validation, couche humaine, fusion avec une réanalyse, sens relu) sont ceux du moteur de @comtaple/core,
+// comme dans l'API. Seule la LECTURE AUTOMATIQUE est simulée : aucun fichier n'est décodé ; une pièce dont le nom contient
+// « meunerie » porte un client lisible (SIREN du dossier Dupain), les autres donnent une abstention. Pilotage : /__test/destinataire.
+interface SimLot { id: string; cabinetId: string; entiteId: string; mode: 'simulation' | 'execution'; simulationId: string | null; versionAnalyseur: string; statut: string; tailleLot: number; motif: string; nbPieces: number; resume: Enr | null; demandePar: string; creeLe: string; majLe: string; termineLe: string | null }
+interface SimPiece { id: string; lotId: string; versionAnalyseur: string; documentId: string; extractionAvantId: string; versionExtractionAvant: number; execution: boolean; statut: string; resultat: string | null; motif: string | null; versionExtractionApres: number | null; detail: Enr | null; traiteLe: string | null }
+let destSim: { lots: SimLot[]; pieces: SimPiece[]; lectures: Map<string, Enr>; sirenDossier: string } = { lots: [], pieces: [], lectures: new Map(), sirenDossier: '123456782' };
+const TAILLE_LOT_REANALYSE = 50;
+const SIREN_CLIENT_SIMULE = '123456782';
+const valeurTexte = (c: unknown): string | null => {
+  const v = (c as { valeur?: unknown } | null | undefined)?.valeur;
+  return typeof v === 'string' && v.trim() !== '' ? v : null;
+};
+function lectureAutomatiqueSimulee(doc: Enr): Enr {
+  const personnalisee = destSim.lectures.get(doc.id);
+  const brut = champsFactureVides() as unknown as Enr;
+  const champ = (valeur: string) => ({ valeur, page: 1, extrait: valeur, boite: null, methode: 'regle', confiance: 'non_evaluee' });
+  if (personnalisee) return { ...brut, ...Object.fromEntries(Object.entries(personnalisee).map(([k, v]) => [k, typeof v === 'string' && k !== 'destinataireAbstention' ? champ(v) : v])) };
+  if (/meunerie/i.test(doc.nomOrigine)) return { ...brut, destinataireNom: champ('BOULANGERIE DUPAIN SAS (FICTIVE)'), destinataireSiren: champ(SIREN_CLIENT_SIMULE), destinataireAbstention: null };
+  return { ...brut, destinataireAbstention: 'Aucun repère de client (« Client », « Facturé à »…) n’a été trouvé sur la pièce : aucun destinataire retenu.' };
+}
+const concerneeParReanalyse = (doc: Enr): Enr | null => {
+  if (doc.remplacePar || !['a_controler', 'traite', 'a_completer'].includes(doc.statut)) return null;
+  const e = etat.extractions.find((x) => x.documentId === doc.id && x.actuelle);
+  if (!e || e.statut === 'rejete' || !destinataireNonLu(e.champs)) return null;
+  const f = etat.fichiers.find((x) => x.id === doc.fichierId);
+  return f && ['sain', 'non_analyse'].includes(f.analyseAntivirus) ? e : null;
+};
+const dejaRelue = (docId: string) => destSim.pieces.some((p) => p.documentId === docId && p.execution && p.versionAnalyseur === VERSION_ANALYSEUR_FACTURE && ['destinataire_trouve', 'abstention'].includes(p.resultat ?? ''));
+function effetsDestinataire(doc: Enr, e: Enr) {
+  const entite = ENTITES.find((x) => x.id === doc.entiteId);
+  const c = e.champs as Enr;
+  const sens = determinerSensPiece({
+    emetteur: { siren: valeurTexte(c.emetteurSiren), siret: valeurTexte(c.emetteurSiret), tva: valeurTexte(c.emetteurTva) },
+    destinataire: { siren: valeurTexte(c.destinataireSiren), siret: valeurTexte(c.destinataireSiret), tva: valeurTexte(c.destinataireTva) },
+    sirenDossier: entite?.siren ?? destSim.sirenDossier,
+  });
+  const attendu = doc.nature === 'facture_achat' ? 'achat' : doc.nature === 'facture_vente' ? 'vente' : null;
+  const conflitNature = attendu !== null && sens.sens !== 'indetermine' && sens.sens !== attendu;
+  const depuis = inchangeDepuis(c, e.version);
+  const decisions = tiersSim.decisionsFactures
+    .filter((d: Enr) => d.objet === doc.id)
+    .map((d: Enr) => ({ type: d.type, cible: d.cible, decision: d.decision, versionExtraction: d.versionExtraction ?? null, etat: d.versionExtraction === e.version ? 'appliquee' : d.versionExtraction >= depuis && d.versionExtraction < e.version ? 'conservee' : 'a_revoir' }));
+  const signalements: string[] = [];
+  if (conflitNature) signalements.push(`La pièce est qualifiée « ${doc.nature === 'facture_vente' ? 'facture de vente' : 'facture d’achat'} » mais ses identifiants indiquent ${sens.sens === 'vente' ? 'une vente' : 'un achat'} : ${sens.motif}`);
+  if (sens.incoherence) signalements.push(sens.motif);
+  if (decisions.some((x) => x.etat === 'conservee')) signalements.push('Des décisions humaines d’appariement, prises avant cette lecture du destinataire, sont conservées telles quelles : vérifiez qu’elles restent cohérentes.');
+  if (decisions.some((x) => x.etat === 'a_revoir')) signalements.push('Des décisions humaines d’appariement portent sur une version antérieure dont les champs (hors destinataire) ont changé : elles sont à revoir et ne sont plus appliquées.');
+  return {
+    sensLu: { sens: sens.sens, incoherence: sens.incoherence, motif: sens.motif, sirenEmetteur: sens.sirenEmetteur, sirenDestinataire: sens.sirenDestinataire },
+    natureQualifiee: doc.nature, conflitNature, decisions, signalements,
+    appariement: 'Le sens de la pièce et l’appariement des tiers et des ventes sont recalculés à chaque lecture par le moteur déterministe (Tiers et factures) ; aucune décision humaine n’est écrasée.',
+  };
+}
+const versionAnalyseurDe = (moteur: string | null): string | null => /analyseur (\S+)/.exec(moteur ?? '')?.[1] ?? null;
+function traiterLotReanalyse(lotId: string): void {
+  const lot = destSim.lots.find((x) => x.id === lotId);
+  if (!lot || lot.statut === 'termine') return;
+  lot.statut = 'en_cours';
+  lot.majLe = horodatagePg();
+  for (const p of destSim.pieces.filter((x) => x.lotId === lotId && x.statut === 'en_attente')) {
+    const doc = etat.documents.find((d) => d.id === p.documentId)!;
+    const actuelle = etat.extractions.find((x) => x.documentId === p.documentId && x.actuelle);
+    const fin = (resultat: string, motif: string | null, detail: Enr | null = null, apres: number | null = null) => Object.assign(p, { statut: 'termine', resultat, motif, detail, versionExtractionApres: apres, traiteLe: horodatagePg() });
+    if (!actuelle || actuelle.id !== p.extractionAvantId || doc.remplacePar) {
+      fin('inchangee', 'L’extraction de la pièce a changé depuis la demande (correction ou nouvelle version) : rien n’est changé.');
+      continue;
+    }
+    const f = fusionnerReanalyseDestinataire(actuelle.champs, lectureAutomatiqueSimulee(doc) as never, { versionNouvelle: actuelle.version + 1, versionAnalyseur: lot.versionAnalyseur });
+    const detail = { versionAnalyseur: lot.versionAnalyseur, avant: f.avant, apres: f.apres, automatique: f.automatique, desaccords: f.desaccords, autresDivergences: f.autresDivergences };
+    if (f.resultat === 'inchangee') { fin('inchangee', f.motif, detail); continue; }
+    if (lot.mode === 'execution') {
+      actuelle.actuelle = false;
+      const nouvelle = { id: randomUUID(), cabinetId: lot.cabinetId, entiteId: lot.entiteId, documentId: p.documentId, version: actuelle.version + 1, methode: actuelle.methode, moteur: `${actuelle.moteur ?? actuelle.methode} ; réanalyse du destinataire, analyseur ${lot.versionAnalyseur}`, champs: f.champs, verifications: actuelle.verifications, statut: 'projet', actuelle: true, creeLe: instant() };
+      etat.extractions.push(nouvelle);
+      tracerAudit({ cabinetId: lot.cabinetId }, 'extraction.destinataire_reanalyse', 'document', p.documentId, lot.entiteId, { demandePar: lot.demandePar, reanalyseId: lot.id, versionAvant: actuelle.version, versionApres: nouvelle.version, resultat: f.resultat, ...detail });
+      fin(f.resultat, f.motif, { ...detail, versionExtractionAvant: actuelle.version }, nouvelle.version);
+    } else fin(f.resultat, f.motif, { ...detail, versionExtractionAvant: actuelle.version });
+  }
+  const resume: Enr = { inchangee: 0, destinataire_trouve: 0, abstention: 0, erreur: 0 };
+  for (const p of destSim.pieces.filter((x) => x.lotId === lotId)) resume[p.resultat ?? 'erreur']++;
+  Object.assign(lot, { statut: 'termine', resume, termineLe: horodatagePg(), majLe: horodatagePg() });
+  tracerAudit({ cabinetId: lot.cabinetId }, lot.mode === 'execution' ? 'reanalyse_destinataire.executee' : 'reanalyse_destinataire.simulee', 'reanalyse_destinataire', lot.id, lot.entiteId, { demandePar: lot.demandePar, versionAnalyseur: lot.versionAnalyseur, nbPieces: lot.nbPieces, resume });
+}
+function routerDestinataire(r: Requete, a: Acces): unknown {
+  const { methode: m, segments: s } = r;
+  // Pièce : lecture et correction.
+  if (s[0] === 'documents' && s[2] === 'destinataire' && s.length === 3 && (m === 'GET' || m === 'PUT')) {
+    const id = exigerUuid(s[1]);
+    const { doc } = chargerDocument(a, id);
+    exigerNiveau(a, doc.entiteId, m === 'GET' ? 'lecture' : 'collaboration');
+    const versions = etat.extractions.filter((x) => x.documentId === id).sort((x, y) => x.version - y.version);
+    const courante = versions.find((x) => x.actuelle);
+    if (m === 'GET') {
+      const f = etat.fichiers.find((x) => x.id === doc.fichierId);
+      const nommer = (l: Enr) => ({ ...l, corrigeParNom: l.corrigePar ? nomDe(l.corrigePar) : null });
+      return {
+        niveau: niveauSur(a, doc.entiteId), documentId: id, nomFichier: doc.nomOrigine, remplace: doc.remplacePar !== null,
+        original: f ? { sha256: f.sha256, taille: f.taille, inchange: 'L’original n’est jamais modifié par une correction ni par une réanalyse.' } : null,
+        extractionCourante: courante ? { id: courante.id, version: courante.version, statut: courante.statut, methode: courante.methode } : null,
+        lignes: courante ? lignesDestinataire(courante.champs).map(nommer) : [], abstention: courante ? (courante.champs.destinataireAbstention ?? null) : null,
+        lectureAutomatiqueFaite: courante ? !destinataireNonLu(courante.champs) : false,
+        historique: versions.map((v) => ({ id: v.id, version: v.version, actuelle: v.actuelle, methode: v.methode, moteur: v.moteur, versionAnalyseur: versionAnalyseurDe(v.moteur), statut: v.statut, creeLe: v.creeLe, lectureAutomatiqueFaite: !destinataireNonLu(v.champs), lignes: lignesDestinataire(v.champs).map(nommer), abstention: v.champs.destinataireAbstention ?? null })),
+        effets: courante ? effetsDestinataire(doc, courante) : null,
+        reanalyses: destSim.pieces.filter((p) => p.documentId === id).map((p) => ({ lotId: p.lotId, resultat: p.resultat, motif: p.motif, execution: p.execution, versionAnalyseur: destSim.lots.find((l) => l.id === p.lotId)?.versionAnalyseur ?? VERSION_ANALYSEUR_FACTURE, traiteLe: p.traiteLe })),
+        versionAnalyseurCourante: VERSION_ANALYSEUR_FACTURE,
+      };
+    }
+    const d = r.json();
+    const permis = ['destinataireNom', 'destinataireSiren', 'destinataireSiret', 'destinataireTva', 'destinatairePays'];
+    if (!d.champs || typeof d.champs !== 'object' || Object.keys(d.champs).length === 0) throw invalide('champs', 'au moins un champ du destinataire');
+    for (const [k, v] of Object.entries(d.champs)) if (!permis.includes(k) || (v !== null && typeof v !== 'string')) throw invalide(`champs.${k}`, 'champ inconnu ou valeur invalide');
+    if (typeof d.motif !== 'string' || d.motif.trim().length < 3 || d.motif.length > 2000) throw invalide('motif', 'un motif d’au moins 3 caractères est requis');
+    if (doc.remplacePar) throw new ErreurHttp(409, 'Cette version a été remplacée : le travail se poursuit sur la version la plus récente');
+    if (!courante) throw new ErreurHttp(409, 'Aucune extraction à corriger : le document est encore en analyse');
+    const res = appliquerCorrectionDestinataire(courante.champs, d.champs, { auteurId: a.utilisateurId, le: new Date().toISOString(), motif: d.motif.trim(), versionBase: courante.version, versionNouvelle: courante.version + 1, versionAnalyseurBase: versionAnalyseurDe(courante.moteur) });
+    if (res.erreurs.length) throw new ErreurHttp(400, { message: 'Destinataire invalide', erreurs: res.erreurs.map((probleme) => ({ champ: 'champs', probleme })) });
+    if (res.modifies.length === 0) throw new ErreurHttp(409, 'Aucun changement : les valeurs saisies sont déjà celles retenues pour ce destinataire');
+    courante.actuelle = false;
+    const nouvelle = { id: randomUUID(), cabinetId: a.cabinetId, entiteId: doc.entiteId, documentId: id, version: courante.version + 1, methode: 'saisie_humaine', moteur: `${courante.moteur ?? courante.methode} ; correction humaine du destinataire`, champs: res.champs, verifications: courante.verifications, statut: 'projet', actuelle: true, creeLe: instant() };
+    etat.extractions.push(nouvelle);
+    etat.decisions.push({ cibleType: 'extraction', cibleId: nouvelle.id, action: 'corriger_destinataire', motif: d.motif.trim(), versionCible: nouvelle.version, creeLe: instant(), auteurId: a.utilisateurId });
+    tracerAudit(a, 'extraction.destinataire_corrige', 'document', id, doc.entiteId, { versionAvant: courante.version, versionApres: nouvelle.version, champsModifies: res.modifies, avant: res.avant, apres: res.apres, motif: d.motif.trim(), statutAvant: courante.statut });
+    return { extraction: { id: nouvelle.id, version: nouvelle.version, statut: nouvelle.statut, methode: nouvelle.methode }, versionPrecedente: { id: courante.id, version: courante.version, statut: courante.statut }, modifies: res.modifies, avant: res.avant, apres: res.apres, lignes: lignesDestinataire(nouvelle.champs), effets: effetsDestinataire(doc, nouvelle) };
+  }
+  // Réanalyse : aperçu, demande, rapport, reprise.
+  if (s[0] === 'dossiers' && s[2] === 'reanalyse-destinataire' && s.length === 3 && m === 'GET') {
+    const entiteId = exigerUuid(s[1]);
+    const niveau = exigerNiveau(a, entiteId, 'collaboration');
+    const lignes = etat.documents.filter((d) => d.entiteId === entiteId && d.cabinetId === a.cabinetId).flatMap((d) => { const e = concerneeParReanalyse(d); return e ? [{ d, e }] : []; });
+    const aFaire = lignes.filter((x) => !dejaRelue(x.d.id));
+    const relues = new Set(destSim.pieces.filter((p) => p.execution && p.versionAnalyseur === VERSION_ANALYSEUR_FACTURE && ['destinataire_trouve', 'abstention'].includes(p.resultat ?? '')).map((p) => p.documentId));
+    return {
+      niveau, versionAnalyseur: VERSION_ANALYSEUR_FACTURE, tailleMaxLot: TAILLE_LOT_REANALYSE, peutDemander: auMoins(niveau, 'revision'), concernees: aFaire.length, dejaReanalysees: lignes.length - aFaire.length, dejaRelues: relues.size,
+      dansLeProchainLot: Math.min(aFaire.length, TAILLE_LOT_REANALYSE), lotsNecessaires: Math.ceil(aFaire.length / TAILLE_LOT_REANALYSE), extractionsValidees: aFaire.filter((x) => x.e.statut === 'valide').length, corrigeesALaMain: aFaire.filter((x) => x.e.methode === 'saisie_humaine').length,
+      demandes: destSim.lots.filter((l) => l.entiteId === entiteId).sort((x, y) => y.creeLe.localeCompare(x.creeLe)).slice(0, 20),
+      garanties: [
+        'Aucune réanalyse ne démarre sans une demande explicite d’une personne habilitée.',
+        'Une simulation précède toute exécution : elle relit les pièces sans rien écrire.',
+        'L’original, les versions d’extraction, les corrections humaines et les décisions sont conservés ; une réanalyse crée une nouvelle version, jamais un remplacement.',
+        'Une correction humaine du destinataire n’est jamais écrasée : un désaccord éventuel est seulement signalé.',
+      ],
+    };
+  }
+  if (s[0] === 'dossiers' && s[2] === 'reanalyses-destinataire' && s.length === 3 && m === 'POST') {
+    const entiteId = exigerUuid(s[1]);
+    const d = r.json();
+    if (!['simulation', 'execution'].includes(d.mode)) throw invalide('mode', 'valeur inconnue');
+    if (typeof d.motif !== 'string' || d.motif.trim().length < 3 || d.motif.length > 2000) throw invalide('motif', 'un motif d’au moins 3 caractères est requis');
+    if (d.simulationId !== undefined && (typeof d.simulationId !== 'string' || !UUID.test(d.simulationId))) throw invalide('simulationId', 'identifiant invalide');
+    exigerNiveau(a, entiteId, 'revision');
+    let candidats = etat.documents.filter((x) => x.entiteId === entiteId && x.cabinetId === a.cabinetId).flatMap((x) => { const e = concerneeParReanalyse(x); return e && !dejaRelue(x.id) ? [{ doc: x, e }] : []; });
+    if (d.mode === 'execution') {
+      if (!d.simulationId) throw invalide('simulationId', 'une simulation terminée est requise avant toute exécution');
+      const sim = destSim.lots.find((l) => l.id === d.simulationId && l.entiteId === entiteId);
+      if (!sim || sim.mode !== 'simulation') throw new ErreurHttp(404, 'Simulation introuvable pour ce dossier');
+      if (sim.statut !== 'termine') throw new ErreurHttp(409, 'La simulation n’est pas terminée : attendez son rapport avant de confirmer');
+      if (sim.versionAnalyseur !== VERSION_ANALYSEUR_FACTURE) throw new ErreurHttp(409, 'La version de l’analyseur a changé depuis la simulation : relancez une simulation');
+      if (destSim.lots.some((l) => l.simulationId === sim.id && l.mode === 'execution')) throw new ErreurHttp(409, 'Cette simulation a déjà été exécutée : lancez une nouvelle simulation pour le lot suivant');
+      const simulees = new Set(destSim.pieces.filter((p) => p.lotId === sim.id).map((p) => p.documentId));
+      candidats = candidats.filter((c) => simulees.has(c.doc.id));
+    }
+    candidats = candidats.slice(0, TAILLE_LOT_REANALYSE);
+    if (candidats.length === 0) throw new ErreurHttp(409, 'Aucune pièce concernée : rien à réanalyser');
+    const lot: SimLot = { id: randomUUID(), cabinetId: a.cabinetId, entiteId, mode: d.mode, simulationId: d.mode === 'execution' ? d.simulationId : null, versionAnalyseur: VERSION_ANALYSEUR_FACTURE, statut: 'en_attente', tailleLot: TAILLE_LOT_REANALYSE, motif: d.motif.trim(), nbPieces: candidats.length, resume: null, demandePar: a.utilisateurId, creeLe: horodatagePg(), majLe: horodatagePg(), termineLe: null };
+    destSim.lots.push(lot);
+    for (const c of candidats) destSim.pieces.push({ id: randomUUID(), lotId: lot.id, versionAnalyseur: VERSION_ANALYSEUR_FACTURE, documentId: c.doc.id, extractionAvantId: c.e.id, versionExtractionAvant: c.e.version, execution: d.mode === 'execution', statut: 'en_attente', resultat: null, motif: null, versionExtractionApres: null, detail: null, traiteLe: null });
+    tracerAudit(a, d.mode === 'execution' ? 'reanalyse_destinataire.demandee' : 'reanalyse_destinataire.simulation_demandee', 'reanalyse_destinataire', lot.id, entiteId, { mode: d.mode, motif: lot.motif, nbPieces: lot.nbPieces, versionAnalyseur: lot.versionAnalyseur, simulationId: lot.simulationId });
+    setTimeout(() => traiterLotReanalyse(lot.id), DELAI_WORKER_MS);
+    r.res.statusCode = 202;
+    return lot;
+  }
+  if (s[0] === 'reanalyses-destinataire' && (s.length === 2 || (s.length === 3 && s[2] === 'reprendre'))) {
+    const id = exigerUuid(s[1]);
+    const lot = destSim.lots.find((l) => l.id === id && l.cabinetId === a.cabinetId && visibleEnLecture(a, l.entiteId));
+    if (!lot) throw new ErreurHttp(404, 'Demande introuvable');
+    if (m === 'GET' && s.length === 2) {
+      const niveau = exigerNiveau(a, lot.entiteId, 'collaboration');
+      const pieces = destSim.pieces.filter((p) => p.lotId === id).map((p) => ({ id: p.id, documentId: p.documentId, nomFichier: etat.documents.find((x) => x.id === p.documentId)?.nomOrigine ?? '?', statut: p.statut, resultat: p.resultat, motif: p.motif, versionExtractionAvant: p.versionExtractionAvant, versionExtractionApres: p.versionExtractionApres, detail: p.detail, traiteLe: p.traiteLe })).sort((x, y) => x.nomFichier.localeCompare(y.nomFichier));
+      const decomptes: Enr = { en_attente: 0, inchangee: 0, destinataire_trouve: 0, abstention: 0, erreur: 0 };
+      for (const p of pieces) decomptes[p.resultat ?? 'en_attente']++;
+      const suite = lot.mode === 'simulation' ? destSim.lots.find((l) => l.simulationId === lot.id) : undefined;
+      return { niveau, demande: { ...lot, demandeur: nomDe(lot.demandePar) }, resultatsPossibles: ['inchangee', 'destinataire_trouve', 'abstention', 'erreur'], decomptes, changeraient: pieces.filter((p) => p.resultat === 'destinataire_trouve' || p.resultat === 'abstention').length, executable: lot.mode === 'simulation' && lot.statut === 'termine' && !suite && lot.versionAnalyseur === VERSION_ANALYSEUR_FACTURE, executionId: suite?.id ?? null, pieces };
+    }
+    if (m === 'POST' && s[2] === 'reprendre') {
+      exigerNiveau(a, lot.entiteId, 'revision');
+      if (lot.statut !== 'termine') setTimeout(() => traiterLotReanalyse(lot.id), DELAI_WORKER_MS);
+      r.res.statusCode = 202;
+      return { accepte: lot.statut !== 'termine', statut: lot.statut };
+    }
+  }
+  return undefined;
+}
+
 function routerTiers(r: Requete, a: Acces): unknown {
   const { methode: m, segments: s } = r;
   if (s[0] !== 'exercices' || !['tiers', 'factures', 'tiers-factures', 'suspicions'].includes(s[2] ?? '')) return undefined;
@@ -3521,6 +3719,7 @@ const serveur = http.createServer(async (req, res) => {
       if (methode === 'POST' && segments[1] === 'reinitialiser') {
         suite = suiteInitiale();
         tiersSim = { decisionsTiers: [], decisionsFactures: [] };
+        destSim = { lots: [], pieces: [], lectures: new Map(), sirenDossier: '123456782' };
         ENTITES = structuredClone(ENTITES_INITIALES);
         HABILITATIONS = structuredClone(HABILITATIONS_INITIALES);
         APPARTENANCES_EN_PLUS = [];
@@ -3544,6 +3743,25 @@ const serveur = http.createServer(async (req, res) => {
         if (d.aucun) abo.abonnements.delete(DEMO.cabinetA);
         else if (Object.keys(d).length) Object.assign(abo.abonnements.get(DEMO.cabinetA) ?? {}, d);
         resultat = { abonnement: abo.abonnements.get(DEMO.cabinetA) ?? null, situation: situationDe(DEMO.cabinetA).situation };
+      } else if (methode === 'POST' && segments[1] === 'destinataire') {
+        // Pilotage : lecture automatique simulée d'une pièce (par nom de fichier), SIREN du dossier, anciennes pièces en masse.
+        const d = json();
+        if (typeof d.sirenDossier === 'string') destSim.sirenDossier = d.sirenDossier;
+        for (const [nom, lecture] of Object.entries((d.lectures ?? {}) as Enr)) {
+          const doc = etat.documents.find((x) => x.nomOrigine === nom);
+          if (doc) destSim.lectures.set(doc.id, lecture as Enr);
+        }
+        if (typeof d.pieces === 'number') {
+          const modele = etat.documents.find((x) => /meunerie/i.test(x.nomOrigine))!;
+          const extractionModele = etat.extractions.find((x) => x.documentId === modele.id && x.actuelle)!;
+          for (let i = 0; i < d.pieces; i++) {
+            const doc: Enr = { ...modele, id: randomUUID(), nomOrigine: `ancienne-facture-${String(i + 1).padStart(3, '0')}.pdf`, creeLe: instant() };
+            etat.documents.push(doc);
+            etat.receptions.push({ id: randomUUID(), cabinetId: doc.cabinetId, entiteId: doc.entiteId, documentId: doc.id, canal: 'ordinateur', deposantId: DEMO.chloe, doublonBinaire: false, provenance: {}, recuLe: doc.creeLe });
+            etat.extractions.push({ ...structuredClone(extractionModele), id: randomUUID(), documentId: doc.id, version: 1, statut: 'projet' });
+          }
+        }
+        resultat = { ok: true, lots: destSim.lots.length };
       } else if (methode === 'POST' && segments[1] === 'administration') {
         // Pilotage : appartenance supplémentaire (compte multi-cabinets), rupture simulée de la chaîne d'audit, masse de documents.
         const d = json();

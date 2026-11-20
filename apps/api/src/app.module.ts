@@ -9,6 +9,7 @@ import { AuditController } from './audit.controller.js';
 import { BanqueController } from './banque.controller.js';
 import { ComptabiliteController } from './comptabilite.controller.js';
 import { ConseilsController } from './conseils.controller.js';
+import { DestinataireController } from './destinataire.controller.js';
 import { DocumentsController } from './documents.controller.js';
 import { EtatsController } from './etats.controller.js';
 import { FiscalController } from './fiscal.controller.js';
@@ -32,7 +33,7 @@ import { TeleversementsController } from './televersements.controller.js';
 import { TiersController } from './tiers.controller.js';
 
 @Module({
-  controllers: [NotificationsPousseesController, NotificationsController, ProfilController, TeleversementsController, DocumentsController, ComptabiliteController, ReferenceController, AuditController, IntegrationsController, MailController, BanqueController, AdministrationController, AbonnementController, ReglesController, RestitutionController, MissionsController, ConseilsController, VeilleController, RechercheController, EtatsController, FiscalController, InventaireController, ImportsController, AssistantController, IaTachesController, TiersController],
+  controllers: [NotificationsPousseesController, NotificationsController, ProfilController, TeleversementsController, DocumentsController, DestinataireController, ComptabiliteController, ReferenceController, AuditController, IntegrationsController, MailController, BanqueController, AdministrationController, AbonnementController, ReglesController, RestitutionController, MissionsController, ConseilsController, VeilleController, RechercheController, EtatsController, FiscalController, InventaireController, ImportsController, AssistantController, IaTachesController, TiersController],
   providers: [
     { provide: CONFIG, useFactory: () => lireConfig() },
     // Le serveur interactif se connecte avec le rôle comtaple_app : jamais propriétaire, jamais BYPASSRLS.

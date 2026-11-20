@@ -29,7 +29,16 @@ export { extraireChampsFacture } from './facture/texte.js';
 export { determinerSensPiece, sirenDePartie } from './facture/sens.js';
 export type { DemandeSensPiece, IdentifiantsPartie, SensPiece } from './facture/sens.js';
 export { ErreurDocumentXml, SOURCE_FACTURE_ACHETEUR, SOURCE_FACTURE_XML, TAILLE_MAX_XML_FACTURE, extraireChampsFacturX, extraireChampsUbl } from './facture/xml.js';
+export {
+  CHAMPS_DESTINATAIRE, VERSION_ANALYSEUR_FACTURE, appliquerCorrectionDestinataire, desaccordsAvecLectureAutomatique, destinataireEffectif, destinataireNonLu, estChampHumain, fusionnerReanalyseDestinataire,
+  incoherencesDestinataire, inchangeDepuis, lignesDestinataire, normaliserSaisieDestinataire,
+} from './facture/destinataire-humain.js';
+export type {
+  ChampDestinataire, ChampDestinataireHumain, DesaccordDestinataire, LigneDestinataire, ResultatCorrectionDestinataire, ResultatFusionReanalyse, ResultatReanalyse, SaisieDestinataire,
+  ValeurAutomatique, ValeursDestinataire,
+} from './facture/destinataire-humain.js';
 export { TAUX_TVA_CONNUS, verifierCoherenceFacture } from './facture/verification.js';
+export { champsFactureVides } from './facture/types.js';
 export type { ChampExtrait, ChampsFacture, PageTexte, VerificationFacture } from './facture/types.js';
 
 // 6. synthetique

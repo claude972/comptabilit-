@@ -111,6 +111,10 @@ export async function genererRestitution(c: Contexte, t: TacheRestitution): Prom
       constats: tableauJson(lire('constats', s.constats)),
     }));
     await archive.ajouterFragments('donnees/decisions.json', tableauJson(lire('decisions', s.decisions)));
+    await archive.ajouterFragments('donnees/reanalyses-destinataire.json', objetJson({
+      demandes: tableauJson(lire('reanalysesDestinataire', s.reanalysesDestinataire)),
+      pieces: tableauJson(lire('reanalysesDestinatairePieces', s.reanalysesDestinatairePieces)),
+    }));
     await archive.ajouterFragments('donnees/banque.json', objetJson({
       releves: tableauJson(lire('releves', s.relevesBancaires, undefined, sansBrut)),
       mouvements: tableauJson(lire('mouvementsBancaires', s.mouvementsBancaires, undefined, sansBrut)),

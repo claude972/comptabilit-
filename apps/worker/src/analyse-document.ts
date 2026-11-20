@@ -1,4 +1,4 @@
-import { type ChampsFacture, type PageTexte, verifierCoherenceFacture } from '@comtaple/core';
+import { type ChampsFacture, type PageTexte, VERSION_ANALYSEUR_FACTURE, verifierCoherenceFacture } from '@comtaple/core';
 import { and, eq, journaliser, schema as s, sql } from '@comtaple/db';
 import type { TacheAnalyseDocument } from '@comtaple/plateforme';
 import { analyserPieceIsolee, type CauseEchec, extraireTexteIsole, motifEchecAnalyse, type OptionsAnalyse } from './analyse-isolee.js';
@@ -76,58 +76,8 @@ export async function analyserDocument(c: Contexte, t: TacheAnalyseDocument): Pr
   }
 
   // 2) Extraction : données structurées d'abord, puis couche texte, puis OCR.
-  let pages: PageTexte[] = [];
-  let champs: ChampsFacture | null = null;
-  let methode = 'aucune';
-  let moteur: string | null = null;
-  let nbPages: number | null = null;
-  let motif: string | null = null;
-  let illisible = false;
-
-  const isolement: OptionsAnalyse = {
-    dureeMaxMs: c.cfg.ANALYSE_DUREE_MAX_MS,
-    tasMaxMo: c.cfg.ANALYSE_TAS_MAX_MO,
-    memoireMaxMo: c.cfg.ANALYSE_MEMOIRE_MAX_MO,
-    sortieMaxOctets: c.cfg.ANALYSE_SORTIE_MAX_OCTETS,
-    ...c.analyse,
-  };
-  // Le motif technique (cause) va au journal du worker, jamais à l'utilisateur ; aucun contenu de pièce n'y figure.
-  const interrompre = (etape: string, cause: CauseEchec) => {
-    console.error(`[documents] analyse isolée interrompue (${etape}) pour le document ${t.documentId} : ${cause}`);
-    motif = motifEchecAnalyse(cause);
-  };
-
-  if (type === 'application/pdf' || type === 'application/xml') {
-    const r = await analyserPieceIsolee(type, contenu, isolement);
-    if (!r.ok) interrompre('lecture', r.cause);
-    else {
-      ({ pages, nbPages, champs, methode, moteur } = r.valeur);
-      if (r.valeur.lectureImpossible) {
-        console.error(`[documents] lecture impossible du document ${t.documentId}`);
-        motif = 'Lecture impossible : le fichier est endommagé ou son contenu ne correspond pas à son format. La pièce est conservée telle quelle ; déposez-la à nouveau si vous en avez une copie lisible.';
-      }
-    }
-  }
-  // OCR (service dédié, déjà isolé) : pour une image, ou un PDF lu sans couche texte exploitable.
-  if (type !== 'application/xml' && methode === 'aucune' && motif === null) {
-    const r = await ocr(contenu, type, c.cfg.OCR_URL);
-    if (r.disponible) {
-      pages = r.pages;
-      nbPages ??= r.pages.length;
-      methode = 'ocr';
-      moteur = r.moteur ?? 'ocr';
-      champs = null;
-      if (caracteresUtiles(pages) < SEUIL_LISIBILITE) illisible = true;
-      else if (pages.length > 0) {
-        // Le texte reconnu reste un contenu non fiable : ses champs sont extraits dans un enfant, comme pour un PDF.
-        const e = await extraireTexteIsole(pages, isolement);
-        if (e.ok) champs = e.valeur.champs;
-        else interrompre('extraction', e.cause);
-      }
-    } else {
-      motif = `OCR indisponible (${r.motif ?? 'inconnu'}) : saisie manuelle nécessaire`;
-    }
-  }
+  const lecture = await extrairePiece(c, type, contenu, t.documentId);
+  const { pages, champs, methode, moteur, nbPages, motif, illisible } = lecture;
 
   // Passages de recherche : préparés hors transaction (un éventuel appel d'embeddings ne tient aucune transaction ouverte).
   const cible = { cabinetId: t.cabinetId, entiteId: doc.entiteId, documentId: doc.id, remplaceDocumentId: doc.remplaceDocumentId };
@@ -161,11 +111,83 @@ export async function analyserDocument(c: Contexte, t: TacheAnalyseDocument): Pr
         documentId: doc.id,
         version: (actuelle?.version ?? 0) + 1,
         methode,
-        moteur: `${moteur} ; IA : ${c.cfg.IA_OVH_ENDPOINT ? 'non sollicitée' : 'non connectée'}`,
+        moteur: `${moteur} ; IA : ${c.cfg.IA_OVH_ENDPOINT ? 'non sollicitée' : 'non connectée'} ; analyseur ${VERSION_ANALYSEUR_FACTURE}`,
         champs,
         verifications: verifierCoherenceFacture(champs),
         statut: 'projet',
       });
     },
   );
+}
+
+export interface LecturePiece {
+  pages: PageTexte[];
+  champs: ChampsFacture | null;
+  methode: string;
+  moteur: string | null;
+  nbPages: number | null;
+  /** Motif en français quand la lecture n'a pas abouti (analyse interrompue, lecture impossible, OCR indisponible). */
+  motif: string | null;
+  illisible: boolean;
+}
+
+/**
+ * Lecture d'une pièce : données structurées d'abord, puis couche texte, puis OCR. Partagée par l'analyse d'une pièce
+ * déposée et par la réanalyse explicite du destinataire (D-091) : même chemin, mêmes bornes, même isolement. Ne touche
+ * ni la base ni le stockage.
+ */
+export async function extrairePiece(c: Contexte, type: ReturnType<typeof detecterType>, contenu: Buffer, documentId: string): Promise<LecturePiece> {
+  let pages: PageTexte[] = [];
+  let champs: ChampsFacture | null = null;
+  let methode = 'aucune';
+  let moteur: string | null = null;
+  let nbPages: number | null = null;
+  let motif: string | null = null;
+  let illisible = false;
+
+  const isolement: OptionsAnalyse = {
+    dureeMaxMs: c.cfg.ANALYSE_DUREE_MAX_MS,
+    tasMaxMo: c.cfg.ANALYSE_TAS_MAX_MO,
+    memoireMaxMo: c.cfg.ANALYSE_MEMOIRE_MAX_MO,
+    sortieMaxOctets: c.cfg.ANALYSE_SORTIE_MAX_OCTETS,
+    ...c.analyse,
+  };
+  // Le motif technique (cause) va au journal du worker, jamais à l'utilisateur ; aucun contenu de pièce n'y figure.
+  const interrompre = (etape: string, cause: CauseEchec) => {
+    console.error(`[documents] analyse isolée interrompue (${etape}) pour le document ${documentId} : ${cause}`);
+    motif = motifEchecAnalyse(cause);
+  };
+
+  if (type === 'application/pdf' || type === 'application/xml') {
+    const r = await analyserPieceIsolee(type, contenu, isolement);
+    if (!r.ok) interrompre('lecture', r.cause);
+    else {
+      ({ pages, nbPages, champs, methode, moteur } = r.valeur);
+      if (r.valeur.lectureImpossible) {
+        console.error(`[documents] lecture impossible du document ${documentId}`);
+        motif = 'Lecture impossible : le fichier est endommagé ou son contenu ne correspond pas à son format. La pièce est conservée telle quelle ; déposez-la à nouveau si vous en avez une copie lisible.';
+      }
+    }
+  }
+  // OCR (service dédié, déjà isolé) : pour une image, ou un PDF lu sans couche texte exploitable.
+  if (type !== 'application/xml' && methode === 'aucune' && motif === null) {
+    const r = await ocr(contenu, type, c.cfg.OCR_URL);
+    if (r.disponible) {
+      pages = r.pages;
+      nbPages ??= r.pages.length;
+      methode = 'ocr';
+      moteur = r.moteur ?? 'ocr';
+      champs = null;
+      if (caracteresUtiles(pages) < SEUIL_LISIBILITE) illisible = true;
+      else if (pages.length > 0) {
+        // Le texte reconnu reste un contenu non fiable : ses champs sont extraits dans un enfant, comme pour un PDF.
+        const e = await extraireTexteIsole(pages, isolement);
+        if (e.ok) champs = e.valeur.champs;
+        else interrompre('extraction', e.cause);
+      }
+    } else {
+      motif = `OCR indisponible (${r.motif ?? 'inconnu'}) : saisie manuelle nécessaire`;
+    }
+  }
+  return { pages, champs, methode, moteur, nbPages, motif, illisible };
 }

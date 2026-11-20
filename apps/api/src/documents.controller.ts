@@ -330,6 +330,8 @@ export class DocumentsController {
       for (const [nom, valeur] of Object.entries(d.champs)) {
         champs[nom] = { valeur, page: null, extrait: null, boite: null, methode: 'saisie_humaine', confiance: 'non_evaluee', corrigePar: acces.utilisateurId };
       }
+      // Les champs HORS destinataire changent : les décisions d'appariement prises sur une version antérieure ne valent plus (D-077, D-091).
+      champs.inchangeDepuis = (actuelle?.version ?? 0) + 1;
       const verifications = verifierCoherenceFacture(champs as unknown as ChampsFacture);
       if (actuelle) await tx.update(s.extractions).set({ actuelle: false }).where(eq(s.extractions.id, actuelle.id));
       const [nouvelle] = await tx

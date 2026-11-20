@@ -29,6 +29,7 @@ export async function rattraper(c: Contexte, minutes = 10): Promise<BilanRattrap
     else if (r.nature === 'rapprochement') await c.taches.executerRapprochement({ cabinetId, executionId: r.identifiant });
     else if (r.nature === 'dossier_revision') await c.taches.genererDossier({ cabinetId, exportId: r.identifiant });
     else if (r.nature === 'restitution') await c.taches.genererRestitution({ cabinetId, restitutionId: r.identifiant });
+    else if (r.nature === 'reanalyse_destinataire') await c.taches.reanalyserDestinataire({ cabinetId, lotId: r.identifiant });
     else if (r.nature === 'restitution_cabinet') await c.taches.genererRestitutionCabinet({ cabinetId, restitutionCabinetId: r.identifiant });
     else continue;
     bilan.traitements[r.nature] = (bilan.traitements[r.nature] ?? 0) + 1;

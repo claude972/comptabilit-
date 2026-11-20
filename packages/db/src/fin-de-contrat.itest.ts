@@ -83,6 +83,7 @@ async function lireCatalogue(): Promise<void> {
   tablesCabinet = [...new Set(colonnes.filter((c) => c.col === 'cabinet_id').map((c) => c.t))].sort();
 }
 
+const REFERENCES_LAISSEES_VIDES = new Set(['reanalyses_destinataire_pieces.extraction_apres_id']);
 /** Valeurs imposées par une contrainte que le peuplement générique ne sait pas deviner. */
 const VALEURS: Record<string, (c: Cabinet | null) => unknown> = {
   'invitations.email': () => `essai-${alea()}@exemple.test`,
@@ -98,6 +99,13 @@ const VALEURS: Record<string, (c: Cabinet | null) => unknown> = {
   'liens_factures.decision': () => 'confirme',
   'liens_factures.objet': (c) => c?.lignes.get('documents')?.id,
   'liens_factures.version_extraction': () => 1,
+  // Réanalyse du destinataire : formes contrôlées par la base (une simulation sans simulation de référence ; rapport d'une pièce en attente).
+  'reanalyses_destinataire.mode': () => 'simulation',
+  'reanalyses_destinataire.statut': () => 'en_attente',
+  'reanalyses_destinataire.taille_lot': () => 50,
+  'reanalyses_destinataire.nb_pieces': () => 1,
+  'reanalyses_destinataire_pieces.statut': () => 'en_attente',
+  'reanalyses_destinataire_pieces.execution': () => false,
   // Notifications poussées : formes contrôlées par la base (empreinte hexadécimale, enveloppe chiffrée, type).
   'abonnements_pousses.empreinte_point_acces': () => createHash('sha256').update(alea()).digest('hex'),
   'abonnements_pousses.service': () => 'fcm',
@@ -157,6 +165,8 @@ async function inserer(t: string, c: Cabinet | null): Promise<Record<string, unk
   const valeurs: unknown[] = [];
   for (const col of colonnes.filter((x) => x.t === t)) {
     const fk = cles.find((k) => k.enfant === t && k.col === col.col);
+    // Références facultatives que la contrainte de la table veut vides dans la ligne d'essai (rapport d'une pièce « en attente »).
+    if (!col.nn && REFERENCES_LAISSEES_VIDES.has(`${t}.${col.col}`)) continue;
     let v: unknown;
     if (col.col === 'cabinet_id' && c) v = c.id;
     else if (fk) {

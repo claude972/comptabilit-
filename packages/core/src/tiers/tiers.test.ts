@@ -576,3 +576,38 @@ describe('ventes : le destinataire lu sur la pièce identifie le client', () => 
     expect(r.reserves.join(' ')).toMatch(/destinataire y a été lu de façon sûre/);
   });
 });
+
+describe('D-091 : correction ou lecture du destinataire après une décision humaine', () => {
+  const pieceVenteD91 = (p: Partial<PieceFacture> = {}) =>
+    piece({ nature: 'facture_vente', numero: 'FV-2025-010', totalTtc: '600.00', dateEmission: '2025-02-01', dateEcheance: '2025-03-03', emetteurNom: 'DOSSIER SARL', emetteurSiren: SIREN_DOSSIER, ...p });
+  const lignes = vente('CMARTIN', 'Martin SA', 'FV-2025-010', '2025-02-01', '600.00');
+  const cible = `${lignes[0]!.journalCode}|${lignes[0]!.ecritureNum}`;
+  const conf: DecisionFacture = { type: 'comptabilisation', objet: 'doc-vente', cible, decision: 'confirme', versionExtraction: 1 };
+
+  it('une décision prise avant la lecture du destinataire reste appliquée (champs hors destinataire inchangés) et est signalée', () => {
+    const p = pieceVenteD91({ documentId: 'doc-vente', versionExtraction: 2, decisionsValablesDepuis: 1, destinataireNom: 'MARTIN SA', destinataireSiren: SIREN_MARTIN_D91 });
+    const r = suivre(lignes, [p], { decisionsFactures: [conf] });
+    const f = r.factures[0]!;
+    expect(f.comptabilisation).toMatchObject({ statut: 'confirme', ecriture: { cle: cible } });
+    expect(r.decisionsARevoir).toEqual([]);
+    expect(f.reserves.join(' ')).toMatch(/avant la lecture ou la correction du destinataire : elle est conservée/);
+    expect(f.roleTiersPiece).toBe('destinataire');
+  });
+
+  it('sans chaîne d’équivalence (autres champs modifiés), la décision redevient « à revoir » comme avant', () => {
+    const p = pieceVenteD91({ documentId: 'doc-vente', versionExtraction: 3, decisionsValablesDepuis: 3 });
+    const r = suivre(lignes, [p], { decisionsFactures: [conf] });
+    expect(r.decisionsARevoir.map((x) => x.motif)).toEqual([expect.stringMatching(/champs extraits/)]);
+    expect(r.factures[0]!.comptabilisation.statut).not.toBe('confirme');
+  });
+
+  it('le sens relu d’après le destinataire contredit la qualification : signalé sans écraser la décision', () => {
+    const p = pieceVenteD91({ documentId: 'doc-vente', versionExtraction: 2, decisionsValablesDepuis: 1, emetteurSiren: SIREN_DUPONT, destinataireSiren: SIREN_DOSSIER, destinataireNom: 'DOSSIER SARL' });
+    const f = suivre(lignes, [p], { decisionsFactures: [conf] }).factures[0]!;
+    expect(f.sensLu).toBe('achat');
+    expect(f.comptabilisation.statut).toBe('confirme');
+    expect(f.reserves.join(' ')).toMatch(/identifiants indiquent un achat/);
+    expect(f.reserves.join(' ')).toMatch(/Sens relu d’après les identifiants : achat/);
+  });
+});
+const SIREN_MARTIN_D91 = '552100554';

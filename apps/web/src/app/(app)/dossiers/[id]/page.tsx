@@ -11,7 +11,7 @@ import { tenter } from '@/lib/serveur/api';
 import { ServiceFerme } from '@/components/service-ferme';
 import { lireSituation, parametre } from '@/lib/serveur/donnees';
 import { contexteDossier } from '@/lib/serveur/dossier';
-import type { ListeDocuments, StatutDocument } from '@/lib/types-api';
+import { type ListeDocuments, type StatutDocument, auMoins } from '@/lib/types-api';
 import { estRemplacee, sansRemplacees } from '@/lib/versions';
 
 export const metadata: Metadata = { title: 'Pièces du dossier' };
@@ -127,6 +127,14 @@ export default async function PagePieces({ params, searchParams }: { params: Pro
         ) : (
           <p className="text-texte-doux">Aucune pièce {statut ? 'dans ce statut' : 'dans ce dossier'}.</p>
         )}
+        {auMoins(ctx.niveau, 'collaboration') ? (
+          <p className="text-sm" data-testid="lien-reanalyse-destinataire">
+            <Link href={`${base}/reanalyse-destinataire`} prefetch={false}>
+              Réanalyse du destinataire des anciennes pièces
+            </Link>{' '}
+            — explicite, par lot, avec aperçu avant exécution.
+          </p>
+        ) : null}
         {!complet ? (
           <nav aria-label="Pagination des pièces" className="flex flex-wrap items-center gap-3">
             {page > 1 ? <Link href={lienPage(page - 1)} prefetch={false} rel="prev">← Plus récentes</Link> : <span className="text-texte-doux">← Plus récentes</span>}

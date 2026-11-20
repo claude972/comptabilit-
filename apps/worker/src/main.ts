@@ -9,6 +9,7 @@ import { executerControlesExecution } from './controles.js';
 import { genererDossierRevision } from './dossier-revision.js';
 import { importerFec } from './import-fec.js';
 import { planifierMail, traiterTacheMail } from './mail.js';
+import { reanalyserDestinataire } from './reanalyse-destinataire.js';
 import { entretenirAbonnementsPousses, livrerPoussee, releverEnvoisPousses } from './poussees.js';
 import { rattraper } from './rattrapage.js';
 import { genererRestitution } from './restitution.js';
@@ -36,7 +37,7 @@ await c.stockage.assurerBucket();
 
 // Concurrence volontairement limitée : les traitements lourds ne doivent pas affamer le serveur interactif.
 const workers = [
-  new Worker(FILES.documents, suivi(FILES.documents, (job) => analyserDocument(c, job.data)), { connection: connexionRedis(cfg.REDIS_URL), concurrency: 2, prefix }),
+  new Worker(FILES.documents, suivi(FILES.documents, (job): Promise<unknown> => (job.name === 'reanalyser-destinataire' ? reanalyserDestinataire(c, job.data) : analyserDocument(c, job.data))), { connection: connexionRedis(cfg.REDIS_URL), concurrency: 2, prefix }),
   new Worker(
     FILES.comptabilite,
     suivi(FILES.comptabilite, (job): Promise<unknown> =>

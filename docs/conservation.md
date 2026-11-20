@@ -44,13 +44,13 @@ La résiliation d'un abonnement ferme les dépôts à son échéance et ne suppr
 
 ### Devenir de chaque catégorie
 
-Politique versionnée (`POLITIQUE_FIN_DE_CONTRAT`, version `2026-11-19.4`), reprise dans chaque procès-verbal. Quatre devenirs : `supprimer`, `restituer_puis_supprimer` (présent dans l'archive de restitution exigée avant toute suppression), `anonymiser`, `conserver_jusqu_a` (durée PROPOSÉE, non arrêtée). Toute table portant `cabinet_id` appartient à une catégorie : un test échoue, et la procédure refuse de s'exécuter, si une table en est dépourvue.
+Politique versionnée (`POLITIQUE_FIN_DE_CONTRAT`, version `2026-11-20.1`), reprise dans chaque procès-verbal. Quatre devenirs : `supprimer`, `restituer_puis_supprimer` (présent dans l'archive de restitution exigée avant toute suppression), `anonymiser`, `conserver_jusqu_a` (durée PROPOSÉE, non arrêtée). Toute table portant `cabinet_id` appartient à une catégorie : un test échoue, et la procédure refuse de s'exécuter, si une table en est dépourvue.
 
 | Catégorie | Tables | Devenir | Durée proposée et fondement (non arrêtés) |
 |---|---|---|---|
 | Comptes : appartenances, habilitations, invitations | `appartenances`, `habilitations_dossier`, `invitations` | supprimer | — |
 | Dossiers | `entites`, `etablissements`, `exercices` | restituer puis supprimer | — |
-| Pièces et fichiers | `fichiers`, `documents`, `receptions`, `pages_document`, `extractions`, `echanges_document`, `televersements`, `passages_recherche`, `factures` | restituer puis supprimer | Les objets du stockage suivent une étape séparée |
+| Pièces et fichiers | `fichiers`, `documents`, `receptions`, `pages_document`, `extractions`, `echanges_document`, `televersements`, `passages_recherche`, `factures`, `reanalyses_destinataire`, `reanalyses_destinataire_pieces` | restituer puis supprimer | Les objets du stockage suivent une étape séparée |
 | Écritures importées | `campagnes_import`, `lots_import`, `lignes_ecriture` | restituer puis supprimer | — |
 | Relevés, mouvements, rapprochements | `releves_bancaires`, `mouvements_bancaires`, `mouvements_lots`, `executions_rapprochement`, `rapprochements` | restituer puis supprimer | — |
 | Contrôles et constats | `executions_controles`, `resultats_controles`, `constats`, `exports_revision` | restituer puis supprimer | — |

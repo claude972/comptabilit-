@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { BoutonReanalyse, FormulaireCorrection, FormulaireEchange, FormulaireQualification, FormulaireValidation } from '@/components/document/actions';
+import { BlocDestinataire } from '@/components/destinataire/bloc';
 import { ChampsExtraits, Echanges, EtiquetteStatutDocument, MotifStatut, Receptions, Verifications, estValidee } from '@/components/document/affichage';
 import { PropositionClassement } from '@/components/assistant/taches';
 import { ApercuPiece } from '@/components/document/apercu';
@@ -8,6 +9,7 @@ import { NouvelleVersion } from '@/components/document/nouvelle-version';
 import { BandeauRemplacee, BlocVersions } from '@/components/document/versions';
 import { ErreurAcces } from '@/components/erreurs';
 import { Alerte, Carte, Etiquette, MentionProjet, SousTitre } from '@/components/ui/base';
+import type { ReponseDestinataire } from '@/lib/destinataire';
 import { LIBELLE_NATURE } from '@/lib/libelles';
 import { formaterDate, formaterTaille } from '@/lib/montants';
 import { tenter } from '@/lib/serveur/api';
@@ -27,6 +29,8 @@ export default async function PageRevuePiece({ params }: { params: Promise<{ id:
   const [r, exercices] = await Promise.all([tenter<DetailDocument>(`v1/documents/${documentId}`), lireExercices(id)]);
   if (!r.ok) return <ErreurAcces statut={r.statut} message={r.message} retour={base} />;
   const { document: doc, fichier, extraction, echanges, receptions, niveau } = r.donnees;
+  // Destinataire (acheteur) : lecture dès le niveau « lecture » ; un refus ou une panne n'empêche pas d'afficher le reste de la revue.
+  const destinataire = extraction && doc.entiteId === id ? await tenter<ReponseDestinataire>(`v1/documents/${documentId}/destinataire`) : null;
   const versions = r.donnees.versions ?? [];
   // Une version remplacée est conservée pour mémoire : aucune correction ni validation n'y est proposée (l'API les refuse).
   const courante = r.donnees.estVersionCourante !== false && !doc.remplacePar;
@@ -109,6 +113,13 @@ export default async function PageRevuePiece({ params }: { params: Promise<{ id:
               <Alerte ton="neutre">Aucune extraction disponible : la pièce est en cours d’analyse, ou sa lecture automatique n’a rien donné.</Alerte>
             )}
           </Carte>
+          {destinataire?.ok ? (
+            <BlocDestinataire d={destinataire.donnees} documentId={doc.id} peutCorriger={courante && collaboration} lienReanalyse={collaboration ? `${base}/reanalyse-destinataire` : null} />
+          ) : destinataire ? (
+            <Alerte ton="neutre" data-testid="destinataire-indisponible">
+              Destinataire indisponible : {destinataire.message}
+            </Alerte>
+          ) : null}
           {!courante ? (
             <Alerte ton="neutre" data-testid="actions-indisponibles">
               Version conservée pour mémoire : la correction, la qualification et la validation se font sur la version la plus récente.

@@ -159,12 +159,30 @@ ou écartée avec motif. Statuer ne choisit jamais l'écriture à la place de la
 
 Pages de 50 (mouvements : 100). Un déposant ou un autre cabinet reçoit 404.
 
+## Destinataire : correction humaine et réanalyse (D-091)
+
+- **Correction** : `PUT v1/documents/:id/destinataire` (niveau « collaboration », motif obligatoire). Nouvelle version
+  d'extraction non validée ; les anciennes versions, l'original et les décisions restent intacts. Chaque champ saisi
+  (nom, SIREN, SIRET, TVA, pays) porte sa provenance (qui, quand, pourquoi) et la valeur automatique qu'il remplace ; la
+  valeur humaine prime. `GET v1/documents/:id/destinataire` rend les valeurs côte à côte, l'historique des versions, le sens
+  relu d'après les identifiants, les signalements et l'état des décisions d'appariement de la pièce.
+- **Sens et appariement** : recalculés à chaque lecture, comme tout le reste ; le moteur reçoit désormais le destinataire
+  retenu (humain ou automatique). Une décision humaine prise avant la lecture ou la correction du destinataire reste
+  appliquée tant que les autres champs de la pièce n'ont pas changé ; la fiche porte alors une réserve. Une correction
+  d'un autre champ la rend « à revoir », comme avant.
+- **Réanalyse** : `GET v1/dossiers/:id/reanalyse-destinataire` (aperçu), `POST v1/dossiers/:id/reanalyses-destinataire`
+  (simulation, puis exécution sur une simulation terminée ; niveau « révision », 50 pièces au plus), `GET
+  v1/reanalyses-destinataire/:id` (rapport par pièce), `POST …/reprendre`. Page : `/dossiers/:id/reanalyse-destinataire`.
+  Aucune réanalyse automatique. La simulation n'écrit rien ; l'exécution crée une nouvelle version par pièce changée, sans
+  jamais écraser une correction humaine (désaccord signalé) ; une pièce déjà relue avec la même version de l'analyseur n'est
+  pas refaite.
+
 ## Limites
 
 - Destinataire : lu seulement dans les cas décrits plus haut ; une facture en colonnes (émetteur et client côte à côte
-  sur les mêmes lignes) ou sans repère explicite donne une abstention, donc une vente « à confirmer ». Une correction
-  manuelle des champs d'une pièce ne porte pas encore sur le destinataire. Les extractions antérieures n'ont pas de
-  destinataire tant que la pièce n'est pas réanalysée.
+  sur les mêmes lignes) ou sans repère explicite donne une abstention, donc une vente « à confirmer ». Le destinataire
+  se corrige à la main (couche humaine tracée) et les extractions antérieures se relisent par une réanalyse EXPLICITE :
+  voir la section suivante (D-091).
 - Euro seulement : une pièce dans une autre devise n'est pas traitée, et c'est dit. Devise non lue : traitée dans la
   devise du dossier, avec une réserve affichée.
 - Aucune tolérance de montant (escompte, arrondi, retenue) : ces cas passent par une confirmation humaine.

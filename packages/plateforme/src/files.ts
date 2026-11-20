@@ -18,6 +18,11 @@ export interface TacheAnalyseDocument {
   cabinetId: string;
   documentId: string;
 }
+/** Réanalyse explicite du destinataire (D-091) : un lot demandé par une personne ; identifiants seulement. */
+export interface TacheReanalyseDestinataire {
+  cabinetId: string;
+  lotId: string;
+}
 export interface TacheImportFec {
   cabinetId: string;
   lotImportId: string;
@@ -106,6 +111,11 @@ export class Files {
   // L'identifiant de tâche rend la mise en file idempotente (une relance ne crée pas de doublon en attente).
   analyserDocument(t: TacheAnalyseDocument) {
     return this.ajouter(this.documents, 'analyser', t, { jobId: `doc-${t.documentId}-${Date.now()}` });
+  }
+  reanalyserDestinataire(t: TacheReanalyseDestinataire) {
+    // Identifiant unique par tentative : une REPRISE doit être traitée. L'idempotence est garantie par le rapport par pièce
+    // (index unique en base), jamais par l'identifiant de tâche.
+    return this.ajouter(this.documents, 'reanalyser-destinataire', t, { jobId: `rea-${t.lotId}-${Date.now()}` });
   }
   importerFec(t: TacheImportFec) {
     // Identifiant unique par tentative : une REPRISE doit être traitée (la file ignore un identifiant déjà vu).

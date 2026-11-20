@@ -7,6 +7,7 @@ import {
   type DecisionTiers,
   dec,
   estDateIso,
+  inchangeDepuis,
   type EtatFacture,
   type FicheFacture,
   type LigneEcriture,
@@ -121,7 +122,8 @@ export class TiersController {
         documentId: doc.id, nomFichier: doc.nomOrigine, versionPiece: doc.version, versionExtraction: extraction.version, nature: doc.nature as PieceFacture['nature'],
         statutExtraction: extraction.statut === 'valide' ? 'valide' : 'projet', typeDocument: type === 'facture' || type === 'avoir' || type === 'inconnu' ? type : null,
         numero: texte(c.numero), dateEmission: date(c.dateEmission), dateEcheance: date(c.dateEcheance), emetteurNom: texte(c.emetteurNom), emetteurSiren: texte(c.emetteurSiren), emetteurSiret: texte(c.emetteurSiret),
-        emetteurTva: texte(c.emetteurTva), totalHt: decimal(c.totalHt), totalTva: decimal(c.totalTva), totalTtc: decimal(c.totalTtc), devise: texte(c.devise),
+        emetteurTva: texte(c.emetteurTva), destinataireNom: texte(c.destinataireNom), destinataireSiren: texte(c.destinataireSiren), destinataireSiret: texte(c.destinataireSiret), destinataireTva: texte(c.destinataireTva),
+        decisionsValablesDepuis: inchangeDepuis(c as Record<string, unknown>, extraction.version), totalHt: decimal(c.totalHt), totalTva: decimal(c.totalTva), totalTtc: decimal(c.totalTtc), devise: texte(c.devise),
       });
     }
 

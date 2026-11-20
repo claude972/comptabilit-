@@ -1406,6 +1406,300 @@
         ]
       }
     },
+    "/v1/documents/{id}/destinataire": {
+      "get": {
+        "description": "Niveau « lecture » au moins (un déposant est refusé). Le sens et l’appariement sont recalculés par le moteur déterministe ; rien n’est stocké en dehors des versions d’extraction.",
+        "operationId": "DestinataireController_lireDestinataire",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Destinataire (acheteur) d’une pièce : valeur automatique et valeur humaine côte à côte, historique des versions, sens relu",
+        "tags": [
+          "Destinataire des pièces"
+        ]
+      },
+      "put": {
+        "description": "Mêmes gardes que la correction des champs d’une pièce (niveau « collaboration »). Crée une NOUVELLE version d’extraction (projet) : la précédente, l’original et toutes les décisions antérieures sont conservés. La valeur humaine prime sur la valeur automatique, qui reste visible à côté ; une réanalyse ne l’écrase jamais. Le sens de la pièce et l’appariement sont recalculés à la lecture par le moteur déterministe.",
+        "operationId": "DestinataireController_corrigerDestinataire",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "champs": {
+                    "type": "object",
+                    "properties": {
+                      "destinataireNom": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "maxLength": 200
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "destinataireSiren": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "maxLength": 20
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "destinataireSiret": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "maxLength": 24
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "destinataireTva": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "maxLength": 24
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "destinatairePays": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "maxLength": 2
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "motif": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "champs",
+                  "motif"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Corriger à la main le destinataire d’une pièce (motif obligatoire) : couche humaine tracée, nouvelle version d’extraction",
+        "tags": [
+          "Destinataire des pièces"
+        ]
+      }
+    },
+    "/v1/dossiers/{entiteId}/reanalyse-destinataire": {
+      "get": {
+        "description": "Niveau « collaboration » au moins. Lecture seule : rien n’est lancé. Une réanalyse ne se déclenche jamais automatiquement.",
+        "operationId": "DestinataireController_apercu",
+        "parameters": [
+          {
+            "name": "entiteId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Aperçu de la réanalyse du destinataire : pièces concernées, déjà réanalysées, lot suivant, demandes récentes",
+        "tags": [
+          "Destinataire des pièces"
+        ]
+      }
+    },
+    "/v1/dossiers/{entiteId}/reanalyses-destinataire": {
+      "post": {
+        "description": "Niveau « révision » au moins. mode « simulation » : le worker relit les pièces sans rien écrire. mode « execution » : exige simulationId (simulation terminée du même dossier et de la même version de l’analyseur) ; crée une nouvelle version d’extraction par pièce changée. Le traitement est asynchrone (processus enfant isolé du worker) ; reprise sans doublon.",
+        "operationId": "DestinataireController_demander",
+        "parameters": [
+          {
+            "name": "entiteId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "simulation",
+                      "execution"
+                    ]
+                  },
+                  "motif": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 2000
+                  },
+                  "simulationId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                  }
+                },
+                "required": [
+                  "mode",
+                  "motif"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Demander une simulation, puis l’exécution, de la réanalyse du destinataire d’un lot de pièces (révision, 50 pièces au plus)",
+        "tags": [
+          "Destinataire des pièces"
+        ]
+      }
+    },
+    "/v1/reanalyses-destinataire/{id}": {
+      "get": {
+        "description": "Niveau « collaboration » au moins sur le dossier.",
+        "operationId": "DestinataireController_rapport",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Rapport d’une demande de réanalyse : décomptes et résultat pour chaque pièce (inchangée, destinataire trouvé, abstention motivée, erreur)",
+        "tags": [
+          "Destinataire des pièces"
+        ]
+      }
+    },
+    "/v1/reanalyses-destinataire/{id}/reprendre": {
+      "post": {
+        "description": "Sans effet sur une demande terminée. Les pièces déjà conclues ne sont jamais refaites.",
+        "operationId": "DestinataireController_reprendre",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Reprendre une demande de réanalyse interrompue (révision) : seules les pièces non terminées sont traitées, sans doublon",
+        "tags": [
+          "Destinataire des pièces"
+        ]
+      }
+    },
     "/v1/exercices/{id}/imports": {
       "get": {
         "operationId": "ComptabiliteController_imports",

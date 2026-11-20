@@ -1525,6 +1525,80 @@ export const liensFactures = pgTable(
   (t) => [uniqueIndex('liens_factures_unique').on(t.exerciceId, t.type, t.objet, t.cible), index('liens_factures_dossier').on(t.entiteId)],
 );
 
+// ───────────────────────────── Réanalyse explicite du destinataire (D-091) ─────────────────────────────
+
+/**
+ * Demande de réanalyse du destinataire des pièces d'un dossier dont l'extraction n'en porte pas encore la lecture
+ * (extractions antérieures à D-084). Déclenchée par une personne habilitée, JAMAIS automatiquement :
+ *  - `simulation` : le worker relit les pièces retenues SANS rien écrire dans les extractions ; l'aperçu dit combien
+ *    changeraient ;
+ *  - `execution` : ne peut être demandée qu'à partir d'une simulation terminée du même dossier et de la même version de
+ *    l'analyseur ; chaque pièce relue crée une NOUVELLE version d'extraction (les précédentes sont conservées).
+ * Aucune ligne n'est supprimée ; le lot est borné (`taille_lot`) ; le rapport par pièce est dans
+ * `reanalyses_destinataire_pieces`.
+ */
+export const reanalysesDestinataire = pgTable(
+  'reanalyses_destinataire',
+  {
+    id: id(),
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    entiteId: uuid('entite_id').notNull().references(() => entites.id),
+    /** simulation | execution */
+    mode: text('mode').notNull(),
+    simulationId: uuid('simulation_id').references((): AnyPgColumn => reanalysesDestinataire.id),
+    versionAnalyseur: text('version_analyseur').notNull(),
+    /** en_attente | en_cours | termine */
+    statut: text('statut').notNull().default('en_attente'),
+    tailleLot: integer('taille_lot').notNull(),
+    /** Raison de la demande, saisie par la personne (obligatoire). */
+    motif: text('motif').notNull(),
+    nbPieces: integer('nb_pieces').notNull().default(0),
+    /** Décomptes par résultat, renseignés à la fin du traitement. */
+    resume: jsonb('resume'),
+    demandePar: uuid('demande_par').notNull().references(() => utilisateurs.id),
+    creeLe: creeLe(),
+    /** Dernière activité du traitement : sert à la reprise d'un lot interrompu. */
+    majLe: horodatage('maj_le').notNull().defaultNow(),
+    termineLe: horodatage('termine_le'),
+  },
+  (t) => [uniqueIndex('reanalyses_destinataire_une_execution').on(t.simulationId).where(sql`mode = 'execution'`), index('reanalyses_destinataire_dossier').on(t.entiteId, t.creeLe)],
+);
+
+/** Rapport par pièce d'une réanalyse du destinataire. Une ligne par (lot, pièce) ; jamais supprimée. */
+export const reanalysesDestinatairePieces = pgTable(
+  'reanalyses_destinataire_pieces',
+  {
+    id: id(),
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    entiteId: uuid('entite_id').notNull().references(() => entites.id),
+    lotId: uuid('lot_id').notNull().references(() => reanalysesDestinataire.id),
+    documentId: uuid('document_id').notNull().references(() => documents.id),
+    /** Extraction en vigueur au moment de la sélection ; la réanalyse ne s'applique que si elle l'est encore. */
+    extractionAvantId: uuid('extraction_avant_id').notNull().references(() => extractions.id),
+    versionExtractionAvant: integer('version_extraction_avant').notNull(),
+    versionAnalyseur: text('version_analyseur').notNull(),
+    /** Vrai pour une exécution (la simulation n'écrit aucune extraction et n'empêche aucune exécution). */
+    execution: boolean('execution').notNull(),
+    /** en_attente | termine */
+    statut: text('statut').notNull().default('en_attente'),
+    /** inchangee | destinataire_trouve | abstention | erreur */
+    resultat: text('resultat'),
+    /** Motif en français : abstention de l'analyseur, raison d'une erreur, ou précision sur la pièce. */
+    motif: text('motif'),
+    extractionApresId: uuid('extraction_apres_id').references(() => extractions.id),
+    versionExtractionApres: integer('version_extraction_apres'),
+    /** Valeurs avant/après, désaccords avec la couche humaine, divergences des autres champs (jamais appliquées). */
+    detail: jsonb('detail'),
+    traiteLe: horodatage('traite_le'),
+  },
+  (t) => [
+    uniqueIndex('reanalyses_destinataire_pieces_unique').on(t.lotId, t.documentId),
+    // Idempotence garantie par la base : une pièce n'est jamais réanalysée deux fois avec la même version de l'analyseur.
+    uniqueIndex('reanalyses_destinataire_pieces_version').on(t.documentId, t.versionAnalyseur).where(sql`execution AND resultat IN ('destinataire_trouve', 'abstention')`),
+    index('reanalyses_destinataire_pieces_lot').on(t.lotId, t.statut),
+  ],
+);
+
 // ───────────────────────────── Notifications poussées discrètes ─────────────────────────────
 
 /**

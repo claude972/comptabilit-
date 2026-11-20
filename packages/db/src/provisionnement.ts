@@ -361,13 +361,13 @@ const CINQ_ANS = { duree: '5 ans', pointDeDepart: 'fin du contrat', fondement: '
  * `version`, que le procès-verbal reprend. Statut : proposition de travail, à valider (V8 de docs/risques.md).
  */
 export const POLITIQUE_FIN_DE_CONTRAT: { version: string; statut: string; delaiGraceJoursParDefaut: number; categories: readonly CategorieFinDeContrat[] } = {
-  version: '2026-11-19.4',
+  version: '2026-11-20.1',
   statut: 'proposée, non arrêtée — durées et fondements à valider par un professionnel du droit et un expert-comptable',
   delaiGraceJoursParDefaut: 90,
   categories: [
     { code: 'comptes_appartenances', libelle: 'Comptes : appartenances, habilitations, invitations', tables: ['appartenances', 'habilitations_dossier', 'invitations'], devenir: 'supprimer', note: 'Retire tout accès au cabinet. Les comptes eux-mêmes (table « utilisateurs », sans cabinet_id, et fournisseur d’identité) ne sont PAS supprimés par cette procédure : voir « horsTables ».' },
     { code: 'dossiers', libelle: 'Dossiers : entités, établissements, exercices', tables: ['entites', 'etablissements', 'exercices'], devenir: 'restituer_puis_supprimer' },
-    { code: 'pieces_fichiers', libelle: 'Pièces et fichiers : originaux, documents, réceptions, pages, extractions, échanges, téléversements, passages de recherche, factures extraites', tables: ['fichiers', 'documents', 'receptions', 'pages_document', 'extractions', 'echanges_document', 'televersements', 'passages_recherche', 'factures'], devenir: 'restituer_puis_supprimer', note: 'Les objets du stockage se suppriment par une étape séparée (objetsFinDeContrat).' },
+    { code: 'pieces_fichiers', libelle: 'Pièces et fichiers : originaux, documents, réceptions, pages, extractions, échanges, téléversements, passages de recherche, factures extraites, demandes de réanalyse du destinataire et leur rapport par pièce', tables: ['fichiers', 'documents', 'receptions', 'pages_document', 'extractions', 'echanges_document', 'televersements', 'passages_recherche', 'factures', 'reanalyses_destinataire', 'reanalyses_destinataire_pieces'], devenir: 'restituer_puis_supprimer', note: 'Les objets du stockage se suppriment par une étape séparée (objetsFinDeContrat).' },
     { code: 'ecritures_importees', libelle: 'Écritures importées : campagnes, lots d’import, lignes d’écriture', tables: ['campagnes_import', 'lots_import', 'lignes_ecriture'], devenir: 'restituer_puis_supprimer' },
     { code: 'banque', libelle: 'Relevés et mouvements bancaires, rapprochements', tables: ['releves_bancaires', 'mouvements_bancaires', 'mouvements_lots', 'executions_rapprochement', 'rapprochements'], devenir: 'restituer_puis_supprimer' },
     { code: 'controles_constats', libelle: 'Contrôles et constats, dossiers de révision', tables: ['executions_controles', 'resultats_controles', 'constats', 'exports_revision'], devenir: 'restituer_puis_supprimer' },

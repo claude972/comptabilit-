@@ -47,6 +47,26 @@
     "./base-jetable": {
       "types": "./dist/base-jetable.d.ts",
       "default": "./dist/base-jetable.js"
+    },
+    "./destruction-terme": {
+      "types": "./dist/destruction-terme.d.ts",
+      "default": "./dist/destruction-terme.js"
+    },
+    "./journal-fin-de-vie": {
+      "types": "./dist/journal-fin-de-vie.d.ts",
+      "default": "./dist/journal-fin-de-vie.js"
+    },
+    "./echeancier-conservation": {
+      "types": "./dist/echeancier-conservation.d.ts",
+      "default": "./dist/echeancier-conservation.js"
+    },
+    "./rapport-lisible": {
+      "types": "./dist/rapport-lisible.d.ts",
+      "default": "./dist/rapport-lisible.js"
+    },
+    "./peuplement-essai": {
+      "types": "./dist/peuplement-essai.d.ts",
+      "default": "./dist/peuplement-essai.js"
     }
   },
   "scripts": {

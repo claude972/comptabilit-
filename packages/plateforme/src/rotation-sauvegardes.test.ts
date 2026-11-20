@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { MARQUEUR_ESSAI, appliquerRotation, exigerRepertoireEssai, planifierRotation, preparerRepertoireEssai } from './rotation-sauvegardes.js';
+import { MARQUEUR_ESSAI, appliquerNettoyageObjets, appliquerRotation, exigerRepertoireEssai, jeuxContenantCabinet, planifierNettoyageObjets, planifierRotation, preparerRepertoireEssai } from './rotation-sauvegardes.js';
 
 const MAINTENANT = new Date('2026-12-01T12:00:00Z');
 let racine: string;
@@ -156,5 +156,115 @@ describe('exécution : répertoire d’essai marqué, jamais le répertoire rée
     // Le groupe interrompu en cours de retrait (anciens formats sans descripteur) n'est jamais classé « interrompu » à tort.
     expect(readdirSync(d).filter((x) => x.startsWith('comtaple-2026010'))).toEqual([]);
     expect(readFileSync(join(d, '.rotation.jsonl'), 'utf8').trim().split('\n').length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// ───────────────────────────── Dépôt d'objets adressés par empreinte (D-100) ─────────────────────────────
+
+const sha = (t: string) => createHash('sha256').update(t).digest('hex');
+function blob(d: string, contenu: string): string {
+  const h = sha(contenu);
+  mkdirSync(join(d, 'objets', h.slice(0, 2)), { recursive: true });
+  writeFileSync(join(d, 'objets', h.slice(0, 2), h), contenu);
+  return h;
+}
+function jeuAvecManifeste(d: string, id: string, objets: Array<{ cle: string; sha256: string }>): void {
+  for (const [s, c] of [['dump', 'd'], ['dump.sha256', 'x'], ['objets.json', JSON.stringify({ objets })], ['objets.json.sha256', 'x'], ['keycloak.json', '{}'], ['keycloak.json.sha256', 'x'], ['jeu.json', '{}']] as const) writeFileSync(join(d, `${id}.${s}`), c);
+}
+const CAB = '3d895835-a5cf-475c-b5e3-a2e0d16a5c3e';
+
+describe('nettoyage du dépôt d’objets : seuls les objets que plus aucun jeu conservé ne référence', () => {
+  it('le plan est en lecture seule ; il liste les orphelins, ignore ce qui n’a pas la forme d’un objet adressé', () => {
+    const d = join(racine, 'nettoyage-plan');
+    mkdirSync(d, { recursive: true });
+    const garde = blob(d, 'référencé');
+    const orph = blob(d, 'orphelin');
+    jeuAvecManifeste(d, 'comtaple-20261101-010101', [{ cle: `cabinets/${CAB}/a`, sha256: garde }]);
+    writeFileSync(join(d, 'objets', 'LISEZMOI.txt'), 'x');
+    writeFileSync(join(d, 'objets', garde.slice(0, 2), 'pas-un-objet'), 'x');
+    mkdirSync(join(d, 'objets', 'zz'), { recursive: true }); // dossier au nom étranger
+    const avant = empreinteDossier(d);
+    const plan = planifierNettoyageObjets(d);
+    expect(empreinteDossier(d)).toBe(avant);
+    expect(plan).toMatchObject({ manifestes: 1, references: 1, blobs: 2, bloque: null });
+    expect(plan.orphelins.fichiers.map((f) => f.chemin)).toEqual([`objets/${orph.slice(0, 2)}/${orph}`]);
+    expect(plan.nonReconnus.sort()).toEqual(['objets/LISEZMOI.txt', `objets/${garde.slice(0, 2)}/pas-un-objet`, 'objets/zz'].sort());
+  });
+
+  it('refuse de déclarer un orphelin si un manifeste est illisible ou si une sauvegarde est en cours ou interrompue', () => {
+    const d = join(racine, 'nettoyage-bloque');
+    mkdirSync(d, { recursive: true });
+    blob(d, 'x');
+    jeuAvecManifeste(d, 'comtaple-20261101-010101', []);
+    writeFileSync(join(d, 'comtaple-20261101-010101.objets.json'), '{ pas du json');
+    expect(planifierNettoyageObjets(d).bloque).toMatch(/manifeste illisible/);
+    writeFileSync(join(d, 'comtaple-20261101-010101.objets.json'), JSON.stringify({ objets: [] }));
+    expect(planifierNettoyageObjets(d).bloque).toBeNull();
+    writeFileSync(join(d, 'comtaple-20261102-010101.en-cours'), '');
+    expect(planifierNettoyageObjets(d).bloque).toMatch(/sauvegarde en cours ou interrompue/);
+    preparerRepertoireEssai(d);
+    expect(() => appliquerNettoyageObjets(d, join(racine, 'reel-inexistant'))).toThrow(/Nettoyage des objets refusé/);
+    expect(blobsDe(d)).toHaveLength(1);
+  });
+
+  it('l’exécution est refusée hors répertoire d’essai marqué ; dans un répertoire d’essai, elle est reprenable et idempotente', () => {
+    const d = join(racine, 'nettoyage-exec');
+    mkdirSync(d, { recursive: true });
+    const garde = blob(d, 'référencé');
+    const o1 = blob(d, 'orphelin 1');
+    const o2 = blob(d, 'orphelin 2');
+    jeuAvecManifeste(d, 'comtaple-20261101-010101', [{ cle: 'x', sha256: garde }]);
+    expect(() => appliquerNettoyageObjets(d, join(racine, 'reel-inexistant'))).toThrow(/n’est pas déclaré répertoire d’essai/);
+    expect(blobsDe(d)).toHaveLength(3);
+    preparerRepertoireEssai(d);
+    expect(() => appliquerNettoyageObjets(d, d)).toThrow(/répertoire des sauvegardes réelles/);
+    let n = 0;
+    expect(() => appliquerNettoyageObjets(d, join(racine, 'reel-inexistant'), { apresFichier: () => { if (++n === 1) throw new Error('interruption simulée'); } })).toThrow(/interruption simulée/);
+    expect(blobsDe(d)).toHaveLength(2); // un orphelin supprimé, l'autre pas encore
+    const r = appliquerNettoyageObjets(d, join(racine, 'reel-inexistant'));
+    expect(r.supprimes).toBe(1);
+    expect(blobsDe(d)).toEqual([garde]);
+    expect(appliquerNettoyageObjets(d, join(racine, 'reel-inexistant'))).toMatchObject({ supprimes: 0, octetsLiberes: 0 });
+    expect(existsSync(join(d, 'objets', o1.slice(0, 2), o1)) || existsSync(join(d, 'objets', o2.slice(0, 2), o2))).toBe(false);
+  });
+
+  it('un sous-dossier qui est un lien symbolique n’est jamais suivi', () => {
+    const d = join(racine, 'nettoyage-lien');
+    const dehors = join(racine, 'dehors');
+    mkdirSync(join(d, 'objets'), { recursive: true });
+    mkdirSync(dehors, { recursive: true });
+    const h = sha('hors dépôt');
+    writeFileSync(join(dehors, h), 'ne pas supprimer');
+    symlinkSync(dehors, join(d, 'objets', h.slice(0, 2)));
+    jeuAvecManifeste(d, 'comtaple-20261101-010101', []);
+    preparerRepertoireEssai(d);
+    const plan = planifierNettoyageObjets(d);
+    expect(plan.orphelins.fichiers).toEqual([]);
+    expect(plan.nonReconnus).toEqual([`objets/${h.slice(0, 2)}`]);
+    expect(appliquerNettoyageObjets(d, join(racine, 'reel-inexistant')).supprimes).toBe(0);
+    expect(existsSync(join(dehors, h))).toBe(true);
+  });
+});
+
+function blobsDe(d: string): string[] {
+  return readdirSync(join(d, 'objets'), { withFileTypes: true }).filter((e) => e.isDirectory() && e.name.length === 2).flatMap((e) => readdirSync(join(d, 'objets', e.name)).filter((n) => /^[0-9a-f]{64}$/.test(n))).sort();
+}
+
+describe('jeux contenant encore des données d’un cabinet dont le contrat est terminé', () => {
+  it('compte les jeux antérieurs au pivot, ceux dont le manifeste cite le cabinet et les jeux interrompus ; pas les jeux propres', () => {
+    const d = join(racine, 'contenant');
+    mkdirSync(d, { recursive: true });
+    const pivot = new Date('2026-11-20T12:00:00Z');
+    jeuAvecManifeste(d, 'comtaple-20261101-010101', [{ cle: `cabinets/${CAB}/a`, sha256: sha('a') }]); // avant le pivot
+    jeuAvecManifeste(d, 'comtaple-20261125-010101', [{ cle: `cabinets/${CAB}/a`, sha256: sha('a') }]); // après, mais le manifeste cite encore le cabinet
+    jeuAvecManifeste(d, 'comtaple-20261126-010101', [{ cle: 'cabinets/autre/a', sha256: sha('b') }]); // propre
+    jeuAvecManifeste(d, 'comtaple-20261121-010101', []); // dans la marge d'un jour : compté par prudence
+    writeFileSync(join(d, 'comtaple-20261127-010101.dump'), 'partiel');
+    writeFileSync(join(d, 'comtaple-20261127-010101.en-cours'), '');
+    const c = jeuxContenantCabinet(d, CAB, pivot);
+    expect(c.map((x) => x.id).sort()).toEqual(['comtaple-20261101-010101', 'comtaple-20261121-010101', 'comtaple-20261125-010101', 'comtaple-20261127-010101']);
+    expect(c.find((x) => x.id === 'comtaple-20261125-010101')!.raison).toMatch(/manifeste d’objets cite encore/);
+    expect(c.find((x) => x.id === 'comtaple-20261127-010101')!.raison).toMatch(/interrompue/);
+    expect(jeuxContenantCabinet(d, 'autre-cabinet', pivot).map((x) => x.id).sort()).toEqual(['comtaple-20261101-010101', 'comtaple-20261121-010101', 'comtaple-20261127-010101']);
   });
 });

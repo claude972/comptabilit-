@@ -176,9 +176,10 @@ export interface RapportFiches { traitees: Array<{ utilisateurId: string; action
  * celle qui reste référencée (e-mail, nom et sujet OIDC remplacés ; l'identifiant demeure). Une transaction par fiche ;
  * idempotente (une fiche déjà pseudonymisée n'est pas refaite). Ne touche à aucune fiche ayant une appartenance.
  */
-export async function appliquerFichesOrphelinesEssai(client: pg.ClientBase, p: { appliquer: boolean; limite?: number; env?: NodeJS.ProcessEnv }): Promise<RapportFiches> {
+export async function appliquerFichesOrphelinesEssai(client: pg.ClientBase, p: { appliquer: boolean; limite?: number; env?: NodeJS.ProcessEnv; /** Ne traite que ces fiches (celles du plan d'un cabinet) : les autres fiches sans appartenance restent intactes. */ seulement?: readonly string[] }): Promise<RapportFiches> {
   await exigerBaseEssai(client, p.env);
   const plan = await planFichesOrphelines(client);
+  if (p.seulement) plan.fiches = plan.fiches.filter((f) => p.seulement!.includes(f.utilisateurId));
   const rapport: RapportFiches = { traitees: [], supprimees: 0, pseudonymisees: 0, dejaPseudonymisees: 0 };
   if (!p.appliquer) return rapport;
   for (const f of plan.fiches.slice(0, p.limite ?? plan.fiches.length)) {

@@ -150,7 +150,7 @@ Lecture des colonnes :
 | Journal en ajout seul, intégrité, archivage protégé | Journal chaîné ; ancres préparées | Tests | Destination indépendante **(externe)** ; Object Lock **(externe)** |
 | Documents RGPD et réglementaires | `docs/juridique/` (projets) | Documents | Validation DPO / avocat **(externe)** |
 | Abonnements complets, virement, historique, exports de facturation | Moteur, API, outil éditeur, export des éléments de facturation | Tests | Grille tarifaire réelle **(externe)** |
-| Restitution complète et devenir des données | Restitutions dossier et cabinet ; `conservation.md` | Tests | Durées à arrêter **(externe)** ; purge effective non activée tant que les durées ne sont pas arrêtées |
+| Restitution complète et devenir des données | Restitutions dossier et cabinet ; cycle complet de conservation et de fin de contrat IMPLÉMENTÉ MAIS DÉSACTIVÉ (échéances, reprise, objets, comptes, sauvegardes, éléments conservés détruits à terme, journal scellé puis détruit sur décision humaine, clôture avec certificat) ; `conservation.md`, D-100 | Tests, dont un cycle de bout en bout sur ressources JETABLES (base, bucket S3 d'essai, royaume Keycloak d'essai, répertoire de sauvegardes d'essai) | Durées à arrêter **(externe)** ; AUCUNE exécution réelle écrite ni activée : base locale, bucket des données, royaume réel, sauvegardes réelles et journal réel intacts ; décision à prendre sur la destruction du journal en production (protections d'ajout seul) et sur le sort de l'export scellé (DPO) |
 
 ## §17 — Qualité, exploitation, tests
 

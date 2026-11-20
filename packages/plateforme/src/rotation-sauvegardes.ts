@@ -9,7 +9,8 @@
  *  - Un jeu INTERROMPU (marqueur `.en-cours`, ou base sans somme de contrôle) n'est jamais retiré : « à examiner ».
  *  - Les `jeuxMinimumConserves` jeux complets les plus récents sont toujours conservés, quel que soit leur âge.
  *  - Ne supprime que des fichiers dont le nom appartient à un groupe identifié ; ni lien symbolique, ni sous-dossier.
- *  - Le dépôt d'objets adressés par empreinte (`objets/`) n'est PAS touché : son nettoyage n'est pas conçu.
+ *  - Le dépôt d'objets adressés par empreinte (`objets/`) n'est touché que par `appliquerNettoyageObjets` (D-100) : seuls les
+ *    fichiers qu'AUCUN manifeste de jeu conservé ne référence plus, jamais en présence d'une sauvegarde interrompue.
  */
 import { randomUUID } from 'node:crypto';
 import { appendFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -182,4 +183,130 @@ export function appliquerRotation(repertoire: string, repertoireReel: string, p:
     rapport.octetsLiberes += o;
   }
   return rapport;
+}
+
+// ───────────────────────────── Dépôt d'objets adressés par empreinte (D-100) ─────────────────────────────
+
+const MOTIF_BLOB = /^[0-9a-f]{64}$/;
+const MOTIF_MANIFESTE = /^(comtaple-\d{8}-\d{6})\.objets\.json$/;
+const JOURNAL_NETTOYAGE = '.nettoyage-objets.jsonl';
+
+export interface PlanNettoyageObjets {
+  format: 'comtaple.plan-nettoyage-objets/1';
+  repertoire: string;
+  manifestes: number;
+  /** Empreintes référencées par au moins un manifeste de jeu conservé. */
+  references: number;
+  blobs: number;
+  octets: number;
+  orphelins: { fichiers: Array<{ chemin: string; octets: number }>; octets: number };
+  /** Fichiers de `objets/` qui n'ont pas la forme d'un objet adressé : jamais touchés. */
+  nonReconnus: string[];
+  /** Raison pour laquelle aucun nettoyage ne doit avoir lieu (manifeste illisible, sauvegarde interrompue) ; null sinon. */
+  bloque: string | null;
+}
+
+/**
+ * Plan de nettoyage du dépôt `objets/` : quels fichiers ne sont plus référencés par AUCUN manifeste (`*.objets.json`) de
+ * jeu présent. Lecture seule. Un jeu retiré par la rotation laisse ses objets orphelins ; c'est ce nettoyage qui les efface
+ * (y compris les pièces d'un cabinet dont le contrat est terminé). Bloqué par prudence si un manifeste est illisible ou si
+ * une sauvegarde est interrompue ou en cours (ses objets peuvent précéder son manifeste).
+ */
+export function planifierNettoyageObjets(repertoire: string): PlanNettoyageObjets {
+  const references = new Set<string>();
+  let manifestes = 0;
+  let bloque: string | null = null;
+  for (const nom of readdirSync(repertoire)) {
+    if (nom.endsWith('.en-cours')) bloque ??= `sauvegarde en cours ou interrompue (${nom}) : ses objets peuvent précéder son manifeste`;
+    if (!MOTIF_MANIFESTE.test(nom)) continue;
+    manifestes++;
+    try {
+      const m = JSON.parse(readFileSync(join(repertoire, nom), 'utf8')) as { objets?: Array<{ sha256?: string }> };
+      if (!Array.isArray(m.objets)) throw new Error('sans liste d’objets');
+      for (const o of m.objets) if (typeof o.sha256 === 'string') references.add(o.sha256);
+    } catch (e) {
+      bloque ??= `manifeste illisible (${nom} : ${(e as Error).message}) : aucun objet ne peut être déclaré orphelin`;
+    }
+  }
+  // Un jeu interrompu sans « .en-cours » : dump sans manifeste ni descripteur.
+  for (const g of planifierRotation(repertoire, { retentionJours: 1, jeuxMinimumConserves: 1 }).groupes) if (g.type === 'interrompu') bloque ??= `sauvegarde interrompue (${g.id}) : à examiner avant tout nettoyage`;
+  const racine = join(repertoire, 'objets');
+  const orphelins: Array<{ chemin: string; octets: number }> = [];
+  const nonReconnus: string[] = [];
+  let blobs = 0;
+  let octets = 0;
+  if (existsSync(racine)) {
+    for (const d of readdirSync(racine)) {
+      const dossier = join(racine, d);
+      if (!/^[0-9a-f]{2}$/.test(d) || !lstatSync(dossier).isDirectory()) {
+        nonReconnus.push(`objets/${d}`);
+        continue;
+      }
+      for (const f of readdirSync(dossier)) {
+        const st = lstatSync(join(dossier, f));
+        if (!MOTIF_BLOB.test(f) || !f.startsWith(d) || !st.isFile()) {
+          nonReconnus.push(`objets/${d}/${f}`);
+          continue;
+        }
+        blobs++;
+        octets += st.size;
+        if (!references.has(f)) orphelins.push({ chemin: `objets/${d}/${f}`, octets: st.size });
+      }
+    }
+  }
+  return { format: 'comtaple.plan-nettoyage-objets/1', repertoire, manifestes, references: references.size, blobs, octets, orphelins: { fichiers: orphelins, octets: orphelins.reduce((s, o) => s + o.octets, 0) }, nonReconnus, bloque };
+}
+
+export interface RapportNettoyageObjets { supprimes: number; octetsLiberes: number; dejaAbsents: number }
+
+/** Supprime les objets orphelins d'un répertoire d'ESSAI (mêmes garde-fous que `appliquerRotation`). Idempotente, reprenable. */
+export function appliquerNettoyageObjets(repertoire: string, repertoireReel: string, p: { apresFichier?: (chemin: string) => void } = {}): RapportNettoyageObjets {
+  exigerRepertoireEssai(repertoire, repertoireReel);
+  const plan = planifierNettoyageObjets(repertoire);
+  if (plan.bloque) throw new Error(`Nettoyage des objets refusé : ${plan.bloque}.`);
+  const rapport: RapportNettoyageObjets = { supprimes: 0, octetsLiberes: 0, dejaAbsents: 0 };
+  const racine = realpathSync(join(repertoire, 'objets'));
+  for (const o of plan.orphelins.fichiers) {
+    const chemin = join(repertoire, o.chemin);
+    if (!existsSync(chemin)) {
+      rapport.dejaAbsents++;
+      continue;
+    }
+    if (realpathSync(chemin) !== join(racine, o.chemin.split('/')[1]!, o.chemin.split('/')[2]!) || !MOTIF_BLOB.test(o.chemin.split('/')[2]!)) throw new Error(`Refus : « ${o.chemin} » n'est pas un objet adressé du dépôt.`);
+    if (!lstatSync(chemin).isFile()) throw new Error(`Refus : « ${o.chemin} » n'est pas un fichier ordinaire.`);
+    unlinkSync(chemin);
+    appendFileSync(join(repertoire, JOURNAL_NETTOYAGE), `${JSON.stringify({ chemin: o.chemin, octets: o.octets, le: new Date().toISOString() })}\n`);
+    rapport.supprimes++;
+    rapport.octetsLiberes += o.octets;
+    p.apresFichier?.(o.chemin);
+  }
+  return rapport;
+}
+
+export interface JeuContenantCabinet { id: string; type: TypeGroupe; raison: string }
+/**
+ * Jeux de sauvegarde (et exports Keycloak) qui contiennent ENCORE des données d'un cabinet dont le contrat est terminé :
+ * antérieurs à `pivot` (fin de contrat, suppression des objets, fermeture des comptes : le plus tardif), ou dont le manifeste
+ * d'objets cite encore des clés du cabinet, ou interrompus (contenu inconnu : compté par prudence).
+ */
+export function jeuxContenantCabinet(repertoire: string, cabinetId: string, pivot: Date): JeuContenantCabinet[] {
+  const marge = 86_400_000; // l'identifiant d'un jeu est une heure locale lue comme UTC : un jour de marge
+  const plan = planifierRotation(repertoire, { retentionJours: 1, jeuxMinimumConserves: 1 });
+  const res: JeuContenantCabinet[] = [];
+  for (const g of plan.groupes) {
+    if (g.type === 'interrompu') {
+      res.push({ id: g.id, type: g.type, raison: 'sauvegarde interrompue : contenu inconnu, à examiner' });
+      continue;
+    }
+    if (new Date(g.date).getTime() <= pivot.getTime() + marge) {
+      res.push({ id: g.id, type: g.type, raison: 'créé avant ou au moment de la fin de contrat, de la suppression des objets ou de la fermeture des comptes' });
+      continue;
+    }
+    const manifeste = join(repertoire, `${g.id}.objets.json`);
+    if (existsSync(manifeste)) {
+      const t = readFileSync(manifeste, 'utf8');
+      if (t.includes(`cabinets/${cabinetId}/`) || t.includes(`tmp/${cabinetId}/`)) res.push({ id: g.id, type: g.type, raison: 'son manifeste d’objets cite encore des clés du cabinet' });
+    }
+  }
+  return res;
 }

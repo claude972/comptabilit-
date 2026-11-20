@@ -4,7 +4,8 @@
  *
  *   node scripts/sauvegardes-rotation.mjs [--repertoire=<dossier>] [--retention=<jours>] [--minimum=<jeux>] [--durees=<fichier.json>]
  *       Liste, en lecture seule, ce qui serait CONSERVÉ, RETIRÉ ou laissé À EXAMINER. Par défaut : var/sauvegardes, rétention et
- *       minimum du jeu de durées (PROPOSITION NON VALIDÉE à défaut de « --durees »). Ne supprime RIEN.
+ *       minimum du jeu de durées (PROPOSITION NON VALIDÉE à défaut de « --durees »). Ne supprime RIEN. Indique aussi le nombre d'objets
+ *       orphelins du dépôt `objets/` (D-100).
  *
  * L'exécution (`appliquerRotation`, packages/plateforme/src/rotation-sauvegardes.ts) n'est pas branchée ici : elle n'existe que
  * pour un répertoire d'ESSAI créé par un test (marqueur posé par le test, répertoire distinct du répertoire réel). Aucune
@@ -16,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 const racine = join(dirname(fileURLToPath(import.meta.url)), '..');
 const { chargerParametres } = await import('../packages/db/dist/durees-conservation.js');
 const { POLITIQUE_FIN_DE_CONTRAT } = await import('../packages/db/dist/provisionnement.js');
-const { planifierRotation } = await import('../packages/plateforme/dist/rotation-sauvegardes.js');
+const { planifierRotation, planifierNettoyageObjets } = await import('../packages/plateforme/dist/rotation-sauvegardes.js');
 
 const args = process.argv.slice(2);
 const option = (nom) => args.find((x) => x.startsWith(`--${nom}=`))?.slice(nom.length + 3);
@@ -35,7 +36,11 @@ try {
   const mo = (o) => `${(o / 2 ** 20).toFixed(1)} Mio`;
   console.log(`À retirer si la rotation s'exécutait : ${plan.aRetirer.groupes} groupe(s), ${plan.aRetirer.fichiers} fichier(s), ${mo(plan.aRetirer.octets)}.`);
   if (plan.nonReconnus.length) console.log(`Fichiers non reconnus (jamais touchés) : ${plan.nonReconnus.join(', ')}`);
-  console.log('SIMULATION : rien n’a été supprimé. Le dépôt d’objets adressés par empreinte (objets/) n’est pas concerné : son nettoyage n’est pas conçu.');
+  // Nettoyage du dépôt d'objets adressés (D-100) : ce que la rotation ci-dessus laisserait sans référence. Lecture seule.
+  const net = planifierNettoyageObjets(repertoire);
+  if (net.bloque) console.log(`Dépôt d'objets (objets/) : nettoyage BLOQUÉ — ${net.bloque}.`);
+  else console.log(`Dépôt d'objets (objets/) : ${net.blobs} objet(s), ${net.references} référencé(s) par ${net.manifestes} manifeste(s) ; ${net.orphelins.fichiers.length} orphelin(s) (${mo(net.orphelins.octets)}) dès AUJOURD'HUI, hors rotation. Après la rotation ci-dessus, d'autres deviendraient orphelins (les jeux retirés ne les référencent plus).`);
+  console.log('SIMULATION : rien n’a été supprimé, ni jeu, ni objet.');
 } catch (e) {
   console.error(`Échec : ${e.message}`);
   process.exitCode = 1;

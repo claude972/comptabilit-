@@ -119,14 +119,14 @@ Ce que fait la fonction : refuse sans confirmation (identifiant et nom), sans pr
 
 `packages/plateforme/src/rotation-sauvegardes.ts`, `node scripts/sauvegardes-rotation.mjs [--retention=<jours>] [--minimum=<jeux>] [--durees=<fichier>]` : SIMULATION par défaut (liste de ce qui serait conservé, retiré ou laissé à examiner). Les `jeuxMinimumConserves` jeux complets les plus récents sont toujours conservés ; un jeu interrompu n'est jamais retiré (« à examiner ») ; ni `objets/` (dépôt adressé par empreinte : son nettoyage n'est pas conçu) ni un fichier étranger n'est touché. L'exécution (`appliquerRotation`) n'existe que pour un répertoire d'essai portant un marqueur posé par le test, distinct du répertoire réel (ni le même, ni dedans, ni le contenant, liens symboliques résolus) ; l'outil en ligne de commande n'en propose aucune. Aucune sauvegarde existante n'a été retirée ; la simulation sur `var/sauvegardes` rend, avec la rétention proposée, « rien à retirer » (tout date de moins de 90 jours).
 
-### Fin de vie du journal et des éléments conservés (conception, D-099)
+### Fin de vie du journal et des éléments conservés (conception D-099, exécution sur ressources d'essai D-100)
 
-Conception écrite ; **simulation seulement** (`editeur.mjs journal-fin-de-vie`, `simulerFinDeVieJournal`), aucun traitement exécutable.
+Conception écrite (D-099) ; **simulation** sur toute base (`editeur.mjs journal-fin-de-vie`, `simulerFinDeVieJournal`) ; **scellement** exécutable (il n'écrit que des fichiers) ; **destruction exercée sur base d'essai seulement** (section « Cycle complet » ci-dessous, D-100).
 
 1. **Le journal n'est jamais réécrit ni purgé** par un traitement : sa chaîne d'empreintes rend toute altération détectable, et sa suppression exigerait de désactiver ses protections d'ajout seul, ce que rien ne distinguerait d'une altération.
 2. **Échéance paramétrable** : règle `journal_audit` du jeu de paramètres (durée, point de départ « événement » = l'horodatage de chaque ligne ; proposée 3652 jours, la plus longue du double régime). À l'échéance, l'action « sceller » : vérification stricte, export final vérifiable hors base (`comtaple.journal-export/1`), ancre finale chaînée à la précédente, dépôt de l'export et de l'ancre HORS de portée de l'administrateur de la base **(externe : aucune destination indépendante n'existe)**, puis revue humaine documentée : prolonger, ou détruire le journal de ce cabinet par une procédure distincte, jamais automatique.
 3. **Données personnelles** : elles ne doivent pas être dans les lignes (qu'on ne peut réécrire) mais dans les tables modifiables. Les lignes désignent des personnes par `acteur_id` (sans clé étrangère) : la pseudonymisation de la fiche `utilisateurs` rompt le lien sans toucher une ligne. **La simulation révèle des lignes qui contiennent une adresse de courriel** (par exemple l'invitation d'un membre) : elles subsistent telles quelles. Deux voies, à arbitrer avec le DPO : ne plus écrire d'adresse dans les détails du journal (changement de code futur, ne corrige pas l'existant), ou consigner que ces lignes se conservent jusqu'à l'échéance. Rien n'est décidé.
-4. **Éléments conservés** (facturation, restitutions du cabinet, politiques déclarées, procès-verbaux) : règle par catégorie ; à l'échéance, « supprimer » (aucun traitement ne l'exécute : à concevoir avec la même exigence de simulation, rapport et reprise que ci-dessus). Les procès-verbaux portent le nom du cabinet : leur pseudonymisation n'est pas prévue (le nom d'un cabinet est une donnée de personne morale, parfois d'un exercice individuel : à arbitrer).
+4. **Éléments conservés** (facturation, restitutions du cabinet, politiques déclarées, traces d'IA anonymisées, procès-verbaux) : règle par catégorie ; à l'échéance, « supprimer » : `detruireElementsConservesEssai` (D-100), avec simulation, rapport et reprise, sur base d'essai seulement. Les procès-verbaux portent le nom du cabinet : leur pseudonymisation n'est pas prévue (le nom d'un cabinet est une donnée de personne morale, parfois d'un exercice individuel : à arbitrer).
 5. **Ancres** : l'ancre n'a de valeur que conservée hors de portée de qui administre la base. La simulation n'en dépose aucune.
 
 ### Ce qui est réellement exercé
@@ -140,7 +140,10 @@ Conception écrite ; **simulation seulement** (`editeur.mjs journal-fin-de-vie`,
 | Comptes Keycloak | Exercés contre un royaume d'essai créé puis supprimé par le test ; le royaume de développement n'est que lu (nombre de comptes avant et après) |
 | Fiches orphelines | Exercées sur base d'essai uniquement |
 | Rotation des sauvegardes | Exercée sur un répertoire d'essai créé par le test ; simulation seule sur `var/sauvegardes` (rien n'a été retiré) |
-| Fin de vie du journal et des éléments conservés | Conception et simulation seulement |
+| Fin de vie du journal | Simulation (toute base) ; scellement (export + ancre, fichiers seulement) ; destruction, sur décision humaine, **sur base d'essai uniquement** (D-100) |
+| Éléments conservés à terme (traces d'IA, facturation, restitutions du cabinet, politiques), procès-verbal, ligne du cabinet | Exercés sur base d'essai avec échéances avancées par `aujourdhui`, interruption, reprise, idempotence, certificat de destruction (D-100). **Jamais sur la base locale** |
+| Nettoyage du dépôt d'objets des sauvegardes (`objets/`) | Simulation sur `var/sauvegardes` (bloquée par la sauvegarde interrompue) ; exécution sur répertoire d'essai (D-100) |
+| Cycle enchaîné à état persistant (dix étapes) | Exercé de bout en bout sur ressources d'essai réelles (base, bucket S3 versionné avec Object Lock, royaume Keycloak, répertoire de sauvegardes) : arrêt brutal, reprise, attente de chaque échéance (D-100). Aucun lanceur dans l'outil de l'éditeur |
 | Volume réel | MESURÉ sur base jetable : 50 dossiers, 500 001 lignes d'écriture, 580 220 lignes au total pour le cabinet : transaction de 7,8 s (voir « Mesure de la transaction ») |
 | Durées, délai de grâce | Paramétrables ; valeurs proposées, **non validées** ; validation juridique externe |
 
@@ -160,6 +163,53 @@ Essai `packages/db/src/mesure-fin-de-contrat.itest.ts` (activé par `MESURE_FIN_
 | Vérification stricte du journal après coup | intègre ; 57 ms pour 20 003 lignes |
 
 **Limites de cette mesure** : une seule exécution, sur un poste de développement et une VM, aucune autre charge ; données synthétiques uniformes (50 dossiers identiques, pas de pièces volumineuses, pas de lignes très larges) ; les objets du stockage ne sont pas comptés (étape séparée) ; les index et tables supprimés laissent des lignes mortes que seul l'aspirateur automatique récupérera (non mesuré) ; la durée d'un cabinet de plusieurs millions de lignes ou d'une base managée n'est pas extrapolable. **Constat de conception, établi par un essai** : une ligne ajoutée au journal du cabinet par une AUTRE session pendant l'exécution (le journal n'est pas verrouillé par la transaction) fait tout annuler — le contrôle des décomptes après suppression échoue et la transaction est annulée sans effet ; la reprise exige alors une nouvelle restitution si l'action écrite modifie des données. En exploitation : n'exécuter que sur un cabinet dont l'abonnement est résilié depuis le délai de grâce, donc sans activité (c'est déjà une pré-condition).
+
+## Cycle complet de conservation et de fin de contrat (D-100, lot P2)
+
+Cette section rassemble l'état réel du cycle. Tout ce qui est « exercé » l'a été sur des ressources créées puis détruites par les tests ; **rien n'est exécutable contre les données existantes**, et rien n'est activé : chaque exécution exige une ressource déclarée d'essai, la référence de validation des durées et la confirmation du cabinet. Les durées restent celles de la proposition non validée, ou des durées d'essai de quelques jours dans les tests.
+
+### État des lieux (mécanisme, existence, preuve, lacune)
+
+| Mécanisme | Existe | Prouvé | Lacune constatée au départ, et suite |
+|---|---|---|---|
+| Durées et délai de grâce paramétrables, référence de validation | Oui (D-099) | 10 + 10 essais | Aucune (la validation reste formelle) |
+| Simulation par cabinet, table par table | Oui (D-099) | Oui | Rendu en tableaux seulement : rapport en français ajouté (`rapport-lisible.ts`, `conservation-rapport`) |
+| Échéancier tous cabinets | Non | — | **Ajouté** (`echeancier-conservation.ts`, `editeur.mjs echeancier`), lecture seule, lancé sur la base réelle |
+| Fin de contrat en base (huit pré-conditions, transaction, procès-verbal) | Oui (D-078, D-099) | 32 essais + mesure 580 220 lignes | Aucune ; exécutée dans le cycle |
+| Suppression des objets du stockage | Sur stockage d'essai (D-099) | 6 essais, Object Lock gouvernance | Aucune enchaînement ni attente du verrou dans un cycle : **ajoutés** |
+| Comptes du fournisseur d'identité | Sur royaume d'essai (D-099) | 2 essais | Plan à enregistrer à la main avant la fin de contrat : **conservé dans l'état du cycle** ; fiches traitées globalement : **filtre `seulement`** |
+| Rotation des sauvegardes | Sur répertoire d'essai (D-099) | Oui | Aucun constat qu'une sauvegarde ne contient plus le cabinet : **`jeuxContenantCabinet`** |
+| Dépôt d'objets des sauvegardes (`objets/`) | Non conçu (D-099) | — | **Ajouté** : plan, exécution d'essai, blocage si sauvegarde interrompue ; les pièces d'un cabinet résilié restaient sinon indéfiniment |
+| Destruction à terme (traces d'IA, facturation, restitutions du cabinet, politiques) | Non | — | **Ajoutée** (`destruction-terme.ts`) |
+| Journal : simulation | Oui (D-099) | Oui | — |
+| Journal : scellement (export, ancre), vérification hors base | Format et vérification (ancre-journal) ; pas de scellement de fin de vie | Vérification hors base : tests existants | **Scellement exécutable ajouté** (`journal-fin-de-vie.ts`) |
+| Journal : destruction | Non | — | **Ajoutée**, base d'essai seulement, décision humaine obligatoire |
+| Procès-verbal et ligne du cabinet à terme, certificat | Non | — | **Ajoutés** (`cloturerCabinetEssai`) |
+| Enchaînement, état, reprise, attente d'échéance | Non (étapes séparées) | — | **Ajoutés** (`cycle-fin-de-vie.ts`) |
+| Exécution réelle (base locale, bucket des données, royaume réel, sauvegardes réelles) | Non, volontairement | — | **Reste non écrite** : durées non validées, décision sur les protections d'ajout seul |
+
+### Destruction à terme des éléments conservés
+
+`node scripts/editeur.mjs destruction-terme <cabinetId> [--durees=…] [--aujourdhui=AAAA-MM-JJ]` SIMULE (lecture seule) ; l'exécution (`detruireElementsConservesEssai`) n'existe que pour une base d'essai. Catégories, dans l'ordre : traces d'IA anonymisées, abonnement et facturation, restitutions du cabinet, politiques déclarées ; puis, par leur propre procédure, le journal, puis le procès-verbal et la ligne du cabinet. L'échéance est calculée par LIGNE selon la règle de la catégorie. Une transaction par catégorie, une ligne `conservation.destruction_terme` au journal, un rapport JSON par table et par passage. Une ligne parente n'est jamais détruite tant qu'une ligne enfant non échue la référence.
+
+### Journal : scellement, décision humaine, destruction
+
+1. `editeur.mjs journal-sceller <cabinetId> --sortie=<dossier>` : vérification stricte (refus en cas de rupture), export JSONL et ancre chaînée, manifeste ; ne modifie pas la base. `journal-verifier-scellement` revérifie sans base. **Une ancre déposée sur le même poste ne prouve rien contre un administrateur** : le dépôt hors de portée reste externe.
+2. Destruction (`detruireJournalEssai`, base d'essai) : décision humaine documentée obligatoire, journal entier échu, scellement vérifié hors base et encore exact. Toute écriture au journal après le scellement le périme : il faut resceller (le cycle le fait).
+3. **L'export scellé est la seule trace qui reste du journal détruit et contient les adresses de courriel du journal.** Sa conservation, son lieu et sa destruction sont une décision du DPO, non prise.
+4. Limite d'exploitation : la destruction neutralise les déclencheurs d'ajout seul sous verrou exclusif de `journal_audit` ; sur une base partagée elle suspendrait l'écriture du journal de tous les cabinets. D'où l'absence d'exécution réelle (décision à prendre : fonction dédiée à privilèges bornés, fenêtre de maintenance ou journal scindé).
+
+### Clôture et certificat de destruction
+
+`cloturerCabinetEssai` : procès-verbal échu, toutes les autres tables du cabinet vides, certificat (`comtaple.certificat-destruction/1`, empreinte recalculable) écrit hors base AVANT la suppression du procès-verbal et de la ligne du cabinet ; reprise après interruption sans réécrire le certificat. Le certificat contient le nom du cabinet (à remettre à lui) ; il ne vaut pas validation juridique des durées appliquées.
+
+### Sauvegardes : rotation, dépôt d'objets, constat
+
+`node scripts/sauvegardes-rotation.mjs` rapporte aussi le dépôt d'objets (simulation). Sur répertoire d'essai : rotation, puis nettoyage des objets que plus aucun manifeste ne référence (bloqué par prudence si un manifeste est illisible ou si une sauvegarde est interrompue : ce qui est le cas de `var/sauvegardes` aujourd'hui, à examiner par une personne), puis constat `jeuxContenantCabinet` : l'étape « sauvegardes » du cycle reste en attente tant qu'un jeu postérieur à la fin de contrat, aux objets et aux comptes ne remplace pas ceux qui contiennent le cabinet. Les `jeuxMinimumConserves` plus récents sont toujours conservés : un cabinet résilié peut donc subsister dans un jeu protégé par ce minimum jusqu'à la sauvegarde suivante.
+
+### Cycle à état persistant
+
+`avancerCycle` (`packages/plateforme/src/cycle-fin-de-vie.ts`, essais seulement) : plan des comptes, base, objets, identité, fiches, sauvegardes, éléments conservés, scellement du journal, destruction du journal (décision humaine), clôture. État écrit atomiquement (`cycle-<cabinet>.json`), rapport de cycle lisible (`rendreCycleLisible`). Rappelé à une date plus tardive, le cycle reprend à l'étape en attente ; une étape interrompue brutalement est rejouée ; une étape en échec s'arrête avec sa raison, sans rien masquer.
 
 ## Notifications internes : archivage et rétention
 
@@ -235,7 +285,7 @@ Cette section remplace l'ancienne mention « aucune durée chiffrée ». Elle PR
 
 1. La table `politiques_conservation` devrait porter ces catégories, avec une durée, un point de départ et un fondement par cabinet ; seule la procédure de fin de contrat la lit, pour refuser une suppression.
 2. Le point de départ « clôture de l'exercice » suppose de rattacher chaque pièce à un exercice : c'est le cas des écritures et des lots, pas de toutes les pièces.
-3. Il manque : l'archivage intermédiaire (retrait des travaux courants avec accès restreint), la purge à l'échéance des éléments conservés, l'exécution de la rotation des sauvegardes sur les sauvegardes réelles, l'exécution de la fin de vie du journal. La suppression à la résiliation dispose d'une procédure, non activée (section « Fin de contrat ») ; la rotation, les comptes et la fin de vie du journal ont des mécanismes paramétrables et des simulations, sans exécution réelle (D-099).
+3. Il manque : l'archivage intermédiaire (retrait des travaux courants avec accès restreint) ; l'exécution RÉELLE (base locale, bucket des données, royaume réel, sauvegardes réelles) de la rotation, de la destruction à terme et de la fin de vie du journal, qui suppose une décision de conception sur les protections d'ajout seul (voir « Cycle complet », limites) et les durées validées. La suppression à la résiliation dispose d'une procédure, non activée (section « Fin de contrat ») ; la rotation, les comptes, la destruction à terme, le journal et la clôture ont des mécanismes paramétrables, des simulations et un cycle exercé sur ressources d'essai, sans exécution réelle.
 4. Un original est adressé par son empreinte et peut être partagé entre réceptions (doublon binaire) : une purge doit vérifier qu'aucune autre référence ne subsiste.
 5. Toute purge devra être simulable, journalisée, réversible pendant un délai de grâce, et laisser une trace de ce qui a été détruit sans en conserver le contenu.
 

@@ -37,6 +37,19 @@
  *   node scripts/editeur.mjs journal-fin-de-vie <cabinetId> [--durees=<fichier.json>]
  *       SIMULATION (lecture seule) de la fin de vie du journal du cabinet : échéances, données personnelles présentes dans les lignes,
  *       fiches désignées, plan de scellement. Le journal n'est jamais réécrit ni purgé.
+ *   node scripts/editeur.mjs conservation-rapport <cabinetId> [--durees=<fichier.json>] [--aujourdhui=AAAA-MM-JJ]
+ *       Rapport LISIBLE PAR UNE PERSONNE (français, sans table de chiffres) : ce qui est supprimé à la fin de contrat, ce qui est
+ *       conservé puis détruit et à quelle date, fin de vie du journal, destruction à terme. Lecture seule ; à relire avec le DPO.
+ *   node scripts/editeur.mjs echeancier [--durees=<fichier.json>] [--aujourdhui=AAAA-MM-JJ] [--cabinet=<cabinetId>]
+ *       Échéancier de TOUS les cabinets (phase, prochaine date, ce qu'il y a à faire), en texte lisible. Lecture seule.
+ *   node scripts/editeur.mjs destruction-terme <cabinetId> [--durees=<fichier.json>] [--aujourdhui=AAAA-MM-JJ]
+ *       SIMULATION (lecture seule) de la destruction à terme des éléments conservés après la fin de contrat (facturation, restitutions
+ *       du cabinet, politiques, traces d'IA, journal, procès-verbal). L'exécution n'existe QUE sur une base d'essai créée par un test.
+ *   node scripts/editeur.mjs journal-sceller <cabinetId> --sortie=<dossier>
+ *       Scellement du journal du cabinet : export final vérifiable hors base + ancre + manifeste, écrits dans <dossier>. N'écrit RIEN
+ *       dans la base. Sans valeur de preuve tant que le dossier n'est pas déposé hors de portée de l'administrateur de la base.
+ *   node scripts/editeur.mjs journal-verifier-scellement <manifeste.json>
+ *       Vérifie un scellement SANS base ni réseau (empreinte de l'export, chaîne des lignes, chaîne des ancres).
  *   node scripts/editeur.mjs comptes-fin-de-contrat <cabinetId> [--durees=<fichier.json>] [--plan=<fichier.json>]
  *       SIMULATION (lecture seule), À LANCER AVANT l'exécution de la fin de contrat : comptes qui ne devraient plus exister (aucune autre
  *       appartenance), avec dates de désactivation et de suppression, devenir de la fiche. « --plan » enregistre le plan.
@@ -244,6 +257,59 @@ try {
       for (const l of s.plan) console.log(`  ${l}`);
       for (const a of s.avertissements) console.log(`AVERTISSEMENT : ${a}`);
       console.log(`${s.ancre} SIMULATION : aucune ligne du journal n’a été touchée.`);
+      break;
+    }
+    case 'conservation-rapport': {
+      exiger(1, 'conservation-rapport <cabinetId> [--durees=<fichier>] [--aujourdhui=AAAA-MM-JJ]');
+      const option = (nom) => args.find((x) => x.startsWith(`--${nom}=`))?.slice(nom.length + 3);
+      const { simulerConservationCabinet, simulerFinDeVieJournal } = await import('../packages/db/dist/simulation-conservation.js');
+      const { planDestructionTerme } = await import('../packages/db/dist/destruction-terme.js');
+      const l = await import('../packages/db/dist/rapport-lisible.js');
+      const c = chargerParametres(p.POLITIQUE_FIN_DE_CONTRAT.categories, option('durees'));
+      const o = { aujourdhui: option('aujourdhui') };
+      process.stdout.write(l.rendreSimulationLisible(await simulerConservationCabinet(client, args[0], c, o)));
+      process.stdout.write(`\n${l.rendrePlanDestructionLisible(await planDestructionTerme(client, args[0], c, o))}`);
+      process.stdout.write(`\n${l.rendreFinDeVieJournalLisible(await simulerFinDeVieJournal(client, args[0], c, o))}`);
+      console.log('\nSIMULATION : rien n’a été modifié.');
+      break;
+    }
+    case 'echeancier': {
+      const option = (nom) => args.find((x) => x.startsWith(`--${nom}=`))?.slice(nom.length + 3);
+      const { echeancierConservation } = await import('../packages/db/dist/echeancier-conservation.js');
+      const l = await import('../packages/db/dist/rapport-lisible.js');
+      const e = await echeancierConservation(client, chargerParametres(p.POLITIQUE_FIN_DE_CONTRAT.categories, option('durees')), { aujourdhui: option('aujourdhui'), cabinetId: option('cabinet') });
+      process.stdout.write(l.rendreEcheancierLisible(e));
+      console.log('\nSIMULATION : rien n’a été modifié.');
+      break;
+    }
+    case 'destruction-terme': {
+      exiger(1, 'destruction-terme <cabinetId> [--durees=<fichier>] [--aujourdhui=AAAA-MM-JJ]');
+      if (args.includes('--appliquer')) throw new Error('Refusé : la destruction à terme n’est exécutable que sur une base d’essai créée par un test (aucune purge réelle dans cet outil ; durées non validées).');
+      const option = (nom) => args.find((x) => x.startsWith(`--${nom}=`))?.slice(nom.length + 3);
+      const { planDestructionTerme } = await import('../packages/db/dist/destruction-terme.js');
+      const l = await import('../packages/db/dist/rapport-lisible.js');
+      process.stdout.write(l.rendrePlanDestructionLisible(await planDestructionTerme(client, args[0], chargerParametres(p.POLITIQUE_FIN_DE_CONTRAT.categories, option('durees')), { aujourdhui: option('aujourdhui') })));
+      console.log('\nSIMULATION : rien n’a été modifié.');
+      break;
+    }
+    case 'journal-sceller': {
+      exiger(2, 'journal-sceller <cabinetId> --sortie=<dossier>');
+      const option = (nom) => args.find((x) => x.startsWith(`--${nom}=`))?.slice(nom.length + 3);
+      if (!option('sortie')) throw new Error('Option --sortie=<dossier> requise.');
+      const { scellerJournal } = await import('../packages/db/dist/journal-fin-de-vie.js');
+      const r = await scellerJournal(client, args[0], { repertoire: option('sortie') });
+      console.log(`${r.deja ? 'Journal inchangé depuis le dernier scellement' : 'Journal scellé'} : rang ${r.manifeste.rang}, ${r.manifeste.lignes} ligne(s), export ${r.manifeste.exportFichier} (SHA-256 ${r.manifeste.exportSha256.slice(0, 16)}…).`);
+      console.log(`Manifeste : ${r.cheminManifeste}`);
+      console.log(r.manifeste.avertissement);
+      console.log('Aucune écriture dans la base : seuls des fichiers ont été créés.');
+      break;
+    }
+    case 'journal-verifier-scellement': {
+      exiger(1, 'journal-verifier-scellement <manifeste.json>');
+      const { verifierScellement } = await import('../packages/db/dist/journal-fin-de-vie.js');
+      const v = await verifierScellement(args[0]);
+      console.log(v.conforme ? `Scellement CONFORME : ${v.lignes} ligne(s), chaîne et ancres vérifiées hors base.` : `Scellement NON CONFORME : ${v.motifs.join(' ; ')}`);
+      if (!v.conforme) process.exitCode = 1;
       break;
     }
     case 'comptes-fin-de-contrat': {

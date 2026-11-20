@@ -2,7 +2,7 @@
 
 Chaque ligne indique ce qui est attendu d'un humain, pourquoi, et ce qui en dépend. Tout le reste a été réalisé sans attendre.
 
-## En bref : ce qui exige vraiment une intervention extérieure (au 2026-11-19)
+## En bref : ce qui exige vraiment une intervention extérieure (au 2026-11-20)
 
 Liste courte des seuls obstacles que le développement local ne peut pas lever ; le détail est dans le tableau qui suit.
 
@@ -22,7 +22,7 @@ Liste courte des seuls obstacles que le développement local ne peut pas lever ;
 
 | # | Action attendue | Qui | Ce qui en dépend | État du code |
 |---|---|---|---|---|
-| 1 | S'authentifier auprès de GitHub sur ce poste (jeton d'accès personnel) et décider de la visibilité du dépôt `claude972/comptabilit-`, aujourd'hui public | Propriétaire du dépôt | Publication du code, exécution de l'intégration continue | Dépôt distant configuré, rien n'a été poussé |
+| 1 | ~~S'authentifier auprès de GitHub~~ **Levé** : le dépôt est poussé en SSH et la CI tourne à chaque commit. Reste une décision du propriétaire : la visibilité du dépôt `claude972/comptabilit-`, aujourd'hui public (R8) | Propriétaire du dépôt | Visibilité du code seulement | Code publié, CI en place ; rien d'autre n'est attendu |
 | 2 | Créer l'application OAuth Google (Cloud Console), le sujet Pub/Sub, et engager la vérification des scopes restreints | Éditeur | Connexion réelle à Gmail | Voir `packages/mail/docs/guide-connexion.md` ; connecteur branché, testé contre simulateur, à l'état « non connecté ». Écrans de gestion et page de retour OAuth en place, vérifiés contre simulateur |
 | 3 | Créer l'inscription d'application Microsoft Entra, obtenir le consentement des tenants clients | Éditeur, administrateurs des cabinets | Connexion réelle à Microsoft 365 | Idem |
 | 4 | Ouvrir un projet OVHcloud Public Cloud et fournir un jeton AI Endpoints ; vérifier région de traitement, conservation des requêtes et conditions contractuelles | Éditeur | Toute fonction d'IA (qualification assistée, assistant, veille) | Passerelle IA non branchée ; statut « non connectée » |
@@ -30,7 +30,7 @@ Liste courte des seuls obstacles que le développement local ne peut pas lever ;
 | 6 | Fournir un corpus de pièces et de FEC réels AUTORISÉ, avec les protections adaptées | Cabinet pilote | Calibration de l'extraction et de l'OCR, compatibilité FEC par logiciel | Recette sur jeux synthétiques uniquement |
 | 7 | Valider les contrôles, leurs seuils et leurs formulations | Expert-comptable habilité | Usage professionnel des constats | Catalogue documenté, en attente de validation métier |
 | 8 | Valider les documents RGPD, le contrat de sous-traitance, l'analyse AI Act et les clauses de responsabilité, **et arrêter les durées de conservation, le délai de grâce, la rétention des sauvegardes et le traitement des adresses de courriel du journal** | Avocat / DPO | Commercialisation ; toute exécution réelle de fin de contrat | Non rédigés (voir `risques.md`). Côté code (D-099) : jeu de durées paramétrable (`editeur.mjs durees-defauts` donne le modèle PROPOSÉ NON VALIDÉ), exécution réelle impossible sans `--durees-validees=<référence de l'avis>` ; il ne reste à l'avocat/DPO qu'à remplir et valider le fichier |
-| 9 | Choisir et contractualiser un prestataire d'agrégation bancaire autorisé | Éditeur | Connexion bancaire directe | Non développé ; les imports de fichiers bancaires ne dépendent pas de ce choix |
+| 9 | Choisir et contractualiser un prestataire d'agrégation bancaire autorisé | Éditeur | Connexion bancaire directe | Port d'agrégation, contrat pivot, simulateur et écran de connexion développés et testés contre le simulateur ; AUCUN prestataire réel raccordé (statut « non connecté ») ; les imports de fichiers bancaires ne dépendent pas de ce choix |
 | 10 | Mettre en service le royaume Keycloak de production (second facteur exigé par le gabarit) et déclarer le fournisseur d'identité de chaque cabinet pour la fédération SSO | Éditeur | Sécurité des comptes du cabinet | Gabarit de production préparé et essayé en local (TOTP exigé, D-069) ; aucun fournisseur d'identité réel raccordé ; royaume de développement sans MFA (D-016) |
 
 | 11 | Demander l'accès à l'API officielle de Légifrance (portail PISTE) | Éditeur | Surveillance des textes de Légifrance : le site refuse l'accès automatisé (403 constaté), ces sources sont donc affichées « indisponibles » | Surveillance en place, lecture par page uniquement |
@@ -39,9 +39,24 @@ Liste courte des seuls obstacles que le développement local ne peut pas lever ;
 | 14 | Inscrire l'URI de redirection `<adresse du web>/connexions-mail/retour` chez Google et Microsoft | Éditeur | Retour OAuth des connexions mail | Page de retour en place, vérifiée contre simulateur |
 | 15 | Choisir une destination INDÉPENDANTE pour les ancres du journal d'audit (tiers de confiance, horodatage qualifié ou publication), en fixer la fréquence et le coût éventuel | Éditeur, avec avis juridique | Détection d'une réécriture complète de la fin du journal par un administrateur de la base | Format d'ancre, export et vérification hors base prêts et testés (D-046) ; aucun dépôt externe n'est fait, aucun service n'est appelé |
 | 16 | Décider où conserver la clé PRIVÉE des sauvegardes (hors du poste : coffre, support déconnecté), puis créer la paire de clés | Éditeur | Chiffrement des sauvegardes locales | Outil prêt, restauration depuis un jeu entièrement chiffré essayée avec une clé éphémère (D-050, D-055) ; aucune clé durable créée, sauvegardes toujours en clair |
-| 17 | Fournir le journal de la CI en échec (page du run, « Download log archive », à déposer dans `var/`) ou un jeton de lecture des journaux Actions | Utilisateur | Cause de l'échec de l'étape « Services » de la CI | Plus bloquant : causes des échecs suivants établies par annotations publiques et corrigées, CI réussie (D-063) ; cause du premier échec non établie |
+| 17 | ~~Fournir le journal de la CI en échec~~ **Levé** (jeton de lecture des journaux : confort, non requis) | Utilisateur | — | Plus bloquant : causes des échecs suivants établies par annotations publiques et corrigées, CI réussie (D-063) ; cause du premier échec non établie |
 | 18 | Obtenir un accès légitime au TEXTE DE LOI en vigueur (CGI art. 39 A, code de commerce) : compte PISTE de l'éditeur, ou lecture par une personne qui accède à Légifrance | Éditeur | Vérification des conditions d'éligibilité du dégressif ; activation de `AMORTISSEMENT_DEGRESSIF_ACTIVE` | Texte de loi non consulté (403) ; dégressif non vérifié et non activé (D-089, D-090, `sources-officielles.md`) |
 | 19 | Faire lire BOI-BIC-AMT-20-20-50 (coefficients majorés ou diminués de certains biens d'équipement) et valider les règles d'amortissement | Expert-comptable habilité | Gestion des coefficients particuliers (aujourd'hui : abstention) | Document non lu ; règles « non validées par un professionnel » |
+
+## Fiches par dépendance externe
+
+Pour chacune : accès exact, ce qui est déjà préparé, procédure de raccordement, essai d'acceptation, responsable, ce qui reste possible sans elle. Rien ci-dessous n'est « fait » tant que l'essai d'acceptation n'a pas été joué par la personne responsable.
+
+| Dépendance (lignes) | Accès exact | Préparé | Raccordement | Essai d'acceptation | Responsable | Possible sans elle |
+|---|---|---|---|---|---|---|
+| IA (4) | Jeton OVHcloud AI Endpoints, région française, conditions de conservation et de non-réutilisation vérifiées | Passerelle unique, preuve de connexion en ajout seul, traces sans contenu, assistant « sans IA » (D-070, D-087) | Fixer le jeton dans le coffre de l'éditeur, puis `ia-verifier --appel-reel` | Preuve « connectée » valide, puis évaluation de qualité sur corpus réel autorisé (6) | Éditeur | Tout le produit en mode sans IA |
+| Messagerie (2, 3, 14) | Applications OAuth Google et Microsoft, URI de retour inscrite, consentements | Connecteurs, écrans, page de retour, guide `packages/mail/docs/guide-connexion.md` | Renseigner identifiants et URI, déclarer la boîte d'un cabinet pilote | Une pièce reçue par courriel et rattachée au bon dossier, sans doublon | Éditeur, administrateurs des cabinets | Dépôt manuel et import de fichiers |
+| Agrégation bancaire (9) | Contrat avec un prestataire agréé | Port, contrat pivot, simulateur, écran | Écrire l'adaptateur du prestataire derrière le port | Flux de transactions d'un compte d'essai rapproché avec l'import de fichier | Éditeur | Import de relevés (camt.053, OFX, CSV) |
+| Déploiement (5, 10) | Compte OVHcloud, région française, royaume Keycloak de production avec MFA | Compositions de production, sauvegardes chiffrées, gabarit de royaume, procédures d'exploitation | Suivre `docs/exploitation.md` | Installation sur un hôte vierge, restauration chronométrée isolée | Éditeur | Exploitation locale complète |
+| Sauvegardes et ancres (15, 16) | Lieu de garde de la clé privée ; destination indépendante des ancres | Chiffrement, export d'ancres, vérification hors base | Créer la paire de clés, fixer la destination | Restauration depuis un jeu chiffré avec la clé durable ; ancre vérifiée hors base | Éditeur, avis juridique | Sauvegardes locales en clair, vérification interne du journal |
+| Texte de loi et formulaires (11, 18, 19) | Compte PISTE ou lecture par une personne ayant accès à Légifrance ; lecture des formulaires du millésime | BOFiP vérifié (`sources-officielles.md`), moteur dégressif désactivé | Lire CGI art. 39 A, BOI-BIC-AMT-20-20-50, codes de cases | Cas chiffrés relus par un expert-comptable | Éditeur, expert-comptable | Linéaire, états en statut « projet » |
+| Validations professionnelles (7, 8, 12, 13) | Expert-comptable, avocat ou DPO | Catalogue des contrôles, mécanismes paramétrables, jeu de durées proposé non validé (D-099) | Remplir et valider les fichiers de paramètres, référence de l'avis | Réexécution des essais avec la référence de validation | Experts désignés | Tout le code ; rien n'est présenté comme validé |
+| Corpus et appareils (6) | Pièces et FEC réels autorisés ; téléphones réels, Safari | Jeux synthétiques, émulations, recette décrite | Dépôt du corpus sous protections adaptées | Mesures d'extraction, d'OCR, de compatibilité FEC ; recette sur appareils | Cabinet pilote, éditeur | Recette sur jeux synthétiques |
 
 Aucune dépense n'a été engagée et aucun compte externe n'a été créé.
 

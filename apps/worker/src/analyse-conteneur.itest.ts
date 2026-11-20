@@ -176,7 +176,7 @@ describe.skipIf(!IMAGE_ESSAI_PRESENTE)('confinement du conteneur d’analyse', (
     for (let i = 0; i < 40 && !inspection; i++) {
       await new Promise((r) => setTimeout(r, 250));
       const ids = execFileSync('docker', ['ps', '-q', '--filter', `label=${ETIQUETTE}`], { encoding: 'utf8' }).trim().split('\n').filter(Boolean);
-      if (ids.length === 1) inspection = (JSON.parse(execFileSync('docker', ['inspect', ids[0]!], { encoding: 'utf8' })) as Array<Record<string, unknown>>)[0]!;
+      if (ids.length === 1) inspection = (JSON.parse(execFileSync('docker', ['inspect', ids[0]!], { encoding: 'utf8', timeout: 15_000 })) as Array<Record<string, unknown>>)[0]!;
     }
     expect(inspection, 'conteneur introuvable pendant son exécution').not.toBeNull();
     const h = inspection!.HostConfig as Record<string, unknown>;
@@ -381,7 +381,7 @@ describe.skipIf(!IMAGE_ESSAI_PRESENTE)('lanceur restreint : le worker ne voit ja
     for (let i = 0; i < 30 && !inspection; i++) {
       await new Promise((r) => setTimeout(r, 200));
       const ids = execFileSync('docker', ['ps', '-q', '--filter', `label=${ETIQUETTE}`], { encoding: 'utf8' }).trim().split('\n').filter(Boolean);
-      if (ids.length === 1) inspection = (JSON.parse(execFileSync('docker', ['inspect', ids[0]!], { encoding: 'utf8' })) as Array<Record<string, unknown>>)[0]!;
+      if (ids.length === 1) inspection = (JSON.parse(execFileSync('docker', ['inspect', ids[0]!], { encoding: 'utf8', timeout: 15_000 })) as Array<Record<string, unknown>>)[0]!;
     }
     const h = inspection!.HostConfig as Record<string, unknown>;
     expect(h).toMatchObject({ NetworkMode: 'none', Privileged: false, CapDrop: ['ALL'], ReadonlyRootfs: true, IpcMode: 'none', PidsLimit: 64, Memory: 256 * 1048576, MemorySwap: 256 * 1048576, NanoCpus: 1e9 });

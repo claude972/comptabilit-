@@ -30,7 +30,9 @@ import type { Contexte } from './contexte.js';
 const ICI = dirname(fileURLToPath(import.meta.url));
 const RACINE = resolve(ICI, '../../..');
 const HOSTILE = resolve(ICI, '../essais/enfant-hostile.mjs');
-const hostile = { entree: HOSTILE, lecturesSupplementaires: [dirname(HOSTILE)] };
+// L'enfant hostile est un fichier de l'HÔTE : il n'existe pas dans l'image d'analyse. Ces essais portent sur le mécanisme du processus enfant,
+// même quand ANALYSE_ISOLATION=conteneur est fixé pour la suite (les causes d'échec du mode conteneur sont essayées dans analyse-conteneur.itest.ts).
+const hostile = { entree: HOSTILE, lecturesSupplementaires: [dirname(HOSTILE)], isolation: 'processus' as const };
 const SEL = randomBytes(4).toString('hex');
 /** Variables que le worker détient et que l'enfant ne doit jamais voir. */
 const SENSIBLES = ['DATABASE_URL', 'DATABASE_URL_WORKER', 'REDIS_URL', 'S3_ACCESS_KEY', 'S3_SECRET_KEY', 'S3_ENDPOINT', 'JETONS_CLE_CHIFFREMENT', 'IA_OVH_JETON', 'GOOGLE_CLIENT_SECRET', 'NODE_OPTIONS', 'HOME', 'PATH'];

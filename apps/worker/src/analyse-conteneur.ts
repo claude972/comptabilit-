@@ -153,7 +153,11 @@ export function demarrerConteneur(p: ParametresConteneur, limites: LimitesConten
     for (const id of ids) {
       const etat = await docker(p, ['inspect', '--format', '{{.State.OOMKilled}}', id]);
       if (etat.sortie.trim() === 'true') memoire = true;
-      await docker(p, ['rm', '-f', id]);
+      const retrait = await docker(p, ['rm', '-f', id]);
+      // Moteur bloqué sur ce conteneur (constaté avec dockerd 29.5.2 : arrêt forcé pendant que le flux d'entrée est plein, voir D-098 bis) :
+      // la suppression n'aboutit pas dans le délai. Le conteneur reste « Up » côté moteur ; seul un redémarrage du moteur le libère. Alerte explicite,
+      // sans contenu de pièce, pour que l'exploitant ne découvre pas le problème par le plafond de conteneurs du lanceur (429).
+      if (retrait.code !== 0) console.error(`[analyse-conteneur] ALERTE : le moteur n'a pas supprimé le conteneur ${nom} (rm -f sans effet) ; moteur à vérifier, voir docs/exploitation.md § 17.`);
     }
     return { absent: false, memoire };
   };

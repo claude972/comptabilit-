@@ -31,7 +31,8 @@ import { importerFec } from './import-fec.js';
 
 const ICI = dirname(fileURLToPath(import.meta.url));
 const HOSTILE = resolve(ICI, '../essais/enfant-hostile.mjs');
-const hostile: OptionsAnalyse = { entree: HOSTILE, lecturesSupplementaires: [dirname(HOSTILE)] };
+// Enfant hostile = fichier de l'HÔTE, absent de l'image d'analyse : mécanisme du processus enfant, quel que soit ANALYSE_ISOLATION de la suite.
+const hostile: OptionsAnalyse = { entree: HOSTILE, lecturesSupplementaires: [dirname(HOSTILE)], isolation: 'processus' };
 const SEL = randomBytes(4).toString('hex');
 const SECRET_FICHIER = `contenu-secret-${SEL}`;
 const json = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;

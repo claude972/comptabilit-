@@ -22,7 +22,7 @@ import { enBlocs, genererFecSynthetique, genererReleveSynthetique, type LigneFec
 import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { compterConteneursAnalyse, ETIQUETTE, type ParametresConteneur, retirerConteneursAnalyseExpires } from './analyse-conteneur.js';
-import { analyserFecIsole, analyserPieceIsolee, executerEnfant, lireReleveIsole, type OptionsAnalyse } from './analyse-isolee.js';
+import { analyserFecIsole, analyserPieceIsolee, executerEnfant, executerEnfantFlux, lireReleveIsole, type OptionsAnalyse } from './analyse-isolee.js';
 
 const ACTIF = process.env.ESSAIS_CONTENEUR === '1';
 const IMAGE_ESSAI = process.env.ESSAIS_CONTENEUR_IMAGE ?? 'python:3.12.16-slim-bookworm';
@@ -217,6 +217,51 @@ describe.skipIf(!IMAGE_ESSAI_PRESENTE)('confinement du conteneur d’analyse', (
     expect(issue).toMatchObject({ ok: false, cause: 'delai' });
     expect(Date.now() - debut).toBeLessThan(15_000);
   });
+
+  // Défaut de dockerd (29.5.2 et 29.10.0, D-098 bis point 4) : arrêt forcé d'un conteneur dont l'entrée est encore écrite et dont la sortie
+  // n'est plus lue = conteneur « Up » à jamais, `docker rm -f` sans réponse. Avant l'arrêt ordonné de `demarrerConteneur`, CET essai bloquait à
+  // chaque exécution (4 sur 4). Il joue 30 arrêts forcés (annulation par le parent, puis délai pendant que le consommateur est suspendu).
+  it('arrêt forcé pendant l’écriture de l’entrée et sans lecture de la sortie : 30 arrêts, aucun blocage du moteur, aucun conteneur résiduel', async () => {
+    const trame = (() => {
+      const b = Buffer.from(JSON.stringify({ t: 'lignes', lignes: { a: 1 } }));
+      const l = Buffer.alloc(4);
+      l.writeUInt32BE(b.length);
+      return Buffer.concat([l, b]);
+    })();
+    // L'enfant lit un peu d'entrée puis n'en lit plus, et écrit sans fin des trames de sortie.
+    const enfant = `import sys\nfr = ${JSON.stringify(trame.toString('latin1'))}.encode('latin1') * 2000\nsys.stdin.buffer.read(65536)\nwhile True:\n    sys.stdout.buffer.write(fr); sys.stdout.buffer.flush()`;
+    async function* flot(): AsyncGenerator<Uint8Array> {
+      const bloc = Buffer.alloc(64 * 1024, 0x41);
+      for (let i = 0; i < 4096; i++) yield bloc; // 256 Mo
+    }
+    const schema = z.unknown();
+    for (let i = 0; i < 30; i++) {
+      const parDelai = i % 2 === 1; // une fois sur deux, l'arrêt vient du délai (consommateur suspendu), sinon de l'annulation du parent
+      const debut = Date.now();
+      const sortie = await Promise.race([
+        executerEnfantFlux(
+          {
+            entete: { op: 'fec' },
+            corps: flot(),
+            schemaLot: schema,
+            schemaFin: schema,
+            surLot: async () => {
+              await new Promise((r) => setTimeout(r, parDelai ? 2_500 : 300));
+              throw new Error('annulation');
+            },
+          },
+          sonde(enfant, { dureeMaxMs: parDelai ? 800 : 60_000 }),
+        ).then(
+          () => 'rendu',
+          () => 'rendu',
+        ),
+        new Promise((r) => setTimeout(() => r('bloque'), 30_000)),
+      ]);
+      expect(sortie, `arrêt n° ${i + 1} : le moteur ne rend plus la main`).toBe('rendu');
+      expect(Date.now() - debut, `arrêt n° ${i + 1}`).toBeLessThan(15_000);
+      expect(await compterConteneursAnalyse(base()), `arrêt n° ${i + 1} : conteneur résiduel`).toBe(0);
+    }
+  }, 240_000);
 
   it('mémoire dépassée : arrêt par le noyau (OOM), cause « memoire », conteneur supprimé', async () => {
     const issue = await lancer(`${ENTREE}\nb = []\nwhile True: b.append(b'x' * (16 << 20))`, Buffer.alloc(0), { memoireMaxMo: 128, dureeMaxMs: 30_000 });

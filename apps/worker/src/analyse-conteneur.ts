@@ -100,14 +100,28 @@ export function argumentsDockerRun(p: ParametresConteneur, limites: LimitesConte
 }
 
 /** Lance un client docker court ; ne rejette jamais (la sortie vide et le code non nul disent l'échec). */
-function docker(p: ParametresConteneur, args: string[], delaiMs = 20_000): Promise<{ code: number; sortie: string }> {
+function docker(p: ParametresConteneur, args: string[], delaiMs = 20_000): Promise<{ code: number; sortie: string; erreur: string; delaiDepasse: boolean }> {
   return new Promise((rendre) => {
-    execFile(p.docker, args, { env: environnementClient(p), timeout: delaiMs, maxBuffer: 1024 * 1024 }, (erreur, sortie) => {
+    execFile(p.docker, args, { env: environnementClient(p), timeout: delaiMs, maxBuffer: 1024 * 1024 }, (erreur, sortie, erreurStd) => {
       const code = erreur ? (typeof (erreur as { code?: unknown }).code === 'number' ? ((erreur as { code: number }).code) : 1) : 0;
-      rendre({ code, sortie: String(sortie) });
+      // Un client tué par le délai (SIGTERM) : le moteur n'a PAS répondu dans le temps (signe du blocage, D-098 bis, point 4).
+      const delaiDepasse = Boolean(erreur && (erreur as { killed?: boolean }).killed);
+      rendre({ code, sortie: String(sortie), erreur: String(erreurStd).slice(0, 300), delaiDepasse });
     });
   });
 }
+
+async function conteneurAbsent(p: ParametresConteneur, id: string): Promise<boolean> {
+  const r = await docker(p, ['ps', '-a', '-q', '--no-trunc', '--filter', `id=${id}`], 10_000);
+  return r.code === 0 && r.sortie.trim() === '';
+}
+
+/** Nombre de conteneurs que le moteur n'a pas pu supprimer (blocage probable du moteur) depuis le démarrage de ce processus. */
+let blocagesMoteur = 0;
+export const blocagesMoteurObserves = (): number => blocagesMoteur;
+
+/** Délai de grâce laissé au client docker pour se terminer de lui-même après l'arrêt du conteneur, avant son SIGKILL. */
+const GRACE_CLIENT_MS = 1500;
 
 /** Conteneurs en cours de ce worker (nom → paramètres) : supprimés à l'arrêt du processus. */
 const enCours = new Map<string, ParametresConteneur>();
@@ -153,11 +167,18 @@ export function demarrerConteneur(p: ParametresConteneur, limites: LimitesConten
     for (const id of ids) {
       const etat = await docker(p, ['inspect', '--format', '{{.State.OOMKilled}}', id]);
       if (etat.sortie.trim() === 'true') memoire = true;
-      const retrait = await docker(p, ['rm', '-f', id]);
-      // Moteur bloqué sur ce conteneur (constaté avec dockerd 29.5.2 : arrêt forcé pendant que le flux d'entrée est plein, voir D-098 bis) :
-      // la suppression n'aboutit pas dans le délai. Le conteneur reste « Up » côté moteur ; seul un redémarrage du moteur le libère. Alerte explicite,
-      // sans contenu de pièce, pour que l'exploitant ne découvre pas le problème par le plafond de conteneurs du lanceur (429).
-      if (retrait.code !== 0) console.error(`[analyse-conteneur] ALERTE : le moteur n'a pas supprimé le conteneur ${nom} (rm -f sans effet) ; moteur à vérifier, voir docs/exploitation.md § 17.`);
+      let retrait = await docker(p, ['rm', '-f', id]);
+      if (retrait.code !== 0) {
+        // Échec : conteneur déjà parti (suppression concurrente) ou moteur bloqué ? On le constate au lieu de le supposer.
+        if (/No such container/i.test(retrait.erreur) || (await conteneurAbsent(p, id))) continue;
+        retrait = await docker(p, ['rm', '-f', id]);
+        if (retrait.code !== 0 && !/No such container/i.test(retrait.erreur) && !(await conteneurAbsent(p, id))) {
+          // Moteur bloqué sur ce conteneur (constaté avec dockerd 29.5.2 : voir D-098 bis) : il reste « Up » côté moteur ; seul un redémarrage du
+          // moteur le libère. Alerte explicite, sans contenu de pièce, pour que l'exploitant ne découvre pas le problème par le plafond du lanceur (429).
+          blocagesMoteur += 1;
+          console.error(`[analyse-conteneur] ALERTE : le moteur n'a pas supprimé le conteneur ${nom} (rm -f ${retrait.delaiDepasse ? 'sans réponse dans le délai' : 'refusé'} : ${retrait.erreur.replace(/\s+/g, ' ').trim()}) ; moteur à vérifier, voir docs/exploitation.md § 17.`);
+        }
+      }
     }
     return { absent: false, memoire };
   };
@@ -165,9 +186,34 @@ export function demarrerConteneur(p: ParametresConteneur, limites: LimitesConten
     uuid,
     client,
     arreter() {
-      client.kill('SIGKILL');
-      // Tuer le client n'arrête PAS le conteneur : on le supprime explicitement (rm -f envoie SIGKILL puis retire).
-      suppressionDemandee ??= supprimer();
+      if (suppressionDemandee) return;
+      // ARRÊT ORDONNÉ (D-098 bis, point 4 ; atténuation du blocage de dockerd 29.5.2, déclencheur probable : arrêt forcé pendant que le
+      // flux d'entrée est encore écrit) : (1) on cesse d'alimenter le conteneur ; (2) on tue le CONTENEUR pendant que le client reste
+      // attaché et continue de vider sa sortie (le moteur n'a jamais à écrire vers un client qui ne lit plus, cf. moby/moby#41827) ;
+      // (3) le client dispose d'un court délai de grâce pour se terminer de lui-même, puis il est tué ; (4) le conteneur est supprimé.
+      client.stdin?.destroy();
+      // Sortie du client VIDÉE sans attendre le consommateur (qui peut être suspendu dans le traitement d'un lot : alors le client, tube plein,
+      // cesse de lire le moteur) : le moteur ne doit jamais rester bloqué à écrire vers un client qui ne lit plus. Lecture explicite par `read()`
+      // (un écouteur `data` ne ferait pas couler un flux déjà lu par itérateur asynchrone) ; les octets reçus après l'arrêt sont écartés par l'appelant.
+      const vider = setInterval(() => {
+        while (client.stdout?.read() != null) {
+          /* écarté */
+        }
+      }, 20);
+      client.once('close', () => clearInterval(vider));
+      suppressionDemandee = (async () => {
+        await docker(p, ['kill', '--signal', 'KILL', nom], 10_000); // échoue sans gravité si le conteneur n'existe pas encore
+        await new Promise<void>((fini) => {
+          if (client.exitCode !== null || client.signalCode !== null) return fini();
+          const t = setTimeout(fini, GRACE_CLIENT_MS);
+          client.once('close', () => {
+            clearTimeout(t);
+            fini();
+          });
+        });
+        client.kill('SIGKILL');
+        return supprimer();
+      })();
     },
     async nettoyer() {
       try {

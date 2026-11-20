@@ -77,6 +77,43 @@ jobs:
       # Firefox ne peut pas être lancé par l'agent sur le poste de développement (D-059) : la CI est son seul lieu d'exécution.
       - name: Navigateur Firefox, pile réelle
         run: sh scripts/ci-etape.sh "Firefox réel" pnpm --filter @comtaple/web exec playwright test --config playwright.navigateurs.config.ts --project=firefox
+      # ── EXPÉRIMENTAL (D-098 bis, point 5) : isolation des analyseurs en conteneurs dédiés ──────────────────────────────
+      # Jamais encore exécuté sur un exécuteur GitHub. `continue-on-error: true` : un échec n'arrête pas la CI mais reste VISIBLE
+      # (étape rouge, annotation de ci-etape.sh, diagnostic ci-dessous) ; à durcir (retrait de continue-on-error) seulement après
+      # plusieurs exécutions vertes. Placé en dernier des essais : un moteur Docker bloqué ne gêne aucune autre suite.
+      # Pull anonyme des images officielles figées par digest (Dockerfile) et de l'image d'essai ; rien n'est poussé ni connecté.
+      - name: EXPÉRIMENTALE — construction de l'image d'analyse (conteneurs dédiés)
+        id: conteneur-image
+        continue-on-error: true
+        timeout-minutes: 15
+        run: sh scripts/ci-etape.sh "Image d'analyse (experimentale)" sh -c 'docker build --target analyse -t comtaple-analyse:dev . && docker pull python:3.12.16-slim-bookworm'
+      - name: EXPÉRIMENTALE — essais d'analyse en conteneurs dédiés (analyse-conteneur.itest.ts)
+        id: conteneur-essais
+        if: steps.conteneur-image.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 12
+        env:
+          ESSAIS_CONTENEUR: '1'
+        run: sh scripts/ci-etape.sh "Essais conteneurs (experimentale)" timeout --signal=KILL 660 pnpm --filter @comtaple/worker exec vitest run --config vitest.integration.config.ts src/analyse-conteneur.itest.ts
+      - name: EXPÉRIMENTALE — diagnostic du moteur (conteneurs, événements, journal)
+        if: always() && (steps.conteneur-image.outcome == 'failure' || steps.conteneur-essais.outcome == 'failure' || steps.conteneur-essais.outcome == 'cancelled')
+        continue-on-error: true
+        timeout-minutes: 3
+        run: |
+          echo "::group::docker ps -a"; timeout 20 docker ps -a --no-trunc || echo "docker ps sans réponse (moteur bloqué ?)"; echo "::endgroup::"
+          echo "::group::docker events (30 dernières minutes)"; timeout 30 docker events --since 30m --until 0s --filter label=comtaple.analyse || true; echo "::endgroup::"
+          echo "::group::journal du moteur (dockerd)"; sudo journalctl -u docker --no-pager -n 300 || true; echo "::endgroup::"
+          echo "::group::version du moteur"; timeout 20 docker version || true; echo "::endgroup::"
+          restants=$(timeout 20 docker ps -a -q --filter label=comtaple.analyse | wc -l)
+          echo "::warning title=EXPERIMENTALE conteneurs d'analyse::${restants} conteneur(s) d'analyse encore present(s) apres les essais (voir docs/exploitation.md paragraphe 17)"
+      - name: EXPÉRIMENTALE — nettoyage des conteneurs d'analyse
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 3
+        # Seuls les conteneurs portant l'étiquette comtaple.analyse, jamais de prune ; délai dur par commande.
+        run: |
+          for id in $(timeout 20 docker ps -a -q --filter label=comtaple.analyse); do timeout 20 docker rm -f "$id" || echo "::warning title=EXPERIMENTALE nettoyage::conteneur $id non supprime"; done
+          true
       - name: Traces des parcours navigateur en cas d'échec
         if: failure()
         uses: actions/upload-artifact@v4

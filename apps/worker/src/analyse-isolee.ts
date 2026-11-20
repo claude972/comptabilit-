@@ -219,6 +219,9 @@ function lancer(options: OptionsAnalyse): Lancement {
   return { enfant, limites, debut, arreter, cause: () => arret, fin, causeSortie: () => (/heap out of memory|Allocation failed|out of memory/i.test(erreurs) ? 'memoire' : 'plantage') };
 }
 
+/** Taille d'un bloc d'entrée écrit à l'enfant. */
+const BLOC_ENTREE = 64 * 1024;
+
 function ecrireEntete(l: Lancement, entete: unknown): void {
   const octets = Buffer.from(JSON.stringify(entete), 'utf8');
   const longueur = Buffer.alloc(4);
@@ -242,7 +245,23 @@ export async function executerEnfant<T>(demande: { entete: unknown; corps: Buffe
     } else if (!l.cause()) sortie.push(m);
   });
   ecrireEntete(l, demande.entete);
-  l.enfant.stdin!.end(demande.corps);
+  // Écriture PAR BLOCS avec contre-pression, interrompue dès l'arrêt de l'enfant : au moment d'un arrêt forcé il reste au plus un bloc en vol
+  // (atténuation du blocage de dockerd 29.5.2 quand l'entrée est encore écrite, D-098 bis point 4). Octets et ordre inchangés.
+  const entree = l.enfant.stdin!;
+  for (let i = 0; i < demande.corps.length && !l.cause() && !entree.destroyed; i += BLOC_ENTREE) {
+    if (!entree.write(demande.corps.subarray(i, i + BLOC_ENTREE))) {
+      await new Promise<void>((suite) => {
+        const reprendre = () => {
+          entree.off('drain', reprendre);
+          entree.off('close', reprendre);
+          suite();
+        };
+        entree.once('drain', reprendre);
+        entree.once('close', reprendre);
+      });
+    }
+  }
+  if (!entree.destroyed) entree.end();
   const code = await l.fin;
   const dureeMs = Math.round(performance.now() - l.debut);
   const arret = l.cause();

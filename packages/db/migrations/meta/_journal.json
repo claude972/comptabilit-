@@ -281,6 +281,13 @@
       "when": 1795129373140,
       "tag": "0039_assistant_portefeuille",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1795132841718,
+      "tag": "0040_notifications_poussees",
+      "breakpoints": true
     }
   ]
 }

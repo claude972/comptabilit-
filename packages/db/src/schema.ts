@@ -1193,9 +1193,11 @@ export const restitutionsCabinet = pgTable('restitutions_cabinet', {
 });
 
 /**
- * Notifications INTERNES à l'application : aucune n'est envoyée à l'extérieur (ni courriel, ni SMS, ni notification
- * poussée). Chacun ne lit que les siennes (politique de la base). Elles ne portent que des identifiants et quelques
- * valeurs non sensibles : le texte est composé à la lecture, selon les droits du lecteur à cet instant.
+ * Notifications INTERNES à l'application : leur contenu n'est jamais envoyé à l'extérieur (ni courriel, ni SMS). Si
+ * l'éditeur active les notifications poussées (désactivées par défaut, voir `abonnements_pousses`), seule une phrase
+ * générique est adressée aux appareils abonnés. Chacun ne lit que les siennes (politique de la base). Elles ne portent
+ * que des identifiants et quelques valeurs non sensibles : le texte est composé à la lecture, selon les droits du
+ * lecteur à cet instant.
  */
 export const notifications = pgTable(
   'notifications',
@@ -1218,15 +1220,16 @@ export const notifications = pgTable(
 );
 
 /**
- * Préférences de notification INTERNES d'une personne dans un cabinet : une famille désactivée n'est plus notifiée.
- * Absence de ligne = famille active. Ne concerne que l'application : il n'existe aucun envoi extérieur à régler.
+ * Préférences de notification d'une personne dans un cabinet : une famille désactivée n'est plus notifiée (ni dans
+ * l'application, ni sur un appareil abonné). Absence de ligne = active. La clé « poussees » n'est pas une famille :
+ * c'est la préférence GLOBALE des notifications poussées (migration 0040).
  */
 export const preferencesNotification = pgTable(
   'preferences_notification',
   {
     cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
     utilisateurId: uuid('utilisateur_id').notNull().references(() => utilisateurs.id),
-    /** Préfixe du type de notification : regle, document, restitution, restitution_cabinet, import, constat. */
+    /** Préfixe du type de notification : regle, document, restitution, restitution_cabinet, import, constat ; ou « poussees ». */
     famille: text('famille').notNull(),
     active: boolean('active').notNull(),
     majLe: horodatage('maj_le').notNull().defaultNow(),
@@ -1503,4 +1506,62 @@ export const liensFactures = pgTable(
     creeLe: creeLe(),
   },
   (t) => [uniqueIndex('liens_factures_unique').on(t.exerciceId, t.type, t.objet, t.cible), index('liens_factures_dossier').on(t.entiteId)],
+);
+
+// ───────────────────────────── Notifications poussées discrètes ─────────────────────────────
+
+/**
+ * Abonnement d'UN appareil d'UNE personne aux notifications poussées, dans un cabinet. Le point d'accès remis par le
+ * navigateur est une adresse à capacité (qui la connaît peut écrire à l'appareil) : il est conservé CHIFFRÉ, avec les
+ * clés `p256dh` et `auth`, dans `secrets_chiffres` (AES-256-GCM, voir packages/plateforme/src/notifications-poussees.ts).
+ * Seule son empreinte est en clair, pour reconnaître l'appareil. Chacun ne voit que les siens (politique de la base).
+ * La table n'existe que si la fonction est activée par l'éditeur (clés VAPID) : sans cela, aucune ligne n'y entre.
+ */
+export const abonnementsPousses = pgTable(
+  'abonnements_pousses',
+  {
+    id: id(),
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    utilisateurId: uuid('utilisateur_id').notNull().references(() => utilisateurs.id),
+    /** SHA-256 (hexadécimal) du point d'accès. */
+    empreintePointAcces: text('empreinte_point_acces').notNull(),
+    /** Service de notification du navigateur : fcm | mozilla | apple | wns | simulateur. */
+    service: text('service').notNull(),
+    secretsChiffres: text('secrets_chiffres').notNull(),
+    /** Agent utilisateur RÉDUIT (« Chrome sur Android ») : jamais l'agent complet. */
+    agent: text('agent').notNull(),
+    creeLe: creeLe(),
+    /** Dernier envoi accepté par le service de notification (ce n'est pas une preuve d'affichage). */
+    dernierSuccesLe: horodatage('dernier_succes_le'),
+    dernierEchecLe: horodatage('dernier_echec_le'),
+    /** Refus consécutifs du service ; l'abonnement est retiré au-delà d'une borne. */
+    echecs: integer('echecs').notNull().default(0),
+  },
+  (t) => [uniqueIndex('abonnements_pousses_appareil').on(t.cabinetId, t.utilisateurId, t.empreintePointAcces), index('abonnements_pousses_empreinte').on(t.empreintePointAcces)],
+);
+
+/**
+ * File d'attente EN BASE des notifications poussées à émettre : une ligne par destinataire et par fenêtre de
+ * regroupement (index unique partiel sur les lignes non traitées). Écrite par un déclencheur à la création d'une
+ * notification interne, dans la même transaction ; relevée par le worker, qui seul émet. Ne porte que le type de la
+ * notification interne (ou « mixte ») et un décompte : ni dossier, ni cible, ni texte.
+ */
+export const envoisPousses = pgTable(
+  'envois_pousses',
+  {
+    /** Identifiant OPAQUE transporté par la notification poussée. */
+    id: id(),
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    destinataireId: uuid('destinataire_id').notNull().references(() => utilisateurs.id),
+    type: text('type').notNull(),
+    /** Nombre de notifications internes regroupées dans cet envoi. */
+    nombre: integer('nombre').notNull().default(1),
+    creeLe: creeLe(),
+    traiteLe: horodatage('traite_le'),
+    /** distribue | sans_abonnement | preference_desactivee | perime (resté en attente plus de 24 heures : jamais émis) */
+    issue: text('issue'),
+    /** Nombre d'appareils auxquels l'envoi a été distribué. */
+    appareils: integer('appareils'),
+  },
+  (t) => [uniqueIndex('envois_pousses_en_attente').on(t.cabinetId, t.destinataireId).where(sql`traite_le is null`), index('envois_pousses_releve').on(t.traiteLe, t.creeLe)],
 );

@@ -13,7 +13,7 @@
  * Les routes `/__test/*` n'existent pas dans l'API : elles servent à réinitialiser l'état et à provoquer des pannes.
  * Les traitements asynchrones du worker (import, contrôles, dossier de révision) sont imités par des minuteries.
  */
-import { createHash, randomUUID } from 'node:crypto';
+import { createECDH, createHash, randomUUID } from 'node:crypto';
 import http from 'node:http';
 import {
   CATALOGUE_INDICATEURS, type LigneEcriture, type LigneFec, type MouvementBancaire, type Offre, PARAMETRES_RAPPROCHEMENT_PAR_DEFAUT, calculerBalance, calculerEcheance, calculerIndicateurs, correspondancePour, etatQuota, projeterBilan, projeterCompteDeResultat, serviceOuvert, situationAbonnement, REGLES_RAPPROCHEMENT, type RapportReleve, analyserFec, decoderTexteReleve, detecterFormatReleve, elementDepuisMouvement,
@@ -21,6 +21,7 @@ import {
   type DecisionFacture, type DecisionTiers, type FicheFacture, type PieceFacture, cleEcriture, suivreTiersEtFactures,
   type ContenuLettre, type LettreDatee, PRESTATIONS, calculerRentabiliteMission, schemaChaineDecimale, dec, estimerTemps, evaluerApplicabilite, schemaContenuLettre, schemaCriteresEvolution, situerTravail, somme, versChaine,
   type ControleAmelioration, CRITERES_AMELIORATION, PARAMETRES_SEUIL_MONTANT, suggererAmeliorations,
+  PHRASES_POUSSEES, SERVICES_NOTIFICATION, reduireAgentUtilisateur, verifierPointAcces,
 } from '@comtaple/core';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
@@ -219,6 +220,27 @@ function regleApplicable(entiteId: string, controleId: string): { regle: Enr; po
 let pannes = { couperMorceauNumero: 0, conflitMorceauNumero: 0, ralentirMorceauxMs: 0, erreurTerminer: 0 };
 let compteurMorceaux = 0;
 let journal: Array<{ methode: string; chemin: string; statut: number; utilisateur: string | null }> = [];
+
+// ───────────── Notifications poussées (calqué sur apps/api/src/notifications-poussees.controller.ts) ─────────────
+// Rien n'est jamais envoyé : le simulateur ne fait qu'enregistrer les abonnements et rendre l'état. La clé publique est
+// une vraie clé P-256 tirée au démarrage (sa clé privée n'est pas conservée) ; le statut se pilote par /__test/poussees.
+interface Poussees {
+  statut: 'non_configure' | 'simule' | 'configure_non_verifie';
+  appareils: Array<{ id: string; cabinetId: string; utilisateurId: string; service: string; agent: string; creeLe: string; dernierEnvoiAccepteLe: string | null; empreinte: string }>;
+  coupees: Set<string>;
+}
+const CLE_PUBLIQUE_POUSSEES = (() => {
+  const e = createECDH('prime256v1');
+  e.generateKeys();
+  return e.getPublicKey().toString('base64url');
+})();
+const pousseesInitial = (): Poussees => ({ statut: 'non_configure', appareils: [], coupees: new Set() });
+let poussees: Poussees = pousseesInitial();
+const DETAILS_POUSSEES = {
+  non_configure: 'Les notifications poussées ne sont pas activées sur ce service.',
+  simule: 'SIMULATEUR de test : aucun service de notification réel n’est contacté, aucun appareil réel ne reçoit quoi que ce soit.',
+  configure_non_verifie: 'Notifications poussées configurées. La réception sur un appareil réel n’a pas été vérifiée : ce chemin n’a été exercé que contre un simulateur de service de notification.',
+} as const;
 let horloge = Date.parse('2026-11-18T08:00:00.000Z');
 const instant = () => new Date((horloge += 1000)).toISOString();
 
@@ -2335,10 +2357,49 @@ function routerSuite(r: Requete, a: Acces): unknown {
 
   // ── Coût horaire interne et rentabilité d'une mission (calqué sur missions.controller.ts ; calcul par le vrai moteur) ──
   // Notifications internes : le simulateur n'en produit aucune (elles sont vérifiées sur la pile réelle).
+  const envoiExterne = poussees.statut !== 'non_configure';
+  if (s[0] === 'notifications' && s[1] === 'poussees') {
+    const libelle = (service: string) => SERVICES_NOTIFICATION.find((x) => x.id === service)?.libelle ?? service;
+    const miens = () => poussees.appareils.filter((x) => x.cabinetId === a.cabinetId && x.utilisateurId === a.utilisateurId).map(({ cabinetId: _c, utilisateurId: _u, ...x }) => ({ ...x, libelleService: libelle(x.service) }));
+    const cle = `${a.cabinetId}|${a.utilisateurId}`;
+    if (m === 'GET' && s.length === 2) {
+      return {
+        statut: poussees.statut, detail: DETAILS_POUSSEES[poussees.statut], activees: envoiExterne, clePublique: envoiExterne ? CLE_PUBLIQUE_POUSSEES : null, verifieSurAppareilReel: false,
+        preference: { active: !poussees.coupees.has(cle) }, phrases: Object.values(PHRASES_POUSSEES), services: SERVICES_NOTIFICATION.map((x) => x.libelle), appareils: miens(),
+      };
+    }
+    if (m === 'GET' && s[2] === 'abonnements' && s.length === 3) return { appareils: miens() };
+    if (m === 'POST' && s[2] === 'abonnements' && s.length === 3) {
+      if (!envoiExterne) throw new ErreurHttp(503, { message: DETAILS_POUSSEES.non_configure, code: 'poussees_non_configurees' });
+      const d = r.json();
+      const destination = verifierPointAcces(d.endpoint);
+      if (!destination.ok) throw new ErreurHttp(400, { message: 'Point d’accès refusé : ce n’est pas l’adresse d’un service de notification connu.', code: 'point_acces_refuse', motif: destination.motif });
+      if (typeof d.keys?.p256dh !== 'string' || typeof d.keys?.auth !== 'string') throw invalide('keys', 'clés attendues');
+      const empreinte = createHash('sha256').update(String(d.endpoint), 'utf8').digest('hex');
+      poussees.appareils = poussees.appareils.filter((x) => !(x.empreinte === empreinte && (x.utilisateurId !== a.utilisateurId || x.cabinetId === a.cabinetId)));
+      const ligne = { id: randomUUID(), cabinetId: a.cabinetId, utilisateurId: a.utilisateurId, service: destination.service, agent: reduireAgentUtilisateur(d.agentUtilisateur), creeLe: instant(), dernierEnvoiAccepteLe: null, empreinte };
+      poussees.appareils.push(ligne);
+      tracerAudit(a, 'notification_poussee.appareil_abonne', 'abonnement_pousse', ligne.id, null, { service: ligne.service, agent: ligne.agent });
+      return miens().find((x) => x.id === ligne.id);
+    }
+    if (m === 'DELETE' && s[2] === 'abonnements' && s.length === 4) {
+      const i = poussees.appareils.findIndex((x) => x.id === s[3] && x.cabinetId === a.cabinetId && x.utilisateurId === a.utilisateurId);
+      if (i < 0) throw new ErreurHttp(404, 'Appareil introuvable');
+      poussees.appareils.splice(i, 1);
+      return { retire: true };
+    }
+    if (m === 'PUT' && s[2] === 'preference' && s.length === 3) {
+      const d = r.json();
+      if (typeof d.active !== 'boolean') throw invalide('active', 'booléen attendu');
+      if (d.active) poussees.coupees.delete(cle);
+      else poussees.coupees.add(cle);
+      return { active: d.active };
+    }
+  }
   if (m === 'GET' && chemin === 'notifications/decompte') return { nonLues: 0 };
-  if (m === 'GET' && chemin === 'notifications/groupes') return { envoiExterne: false, groupes: [] };
-  if (m === 'GET' && chemin === 'notifications/preferences') return { envoiExterne: false, familles: [] };
-  if (m === 'GET' && chemin === 'notifications') return { page: 1, taillePage: 30, total: 0, nonLues: 0, suite: false, envoiExterne: false, notifications: [] };
+  if (m === 'GET' && chemin === 'notifications/groupes') return { envoiExterne, groupes: [] };
+  if (m === 'GET' && chemin === 'notifications/preferences') return { envoiExterne, familles: [] };
+  if (m === 'GET' && chemin === 'notifications') return { page: 1, taillePage: 30, total: 0, nonLues: 0, suite: false, envoiExterne, notifications: [] };
   if (chemin === 'cabinet/cout-horaire' && (m === 'GET' || m === 'PUT')) {
     if (m === 'PUT') {
       const d = r.json();
@@ -3269,6 +3330,7 @@ const serveur = http.createServer(async (req, res) => {
         etat = etatInitial();
         tracerAudit({ cabinetId: DEMO.cabinetA }, 'import.fec.termine', 'lot_import', etat.lots[0]!.id, DEMO.dupain, { lignes: 1250, lisible: true, anomalies: { CHAMP_VIDE: 60 } });
         mail = mailInitial();
+        poussees = pousseesInitial();
         pannes = { couperMorceauNumero: 0, conflitMorceauNumero: 0, ralentirMorceauxMs: 0, erreurTerminer: 0 };
         compteurMorceaux = 0;
         journal = [];
@@ -3316,6 +3378,13 @@ const serveur = http.createServer(async (req, res) => {
       } else if (methode === 'GET' && segments[1] === 'fournisseur') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(pageFournisseur(url.searchParams));
+      } else if (segments[1] === 'poussees') {
+        // Pilotage des notifications poussées simulées : statut du service ; lecture des abonnements enregistrés.
+        if (methode === 'POST') {
+          const d = json();
+          if (typeof d.statut === 'string' && d.statut in DETAILS_POUSSEES) poussees.statut = d.statut as Poussees['statut'];
+        }
+        resultat = { statut: poussees.statut, appareils: poussees.appareils, coupees: [...poussees.coupees] };
       } else if (methode === 'POST' && segments[1] === 'pannes') {
         pannes = { ...pannes, ...json() };
         compteurMorceaux = 0;

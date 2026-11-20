@@ -1,6 +1,6 @@
 import { creerAccesBd, urlBd } from '@comtaple/db';
 import { chargerEnvLocal } from '@comtaple/db/env';
-import { arreterTraces, connecteursMail, creerIa, demarrerTraces, Metriques, connexionRedis, FILES, Files, lireConfig, Stockage, tracerTravail } from '@comtaple/plateforme';
+import { arreterTraces, connecteursMail, creerIa, demarrerTraces, Metriques, connexionRedis, FILES, Files, lireConfig, notificationsPoussees, Stockage, tracerTravail } from '@comtaple/plateforme';
 import { Worker, type Job } from 'bullmq';
 import { analyserDocument } from './analyse-document.js';
 import { executerRapprochement, importerReleve } from './banque.js';
@@ -9,6 +9,7 @@ import { executerControlesExecution } from './controles.js';
 import { genererDossierRevision } from './dossier-revision.js';
 import { importerFec } from './import-fec.js';
 import { planifierMail, traiterTacheMail } from './mail.js';
+import { livrerPoussee, releverEnvoisPousses } from './poussees.js';
 import { rattraper } from './rattrapage.js';
 import { genererRestitution } from './restitution.js';
 import { genererRestitutionCabinet } from './restitution-cabinet.js';
@@ -28,6 +29,8 @@ const c: Contexte = { cfg, bd: creerAccesBd(urlBd('worker'), { max: 8 }), stocka
 // Passerelle IA : sans jeton configuré, « non_connecte » ; les passages des pièces sont alors indexés sans vecteur.
 c.ia = creerIa(cfg, c.bd);
 const mail = connecteursMail(cfg);
+// Notifications poussées : sans clés VAPID (défaut), « non_configure » — ni file, ni relevé, ni envoi.
+const poussees = notificationsPoussees(cfg);
 const prefix = cfg.FILES_PREFIXE;
 await c.stockage.assurerBucket();
 
@@ -56,6 +59,12 @@ const workers = [
     prefix,
   }),
 ];
+// Livraison des notifications poussées : la file n'est consommée que si la fonction est activée.
+if (poussees.statut !== 'non_configure') {
+  workers.push(
+    new Worker(FILES.pousses, suivi(FILES.pousses, (job): Promise<unknown> => livrerPoussee(c, poussees, job.data, { numero: job.attemptsMade + 1 })), { connection: connexionRedis(cfg.REDIS_URL), concurrency: 4, prefix }),
+  );
+}
 
 // Répétitions BullMQ : rattrapage périodique (les notifications peuvent être perdues ; seul mécanisme pour les boîtes
 // partagées) et entretien quotidien des surveillances. Sans connecteur configuré, rien n'est planifié.
@@ -96,6 +105,27 @@ const minuterie = setInterval(
   5 * 60_000,
 );
 
+// Notifications poussées : relevé périodique des envois mis en attente par la base, et purge horaire de la file traitée.
+// Désactivées (défaut) : aucune minuterie.
+let dernierePurgePoussees = 0;
+const minuteriePoussees =
+  poussees.statut === 'non_configure'
+    ? null
+    : setInterval(
+        () =>
+          void releverEnvoisPousses(c, poussees)
+            .then(async (b) => {
+              if (b.envois) console.log(`notifications poussées : ${b.envois} envoi(s) relevé(s), ${b.livraisons} livraison(s) mise(s) en file, ${b.ignores} sans suite`);
+              if (Date.now() - dernierePurgePoussees > 3600_000) {
+                dernierePurgePoussees = Date.now();
+                await c.bd.pool.query('select worker_envois_pousses_purger(7)');
+              }
+            })
+            .catch((e) => console.error(`notifications poussées : relevé en échec : ${e.message}`)),
+        cfg.PUSH_PERIODE_RELEVE_S * 1000,
+      );
+console.log(`Notifications poussées : ${poussees.statut === 'non_configure' ? 'non configurées (aucun abonnement accepté, aucun envoi)' : poussees.statut === 'simule' ? 'SIMULATEUR de test (aucun service réel contacté)' : 'configurées, non vérifiées sur un appareil réel'}.`);
+
 // Veille réglementaire : une passe par jour sur les sources officielles surveillées.
 await c.taches.comptabilite.upsertJobScheduler('veille-quotidienne', { every: 24 * 3600 * 1000 }, { name: 'veille', data: {} });
 
@@ -114,10 +144,11 @@ setInterval(() => {
   }
 }, 500).unref();
 
-console.log(`Worker Comtaple démarré (files : documents, comptabilite, exports, mail) ; plafond de tas : ${plafondTasMo} Mo.`);
+console.log(`Worker Comtaple démarré (files : documents, comptabilite, exports, mail${poussees.statut === 'non_configure' ? '' : ', pousses'}) ; plafond de tas : ${plafondTasMo} Mo.`);
 
 async function arreter() {
   clearInterval(minuterie);
+  if (minuteriePoussees) clearInterval(minuteriePoussees);
   await Promise.all(workers.map((w) => w.close()));
   await c.taches.fermer();
   await c.bd.fermer();

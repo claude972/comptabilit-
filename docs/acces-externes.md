@@ -12,6 +12,7 @@ Liste courte des seuls obstacles que le développement local ne peut pas lever ;
 3 bis. **Activation de l'IA** — jeton OVHcloud AI Endpoints, vérifications contractuelles préalables (région, conservation, non-réutilisation), puis évaluation sur corpus réel autorisé ; d'ici là l'assistant fonctionne « sans IA ».
 3 ter. **Prestataire d'agrégation bancaire** — à choisir et contracter (statut réglementaire à vérifier) ; d'ici là, import de fichiers bancaires seulement.
 3 quater. **Formulaires fiscaux du millésime** — les codes de cases n'ont pas pu être lus (site des impôts en maintenance le 2026-11-19) : à relire sur impots.gouv.fr, puis à faire valider.
+3 quinquies. **Notifications poussées** — aucun compte ni contrat requis (protocole ouvert), mais décision de l'éditeur, génération et garde d'une clé privée d'envoi (`node scripts/cles-vapid.mjs`), validation juridique des métadonnées transmises aux services de notification des navigateurs, et essai sur appareils réels ; d'ici là la fonction reste désactivée.
 4. **Garde de la clé privée des sauvegardes** (ligne 16) — décider où la conserver ; d'ici là, les sauvegardes locales restent en clair.
 5. **Destination indépendante des ancres du journal d'audit** (ligne 15) — sans elle, aucun ancrage effectif.
 6. **Accès de services** (lignes 2 à 5 et 11) — applications OAuth Google et Microsoft, jeton OVHcloud (IA et infrastructure), API Légifrance.

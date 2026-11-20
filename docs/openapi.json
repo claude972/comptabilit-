@@ -1,9 +1,184 @@
 {
   "openapi": "3.0.0",
   "paths": {
+    "/v1/notifications/poussees": {
+      "get": {
+        "description": "Statuts : « non_configure » (défaut : rien n’est accepté ni envoyé, « clePublique » vaut null), « simule » (tests : simulateur local), « configure_non_verifie » (clés présentes ; la réception sur un appareil réel n’a jamais été constatée — « verifieSurAppareilReel » vaut toujours faux). « phrases » est la liste FERMÉE des textes qu’une notification poussée peut afficher : aucune ne contient de montant, de nom de dossier, de client ou de fichier. « empreinte » (SHA-256 du point d’accès) permet au navigateur de reconnaître son propre abonnement ; le point d’accès et les clés ne sont jamais rendus.",
+        "operationId": "NotificationsPousseesController_etat",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "État des notifications poussées, clé publique VAPID, ma préférence et mes appareils",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/v1/notifications/poussees/abonnements": {
+      "get": {
+        "description": "Chacun ne voit que les siens. Ni le point d’accès ni les clés de l’appareil ne sont rendus.",
+        "operationId": "NotificationsPousseesController_lister",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mes appareils abonnés aux notifications poussées, dans ce cabinet",
+        "tags": [
+          "Notifications"
+        ]
+      },
+      "post": {
+        "description": "Refusé (503, code « poussees_non_configurees ») tant que la fonction n’est pas activée par l’éditeur. Le point d’accès vient du navigateur : seuls `https` et les hôtes connus des services de notification (Google FCM, Mozilla, Apple, Microsoft WNS) sont admis ; toute adresse interne, privée ou inconnue est refusée (400). Point d’accès et clés sont chiffrés avant d’être enregistrés ; l’agent utilisateur est réduit à « navigateur sur système ». Un appareil n’est abonné que pour un compte à la fois ; dix appareils au plus par personne. Rejouable : le même appareil met à jour son abonnement.",
+        "operationId": "NotificationsPousseesController_abonner",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "endpoint": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "keys": {
+                    "type": "object",
+                    "properties": {
+                      "p256dh": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9_-]{80,100}$"
+                      },
+                      "auth": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9_-]{16,32}$"
+                      }
+                    },
+                    "required": [
+                      "p256dh",
+                      "auth"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "agentUtilisateur": {
+                    "type": "string",
+                    "maxLength": 600
+                  }
+                },
+                "required": [
+                  "endpoint",
+                  "keys"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Abonner cet appareil aux notifications poussées",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/v1/notifications/poussees/abonnements/{id}": {
+      "delete": {
+        "description": "Supprime l’abonnement et ses clés : plus rien n’est adressé à cet appareil. Possible même si la fonction a été désactivée depuis. L’abonnement côté navigateur se retire depuis l’appareil lui-même (l’écran le fait pour l’appareil courant).",
+        "operationId": "NotificationsPousseesController_retirer",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Retirer un de mes appareils",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/v1/notifications/poussees/preference": {
+      "put": {
+        "description": "Préférence globale, en plus des préférences par famille (une famille désactivée n’est déjà plus notifiée, ni dans l’application ni sur l’appareil). Coupée : plus rien n’est adressé à mes appareils, qui restent abonnés ; les notifications dans l’application continuent.",
+        "operationId": "NotificationsPousseesController_reglerPreference",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "active": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "active"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Activer ou couper TOUTES les notifications poussées pour moi, dans ce cabinet",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
     "/v1/notifications": {
       "get": {
-        "description": "Notifications INTERNES uniquement : rien n’est envoyé par courriel, SMS ou notification poussée. Chacun ne voit que les siennes. Le texte est composé à la lecture ; une notification d’un dossier auquel l’appelant n’a plus accès n’en dit plus rien.",
+        "description": "Notifications INTERNES : rien n’est envoyé par courriel ni par SMS. « envoiExterne » vaut faux tant que les notifications poussées ne sont pas activées par l’éditeur (défaut) ; activées, elles n’adressent aux appareils abonnés qu’une phrase générique, jamais ce texte (voir « v1/notifications/poussees »). Chacun ne voit que les siennes. Le texte est composé à la lecture ; une notification d’un dossier auquel l’appelant n’a plus accès n’en dit plus rien.",
         "operationId": "NotificationsController_lister",
         "parameters": [
           {
@@ -168,7 +343,7 @@
     },
     "/v1/notifications/preferences": {
       "get": {
-        "description": "Par famille de notifications. Une famille désactivée n’est plus notifiée à l’appelant ; les notifications déjà reçues restent. Aucun réglage d’envoi extérieur n’existe : rien n’est jamais envoyé hors de l’application.",
+        "description": "Par famille de notifications. Une famille désactivée n’est plus notifiée à l’appelant ; les notifications déjà reçues restent. Une famille désactivée n’est pas non plus poussée sur un appareil ; le réglage global des notifications poussées est sur « v1/notifications/poussees/preference ».",
         "operationId": "NotificationsController_preferences",
         "parameters": [],
         "responses": {

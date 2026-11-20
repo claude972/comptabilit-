@@ -135,3 +135,7 @@ export type {
   SuggestionAmelioration,
 } from './amelioration.js';
 export { CATEGORIES_AMELIORATION, CRITERES_AMELIORATION, PARAMETRES_SEUIL_MONTANT, controlesPourAmelioration, fondementControle, suggererAmeliorations } from './amelioration.js';
+
+// Notifications poussées discrètes : charge utile sans donnée, liste blanche des services de notification.
+export { PAGE_POUSSEE, PHRASES_POUSSEES, SERVICES_NOTIFICATION, TITRE_POUSSEE, TYPES_POUSSES, chargeUtilePoussee, reduireAgentUtilisateur, serialiserChargeUtilePoussee, verifierPointAcces } from './notifications-poussees.js';
+export type { ChargeUtilePoussee, RefusPointAcces, ServiceNotification, TypePousse, VerificationPointAcces } from './notifications-poussees.js';

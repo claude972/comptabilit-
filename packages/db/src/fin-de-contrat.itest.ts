@@ -98,6 +98,12 @@ const VALEURS: Record<string, (c: Cabinet | null) => unknown> = {
   'liens_factures.decision': () => 'confirme',
   'liens_factures.objet': (c) => c?.lignes.get('documents')?.id,
   'liens_factures.version_extraction': () => 1,
+  // Notifications poussées : formes contrôlées par la base (empreinte hexadécimale, enveloppe chiffrée, type).
+  'abonnements_pousses.empreinte_point_acces': () => createHash('sha256').update(alea()).digest('hex'),
+  'abonnements_pousses.service': () => 'fcm',
+  'abonnements_pousses.secrets_chiffres': () => 'a1.p-essai.aaaa.bbbb.cccc',
+  'abonnements_pousses.agent': () => 'Chrome sur Android',
+  'envois_pousses.type': () => 'document.complement_demande',
 };
 
 function valeur(c: Colonne, cabinet: Cabinet | null): unknown {

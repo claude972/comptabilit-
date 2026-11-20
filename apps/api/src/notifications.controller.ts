@@ -3,7 +3,8 @@ import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery, ApiTags } from '@nestjs
 import { z } from 'zod';
 import { type AccesBd, sql } from '@comtaple/db';
 import { type Acces, AccesCourant, exigerUuid } from './acces.js';
-import { BD } from './jetons.js';
+import type { EtatPoussees } from '@comtaple/plateforme';
+import { BD, POUSSEES } from './jetons.js';
 import { schemaOpenApi, valider } from './validation.js';
 
 interface LigneNotification {
@@ -84,13 +85,24 @@ const preference = z.object({ famille: z.enum(FAMILLES_NOTIFICATION.map((f) => f
 @ApiBearerAuth()
 @Controller('v1/notifications')
 export class NotificationsController {
-  constructor(@Inject(BD) private readonly bd: AccesBd) {}
+  constructor(
+    @Inject(BD) private readonly bd: AccesBd,
+    @Inject(POUSSEES) private readonly poussees: EtatPoussees,
+  ) {}
+
+  /**
+   * Vrai seulement si l'éditeur a activé les notifications poussées (clés VAPID) : des notifications DISCRÈTES peuvent
+   * alors être adressées aux appareils que la personne a elle-même abonnés. Faux par défaut : rien ne sort de l'application.
+   */
+  private get envoiExterne(): boolean {
+    return this.poussees.statut !== 'non_configure';
+  }
 
   @Get()
   @ApiOperation({
     summary: 'Mes notifications dans l’application',
     description:
-      'Notifications INTERNES uniquement : rien n’est envoyé par courriel, SMS ou notification poussée. Chacun ne voit que les siennes. Le texte est composé à la lecture ; une notification d’un dossier auquel l’appelant n’a plus accès n’en dit plus rien.',
+      'Notifications INTERNES : rien n’est envoyé par courriel ni par SMS. « envoiExterne » vaut faux tant que les notifications poussées ne sont pas activées par l’éditeur (défaut) ; activées, elles n’adressent aux appareils abonnés qu’une phrase générique, jamais ce texte (voir « v1/notifications/poussees »). Chacun ne voit que les siennes. Le texte est composé à la lecture ; une notification d’un dossier auquel l’appelant n’a plus accès n’en dit plus rien.',
   })
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'nonLues', required: false, description: '« 1 » : seulement les non lues' })
@@ -118,7 +130,7 @@ export class NotificationsController {
         nonLues: d?.nonLues ?? 0,
         archivees: d?.archivees ?? 0,
         suite: lignes.length > TAILLE,
-        envoiExterne: false,
+        envoiExterne: this.envoiExterne,
         notifications: lignes.slice(0, TAILLE).map((n) => ({ id: n.id, type: n.type, creeLe: n.creeLe, lueLe: n.lueLe, archiveeLe: n.archiveeLe, ...presenterNotification(n) })),
       };
     });
@@ -154,7 +166,7 @@ export class NotificationsController {
            order by (g."nonLues" > 0) desc, g.derniere desc limit 100`)
       ).rows as unknown as Array<LigneNotification & { nombre: number; nonLues: number; ids: string[] }>;
       return {
-        envoiExterne: false,
+        envoiExterne: this.envoiExterne,
         groupes: lignes.map((n) => {
           const p = presenterNotification(n);
           // Un groupe de plusieurs notifications ne renvoie pas vers une pièce précise, mais vers l'écran qui les liste.
@@ -198,13 +210,13 @@ export class NotificationsController {
   @Get('preferences')
   @ApiOperation({
     summary: 'Mes préférences de notification dans l’application',
-    description: 'Par famille de notifications. Une famille désactivée n’est plus notifiée à l’appelant ; les notifications déjà reçues restent. Aucun réglage d’envoi extérieur n’existe : rien n’est jamais envoyé hors de l’application.',
+    description: 'Par famille de notifications. Une famille désactivée n’est plus notifiée à l’appelant ; les notifications déjà reçues restent. Une famille désactivée n’est pas non plus poussée sur un appareil ; le réglage global des notifications poussées est sur « v1/notifications/poussees/preference ».',
   })
   async preferences(@AccesCourant() acces: Acces) {
     return this.bd.avecContexte(acces, async (tx) => {
       const lignes = (await tx.execute(sql`select famille, active from preferences_notification where utilisateur_id = ${acces.utilisateurId}::uuid`)).rows as Array<{ famille: string; active: boolean }>;
       const inactives = new Set(lignes.filter((l) => !l.active).map((l) => l.famille));
-      return { envoiExterne: false, familles: FAMILLES_NOTIFICATION.map((f) => ({ famille: f.famille, libelle: f.libelle, active: !f.prefixes.some((p) => inactives.has(p)) })) };
+      return { envoiExterne: this.envoiExterne, familles: FAMILLES_NOTIFICATION.map((f) => ({ famille: f.famille, libelle: f.libelle, active: !f.prefixes.some((p) => inactives.has(p)) })) };
     });
   }
 

@@ -11,6 +11,7 @@ export const FILES = {
   comptabilite: 'comptabilite',
   exports: 'exports',
   mail: 'mail',
+  pousses: 'pousses',
 } as const;
 
 export interface TacheAnalyseDocument {
@@ -57,6 +58,18 @@ export interface TacheMail {
   cycleDeVie?: { idAbonnement: string; evenement: 'reauthorizationRequired' | 'subscriptionRemoved' | 'missed' };
 }
 
+/**
+ * Livraison d'une notification poussée à UN appareil : identifiants seulement. Ni le point d'accès, ni les clés de
+ * l'abonnement, ni aucun texte ne transitent par la file (ils sont relus et déchiffrés au moment de l'envoi).
+ */
+export interface TachePoussee {
+  cabinetId: string;
+  envoiId: string;
+  abonnementId: string;
+}
+/** Nombre maximal de tentatives de livraison d'une notification poussée (erreurs temporaires rejouées, délai doublé à chaque fois). */
+export const TENTATIVES_POUSSEE = 5;
+
 export function connexionRedis(url: string): ConnectionOptions {
   return new Redis(url, { maxRetriesPerRequest: null }) as unknown as ConnectionOptions;
 }
@@ -73,12 +86,14 @@ export class Files {
   readonly comptabilite: Queue;
   readonly exports: Queue;
   readonly mail: Queue;
+  readonly pousses: Queue;
   constructor(connexion: ConnectionOptions, prefixe = 'bull') {
     const options = { connection: connexion, defaultJobOptions: OPTIONS, prefix: prefixe };
     this.documents = new Queue(FILES.documents, options);
     this.comptabilite = new Queue(FILES.comptabilite, options);
     this.exports = new Queue(FILES.exports, options);
     this.mail = new Queue(FILES.mail, options);
+    this.pousses = new Queue(FILES.pousses, options);
   }
   /**
    * Mise en file suivie : si une trace est en cours (requête de l'API, traitement du worker), son contexte W3C
@@ -125,7 +140,14 @@ export class Files {
   cycleDeVieMail(t: TacheMail) {
     return this.ajouter(this.mail, 'cycle-de-vie', t);
   }
+  /**
+   * Une tâche par (envoi, appareil) : l'identifiant de tâche rend la mise en file idempotente (un relevé rejoué ne livre
+   * pas deux fois). Erreurs temporaires rejouées avec bornes : TENTATIVES_POUSSEE tentatives, délai doublé à chaque fois.
+   */
+  livrerPoussee(t: TachePoussee, delaiRepriseMs: number) {
+    return this.ajouter(this.pousses, 'livrer', t, { jobId: `pousse-${t.envoiId}-${t.abonnementId}`, attempts: TENTATIVES_POUSSEE, backoff: { type: 'exponential', delay: delaiRepriseMs } });
+  }
   async fermer() {
-    await Promise.all([this.documents.close(), this.comptabilite.close(), this.exports.close(), this.mail.close()]);
+    await Promise.all([this.documents.close(), this.comptabilite.close(), this.exports.close(), this.mail.close(), this.pousses.close()]);
   }
 }

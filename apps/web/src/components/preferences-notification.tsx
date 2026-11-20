@@ -10,7 +10,7 @@ export interface FamilleNotification {
 }
 
 /** Préférences de notification internes (`PUT v1/notifications/preferences`) : une case par famille, enregistrée aussitôt. */
-export function PreferencesNotification({ familles }: { familles: FamilleNotification[] }) {
+export function PreferencesNotification({ familles, envoiExterne = false }: { familles: FamilleNotification[]; envoiExterne?: boolean }) {
   const appel = useAppel();
   return (
     <fieldset className="space-y-2" data-testid="preferences-notification" disabled={appel.occupe}>
@@ -34,7 +34,12 @@ export function PreferencesNotification({ familles }: { familles: FamilleNotific
           </li>
         ))}
       </ul>
-      <p className="text-sm text-texte-doux">Désactiver une famille n’efface pas les notifications déjà reçues. Ces réglages ne concernent que l’application : rien n’est envoyé à l’extérieur.</p>
+      <p className="text-sm text-texte-doux">
+        Désactiver une famille n’efface pas les notifications déjà reçues.{' '}
+        {envoiExterne
+          ? 'Une famille désactivée n’est plus notifiée, ni dans l’application ni sur un appareil abonné aux notifications poussées.'
+          : 'Ces réglages ne concernent que l’application : rien n’est envoyé à l’extérieur.'}
+      </p>
       <Retours erreur={appel.erreur} succes={appel.succes} />
     </fieldset>
   );

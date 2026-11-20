@@ -107,6 +107,24 @@ const schema = z.object({
    * Refusée si NODE_ENV=production. Une connexion établie ainsi ne donne jamais le statut d'intégration « connecte ».
    */
   MAIL_SIMULATEUR_URL: z.string().optional().default(''),
+
+  // ── Notifications poussées discrètes (notifications-poussees.ts) — DÉSACTIVÉES tant que ces variables sont vides ──
+  /**
+   * Paire de clés VAPID (RFC 8292) et contact de l'éditeur (« mailto:… » ou « https://… »). VIDES (défaut) : statut
+   * « non_configure », aucun abonnement accepté, aucun envoi vers un service de notification. Générées par
+   * `node scripts/editeur.mjs cles-vapid` ; la clé privée ne va jamais dans le dépôt (voir docs/exploitation.md).
+   */
+  PUSH_VAPID_CLE_PUBLIQUE: z.string().optional().default(''),
+  PUSH_VAPID_CLE_PRIVEE: z.string().optional().default(''),
+  PUSH_VAPID_SUJET: z.string().optional().default(''),
+  /** TESTS UNIQUEMENT : origine du simulateur de service de notification. Refusée si NODE_ENV=production ; statut « simule ». */
+  PUSH_SIMULATEUR_URL: z.string().optional().default(''),
+  /** Regroupement : au plus UNE notification poussée par destinataire et par fenêtre de cette durée, en secondes. */
+  PUSH_FENETRE_REGROUPEMENT_S: z.coerce.number().int().min(1).max(3600).default(60),
+  /** Période du relevé des envois en attente par le worker, en secondes. */
+  PUSH_PERIODE_RELEVE_S: z.coerce.number().int().min(1).max(600).default(15),
+  /** Délai avant la première reprise d'un envoi en erreur temporaire, en secondes (doublé à chaque reprise, 5 tentatives au plus). */
+  PUSH_DELAI_REPRISE_S: z.coerce.number().int().min(1).max(3600).default(30),
 });
 
 export type Config = z.infer<typeof schema>;
@@ -125,6 +143,20 @@ export function lireConfig(env: NodeJS.ProcessEnv = process.env): Config {
     const u = new URL(r.data.MAIL_SIMULATEUR_URL);
     if (u.hostname !== '127.0.0.1' && u.hostname !== 'localhost') {
       throw new Error('Configuration refusée : MAIL_SIMULATEUR_URL doit désigner un simulateur local (127.0.0.1).');
+    }
+  }
+  if (r.data.PUSH_SIMULATEUR_URL !== '') {
+    if (r.data.NODE_ENV === 'production') {
+      throw new Error('Configuration refusée : PUSH_SIMULATEUR_URL (simulateur de test) est défini alors que NODE_ENV=production.');
+    }
+    let hote = '';
+    try {
+      hote = new URL(r.data.PUSH_SIMULATEUR_URL).hostname;
+    } catch {
+      /* refusé ci-dessous */
+    }
+    if (hote !== '127.0.0.1' && hote !== 'localhost') {
+      throw new Error('Configuration refusée : PUSH_SIMULATEUR_URL doit désigner un simulateur local (127.0.0.1).');
     }
   }
   return r.data;

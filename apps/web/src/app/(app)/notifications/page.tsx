@@ -1,10 +1,12 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ErreurAcces } from '@/components/erreurs';
+import { NotificationsPoussees } from '@/components/notifications-poussees';
 import { type FamilleNotification, PreferencesNotification } from '@/components/preferences-notification';
 import { BoutonAction } from '@/components/revision-actions';
 import { Alerte, Carte, Etiquette, Titre } from '@/components/ui/base';
 import { formaterHorodatage } from '@/lib/montants';
+import type { EtatServicePoussees } from '@/lib/notifications-poussees';
 import { tenter } from '@/lib/serveur/api';
 
 export const metadata: Metadata = { title: 'Notifications' };
@@ -35,7 +37,11 @@ export default async function PageNotificationsInternes({ searchParams }: { sear
   const brute = (await searchParams).page;
   const page = Math.max(1, Number.parseInt((Array.isArray(brute) ? brute[0] : brute) ?? '1', 10) || 1);
   const vueArchives = (await searchParams).archivees === '1';
-  const [r, preferences] = await Promise.all([tenter<PageNotifications>(`v1/notifications?page=${page}${vueArchives ? '&archivees=1' : ''}`), tenter<{ familles: FamilleNotification[] }>('v1/notifications/preferences')]);
+  const [r, preferences, poussees] = await Promise.all([
+    tenter<PageNotifications>(`v1/notifications?page=${page}${vueArchives ? '&archivees=1' : ''}`),
+    tenter<{ familles: FamilleNotification[] }>('v1/notifications/preferences'),
+    tenter<EtatServicePoussees>('v1/notifications/poussees'),
+  ]);
   const groupes = vueArchives ? null : await tenter<{ groupes: Groupe[] }>('v1/notifications/groupes');
   if (!r.ok) return <ErreurAcces statut={r.statut} message={r.message} />;
   const d = r.donnees;
@@ -43,7 +49,15 @@ export default async function PageNotificationsInternes({ searchParams }: { sear
     <div className="space-y-4">
       <Titre>Notifications</Titre>
       <Alerte ton="neutre" data-testid="mention-notifications">
-        Ces notifications n’existent que dans l’application : <strong>rien n’est envoyé par courriel, SMS ou notification sur votre appareil</strong>. Vous ne voyez que les vôtres.
+        {d.envoiExterne ? (
+          <>
+            Ces notifications se lisent dans l’application : <strong>rien n’est envoyé par courriel ni par SMS</strong>. Si vous avez activé les notifications poussées sur un appareil, il n’affiche qu’une phrase générique, jamais ce contenu (voir « Sur cet appareil » plus bas). Vous ne voyez que les vôtres.
+          </>
+        ) : (
+          <>
+            Ces notifications n’existent que dans l’application : <strong>rien n’est envoyé par courriel, SMS ou notification sur votre appareil</strong>. Vous ne voyez que les vôtres.
+          </>
+        )}
       </Alerte>
       <p data-testid="decompte-notifications">
         {vueArchives ? `${d.total} notification(s) archivée(s).` : `${d.total} notification(s) courante(s), dont ${d.nonLues} non lue(s) ; ${d.archivees ?? 0} archivée(s).`}{' '}
@@ -115,7 +129,12 @@ export default async function PageNotificationsInternes({ searchParams }: { sear
       </ul>
       {preferences.ok ? (
         <Carte>
-          <PreferencesNotification familles={preferences.donnees.familles} />
+          <PreferencesNotification familles={preferences.donnees.familles} envoiExterne={d.envoiExterne} />
+        </Carte>
+      ) : null}
+      {poussees.ok ? (
+        <Carte>
+          <NotificationsPoussees etat={poussees.donnees} />
         </Carte>
       ) : null}
       {d.total > d.taillePage || page > 1 ? (

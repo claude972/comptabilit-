@@ -10,3 +10,6 @@ export * from './traces.js';
 export * from './chiffrement-fichiers.js';
 export * from './jeu-sauvegarde.js';
 export * from './agregation-bancaire.js';
+export * from './web-push.js';
+export * from './notifications-poussees.js';
+export * from './simulateur-poussees.js';

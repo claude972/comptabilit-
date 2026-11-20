@@ -9,3 +9,5 @@ export const MAIL = Symbol('MAIL');
 export const AGREGATION = Symbol('AGREGATION');
 /** Passerelle IA interne (@comtaple/ia) et son journal d'audit, construits à partir de la configuration. */
 export const IA = Symbol('IA');
+/** État des notifications poussées (désactivées sans clés VAPID) construit à partir de la configuration. */
+export const POUSSEES = Symbol('POUSSEES');

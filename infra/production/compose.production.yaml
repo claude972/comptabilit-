@@ -69,6 +69,12 @@ x-environnement-serveur: &environnement-serveur
   MAIL_URI_REDIRECTION: ${MAIL_URI_REDIRECTION:-}
   MAIL_URL_PUBLIQUE_API: ${MAIL_URL_PUBLIQUE_API:-}
   MAIL_PERIODE_RATTRAPAGE_S: ${MAIL_PERIODE_RATTRAPAGE_S:-900}
+  # Notifications poussées discrètes : VIDES (défaut) = fonction DÉSACTIVÉE, aucun envoi vers les services de notification
+  # des navigateurs. Les trois vont ensemble ; l'activation est une décision (docs/exploitation.md, « Notifications
+  # poussées » ; docs/juridique/sous-traitants.md). PUSH_SIMULATEUR_URL n'est jamais transmis.
+  PUSH_VAPID_CLE_PUBLIQUE: ${PUSH_VAPID_CLE_PUBLIQUE:-}
+  PUSH_VAPID_CLE_PRIVEE: ${PUSH_VAPID_CLE_PRIVEE:-}
+  PUSH_VAPID_SUJET: ${PUSH_VAPID_SUJET:-}
   # Traces OpenTelemetry de l'API et du worker (docs/exploitation.md, § 9). Point d'accès OTLP/HTTP du collecteur ;
   # VIDE = aucune trace, aucun appel réseau. L'acheminement vers le collecteur (réseau privé) reste à mettre en place.
   OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}

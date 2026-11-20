@@ -44,7 +44,7 @@ La résiliation d'un abonnement ferme les dépôts à son échéance et ne suppr
 
 ### Devenir de chaque catégorie
 
-Politique versionnée (`POLITIQUE_FIN_DE_CONTRAT`, version `2026-11-19.3`), reprise dans chaque procès-verbal. Quatre devenirs : `supprimer`, `restituer_puis_supprimer` (présent dans l'archive de restitution exigée avant toute suppression), `anonymiser`, `conserver_jusqu_a` (durée PROPOSÉE, non arrêtée). Toute table portant `cabinet_id` appartient à une catégorie : un test échoue, et la procédure refuse de s'exécuter, si une table en est dépourvue.
+Politique versionnée (`POLITIQUE_FIN_DE_CONTRAT`, version `2026-11-19.4`), reprise dans chaque procès-verbal. Quatre devenirs : `supprimer`, `restituer_puis_supprimer` (présent dans l'archive de restitution exigée avant toute suppression), `anonymiser`, `conserver_jusqu_a` (durée PROPOSÉE, non arrêtée). Toute table portant `cabinet_id` appartient à une catégorie : un test échoue, et la procédure refuse de s'exécuter, si une table en est dépourvue.
 
 | Catégorie | Tables | Devenir | Durée proposée et fondement (non arrêtés) |
 |---|---|---|---|
@@ -58,7 +58,7 @@ Politique versionnée (`POLITIQUE_FIN_DE_CONTRAT`, version `2026-11-19.3`), repr
 | Missions et conseils | `missions`, `lettres_mission`, `travaux`, `baremes_temps`, `conseils`, `evenements_conseil` | restituer puis supprimer | — |
 | Règles et paramètres, suggestions d'amélioration écartées | `regles_cabinet`, `parametres_cabinet`, `suggestions_ecartees` | restituer puis supprimer | — |
 | Messagerie et jetons | `connexions_mail`, `demandes_connexion_mail`, `pieces_mail_vues`, `pieces_a_qualifier`, `signalements_mail`, `messages_mail` | supprimer | Les jetons ne sont jamais restitués |
-| Notifications et préférences | `notifications`, `preferences_notification` | supprimer | — |
+| Notifications et préférences ; abonnements aux notifications poussées et file de leurs envois (fonction désactivée par défaut) | `notifications`, `preferences_notification`, `abonnements_pousses`, `envois_pousses` | supprimer | Points d'accès et clés des appareils (chiffrés) jamais restitués |
 | Assistant et propositions d'IA | `echanges_assistant`, `echanges_portefeuille`, `propositions_ia` | supprimer | — (les échanges de portefeuille ne sont pas dans l'archive de restitution du cabinet) |
 | Traces de la passerelle d'IA (sans contenu) | `evenements_ia` | anonymiser (personne et dossier effacés) | 6 mois, mesures d'exploitation — valeur de travail |
 | Abonnement et facturation | `abonnements`, `echeances_abonnement`, `evenements_facturation` | conserver | 10 ans — Code de commerce, art. L. 123-22 ; LPF, art. L. 102 B (documents de l'Éditeur) |
@@ -105,7 +105,7 @@ Hors de ces tables, et NON traités par la procédure : la ligne `cabinets` (con
 
 ## Notifications internes : archivage et rétention
 
-Les notifications n'existent que dans l'application (aucun envoi extérieur) et ne portent que des identifiants et quelques valeurs non sensibles ; leur texte est composé à la lecture.
+Les notifications se lisent dans l'application et ne portent que des identifiants et quelques valeurs non sensibles ; leur texte est composé à la lecture. Leur contenu ne sort jamais de l'application. Les notifications poussées (désactivées par défaut, `exploitation.md` § 13) n'adressent aux appareils abonnés qu'une phrase générique ; ce qu'elles conservent : un abonnement par appareil (empreinte du point d'accès, service, navigateur et système, dates ; point d'accès et clés chiffrés), gardé jusqu'à son retrait par la personne ou par le service de notification — **aucune durée maximale n'est définie pour un abonnement inactif : à décider** — et une file d'envois (type et décompte) purgée 7 jours après traitement.
 
 | Étape | Qui | Effet | Réversible |
 |---|---|---|---|

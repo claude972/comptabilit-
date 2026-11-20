@@ -18,14 +18,13 @@ import {
   versChaine,
 } from '@comtaple/core';
 import { type AccesBd, and, asc, desc, eq, journaliser, schema as s, type Tx } from '@comtaple/db';
-import { type Config, lignesDuLot, tailleEtOperationsDuDossier } from '@comtaple/plateforme';
+import { type Config, tailleEtOperationsDuDossier } from '@comtaple/plateforme';
 import { z } from 'zod';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
 import { BD, CONFIG } from './jetons.js';
+import { avecCalcul, type Budget, chargerLignes, ApiRefusVolume } from './plafonds.js';
 import { schemaOpenApi, valider } from './validation.js';
 
-/** Au-delà, le calcul immédiat n'est pas proposé (même plafond que les états de travail). */
-const PLAFOND_LIGNES = 400_000;
 const CATEGORIES = ['micro_entreprise', 'petite_entreprise', 'personne_morale_regime_simplifie', 'moyenne_ou_grande_entreprise'] as const;
 const categorie = z.object({ categorie: z.enum(CATEGORIES).nullable() });
 const confirmation = z.object({ etat: z.enum(['complete', 'non_applicable']), note: z.string().max(8000).optional() });
@@ -53,7 +52,7 @@ function impot(regime: string | null): ImpotSurLeResultat {
 export class FiscalController {
   constructor(@Inject(BD) private readonly bd: AccesBd, @Inject(CONFIG) private readonly cfg: Config) {}
 
-  private async donnees(tx: Tx, exerciceId: string, minimum: Parameters<typeof exigerNiveau>[2] = 'lecture') {
+  private async donnees(tx: Tx, budget: Budget, ecran: string, exerciceId: string, minimum: Parameters<typeof exigerNiveau>[2] = 'lecture') {
     const [exercice] = await tx.select().from(s.exercices).where(eq(s.exercices.id, exerciceId));
     if (!exercice) throw new NotFoundException('Exercice introuvable');
     await exigerNiveau(tx, exercice.entiteId, minimum);
@@ -61,11 +60,13 @@ export class FiscalController {
     if (!entite) throw new NotFoundException('Dossier introuvable');
     const [lot] = await tx.select().from(s.lotsImport).where(and(eq(s.lotsImport.exerciceId, exerciceId), eq(s.lotsImport.type, 'fec'), eq(s.lotsImport.actif, true)));
     if (!lot) throw new ConflictException('Aucune donnée comptable importée pour cet exercice : rien ne peut être préparé');
-    if (lot.progression > PLAFOND_LIGNES) throw new ConflictException('Volume trop important pour un calcul immédiat');
-    return { exercice, entite, lot, lignes: (await lignesDuLot(tx, lot.id)) as LigneEcriture[] };
+    // Plafond de l'API (D-093) : volume vérifié avant toute lecture, refus motivé au-delà.
+    const { lignes } = await chargerLignes(tx, budget, this.cfg, { ecran, plafond: 'calcul', lot });
+    return { exercice, entite, lot, lignes: lignes as LigneEcriture[] };
   }
 
   @Get('exercices/:id/liasse')
+  @ApiRefusVolume()
   @ApiQuery({ name: 'regime', required: false, enum: ['reel_normal', 'reel_simplifie'] })
   @ApiOperation({
     summary: 'PROJET de préparation de la liasse fiscale : tableaux déduits de la balance (2050 à 2053, ou 2033-A et 2033-B)',
@@ -76,8 +77,8 @@ export class FiscalController {
     exigerUuid(id);
     const regime = (regimeBrut ?? 'reel_normal') as RegimeLiasse;
     if (regime !== 'reel_normal' && regime !== 'reel_simplifie') throw new BadRequestException('regime : reel_normal ou reel_simplifie');
-    return this.bd.avecContexte(acces, async (tx) => {
-      const { exercice, entite, lot, lignes } = await this.donnees(tx, id);
+    return avecCalcul(this.bd, acces, async (tx, budget) => {
+      const { exercice, entite, lot, lignes } = await this.donnees(tx, budget, 'Liasse fiscale (projet)', id);
       const resultat = preparerLiasse({
         balance: calculerBalance(lignes, { auxiliaire: true }),
         exercice: { debut: exercice.debut, fin: exercice.fin },
@@ -101,6 +102,7 @@ export class FiscalController {
   }
 
   @Get('exercices/:id/annexe')
+  @ApiRefusVolume()
   @ApiOperation({
     summary: 'PROJET d’annexe : rubriques du PCG, pré-remplissage tiré des écritures, informations à saisir, confirmations du cabinet',
     description:
@@ -108,8 +110,8 @@ export class FiscalController {
   })
   async annexe(@AccesCourant() acces: Acces, @Param('id') id: string) {
     exigerUuid(id);
-    return this.bd.avecContexte(acces, async (tx) => {
-      const { exercice, entite, lot, lignes } = await this.donnees(tx, id);
+    return avecCalcul(this.bd, acces, async (tx, budget) => {
+      const { exercice, entite, lot, lignes } = await this.donnees(tx, budget, 'Annexe (projet)', id);
       const confirmations = await tx.select().from(s.confirmationsAnnexe).where(eq(s.confirmationsAnnexe.exerciceId, id));
       const valides = confirmations.filter((c) => c.versionDonnees === exercice.versionDonnees);
       const resultat = preparerAnnexe({
@@ -149,6 +151,7 @@ export class FiscalController {
   }
 
   @Put('exercices/:id/annexe/rubriques/:rubrique')
+  @ApiRefusVolume()
   @ApiOperation({
     summary: 'Confirmer une rubrique du projet d’annexe : « complète » ou « non applicable » (niveau révision)',
     description: 'La confirmation engage la personne qui la donne ; elle est journalisée et rattachée à la version courante des données. Elle ne vaut pas validation des comptes annuels.',
@@ -158,8 +161,8 @@ export class FiscalController {
     exigerUuid(id);
     if (!RUBRIQUE.test(rubrique)) throw new BadRequestException('rubrique invalide');
     const d = valider(confirmation, corps);
-    return this.bd.avecContexte(acces, async (tx) => {
-      const { exercice, entite, lignes } = await this.donnees(tx, id, 'revision');
+    return avecCalcul(this.bd, acces, async (tx, budget) => {
+      const { exercice, entite, lignes } = await this.donnees(tx, budget, 'Confirmation d’une rubrique de l’annexe', id, 'revision');
       const projet = preparerAnnexe({ lignes, exercice: { debut: exercice.debut, fin: exercice.fin }, referentielComptable: entite.referentielComptable, categorie: (exercice.categorieAnnexe as CategorieEntiteAnnexe | null) ?? 'a_confirmer' });
       if (projet.statut !== 'projet') throw new ConflictException('Le projet d’annexe ne peut pas être préparé pour cet exercice');
       if (!projet.rubriques.some((r) => r.id === rubrique)) throw new NotFoundException('Rubrique inconnue du modèle d’annexe');
@@ -267,8 +270,8 @@ export class FiscalController {
   }
 
   /** Propositions déterministes du moteur pour un exercice (rien n'est enregistré). */
-  private async propositions(tx: Tx, exerciceId: string, minimum: Parameters<typeof exigerNiveau>[2]) {
-    const { exercice, lot, lignes } = await this.donnees(tx, exerciceId, minimum);
+  private async propositions(tx: Tx, budget: Budget, ecran: string, exerciceId: string, minimum: Parameters<typeof exigerNiveau>[2]) {
+    const { exercice, lot, lignes } = await this.donnees(tx, budget, ecran, exerciceId, minimum);
     // Constats de césure de la DERNIÈRE exécution terminée et non obsolète des contrôles (sinon : aucun signal de césure).
     const [execution] = await tx
       .select()
@@ -291,6 +294,7 @@ export class FiscalController {
   }
 
   @Get('exercices/:id/inventaire/propositions')
+  @ApiRefusVolume()
   @ApiOperation({
     summary: 'Propositions DÉTERMINISTES d’écritures d’inventaire (charges et produits constatés d’avance, factures non parvenues, factures à établir)',
     description:
@@ -298,8 +302,8 @@ export class FiscalController {
   })
   async listerPropositions(@AccesCourant() acces: Acces, @Param('id') id: string) {
     exigerUuid(id);
-    return this.bd.avecContexte(acces, async (tx) => {
-      const { exercice, lot, resultat, signalCesure, nbImmobilisations } = await this.propositions(tx, id, 'lecture');
+    return avecCalcul(this.bd, acces, async (tx, budget) => {
+      const { exercice, lot, resultat, signalCesure, nbImmobilisations } = await this.propositions(tx, budget, 'Propositions d’écritures d’inventaire', id, 'lecture');
       const reprises = await tx.select({ id: s.ecrituresInventaire.id, statut: s.ecrituresInventaire.statut, detail: s.ecrituresInventaire.origineDetail }).from(s.ecrituresInventaire).where(and(eq(s.ecrituresInventaire.exerciceId, id), eq(s.ecrituresInventaire.origine, 'proposition_moteur')));
       const parProposition = new Map(reprises.map((r) => [(r.detail as { propositionId?: string } | null)?.propositionId ?? '', r]));
       return {
@@ -323,6 +327,7 @@ export class FiscalController {
   }
 
   @Post('exercices/:id/inventaire/propositions/:propositionId/reprise')
+  @ApiRefusVolume()
   @HttpCode(201)
   @ApiOperation({
     summary: 'Reprendre une proposition du moteur comme écriture d’inventaire PROPOSÉE (niveau collaboration)',
@@ -332,8 +337,8 @@ export class FiscalController {
   async reprendre(@AccesCourant() acces: Acces, @Param('id') id: string, @Param('propositionId') propositionId: string) {
     exigerUuid(id);
     if (!PROPOSITION.test(propositionId)) throw new BadRequestException('identifiant de proposition invalide');
-    return this.bd.avecContexte(acces, async (tx) => {
-      const { exercice, lignes, resultat } = await this.propositions(tx, id, 'collaboration');
+    return avecCalcul(this.bd, acces, async (tx, budget) => {
+      const { exercice, lignes, resultat } = await this.propositions(tx, budget, 'Reprise d’une proposition d’inventaire', id, 'collaboration');
       const p = resultat.propositions.find((x) => x.id === propositionId);
       if (!p) throw new NotFoundException('Proposition introuvable sur les données actuelles (elles ont peut-être changé)');
       const deja = await tx.select({ id: s.ecrituresInventaire.id, detail: s.ecrituresInventaire.origineDetail }).from(s.ecrituresInventaire).where(and(eq(s.ecrituresInventaire.exerciceId, id), eq(s.ecrituresInventaire.origine, 'proposition_moteur')));

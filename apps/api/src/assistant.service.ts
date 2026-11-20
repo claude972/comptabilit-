@@ -28,13 +28,13 @@ import {
   type StatutIa,
   vectoriserRequete,
 } from '@comtaple/ia';
-import { lignesDuLot, type ServicesIa } from '@comtaple/plateforme';
+import type { Config, ServicesIa } from '@comtaple/plateforme';
 import { type Acces, auMoins, exigerNiveau, type Niveau, niveauSur } from './acces.js';
+import { Budget, chargerLignes, type Plafond } from './plafonds.js';
 
 export const QUESTION_MIN = 3;
 export const QUESTION_MAX = 1000;
 /** Au-delà, l'indicateur n'est pas calculé à la volée (même borne que les états de travail). */
-const PLAFOND_LIGNES = 400_000;
 
 /** Niveau d'habilitation exigé sur le dossier pour chaque habilitation déclarée par une fonction métier. */
 const NIVEAU_REQUIS: Record<string, Niveau> = {
@@ -69,6 +69,8 @@ const INDICATEURS_ASSISTANT: Array<{ id: string; motsCles: string[] }> = [
 export interface DependancesAssistant {
   bd: AccesBd;
   ia: ServicesIa;
+  /** Configuration de l'API : plafonds des calculs immédiats (D-093). */
+  cfg: Config;
 }
 
 export interface ExerciceAnalyse {
@@ -155,9 +157,9 @@ interface PassageTrouve {
  * une transaction posée avec l'identité de l'utilisateur (RLS) et filtre sur le dossier et la période du contexte
  * fourni par l'orchestrateur (jamais par le modèle).
  */
-export function creerPortsAssistant(dep: DependancesAssistant, acces: Acces, dossierId: string, exercice: ExerciceAnalyse | null, options: { plafondLignes?: number } = {}): PortsFonctionsMetier {
-  const { bd, ia } = dep;
-  const plafondLignes = options.plafondLignes ?? PLAFOND_LIGNES;
+export function creerPortsAssistant(dep: DependancesAssistant, acces: Acces, dossierId: string, exercice: ExerciceAnalyse | null, options: { plafond?: Plafond } = {}): PortsFonctionsMetier {
+  const { bd, ia, cfg } = dep;
+  const plafond = options.plafond ?? 'calcul';
   const lire = <T>(fn: (tx: Tx) => Promise<T>): Promise<T> => bd.avecContexte(acces, fn);
   // Défense en profondeur : l'orchestrateur ne transmet que le périmètre imposé, on le revérifie quand même.
   const exigerContexte = (c: ContexteFonction, avecDossier: boolean): void => {
@@ -307,14 +309,22 @@ export function creerPortsAssistant(dep: DependancesAssistant, acces: Acces, dos
       return lire(async (tx) => {
         const lot = await lotActif(tx);
         if (!lot) return { elements: [], donneesManquantes: ['Aucune donnée comptable importée pour cet exercice : indicateur non calculable.'] };
-        if (lot.progression > plafondLignes) return { elements: [], donneesManquantes: ['Volume trop important pour un calcul immédiat de l’indicateur.'] };
-        const lignes = await lignesDuLot(tx, lot.id);
         const [precedent] = await tx.select().from(s.exercices).where(and(eq(s.exercices.entiteId, dossierId), lt(s.exercices.fin, exercice.debut))).orderBy(desc(s.exercices.fin)).limit(1);
-        let exercicePrecedent: { lignes: LigneEcriture[]; exercice: { debut: string; fin: string } } | null = null;
-        if (precedent) {
-          const [lotP] = await tx.select().from(s.lotsImport).where(and(eq(s.lotsImport.exerciceId, precedent.id), eq(s.lotsImport.type, 'fec'), eq(s.lotsImport.actif, true)));
-          if (lotP && lotP.progression <= plafondLignes) exercicePrecedent = { lignes: await lignesDuLot(tx, lotP.id), exercice: { debut: precedent.debut, fin: precedent.fin } };
+        let lotP: typeof s.lotsImport.$inferSelect | undefined;
+        if (precedent) [lotP] = await tx.select().from(s.lotsImport).where(and(eq(s.lotsImport.exerciceId, precedent.id), eq(s.lotsImport.type, 'fec'), eq(s.lotsImport.actif, true)));
+        // Plafond de l'API (D-093). Ici le refus n'est pas une erreur HTTP : l'assistant le dit comme donnée manquante (jamais un chiffre partiel).
+        const budget = new Budget();
+        let charge: Awaited<ReturnType<typeof chargerLignes>>;
+        try {
+          charge = await chargerLignes(tx, budget, cfg, { ecran: 'Indicateur', plafond, lot, lotPrecedent: lotP ?? null });
+        } catch (e) {
+          budget.liberer();
+          if (e instanceof HttpException && (e.getStatus() === 409 || e.getStatus() === 503)) return { elements: [], donneesManquantes: [couper(`Indicateur non calculé : ${(e.getResponse() as { message?: string }).message ?? 'volume trop important pour un calcul immédiat.'}`, 500)] };
+          throw e;
         }
+        try {
+        const lignes = charge.lignes;
+        const exercicePrecedent: { lignes: LigneEcriture[]; exercice: { debut: string; fin: string } } | null = charge.precedent && precedent ? { lignes: charge.precedent, exercice: { debut: precedent.debut, fin: precedent.fin } } : null;
         // Le moteur calcule sur l'exercice entier : une sous-période demandée ne change pas la valeur, et la période est dite.
         const [v] = calculerIndicateurs({ lignes, exercice: { debut: exercice.debut, fin: exercice.fin }, exercicePrecedent }, { ids: [definition.id] });
         if (!v) return { elements: [] };
@@ -326,6 +336,9 @@ export function creerPortsAssistant(dep: DependancesAssistant, acces: Acces, dos
           elements: [{ id: `indicateur:${exercice.id}:${definition.id}`, nature: 'resultat_moteur', libelle: couper(`Indicateur — ${definition.libelle}`, 300), contenu: v.mentions.join(' '), dossierId, valeurs }],
           ...(v.statut !== 'calcule' ? { donneesManquantes: [couper(`${definition.libelle} : non calculable${v.motif ? ` (${v.motif})` : ''}.`, 300)] } : {}),
         };
+        } finally {
+          budget.liberer();
+        }
       });
     },
 

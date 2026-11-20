@@ -2,31 +2,42 @@ import { BadRequestException, ConflictException, Controller, Get, Inject, NotFou
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { calculerBalance, calculerIndicateurs, CATALOGUE_INDICATEURS, correspondancePour, type LigneEcriture, projeterBilan, projeterCompteDeResultat, schemaChaineDecimale } from '@comtaple/core';
 import { type AccesBd, and, desc, eq, inArray, lt, schema as s, type Tx } from '@comtaple/db';
-import { lignesDuLot } from '@comtaple/plateforme';
+import type { Config } from '@comtaple/plateforme';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
-import { BD } from './jetons.js';
+import { BD, CONFIG } from './jetons.js';
+import { avecCalcul, type Budget, chargerLignes, ApiRefusVolume } from './plafonds.js';
 
-/** Au-delà, le calcul immédiat n'est pas proposé (à faire en traitement différé : non implémenté). */
-const PLAFOND_LIGNES = 400_000;
 const MENTION = 'PROJET — état de travail calculé à partir des écritures importées, avant écritures d’inventaire. Il ne constitue ni des comptes annuels ni une validation.';
 
 @ApiTags('États de travail et indicateurs')
 @ApiBearerAuth()
 @Controller('v1')
 export class EtatsController {
-  constructor(@Inject(BD) private readonly bd: AccesBd) {}
+  constructor(@Inject(BD) private readonly bd: AccesBd, @Inject(CONFIG) private readonly cfg: Config) {}
 
-  private async donnees(tx: Tx, exerciceId: string): Promise<{ exercice: typeof s.exercices.$inferSelect; lot: typeof s.lotsImport.$inferSelect; lignes: LigneEcriture[] }> {
+  /** Exercice et lot actif ; les lignes sont chargées par `chargerLignes`, SOUS le plafond de l'API (D-093). */
+  private async donnees(tx: Tx, budget: Budget, ecran: string, exerciceId: string, avecPrecedent: boolean): Promise<{ exercice: typeof s.exercices.$inferSelect; lot: typeof s.lotsImport.$inferSelect; lignes: LigneEcriture[]; precedent: { lignes: LigneEcriture[]; exercice: { debut: string; fin: string } } | null; motifPrecedent: string | null }> {
     const [exercice] = await tx.select().from(s.exercices).where(eq(s.exercices.id, exerciceId));
     if (!exercice) throw new NotFoundException('Exercice introuvable');
     await exigerNiveau(tx, exercice.entiteId, 'lecture');
     const [lot] = await tx.select().from(s.lotsImport).where(and(eq(s.lotsImport.exerciceId, exerciceId), eq(s.lotsImport.type, 'fec'), eq(s.lotsImport.actif, true)));
     if (!lot) throw new ConflictException('Aucune donnée comptable importée pour cet exercice : état non calculable');
-    if (lot.progression > PLAFOND_LIGNES) throw new ConflictException('Volume trop important pour un calcul immédiat');
-    return { exercice, lot, lignes: await lignesDuLot(tx, lot.id) };
+    // Exercice précédent : celui qui se termine juste avant, s'il a un lot comptable actif (seulement pour les indicateurs).
+    let precedentExercice: typeof s.exercices.$inferSelect | undefined;
+    let lotPrecedent: typeof s.lotsImport.$inferSelect | undefined;
+    if (avecPrecedent) {
+      [precedentExercice] = await tx.select().from(s.exercices).where(and(eq(s.exercices.entiteId, exercice.entiteId), lt(s.exercices.fin, exercice.debut))).orderBy(desc(s.exercices.fin)).limit(1);
+      if (precedentExercice) [lotPrecedent] = await tx.select().from(s.lotsImport).where(and(eq(s.lotsImport.exerciceId, precedentExercice.id), eq(s.lotsImport.type, 'fec'), eq(s.lotsImport.actif, true)));
+    }
+    const charge = await chargerLignes(tx, budget, this.cfg, { ecran, plafond: 'calcul', lot, lotPrecedent: lotPrecedent ?? null });
+    return {
+      exercice, lot, lignes: charge.lignes, motifPrecedent: charge.motifPrecedent,
+      precedent: charge.precedent && precedentExercice ? { lignes: charge.precedent, exercice: { debut: precedentExercice.debut, fin: precedentExercice.fin } } : null,
+    };
   }
 
   @Get('exercices/:id/etats')
+  @ApiRefusVolume()
   @ApiOperation({
     summary: 'Balance et PROJETS de compte de résultat et de bilan d’un exercice',
     description:
@@ -35,8 +46,8 @@ export class EtatsController {
   @ApiQuery({ name: 'ajuste', required: false, description: '« 1 » : états projetés sur la balance AJUSTÉE (écritures importées + écritures d’inventaire approuvées et à jour)' })
   async etats(@AccesCourant() acces: Acces, @Param('id') id: string, @Query('ajuste') ajuste?: string) {
     exigerUuid(id);
-    return this.bd.avecContexte(acces, async (tx) => {
-      const { exercice, lot, lignes: importees } = await this.donnees(tx, id);
+    return avecCalcul(this.bd, acces, async (tx, budget) => {
+      const { exercice, lot, lignes: importees } = await this.donnees(tx, budget, 'États de travail', id, false);
       let lignes = importees;
       let inventaire: { ecritures: number; ecartees: number } | null = null;
       if (ajuste === '1') {
@@ -83,6 +94,7 @@ export class EtatsController {
   }
 
   @Get('exercices/:id/indicateurs')
+  @ApiRefusVolume()
   @ApiOperation({
     summary: 'Indicateurs de performance du dossier pour un exercice, avec formule, composantes et évolution N / N-1',
     description:
@@ -93,20 +105,13 @@ export class EtatsController {
   async indicateurs(@AccesCourant() acces: Acces, @Param('id') id: string, @Query('tauxTvaVentes') tv?: string, @Query('tauxTvaAchats') ta?: string) {
     exigerUuid(id);
     for (const t of [tv, ta]) if (t !== undefined && !schemaChaineDecimale.safeParse(t).success) throw new BadRequestException('Taux de TVA : chaîne décimale attendue (ex. 20 ou 5.5)');
-    return this.bd.avecContexte(acces, async (tx) => {
-      const { exercice, lot, lignes } = await this.donnees(tx, id);
-      // Exercice précédent : celui qui se termine juste avant, s'il a un lot comptable actif.
-      const [precedent] = await tx.select().from(s.exercices).where(and(eq(s.exercices.entiteId, exercice.entiteId), lt(s.exercices.fin, exercice.debut))).orderBy(desc(s.exercices.fin)).limit(1);
-      let exercicePrecedent: { lignes: LigneEcriture[]; exercice: { debut: string; fin: string } } | null = null;
-      if (precedent) {
-        const [lotP] = await tx.select().from(s.lotsImport).where(and(eq(s.lotsImport.exerciceId, precedent.id), eq(s.lotsImport.type, 'fec'), eq(s.lotsImport.actif, true)));
-        if (lotP && lotP.progression <= PLAFOND_LIGNES) exercicePrecedent = { lignes: await lignesDuLot(tx, lotP.id), exercice: { debut: precedent.debut, fin: precedent.fin } };
-      }
+    return avecCalcul(this.bd, acces, async (tx, budget) => {
+      const { exercice, lot, lignes, precedent: exercicePrecedent, motifPrecedent } = await this.donnees(tx, budget, 'Indicateurs', id, true);
       const tauxTvaMoyen = tv || ta ? { ...(tv ? { ventes: tv } : {}), ...(ta ? { achats: ta } : {}) } : null;
       return {
         mention: 'Indicateurs calculés par le moteur à partir des écritures importées, avant écritures d’inventaire : aide à la revue, pas un diagnostic.',
         exercice,
-        donnees: { lotImportId: lot.id, versionDonnees: exercice.versionDonnees, exercicePrecedentFourni: Boolean(exercicePrecedent) },
+        donnees: { lotImportId: lot.id, versionDonnees: exercice.versionDonnees, exercicePrecedentFourni: Boolean(exercicePrecedent), ...(motifPrecedent ? { motifExercicePrecedentNonFourni: motifPrecedent } : {}) },
         indicateurs: calculerIndicateurs({ lignes, exercice: { debut: exercice.debut, fin: exercice.fin }, exercicePrecedent, tauxTvaMoyen }),
       };
     });

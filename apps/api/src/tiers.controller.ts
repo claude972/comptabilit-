@@ -19,16 +19,13 @@ import {
   versChaine,
 } from '@comtaple/core';
 import { type AccesBd, and, eq, inArray, journaliser, schema as s, sql, type Tx } from '@comtaple/db';
-import { lignesDuLot } from '@comtaple/plateforme';
+import type { Config } from '@comtaple/plateforme';
 import { z } from 'zod';
 import { type Acces, AccesCourant, auMoins, exigerNiveau, exigerUuid, type Niveau } from './acces.js';
-import { BD } from './jetons.js';
+import { BD, CONFIG } from './jetons.js';
+import { avecCalcul, type Budget, chargerLignes, refusVolume, ApiRefusVolume } from './plafonds.js';
 import { schemaOpenApi, valider } from './validation.js';
 
-/** Au-delà, le calcul immédiat n'est pas proposé (même plafond que les états de travail). */
-const PLAFOND_LIGNES = 400_000;
-/** Nombre maximal de pièces suivies par exercice dans un calcul immédiat ; au-delà, c'est dit. */
-const PLAFOND_PIECES = 5_000;
 const TAILLE_PAGE = 50;
 const ETATS: readonly EtatFacture[] = [
   'non_echue', 'echue_non_reglee', 'partiellement_reglee', 'reglee', 'trop_percu', 'non_determinable', 'avoir_impute', 'avoir_partiellement_impute', 'avoir_non_impute',
@@ -81,13 +78,13 @@ interface Contexte {
 @ApiBearerAuth()
 @Controller('v1')
 export class TiersController {
-  constructor(@Inject(BD) private readonly bd: AccesBd) {}
+  constructor(@Inject(BD) private readonly bd: AccesBd, @Inject(CONFIG) private readonly cfg: Config) {}
 
   /**
    * Recalcule tout à partir des écritures du lot actif, des extractions en vigueur, des rapprochements bancaires validés
    * et des décisions enregistrées. Rien n'est mis en cache : le résultat ne peut pas diverger des données.
    */
-  private async calculer(tx: Tx, exerciceId: string, dateBrute: string | undefined, minimum: Niveau = 'lecture'): Promise<Contexte> {
+  private async calculer(tx: Tx, budget: Budget, exerciceId: string, dateBrute: string | undefined, minimum: Niveau = 'lecture'): Promise<Contexte> {
     const [exercice] = await tx.select().from(s.exercices).where(eq(s.exercices.id, exerciceId));
     if (!exercice) throw new NotFoundException('Exercice introuvable');
     const niveau = await exigerNiveau(tx, exercice.entiteId, minimum);
@@ -95,8 +92,24 @@ export class TiersController {
     if (!entite) throw new NotFoundException('Dossier introuvable');
     if (dateBrute !== undefined && !estDateIso(dateBrute)) throw new BadRequestException('date : AAAA-MM-JJ attendue');
     const [lot] = await tx.select().from(s.lotsImport).where(and(eq(s.lotsImport.exerciceId, exerciceId), eq(s.lotsImport.type, 'fec'), eq(s.lotsImport.actif, true)));
-    if (lot && lot.progression > PLAFOND_LIGNES) throw new ConflictException('Volume trop important pour un calcul immédiat');
-    const lignes = lot ? ((await lignesDuLot(tx, lot.id)) as LigneEcriture[]) : [];
+    // Plafonds de l'API (D-093), vérifiés AVANT toute lecture : lignes de l'exercice, puis pièces candidates (compte en base,
+    // avec les mêmes écartements que la boucle ci-dessous : version courante, nature, extraction exploitable, exercice).
+    const ecran = 'Suivi des tiers et factures';
+    const lignes = lot ? ((await chargerLignes(tx, budget, this.cfg, { ecran, plafond: 'calcul', lot })).lignes as LigneEcriture[]) : [];
+    const [{ n: candidates } = { n: 0 }] = (
+      await tx.execute(sql`
+        select count(*)::int as n
+          from documents d join extractions x on x.document_id = d.id and x.actuelle
+         where d.entite_id = ${entite.id}::uuid and d.nature in ('facture_achat', 'facture_vente', 'avoir') and d.remplace_par is null and d.statut not in ('quarantaine', 'rejete')
+           and x.statut not in ('rejete', 'validation_invalidee')
+           and (d.exercice_id = ${exercice.id}::uuid
+                or (d.exercice_id is null and (nullif(trim(x.champs -> 'dateEmission' ->> 'valeur'), '') is null
+                                                or trim(x.champs -> 'dateEmission' ->> 'valeur') !~ '^\d{4}-\d{2}-\d{2}$'
+                                                or trim(x.champs -> 'dateEmission' ->> 'valeur') between ${exercice.debut} and ${exercice.fin})))`)
+    ).rows as Array<{ n: number }>;
+    if (candidates > this.cfg.API_PIECES_MAX_TIERS) {
+      throw refusVolume({ ecran, objet: 'pièces (factures et avoirs) à suivre dans l’exercice', volume: candidates, plafond: this.cfg.API_PIECES_MAX_TIERS, variable: 'API_PIECES_MAX_TIERS', remede: 'Le suivi est recalculé en entier à chaque lecture : l’éditeur peut relever le plafond après avoir vérifié la mémoire de l’API.' });
+    }
 
     // Pièces : version COURANTE seulement (une version remplacée n'est plus jamais la version de travail, D-031).
     const documents = await tx
@@ -114,7 +127,8 @@ export class TiersController {
       const emission = texte(c.dateEmission);
       const dansExercice = doc.exerciceId ? doc.exerciceId === exercice.id : emission === null || !estDateIso(emission) || (emission >= exercice.debut && emission <= exercice.fin);
       if (!dansExercice) { piecesEcartees.horsExercice++; continue; }
-      if (pieces.length >= PLAFOND_PIECES) { piecesEcartees.auDelaDuPlafond++; continue; }
+      // Garde de sécurité : le décompte en base ci-dessus a déjà refusé un volume au-dessus du plafond (écart possible seulement sur des dates impossibles).
+      if (pieces.length >= this.cfg.API_PIECES_MAX_TIERS) throw refusVolume({ ecran, objet: 'pièces (factures et avoirs) à suivre dans l’exercice', volume: pieces.length + 1, plafond: this.cfg.API_PIECES_MAX_TIERS, variable: 'API_PIECES_MAX_TIERS' });
       const type = texte(c.typeDocument);
       const decimal = (v: unknown): string | null => { const t = texte(v); return t !== null && schemaChaineDecimale.safeParse(t).success ? t : null; };
       const date = (v: unknown): string | null => { const t = texte(v); return t !== null && estDateIso(t) ? t : null; };
@@ -158,7 +172,6 @@ export class TiersController {
     });
     const reserves = [...resultat.reserves];
     if (!lot) reserves.push('Aucune donnée comptable importée pour cet exercice : aucun tiers comptable, aucun appariement, aucun règlement ne peut être établi.');
-    if (piecesEcartees.auDelaDuPlafond > 0) reserves.push(`${piecesEcartees.auDelaDuPlafond} pièce(s) au-delà du plafond de ${PLAFOND_PIECES} ne sont pas suivies dans ce calcul.`);
     return {
       exercice, entite, niveau, lot: lot ?? null, lignes, resultat, piecesEcartees,
       entete: {
@@ -184,6 +197,7 @@ export class TiersController {
   }
 
   @Get('exercices/:id/tiers')
+  @ApiRefusVolume()
   @ApiQuery({ name: 'q', required: false, description: 'Recherche dans le nom, le compte auxiliaire et les identifiants' })
   @ApiQuery({ name: 'type', required: false, enum: TYPES_TIERS })
   @ApiQuery({ name: 'date', required: false, description: 'Date d’appréciation AAAA-MM-JJ ; par défaut, la clôture de l’exercice' })
@@ -197,8 +211,8 @@ export class TiersController {
     exigerUuid(id);
     const p = page(pageBrute);
     if (type !== undefined && !(TYPES_TIERS as readonly string[]).includes(type)) throw new BadRequestException('type inconnu');
-    return this.bd.avecContexte(acces, async (tx) => {
-      const c = await this.calculer(tx, id, date);
+    return avecCalcul(this.bd, acces, async (tx, budget) => {
+      const c = await this.calculer(tx, budget, id, date);
       const recherche = normaliser((q ?? '').trim().slice(0, 100));
       const tous = c.resultat.tiers;
       const parType: Record<string, number> = {};
@@ -217,6 +231,7 @@ export class TiersController {
   }
 
   @Get('exercices/:id/tiers/fiche')
+  @ApiRefusVolume()
   @ApiQuery({ name: 'cle', required: true, description: 'Clé du tiers (« aux:… », « general:… » ou « piece:… »)' })
   @ApiQuery({ name: 'date', required: false })
   @ApiQuery({ name: 'page', required: false, description: 'Page des mouvements (100 lignes)' })
@@ -225,8 +240,8 @@ export class TiersController {
     exigerUuid(id);
     const p = page(pageBrute);
     if (typeof cle !== 'string' || cle.length < 3 || cle.length > 300) throw new BadRequestException('cle attendue');
-    return this.bd.avecContexte(acces, async (tx) => {
-      const c = await this.calculer(tx, id, date);
+    return avecCalcul(this.bd, acces, async (tx, budget) => {
+      const c = await this.calculer(tx, budget, id, date);
       const fiche = c.resultat.tiers.find((t) => t.cle === cle);
       if (!fiche) throw new NotFoundException('Tiers introuvable dans les données actuelles');
       const prefixes = [...c.resultat.parametres.prefixesFournisseurs, ...c.resultat.parametres.prefixesClients];
@@ -248,6 +263,7 @@ export class TiersController {
   }
 
   @Get('exercices/:id/factures')
+  @ApiRefusVolume()
   @ApiQuery({ name: 'etat', required: false, enum: ETATS })
   @ApiQuery({ name: 'tiers', required: false, description: 'Clé d’un tiers' })
   @ApiQuery({ name: 'q', required: false, description: 'Recherche dans le numéro, le nom du fichier et le nom du tiers' })
@@ -262,8 +278,8 @@ export class TiersController {
     exigerUuid(id);
     const p = page(pageBrute);
     if (etat !== undefined && !(ETATS as readonly string[]).includes(etat)) throw new BadRequestException('etat inconnu');
-    return this.bd.avecContexte(acces, async (tx) => {
-      const c = await this.calculer(tx, id, date);
+    return avecCalcul(this.bd, acces, async (tx, budget) => {
+      const c = await this.calculer(tx, budget, id, date);
       const noms = new Map(c.resultat.tiers.map((t) => [t.cle, t.nom]));
       const recherche = normaliser((q ?? '').trim().slice(0, 100));
       const horsEtat = c.resultat.factures.filter(
@@ -282,13 +298,14 @@ export class TiersController {
   }
 
   @Get('exercices/:id/factures/:documentId')
+  @ApiRefusVolume()
   @ApiQuery({ name: 'date', required: false })
   @ApiOperation({ summary: 'Détail d’une facture ou d’un avoir : pièce, écriture de comptabilisation et critères, règlements et avoirs imputés avec leur preuve bancaire, propositions à confirmer, suspicions' })
   async facture(@AccesCourant() acces: Acces, @Param('id') id: string, @Param('documentId') documentId: string, @Query('date') date?: string) {
     exigerUuid(id);
     exigerUuid(documentId, 'documentId');
-    return this.bd.avecContexte(acces, async (tx) => {
-      const c = await this.calculer(tx, id, date);
+    return avecCalcul(this.bd, acces, async (tx, budget) => {
+      const c = await this.calculer(tx, budget, id, date);
       const f = c.resultat.factures.find((x) => x.id === documentId);
       if (!f) throw new NotFoundException('Facture introuvable : la pièce n’est pas suivie sur cet exercice (remplacée, hors exercice, extraction rejetée ou nature autre)');
       const tiers = f.tiersCle ? (c.resultat.tiers.find((t) => t.cle === f.tiersCle) ?? null) : null;
@@ -315,6 +332,7 @@ export class TiersController {
   }
 
   @Get('exercices/:id/tiers-factures/a-traiter')
+  @ApiRefusVolume()
   @ApiQuery({ name: 'date', required: false })
   @ApiOperation({
     summary: 'Ce qui attend une personne : rapprochements de tiers proposés, liens pièce ↔ écriture à confirmer ou ambigus, règlements proposés, suspicions de double comptabilisation, décisions à revoir',
@@ -323,8 +341,8 @@ export class TiersController {
   })
   async aTraiter(@AccesCourant() acces: Acces, @Param('id') id: string, @Query('date') date?: string) {
     exigerUuid(id);
-    return this.bd.avecContexte(acces, async (tx) => {
-      const c = await this.calculer(tx, id, date);
+    return avecCalcul(this.bd, acces, async (tx, budget) => {
+      const c = await this.calculer(tx, budget, id, date);
       const r = c.resultat;
       const noms = new Map(r.tiers.map((t) => [t.cle, t.nom]));
       const liens = r.factures.filter((f) => f.comptabilisation.statut === 'a_confirmer' || f.comptabilisation.statut === 'ambigu');
@@ -352,6 +370,7 @@ export class TiersController {
   }
 
   @Put('exercices/:id/tiers/liens')
+  @ApiRefusVolume()
   @ApiBody({ schema: schemaOpenApi(lienTiers) })
   @ApiOperation({
     summary: 'Confirmer (collaboration), infirmer ou retirer (révision) le rattachement d’un tiers de pièce à un tiers comptable',
@@ -360,8 +379,8 @@ export class TiersController {
   async decider(@AccesCourant() acces: Acces, @Param('id') id: string, @Body() corps: unknown) {
     exigerUuid(id);
     const d = valider(lienTiers, corps);
-    return this.bd.avecContexte(acces, async (tx) => {
-      const c = await this.calculer(tx, id, undefined, 'collaboration');
+    return avecCalcul(this.bd, acces, async (tx, budget) => {
+      const c = await this.calculer(tx, budget, id, undefined, 'collaboration');
       this.exigerPour(c.niveau, d.decision, d.motif);
       const cible = and(eq(s.liensTiers.entiteId, c.entite.id), eq(s.liensTiers.cleComptable, d.cleComptable), eq(s.liensTiers.clePiece, d.clePiece));
       if (d.decision === 'retirer') {
@@ -383,6 +402,7 @@ export class TiersController {
   }
 
   @Put('exercices/:id/factures/:documentId/liens')
+  @ApiRefusVolume()
   @ApiBody({ schema: schemaOpenApi(lienFacture) })
   @ApiOperation({
     summary: 'Confirmer (collaboration), infirmer ou retirer (révision) le lien d’une facture avec l’écriture qui la comptabilise ou avec une écriture de règlement ou d’avoir',
@@ -394,8 +414,8 @@ export class TiersController {
     exigerUuid(documentId, 'documentId');
     const d = valider(lienFacture, corps);
     if (d.montant !== undefined && (d.type !== 'imputation' || d.decision !== 'confirme' || !dec(d.montant).greaterThan(0))) throw new BadRequestException('montant : seulement pour confirmer une imputation, strictement positif');
-    return this.bd.avecContexte(acces, async (tx) => {
-      const c = await this.calculer(tx, id, undefined, 'collaboration');
+    return avecCalcul(this.bd, acces, async (tx, budget) => {
+      const c = await this.calculer(tx, budget, id, undefined, 'collaboration');
       this.exigerPour(c.niveau, d.decision, d.motif);
       const cible = and(eq(s.liensFactures.exerciceId, id), eq(s.liensFactures.type, d.type), eq(s.liensFactures.objet, documentId), eq(s.liensFactures.cible, d.cible));
       if (d.decision === 'retirer') {
@@ -426,12 +446,13 @@ export class TiersController {
       }
       await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: `facture.${d.type}_${d.decision}`, cibleType: 'document', cibleId: documentId, entiteId: c.entite.id, details: { exerciceId: id, cible: d.cible, montant: d.montant ?? null } });
       // État recalculé après la décision, pour que l'appelant voie immédiatement son effet.
-      const apres = (await this.calculer(tx, id, undefined, 'collaboration')).resultat.factures.find((x) => x.id === documentId);
+      const apres = (await this.calculer(tx, budget, id, undefined, 'collaboration')).resultat.factures.find((x) => x.id === documentId);
       return { documentId, type: d.type, cible: d.cible, decision: d.decision, facture: apres ? this.resumeFacture(apres, null) : null };
     });
   }
 
   @Put('exercices/:id/suspicions')
+  @ApiRefusVolume()
   @ApiBody({ schema: schemaOpenApi(decisionSuspicion) })
   @ApiOperation({
     summary: 'Statuer sur une suspicion de double comptabilisation (niveau révision) : confirmée, écartée (motif requis) ou décision retirée',
@@ -441,8 +462,8 @@ export class TiersController {
     exigerUuid(id);
     const d = valider(decisionSuspicion, corps);
     if (d.decision === 'infirme' && !d.motif) throw new BadRequestException('Un motif est requis pour écarter une suspicion');
-    return this.bd.avecContexte(acces, async (tx) => {
-      const c = await this.calculer(tx, id, undefined, 'revision');
+    return avecCalcul(this.bd, acces, async (tx, budget) => {
+      const c = await this.calculer(tx, budget, id, undefined, 'revision');
       const cible = and(eq(s.liensFactures.exerciceId, id), eq(s.liensFactures.type, 'suspicion'), eq(s.liensFactures.objet, d.cle), eq(s.liensFactures.cible, 'suspicion'));
       if (d.decision === 'retirer') {
         const retires = await tx.delete(s.liensFactures).where(cible).returning({ id: s.liensFactures.id });

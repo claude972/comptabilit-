@@ -188,7 +188,7 @@ Pages de 50 (mouvements : 100). Un déposant ou un autre cabinet reçoit 404.
 - Aucune tolérance de montant (escompte, arrondi, retenue) : ces cas passent par une confirmation humaine.
 - Pas de recherche combinatoire d'un règlement groupé non lettré et sans référence.
 - Un règlement présent en banque mais pas encore comptabilisé n'est pas vu (le rapprochement porte sur des écritures).
-- Calcul immédiat à chaque lecture : plafonds de 400 000 lignes et 5 000 pièces par exercice ; pas de chemin en flux.
+- Calcul immédiat à chaque lecture : plafonds de 300 000 lignes (`API_LIGNES_MAX_CALCUL`) et 5 000 pièces (`API_PIECES_MAX_TIERS`) par exercice, comptés AVANT toute lecture ; au-delà, refus 409 motivé (jamais un résultat partiel : l'ancien « plafond de pièces avec réserve » est supprimé) ; pas de chemin en flux (D-093).
 - Pièces retenues : nature facture d'achat, facture de vente ou avoir, version courante, extraction non rejetée, rattachées
   à l'exercice ou dont la date d'émission y tombe (ou n'est pas lue).
 - Préfixes de comptes et tolérance de date sont des paramètres du moteur, non réglables depuis l'écran.

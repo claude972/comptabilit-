@@ -1819,8 +1819,11 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": ""
+          "409": {
+            "description": "Volume au-dessus du plafond de calcul immédiat de l’API (D-093) : corps `{ code: \"volume_trop_important\", volume, plafond, variable, message }`, message motivé en français, aucun résultat partiel."
+          },
+          "503": {
+            "description": "D’autres calculs tiennent déjà trop de lignes en mémoire (D-093) : `{ code: \"calculs_simultanes_trop_lourds\", reessayerDansSecondes }` ; rien n’a été chargé, réessayez."
           }
         },
         "security": [
@@ -4035,8 +4038,11 @@
           }
         },
         "responses": {
-          "200": {
-            "description": ""
+          "409": {
+            "description": "Volume au-dessus du plafond de calcul immédiat de l’API (D-093) : corps `{ code: \"volume_trop_important\", volume, plafond, variable, message }`, message motivé en français, aucun résultat partiel."
+          },
+          "503": {
+            "description": "D’autres calculs tiennent déjà trop de lignes en mémoire (D-093) : `{ code: \"calculs_simultanes_trop_lourds\", reessayerDansSecondes }` ; rien n’a été chargé, réessayez."
           }
         },
         "security": [
@@ -5594,8 +5600,11 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": ""
+          "409": {
+            "description": "Volume au-dessus du plafond de calcul immédiat de l’API (D-093) : corps `{ code: \"volume_trop_important\", volume, plafond, variable, message }`, message motivé en français, aucun résultat partiel."
+          },
+          "503": {
+            "description": "D’autres calculs tiennent déjà trop de lignes en mémoire (D-093) : `{ code: \"calculs_simultanes_trop_lourds\", reessayerDansSecondes }` ; rien n’a été chargé, réessayez."
           }
         },
         "security": [
@@ -5641,8 +5650,11 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": ""
+          "409": {
+            "description": "Volume au-dessus du plafond de calcul immédiat de l’API (D-093) : corps `{ code: \"volume_trop_important\", volume, plafond, variable, message }`, message motivé en français, aucun résultat partiel."
+          },
+          "503": {
+            "description": "D’autres calculs tiennent déjà trop de lignes en mémoire (D-093) : `{ code: \"calculs_simultanes_trop_lourds\", reessayerDansSecondes }` ; rien n’a été chargé, réessayez."
           }
         },
         "security": [
@@ -5703,8 +5715,11 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": ""
+          "409": {
+            "description": "Volume au-dessus du plafond de calcul immédiat de l’API (D-093) : corps `{ code: \"volume_trop_important\", volume, plafond, variable, message }`, message motivé en français, aucun résultat partiel."
+          },
+          "503": {
+            "description": "D’autres calculs tiennent déjà trop de lignes en mémoire (D-093) : `{ code: \"calculs_simultanes_trop_lourds\", reessayerDansSecondes }` ; rien n’a été chargé, réessayez."
           }
         },
         "security": [
@@ -5733,8 +5748,11 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": ""
+          "409": {
+            "description": "Volume au-dessus du plafond de calcul immédiat de l’API (D-093) : corps `{ code: \"volume_trop_important\", volume, plafond, variable, message }`, message motivé en français, aucun résultat partiel."
+          },
+          "503": {
+            "description": "D’autres calculs tiennent déjà trop de lignes en mémoire (D-093) : `{ code: \"calculs_simultanes_trop_lourds\", reessayerDansSecondes }` ; rien n’a été chargé, réessayez."
           }
         },
         "security": [
@@ -5859,8 +5877,11 @@
           }
         },
         "responses": {
-          "200": {
-            "description": ""
+          "409": {
+            "description": "Volume au-dessus du plafond de calcul immédiat de l’API (D-093) : corps `{ code: \"volume_trop_important\", volume, plafond, variable, message }`, message motivé en français, aucun résultat partiel."
+          },
+          "503": {
+            "description": "D’autres calculs tiennent déjà trop de lignes en mémoire (D-093) : `{ code: \"calculs_simultanes_trop_lourds\", reessayerDansSecondes }` ; rien n’a été chargé, réessayez."
           }
         },
         "security": [
@@ -6143,8 +6164,11 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": ""
+          "409": {
+            "description": "Volume au-dessus du plafond de calcul immédiat de l’API (D-093) : corps `{ code: \"volume_trop_important\", volume, plafond, variable, message }`, message motivé en français, aucun résultat partiel."
+          },
+          "503": {
+            "description": "D’autres calculs tiennent déjà trop de lignes en mémoire (D-093) : `{ code: \"calculs_simultanes_trop_lourds\", reessayerDansSecondes }` ; rien n’a été chargé, réessayez."
           }
         },
         "security": [
@@ -6181,8 +6205,11 @@
           }
         ],
         "responses": {
-          "201": {
-            "description": ""
+          "409": {
+            "description": "Volume au-dessus du plafond de calcul immédiat de l’API (D-093) : corps `{ code: \"volume_trop_important\", volume, plafond, variable, message }`, message motivé en français, aucun résultat partiel."
+          },
+          "503": {
+            "description": "D’autres calculs tiennent déjà trop de lignes en mémoire (D-093) : `{ code: \"calculs_simultanes_trop_lourds\", reessayerDansSecondes }` ; rien n’a été chargé, réessayez."
           }
         },
         "security": [
@@ -6758,8 +6785,11 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": ""
+          "409": {
+            "description": "Volume au-dessus du plafond de calcul immédiat de l’API (D-093) : corps `{ code: \"volume_trop_important\", volume, plafond, variable, message }`, message motivé en français, aucun résultat partiel."
+          },
+          "503": {
+            "description": "D’autres calculs tiennent déjà trop de lignes en mémoire (D-093) : `{ code: \"calculs_simultanes_trop_lourds\", reessayerDansSecondes }` ; rien n’a été chargé, réessayez."
           }
         },
         "security": [
@@ -7280,7 +7310,7 @@
                   "tranche": {
                     "type": "integer",
                     "minimum": 1,
-                    "maximum": 10
+                    "maximum": 500
                   }
                 },
                 "required": [
@@ -7452,8 +7482,11 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": ""
+          "409": {
+            "description": "Volume au-dessus du plafond de calcul immédiat de l’API (D-093) : corps `{ code: \"volume_trop_important\", volume, plafond, variable, message }`, message motivé en français, aucun résultat partiel."
+          },
+          "503": {
+            "description": "D’autres calculs tiennent déjà trop de lignes en mémoire (D-093) : `{ code: \"calculs_simultanes_trop_lourds\", reessayerDansSecondes }` ; rien n’a été chargé, réessayez."
           }
         },
         "security": [
@@ -7512,8 +7545,11 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": ""
+          "409": {
+            "description": "Volume au-dessus du plafond de calcul immédiat de l’API (D-093) : corps `{ code: \"volume_trop_important\", volume, plafond, variable, message }`, message motivé en français, aucun résultat partiel."
+          },
+          "503": {
+            "description": "D’autres calculs tiennent déjà trop de lignes en mémoire (D-093) : `{ code: \"calculs_simultanes_trop_lourds\", reessayerDansSecondes }` ; rien n’a été chargé, réessayez."
           }
         },
         "security": [
@@ -7582,8 +7618,11 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": ""
+          "409": {
+            "description": "Volume au-dessus du plafond de calcul immédiat de l’API (D-093) : corps `{ code: \"volume_trop_important\", volume, plafond, variable, message }`, message motivé en français, aucun résultat partiel."
+          },
+          "503": {
+            "description": "D’autres calculs tiennent déjà trop de lignes en mémoire (D-093) : `{ code: \"calculs_simultanes_trop_lourds\", reessayerDansSecondes }` ; rien n’a été chargé, réessayez."
           }
         },
         "security": [
@@ -7637,8 +7676,11 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": ""
+          "409": {
+            "description": "Volume au-dessus du plafond de calcul immédiat de l’API (D-093) : corps `{ code: \"volume_trop_important\", volume, plafond, variable, message }`, message motivé en français, aucun résultat partiel."
+          },
+          "503": {
+            "description": "D’autres calculs tiennent déjà trop de lignes en mémoire (D-093) : `{ code: \"calculs_simultanes_trop_lourds\", reessayerDansSecondes }` ; rien n’a été chargé, réessayez."
           }
         },
         "security": [
@@ -7721,8 +7763,11 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": ""
+          "409": {
+            "description": "Volume au-dessus du plafond de calcul immédiat de l’API (D-093) : corps `{ code: \"volume_trop_important\", volume, plafond, variable, message }`, message motivé en français, aucun résultat partiel."
+          },
+          "503": {
+            "description": "D’autres calculs tiennent déjà trop de lignes en mémoire (D-093) : `{ code: \"calculs_simultanes_trop_lourds\", reessayerDansSecondes }` ; rien n’a été chargé, réessayez."
           }
         },
         "security": [
@@ -7766,8 +7811,11 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": ""
+          "409": {
+            "description": "Volume au-dessus du plafond de calcul immédiat de l’API (D-093) : corps `{ code: \"volume_trop_important\", volume, plafond, variable, message }`, message motivé en français, aucun résultat partiel."
+          },
+          "503": {
+            "description": "D’autres calculs tiennent déjà trop de lignes en mémoire (D-093) : `{ code: \"calculs_simultanes_trop_lourds\", reessayerDansSecondes }` ; rien n’a été chargé, réessayez."
           }
         },
         "security": [
@@ -7804,8 +7852,11 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": ""
+          "409": {
+            "description": "Volume au-dessus du plafond de calcul immédiat de l’API (D-093) : corps `{ code: \"volume_trop_important\", volume, plafond, variable, message }`, message motivé en français, aucun résultat partiel."
+          },
+          "503": {
+            "description": "D’autres calculs tiennent déjà trop de lignes en mémoire (D-093) : `{ code: \"calculs_simultanes_trop_lourds\", reessayerDansSecondes }` ; rien n’a été chargé, réessayez."
           }
         },
         "security": [
@@ -7873,8 +7924,11 @@
           }
         },
         "responses": {
-          "200": {
-            "description": ""
+          "409": {
+            "description": "Volume au-dessus du plafond de calcul immédiat de l’API (D-093) : corps `{ code: \"volume_trop_important\", volume, plafond, variable, message }`, message motivé en français, aucun résultat partiel."
+          },
+          "503": {
+            "description": "D’autres calculs tiennent déjà trop de lignes en mémoire (D-093) : `{ code: \"calculs_simultanes_trop_lourds\", reessayerDansSecondes }` ; rien n’a été chargé, réessayez."
           }
         },
         "security": [
@@ -7959,8 +8013,11 @@
           }
         },
         "responses": {
-          "200": {
-            "description": ""
+          "409": {
+            "description": "Volume au-dessus du plafond de calcul immédiat de l’API (D-093) : corps `{ code: \"volume_trop_important\", volume, plafond, variable, message }`, message motivé en français, aucun résultat partiel."
+          },
+          "503": {
+            "description": "D’autres calculs tiennent déjà trop de lignes en mémoire (D-093) : `{ code: \"calculs_simultanes_trop_lourds\", reessayerDansSecondes }` ; rien n’a été chargé, réessayez."
           }
         },
         "security": [
@@ -8025,8 +8082,11 @@
           }
         },
         "responses": {
-          "200": {
-            "description": ""
+          "409": {
+            "description": "Volume au-dessus du plafond de calcul immédiat de l’API (D-093) : corps `{ code: \"volume_trop_important\", volume, plafond, variable, message }`, message motivé en français, aucun résultat partiel."
+          },
+          "503": {
+            "description": "D’autres calculs tiennent déjà trop de lignes en mémoire (D-093) : `{ code: \"calculs_simultanes_trop_lourds\", reessayerDansSecondes }` ; rien n’a été chargé, réessayez."
           }
         },
         "security": [

@@ -82,6 +82,31 @@ const schema = z.object({
    * par écriture distincte). Au-delà, le contrôle concerné n'est PAS réalisé et le dit : jamais de résultat partiel.
    */
   LIGNES_MAX_ETAT_FLUX: z.coerce.number().int().min(1000).default(100_000),
+  // ── Plafonds des calculs immédiats de l'API (D-093) : au-delà, REFUS motivé (409), jamais un résultat partiel ni une erreur 500 ──
+  /**
+   * Nombre maximal de lignes d'écriture qu'un calcul immédiat de l'API charge en mémoire (états, indicateurs, liasse, annexe,
+   * propositions d'inventaire, balance ajustée, tiers et factures, commentaire d'indicateurs, suggestions de rapprochement,
+   * indicateur de l'assistant d'UN dossier). L'exercice précédent, quand le calcul le lit, compte dans le même total.
+   * Variable de la seule API. Le défaut (300 000) tient dans un tas d'API de 768 Mo avec marge : 264 957 lignes réussissent avec un tas de
+   * 384 Mo et font tomber l'API à 320 Mo (mesures du 2026-11-20, D-093) ; il doit rester cohérent avec `--max-old-space-size` de l'API.
+   */
+  API_LIGNES_MAX_CALCUL: z.coerce.number().int().min(100).default(300_000),
+  /** Idem pour la mesure d'impact d'une règle (le contrôle est exécuté deux fois sur les lignes). */
+  API_LIGNES_MAX_IMPACT_REGLE: z.coerce.number().int().min(100).default(200_000),
+  /** Idem pour l'indicateur calculé à la volée DANS UNE QUESTION DE PORTEFEUILLE de l'assistant (jusqu'à vingt dossiers l'un après l'autre). */
+  API_LIGNES_MAX_PORTEFEUILLE_DOSSIER: z.coerce.number().int().min(100).default(100_000),
+  /**
+   * Total de lignes que l'API accepte de tenir en mémoire AU MÊME MOMENT pour tous les calculs immédiats en cours : un calcul qui ferait
+   * dépasser ce total est refusé tout de suite (503, « réessayez »), sans attendre ni charger. Doit rester au moins égal au plus grand
+   * des plafonds ci-dessus, sinon un calcul permis serait toujours refusé.
+   */
+  API_LIGNES_MAX_SIMULTANEES: z.coerce.number().int().min(100).default(300_000),
+  /** Nombre maximal de mouvements bancaires actifs d'un dossier relus pour la mesure d'impact d'une règle. */
+  API_MOUVEMENTS_MAX_CALCUL: z.coerce.number().int().min(1).default(400_000),
+  /** Nombre maximal de pièces (factures, avoirs) candidates d'un dossier dans le suivi des tiers et factures. */
+  API_PIECES_MAX_TIERS: z.coerce.number().int().min(1).default(5_000),
+  /** Nombre maximal de constats d'une exécution renvoyés par l'écran de revue (aucune pagination aujourd'hui). */
+  API_CONSTATS_MAX_REVUE: z.coerce.number().int().min(1).default(20_000),
   TAILLE_MORCEAU: z.coerce.number().int().default(4 * 1024 * 1024),
   API_PORT: z.coerce.number().int().default(4000),
   /** Adresse d'écoute de l'API : locale par défaut ; 0.0.0.0 dans un conteneur, derrière un réseau privé. */

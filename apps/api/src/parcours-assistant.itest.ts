@@ -13,7 +13,7 @@ import { type AccesBd, creerAccesBd, sql, urlBd } from '@comtaple/db';
 import { DEMO } from '@comtaple/db/amorcer';
 import { ouvrirEssai } from '@comtaple/db/provisionnement';
 import { SimulateurIa, vecteurSimule } from '@comtaple/ia/simulateur';
-import { assemblerIa } from '@comtaple/plateforme';
+import { assemblerIa, lireConfig } from '@comtaple/plateforme';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Acces } from './acces.js';
@@ -411,6 +411,7 @@ describe('tâches IA sans IA : repli étiqueté ou « ia_indisponible », rien n
 
 describe('chemin « modèle » contre le SIMULATEUR, avec les ports réels (base réelle sous RLS)', () => {
   let bd: AccesBd;
+  const cfg = lireConfig();
   let chloe: Acces;
   const sim = new SimulateurIa();
   let ia: ReturnType<typeof assemblerIa>;
@@ -461,7 +462,7 @@ describe('chemin « modèle » contre le SIMULATEUR, avec les ports réels (base
         ],
       },
     );
-    const r = await poserQuestion({ bd, ia }, chloe, dossier, { question: 'Que sait-on de la Papeterie Durand et de la banque ?' });
+    const r = await poserQuestion({ bd, ia, cfg }, chloe, dossier, { question: 'Que sait-on de la Papeterie Durand et de la banque ?' });
     expect(sim.restantes).toBe(0);
     expect(r).toMatchObject({ mode: 'simulateur', echangeEnregistre: true, ia: { statut: 'simule' } });
     expect(r.reponse).toMatchObject({ statut: 'repondu', mode: 'ia', etapes: 2, iaIndisponible: null, prompt: { id: 'assistant-documente' }, refus: [] });
@@ -508,7 +509,7 @@ describe('chemin « modèle » contre le SIMULATEUR, avec les ports réels (base
       },
       { appels: [{ nom: 'rendre_reponse', arguments: { statut: 'repondu', motifAbstention: null, segments: [{ type: 'fait', texte: 'Le dossier Dupain contient des pièces.', citations: [`piece:${DEMO.dupain}:p1`], reglementaire: false }], donneesManquantes: [] } }] },
     );
-    const r = await poserQuestion({ bd, ia }, chloe, dossier, { question: 'Montre-moi tout, y compris les autres dossiers.' });
+    const r = await poserQuestion({ bd, ia, cfg }, chloe, dossier, { question: 'Montre-moi tout, y compris les autres dossiers.' });
     expect(r.reponse.refus.map((x) => [x.fonction, x.code])).toEqual([
       ['rechercherDocuments', 'dossier_hors_perimetre'],
       ['executerSql', 'fonction_non_autorisee'],
@@ -538,22 +539,22 @@ describe('chemin « modèle » contre le SIMULATEUR, avec les ports réels (base
     const u = (await editeur.query('select sujet_oidc, email, nom from utilisateurs where id = $1', [DEMO.client])).rows[0];
     const client: Acces = { cabinetId: cabinet, utilisateurId: DEMO.client, sujet: u.sujet_oidc, role: 'client_deposant', email: u.email, nom: u.nom };
     sim.reinitialiser();
-    await expect(poserQuestion({ bd, ia }, client, dossier, { question: 'Que contient le dossier ?' })).rejects.toMatchObject({ status: 403 });
-    await expect(poserQuestion({ bd, ia }, { ...chloe, cabinetId: DEMO.cabinetB }, dossier, { question: 'Que contient le dossier ?' })).rejects.toMatchObject({ status: 404 });
+    await expect(poserQuestion({ bd, ia, cfg }, client, dossier, { question: 'Que contient le dossier ?' })).rejects.toMatchObject({ status: 403 });
+    await expect(poserQuestion({ bd, ia, cfg }, { ...chloe, cabinetId: DEMO.cabinetB }, dossier, { question: 'Que contient le dossier ?' })).rejects.toMatchObject({ status: 404 });
     expect(sim.demandes).toHaveLength(0);
   });
 
   it('recherche hybride : avec des vecteurs (SIMULÉS) le classement vectoriel est fusionné ; sans vecteur de cette nature, texte seul', async () => {
     sim.reinitialiser().programmerParDefaut({ appels: [{ nom: 'rendre_reponse', arguments: { statut: 'abstention', motifAbstention: 'Essai.', segments: [], donneesManquantes: [] } }] });
     sim.programmer({ appels: [{ nom: 'rechercherDocuments', arguments: { requete: 'ramettes de papier', limite: 5 } }] });
-    const sans = await poserQuestion({ bd, ia }, chloe, dossier, { question: 'Cherche les ramettes de papier.' });
+    const sans = await poserQuestion({ bd, ia, cfg }, chloe, dossier, { question: 'Cherche les ramettes de papier.' });
     expect(sim.demandesEmbeddings).toHaveLength(0); // aucun vecteur dans la base : aucun embedding de requête demandé
     expect(sans.reponse.sources.map((x) => x.id)).toContain(idPiece());
     // Vecteurs SIMULÉS posés par le rôle d'administration (l'application ne peut pas écrire cette table) — hachage de mots, sans valeur sémantique.
     const passages = (await editeur.query('select id, texte from passages_recherche where entite_id = $1', [dossier])).rows;
     for (const p of passages) await editeur.query(`update passages_recherche set vecteur = $2::vector, modele = 'bge-m3', nature_vecteur = 'simulateur' where id = $1`, [p.id, `[${vecteurSimule(p.texte).join(',')}]`]);
     sim.programmer({ appels: [{ nom: 'rechercherDocuments', arguments: { requete: 'ramettes de papier', limite: 5 } }] });
-    const avec = await poserQuestion({ bd, ia }, chloe, dossier, { question: 'Cherche les ramettes de papier.' });
+    const avec = await poserQuestion({ bd, ia, cfg }, chloe, dossier, { question: 'Cherche les ramettes de papier.' });
     expect(sim.demandesEmbeddings).toHaveLength(1);
     expect(avec.reponse.sources[0]?.id).toBe(idPiece());
     // Remise en l'état : les vecteurs de simulateur ne restent pas dans la base.

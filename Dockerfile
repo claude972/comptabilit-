@@ -18,7 +18,10 @@ RUN NODE_ENV=development pnpm install --frozen-lockfile --filter "@comtaple/api.
 RUN pnpm --filter "@comtaple/api..." --filter "@comtaple/worker..." run build
 
 FROM serveur AS api
-ENV API_HOTE=0.0.0.0 METRIQUES_HOTE=0.0.0.0
+# Tas de l'API plafonné EXPLICITEMENT (D-093) : 768 Mo dans un conteneur limité à 1 Go. Sans cette option, la limite de tas de Node dépend de la
+# mémoire que Node voit (non mesurée en conteneur) : 264 957 lignes d'écriture font tomber une API dont le tas est à 320 Mo. Le plafond de
+# lignes des calculs immédiats (API_LIGNES_MAX_CALCUL) va avec : relever l'un sans l'autre déplace le problème.
+ENV API_HOTE=0.0.0.0 METRIQUES_HOTE=0.0.0.0 NODE_OPTIONS=--max-old-space-size=768
 USER node
 EXPOSE 4000 9464
 CMD ["node", "apps/api/dist/main.js"]

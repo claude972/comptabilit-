@@ -240,6 +240,15 @@ services:
       <<: *environnement-serveur
       API_HOTE: 0.0.0.0
       API_PORT: "4000"
+      # Plafond de tas et plafonds de lignes des calculs immédiats vont ENSEMBLE (docs/decisions.md, D-093) : le conteneur est limité à 1 Go.
+      NODE_OPTIONS: --max-old-space-size=${API_TAS_MAX_MO:-768}
+      API_LIGNES_MAX_CALCUL: ${API_LIGNES_MAX_CALCUL:-300000}
+      API_LIGNES_MAX_IMPACT_REGLE: ${API_LIGNES_MAX_IMPACT_REGLE:-200000}
+      API_LIGNES_MAX_PORTEFEUILLE_DOSSIER: ${API_LIGNES_MAX_PORTEFEUILLE_DOSSIER:-100000}
+      API_LIGNES_MAX_SIMULTANEES: ${API_LIGNES_MAX_SIMULTANEES:-300000}
+      API_MOUVEMENTS_MAX_CALCUL: ${API_MOUVEMENTS_MAX_CALCUL:-400000}
+      API_PIECES_MAX_TIERS: ${API_PIECES_MAX_TIERS:-5000}
+      API_CONSTATS_MAX_REVUE: ${API_CONSTATS_MAX_REVUE:-20000}
       # Rôle applicatif SANS BYPASSRLS. Le mot de passe du rôle de migration n'est JAMAIS donné à ce service.
       PG_APP_PASSWORD: ${PG_APP_PASSWORD:?définir PG_APP_PASSWORD}
     # Écrit l'autorité de certification de la base (PG_AC_PEM, texte public) en mémoire, puis lance le service.

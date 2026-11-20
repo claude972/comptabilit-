@@ -13,13 +13,13 @@ import {
   suggererRapprochements,
   TAILLE_MAX_LETTRE,
 } from '@comtaple/ia';
-import { lignesDuLot, type ServicesIa } from '@comtaple/plateforme';
+import type { Config, ServicesIa } from '@comtaple/plateforme';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
 import { messageEtatIa } from './assistant.controller.js';
 import { limiterDebitIa } from './assistant.service.js';
-import { BD, IA } from './jetons.js';
+import { BD, CONFIG, IA } from './jetons.js';
+import { avecCalcul, chargerLignes, ApiRefusVolume } from './plafonds.js';
 
-const PLAFOND_LIGNES = 400_000;
 const TACHES_PAR_MINUTE = 30;
 /** Libellés des natures de documents proposées au classement (liste fermée = natures existantes). */
 const LIBELLES_NATURE: Record<string, string> = {
@@ -61,6 +61,7 @@ export class IaTachesController {
   constructor(
     @Inject(BD) private readonly bd: AccesBd,
     @Inject(IA) private readonly ia: ServicesIa,
+    @Inject(CONFIG) private readonly cfg: Config,
   ) {}
 
   private contexte(acces: Acces, entiteId: string) {
@@ -241,6 +242,7 @@ export class IaTachesController {
   }
 
   @Post('exercices/:id/indicateurs/commentaire')
+  @ApiRefusVolume()
   @HttpCode(200)
   @ApiOperation({
     summary: 'Commenter les indicateurs calculés par le moteur (projet de commentaire)',
@@ -249,20 +251,19 @@ export class IaTachesController {
   async commentaire(@AccesCourant() acces: Acces, @Param('id') id: string) {
     exigerUuid(id);
     limiterDebitIa(`tache:${acces.utilisateurId}`, TACHES_PAR_MINUTE);
-    const d = await this.bd.avecContexte(acces, async (tx) => {
+    const d = await avecCalcul(this.bd, acces, async (tx, budget) => {
       const [exercice] = await tx.select().from(s.exercices).where(eq(s.exercices.id, id));
       if (!exercice) throw new NotFoundException('Exercice introuvable');
       await exigerNiveau(tx, exercice.entiteId, 'collaboration');
       const [lot] = await tx.select().from(s.lotsImport).where(and(eq(s.lotsImport.exerciceId, id), eq(s.lotsImport.type, 'fec'), eq(s.lotsImport.actif, true)));
       if (!lot) throw new ConflictException('Aucune donnée comptable importée pour cet exercice : aucun indicateur à commenter');
-      if (lot.progression > PLAFOND_LIGNES) throw new ConflictException('Volume trop important pour un calcul immédiat');
-      const lignes = await lignesDuLot(tx, lot.id);
       const [precedent] = await tx.select().from(s.exercices).where(and(eq(s.exercices.entiteId, exercice.entiteId), lt(s.exercices.fin, exercice.debut))).orderBy(desc(s.exercices.fin)).limit(1);
-      let exercicePrecedent: { lignes: LigneEcriture[]; exercice: { debut: string; fin: string } } | null = null;
-      if (precedent) {
-        const [lotP] = await tx.select().from(s.lotsImport).where(and(eq(s.lotsImport.exerciceId, precedent.id), eq(s.lotsImport.type, 'fec'), eq(s.lotsImport.actif, true)));
-        if (lotP && lotP.progression <= PLAFOND_LIGNES) exercicePrecedent = { lignes: await lignesDuLot(tx, lotP.id), exercice: { debut: precedent.debut, fin: precedent.fin } };
-      }
+      let lotP: typeof s.lotsImport.$inferSelect | undefined;
+      if (precedent) [lotP] = await tx.select().from(s.lotsImport).where(and(eq(s.lotsImport.exerciceId, precedent.id), eq(s.lotsImport.type, 'fec'), eq(s.lotsImport.actif, true)));
+      // Plafond de l'API (D-093) : exercice puis exercice précédent, sous le même total.
+      const charge = await chargerLignes(tx, budget, this.cfg, { ecran: 'Commentaire des indicateurs', plafond: 'calcul', lot, lotPrecedent: lotP ?? null });
+      const lignes = charge.lignes;
+      const exercicePrecedent: { lignes: LigneEcriture[]; exercice: { debut: string; fin: string } } | null = charge.precedent && precedent ? { lignes: charge.precedent, exercice: { debut: precedent.debut, fin: precedent.fin } } : null;
       return { exercice, valeurs: calculerIndicateurs({ lignes, exercice: { debut: exercice.debut, fin: exercice.fin }, exercicePrecedent }) };
     });
     const definitions = new Map(CATALOGUE_INDICATEURS.map((x) => [x.id, x]));
@@ -310,6 +311,7 @@ export class IaTachesController {
   }
 
   @Post('exercices/:id/rapprochements/suggestions')
+  @ApiRefusVolume()
   @HttpCode(200)
   @ApiOperation({
     summary: 'Suggérer des rapprochements parmi les éléments restés sans rapprochement (suggestions vérifiées par le moteur, à valider)',
@@ -320,7 +322,7 @@ export class IaTachesController {
     exigerUuid(id);
     limiterDebitIa(`tache:${acces.utilisateurId}`, TACHES_PAR_MINUTE);
     const MAX = 150;
-    const d = await this.bd.avecContexte(acces, async (tx) => {
+    const d = await avecCalcul(this.bd, acces, async (tx, budget) => {
       const [exercice] = await tx.select().from(s.exercices).where(eq(s.exercices.id, id));
       if (!exercice) throw new NotFoundException('Exercice introuvable');
       await exigerNiveau(tx, exercice.entiteId, 'collaboration');
@@ -331,10 +333,13 @@ export class IaTachesController {
       const idsE = ((execution.nonRapprochesEcritures as string[] | null) ?? []).filter((x) => UUID.test(x));
       const idsM = ((execution.nonRapprochesMouvements as string[] | null) ?? []).filter((x) => UUID.test(x));
       if (idsE.length === 0 || idsM.length === 0) throw new ConflictException('Il ne reste pas d’écriture de banque et de mouvement bancaire sans rapprochement : rien à suggérer.');
-      if (execution.mesures && Number((execution.mesures as Record<string, string>).ecrituresBanque ?? 0) > PLAFOND_LIGNES) throw new ConflictException('Volume trop important pour un traitement immédiat');
       const voulues = new Set(idsE.slice(0, MAX));
       // Le tiers d'une ligne de banque vient des autres lignes de son écriture : le moteur a besoin du lot entier.
-      const ecritures = elementsBanqueDepuisEcritures(await lignesDuLot(tx, execution.lotImportId)).filter((e) => voulues.has(e.id));
+      // Plafond de l'API (D-093) sur le LOT entier (l'ancienne garde ne regardait que les lignes de banque et laissait passer un lot trop gros).
+      const [lotRapproche] = await tx.select().from(s.lotsImport).where(eq(s.lotsImport.id, execution.lotImportId));
+      if (!lotRapproche) throw new ConflictException('Le lot comptable rapproché n’existe plus : relancez le rapprochement.');
+      const { lignes: lignesLot } = await chargerLignes(tx, budget, this.cfg, { ecran: 'Suggestions de rapprochement', plafond: 'calcul', lot: lotRapproche });
+      const ecritures = elementsBanqueDepuisEcritures(lignesLot).filter((e) => voulues.has(e.id));
       const mouvements = (await tx.select().from(s.mouvementsBancaires).where(inArray(s.mouvementsBancaires.id, idsM.slice(0, MAX))).orderBy(asc(s.mouvementsBancaires.dateOperation), asc(s.mouvementsBancaires.rang))).map((m) => ({
         ...elementDepuisMouvement(m.brut as MouvementBancaire),
         id: m.id,

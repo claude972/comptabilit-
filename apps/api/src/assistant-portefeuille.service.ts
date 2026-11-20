@@ -41,13 +41,13 @@ import {
  * dossier (jusqu'à six fonctions chacun), ce qui borne aussi la durée d'une question.
  */
 export const BORNE_DOSSIERS_PORTEFEUILLE = 20;
+/** Numéro de tranche maximal accepté : 500 tranches de 20 dossiers couvrent un périmètre de 10 000 dossiers (au-delà : 400). */
+export const TRANCHES_MAX = 500;
 /** Nombre maximal d'identifiants acceptés dans `dossierIds` (borne d'entrée, avant intersection). */
 export const DOSSIERS_DEMANDES_MAX = 200;
 /** Le mode sans IA restitue au plus 40 éléments par réponse (paquet IA) ; 5 sont réservés aux sources officielles. */
 const ELEMENTS_PAR_REPONSE = 40;
 const ELEMENTS_RESERVES_SOURCES = 5;
-/** Au-delà, un indicateur n'est pas calculé à la volée dans une question de portefeuille (le dossier seul l'accepte jusqu'à 400 000). */
-const PLAFOND_LIGNES_PORTEFEUILLE = 100_000;
 /** Priorité des fonctions quand le nombre d'éléments par dossier est compté : calculs du moteur d'abord, pièces en dernier. */
 const ORDRE_FONCTIONS = ['calculerIndicateur', 'lireBalance', 'listerConstats', 'rechercherEcritures', 'rechercherDocuments', 'rechercherSourcesReglementaires'];
 const TAILLE_PAGE = 20;
@@ -190,7 +190,7 @@ function creerPortsPortefeuille(
   suivi: Map<string, Suivi>,
   dossierDe: Map<string, string>,
 ): PortsFonctionsMetier {
-  const ports = new Map(dossiers.map((d) => [d.id, creerPortsAssistant(dep, acces, d.id, d.exercice, { plafondLignes: PLAFOND_LIGNES_PORTEFEUILLE })]));
+  const ports = new Map(dossiers.map((d) => [d.id, creerPortsAssistant(dep, acces, d.id, d.exercice, { plafond: 'portefeuille' })]));
   const parId = new Map(dossiers.map((d) => [d.id, d]));
   const etiquette = (dossierId: string, texte: string): string => `Dossier ${dossierId} : ${texte}`.slice(0, 300);
 

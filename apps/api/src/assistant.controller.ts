@@ -13,12 +13,12 @@ import {
   PROMPT_LETTRE_MISSION,
   PROMPT_RAPPROCHEMENTS,
 } from '@comtaple/ia';
-import type { ServicesIa } from '@comtaple/plateforme';
+import type { Config, ServicesIa } from '@comtaple/plateforme';
 import { z } from 'zod';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
-import { BORNE_DOSSIERS_PORTEFEUILLE, DOSSIERS_DEMANDES_MAX, elementsParDossier, lirePerimetre, poserQuestionPortefeuille, relireEchangesPortefeuille } from './assistant-portefeuille.service.js';
+import { BORNE_DOSSIERS_PORTEFEUILLE, DOSSIERS_DEMANDES_MAX, elementsParDossier, TRANCHES_MAX, lirePerimetre, poserQuestionPortefeuille, relireEchangesPortefeuille } from './assistant-portefeuille.service.js';
 import { limiterDebitIa, poserQuestion, QUESTION_MAX, QUESTION_MIN } from './assistant.service.js';
-import { BD, IA } from './jetons.js';
+import { BD, CONFIG, IA } from './jetons.js';
 import { schemaOpenApi, uuid, valider } from './validation.js';
 
 const question = z.strictObject({
@@ -45,7 +45,9 @@ const questionPortefeuille = z.strictObject({
     .refine((p) => p.debut <= p.fin, 'période invalide')
     .optional(),
   /** Tranche de dossiers (de 20 au plus) à interroger quand le périmètre en compte davantage ; 1 par défaut. */
-  tranche: z.number().int().min(1).max(Math.ceil(DOSSIERS_DEMANDES_MAX / BORNE_DOSSIERS_PORTEFEUILLE)).optional(),
+  // Le numéro de tranche porte sur le PÉRIMÈTRE entier de la personne (et non sur la liste `dossierIds`, limitée à DOSSIERS_DEMANDES_MAX) : 500 tranches de 20 = 10 000 dossiers.
+  // Mesuré le 2026-11-20 : l'ancienne borne (10 tranches, calculée sur DOSSIERS_DEMANDES_MAX) rendait les dossiers au-delà du 200e INTERROGEABLES PAR PERSONNE (D-094).
+  tranche: z.number().int().min(1).max(TRANCHES_MAX).optional(),
 });
 const TAILLE_PAGE = 20;
 
@@ -64,6 +66,7 @@ export class AssistantController {
   constructor(
     @Inject(BD) private readonly bd: AccesBd,
     @Inject(IA) private readonly ia: ServicesIa,
+    @Inject(CONFIG) private readonly cfg: Config,
   ) {}
 
   private etat() {
@@ -83,7 +86,7 @@ export class AssistantController {
     exigerUuid(id);
     const d = valider(question, corps);
     limiterDebitIa(`question:${acces.utilisateurId}`);
-    const r = await poserQuestion({ bd: this.bd, ia: this.ia }, acces, id, d);
+    const r = await poserQuestion({ bd: this.bd, ia: this.ia, cfg: this.cfg }, acces, id, d);
     return { ...r, ia: this.etat() };
   }
 
@@ -118,7 +121,7 @@ export class AssistantController {
   async poserPortefeuille(@AccesCourant() acces: Acces, @Body() corps: unknown) {
     const d = valider(questionPortefeuille, corps);
     limiterDebitIa(`question:${acces.utilisateurId}`);
-    const r = await poserQuestionPortefeuille({ bd: this.bd, ia: this.ia }, acces, d);
+    const r = await poserQuestionPortefeuille({ bd: this.bd, ia: this.ia, cfg: this.cfg }, acces, d);
     return { ...r, ia: this.etat() };
   }
 
@@ -132,7 +135,7 @@ export class AssistantController {
   async historiquePortefeuille(@AccesCourant() acces: Acces, @Query('page') pageBrute?: string) {
     const page = Number(pageBrute ?? 1);
     if (!Number.isInteger(page) || page < 1 || page > 10_000) throw new BadRequestException('page : entier positif attendu');
-    return relireEchangesPortefeuille({ bd: this.bd, ia: this.ia }, acces, page);
+    return relireEchangesPortefeuille({ bd: this.bd, ia: this.ia, cfg: this.cfg }, acces, page);
   }
 
   @Get('assistant/perimetre')
@@ -141,7 +144,7 @@ export class AssistantController {
     description: 'Dossiers actifs où la personne a au moins le niveau « lecture », calculés par la base ; borne par question et nombre d’éléments restitués par dossier. Refusé (403) aux déposants.',
   })
   async perimetre(@AccesCourant() acces: Acces) {
-    const dossiers = await lirePerimetre({ bd: this.bd, ia: this.ia }, acces);
+    const dossiers = await lirePerimetre({ bd: this.bd, ia: this.ia, cfg: this.cfg }, acces);
     return { borne: BORNE_DOSSIERS_PORTEFEUILLE, elementsParDossier: elementsParDossier(Math.min(Math.max(dossiers.length, 1), BORNE_DOSSIERS_PORTEFEUILLE)), dossiers };
   }
 

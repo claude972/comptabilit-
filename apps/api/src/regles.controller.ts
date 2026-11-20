@@ -2,11 +2,12 @@ import { BadRequestException, Body, ConflictException, Controller, ForbiddenExce
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { CATALOGUE_CONTROLES, executerControles } from '@comtaple/core';
 import { type AccesBd, and, count, desc, eq, inArray, isNull, journaliser, notifier, notifierGestionnaires, schema as s, sql, type Tx } from '@comtaple/db';
-import { lignesDuLot, parametresApprouves, relevesDuDossier } from '@comtaple/plateforme';
+import { type Config, parametresApprouves, relevesDuDossier } from '@comtaple/plateforme';
 import { z } from 'zod';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
 import { ecarterSuggestion, lireSuggestions } from './amelioration.service.js';
-import { BD } from './jetons.js';
+import { BD, CONFIG } from './jetons.js';
+import { avecCalcul, chargerLignes, refusVolume, ApiRefusVolume } from './plafonds.js';
 import { schemaOpenApi, uuid, valider } from './validation.js';
 
 const proposition = z.object({
@@ -20,14 +21,11 @@ const mesure = z.object({ exerciceId: uuid });
 const refus = z.object({ motif: z.string().min(1).max(2000) });
 const ecart = z.strictObject({ empreinte: z.string().min(1).max(300), motif: z.string().trim().min(5, 'motif de 5 caractères au moins').max(2000) });
 
-/** Plafond de lignes pour une mesure d'impact synchrone (au-delà : à faire en traitement différé, non implémenté). */
-const PLAFOND_LIGNES_IMPACT = 250_000;
-
 @ApiTags('Règles du cabinet')
 @ApiBearerAuth()
 @Controller('v1/regles')
 export class ReglesController {
-  constructor(@Inject(BD) private readonly bd: AccesBd) {}
+  constructor(@Inject(BD) private readonly bd: AccesBd, @Inject(CONFIG) private readonly cfg: Config) {}
 
   private async gestionnaire(tx: Tx): Promise<boolean> {
     return Boolean((await tx.execute(sql`select app_est_gestionnaire() as ok`)).rows[0]?.ok);
@@ -133,6 +131,7 @@ export class ReglesController {
   }
 
   @Post(':id/impact')
+  @ApiRefusVolume()
   @HttpCode(200)
   @ApiOperation({
     summary: 'Mesurer l’impact d’une règle proposée sur un exercice, AVANT toute activation',
@@ -142,7 +141,7 @@ export class ReglesController {
   async impact(@AccesCourant() acces: Acces, @Param('id') id: string, @Body() corps: unknown) {
     exigerUuid(id);
     const d = valider(mesure, corps);
-    return this.bd.avecContexte(acces, async (tx) => {
+    return avecCalcul(this.bd, acces, async (tx, budget) => {
       const r = await this.charger(tx, id);
       const [ex] = await tx.select().from(s.exercices).where(eq(s.exercices.id, d.exerciceId));
       if (!ex) throw new NotFoundException('Exercice introuvable');
@@ -150,8 +149,12 @@ export class ReglesController {
       if (r.entiteId && r.entiteId !== ex.entiteId) throw new BadRequestException('Cette règle est une exception d’un autre dossier');
       const [lot] = await tx.select().from(s.lotsImport).where(and(eq(s.lotsImport.exerciceId, ex.id), eq(s.lotsImport.type, 'fec'), eq(s.lotsImport.actif, true)));
       if (!lot) throw new ConflictException('Aucune donnée comptable active pour cet exercice : impact non mesurable');
-      if (lot.progression > PLAFOND_LIGNES_IMPACT) throw new ConflictException('Volume trop important pour une mesure immédiate');
-      const lignes = await lignesDuLot(tx, lot.id);
+      // Plafonds de l'API (D-093) : lignes de l'exercice, puis mouvements bancaires du dossier (relus en entier pour TRE-003).
+      const [{ n: nbMouvements } = { n: 0 }] = (await tx.execute(sql`select count(*)::int as n from mouvements_bancaires where entite_id = ${ex.entiteId}::uuid`)).rows as Array<{ n: number }>;
+      if (nbMouvements > this.cfg.API_MOUVEMENTS_MAX_CALCUL) {
+        throw refusVolume({ ecran: 'Mesure d’impact d’une règle', objet: 'mouvements bancaires dans le dossier', volume: nbMouvements, plafond: this.cfg.API_MOUVEMENTS_MAX_CALCUL, variable: 'API_MOUVEMENTS_MAX_CALCUL' });
+      }
+      const { lignes } = await chargerLignes(tx, budget, this.cfg, { ecran: 'Mesure d’impact d’une règle', plafond: 'impact', lot });
       const enVigueur = await parametresApprouves(tx, ex.entiteId);
       // Mêmes relevés actifs que l'exécution réelle des contrôles : sans eux, un contrôle qui en dépend (TRE-003) serait
       // « non réalisé » avant comme après, et la mesure ne dirait rien.

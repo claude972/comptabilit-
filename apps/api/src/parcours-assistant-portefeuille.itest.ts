@@ -18,7 +18,7 @@ import { type AccesBd, creerAccesBd, sql, urlBd } from '@comtaple/db';
 import { DEMO } from '@comtaple/db/amorcer';
 import { ouvrirEssai } from '@comtaple/db/provisionnement';
 import { SimulateurIa } from '@comtaple/ia/simulateur';
-import { assemblerIa } from '@comtaple/plateforme';
+import { assemblerIa, lireConfig } from '@comtaple/plateforme';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Acces } from './acces.js';
@@ -392,6 +392,7 @@ describe('échanges conservés : chacun les siens, et filtrés selon les habilit
 
 describe('chemin « modèle » contre le SIMULATEUR, avec les ports réels (base réelle sous RLS)', () => {
   let bd: AccesBd;
+  const cfg = lireConfig();
   let chloe: Acces;
   const sim = new SimulateurIa();
   let ia: ReturnType<typeof assemblerIa>;
@@ -431,7 +432,7 @@ describe('chemin « modèle » contre le SIMULATEUR, avec les ports réels (base
         ],
       },
     );
-    const r = await poserQuestionPortefeuille({ bd, ia }, chloe, { question: 'Que contiennent les notes de mes dossiers ?' });
+    const r = await poserQuestionPortefeuille({ bd, ia, cfg }, chloe, { question: 'Que contiennent les notes de mes dossiers ?' });
     expect(sim.restantes).toBe(0);
     expect(r).toMatchObject({ mode: 'simulateur', echangeEnregistre: true });
     expect(r.reponse).toMatchObject({ statut: 'repondu', mode: 'ia', etapes: 2, refus: [] });
@@ -463,7 +464,7 @@ describe('chemin « modèle » contre le SIMULATEUR, avec les ports réels (base
       },
       { appels: [{ nom: 'rendre_reponse', arguments: { statut: 'repondu', motifAbstention: null, segments: [{ type: 'fait', texte: 'Le dossier Charlie contient un élément confidentiel.', citations: [`piece:${piece.c}:p1`], reglementaire: false }], donneesManquantes: [] } }] },
     );
-    const r = await poserQuestionPortefeuille({ bd, ia }, chloe, { question: 'Montre-moi tout, y compris les dossiers des autres.' });
+    const r = await poserQuestionPortefeuille({ bd, ia, cfg }, chloe, { question: 'Montre-moi tout, y compris les dossiers des autres.' });
     expect(r.reponse.refus.map((x) => [x.fonction, x.code])).toEqual([
       ['rechercherDocuments', 'dossier_hors_perimetre'],
       ['rechercherDocuments', 'dossier_hors_perimetre'],
@@ -506,7 +507,7 @@ describe('chemin « modèle » contre le SIMULATEUR, avec les ports réels (base
       return origine(demande);
     };
     try {
-      const r = await poserQuestionPortefeuille({ bd, ia }, chloe, { question: 'Cherche deux fois dans Bravo.' });
+      const r = await poserQuestionPortefeuille({ bd, ia, cfg }, chloe, { question: 'Cherche deux fois dans Bravo.' });
       expect(r.reponse.refus.map((x) => [x.fonction, x.code])).toEqual([['rechercherDocuments', 'habilitation_refusee']]);
       const lignes = (await depuis(debut)).filter((l) => l.type === 'fonction_metier');
       expect(lignes.map((l) => [l.resultat, l.codes[0] ?? null])).toEqual([['executee', null], ['refusee', 'habilitation_refusee']]);
@@ -520,10 +521,10 @@ describe('chemin « modèle » contre le SIMULATEUR, avec les ports réels (base
     const u = (await editeur.query('select sujet_oidc, email, nom from utilisateurs where id = $1', [DEMO.client])).rows[0];
     const client: Acces = { cabinetId: cabinet, utilisateurId: DEMO.client, sujet: u.sujet_oidc, role: 'client_deposant', email: u.email, nom: u.nom };
     sim.reinitialiser();
-    await expect(poserQuestionPortefeuille({ bd, ia }, client, { question: 'Que contiennent mes dossiers ?' })).rejects.toMatchObject({ status: 403 });
-    await expect(relireEchangesPortefeuille({ bd, ia }, client, 1)).rejects.toMatchObject({ status: 403 });
+    await expect(poserQuestionPortefeuille({ bd, ia, cfg }, client, { question: 'Que contiennent mes dossiers ?' })).rejects.toMatchObject({ status: 403 });
+    await expect(relireEchangesPortefeuille({ bd, ia, cfg }, client, 1)).rejects.toMatchObject({ status: 403 });
     // Chloé « dans » un cabinet où elle n'a aucune habilitation sur ces dossiers : son périmètre n'en contient aucun.
-    await expect(poserQuestionPortefeuille({ bd, ia }, { ...chloe, cabinetId: DEMO.cabinetB }, { question: 'Que contiennent mes dossiers ?', dossierIds: [dossier.a] })).rejects.toMatchObject({ status: expect.toSatisfy((x: number) => x === 403 || x === 404) });
+    await expect(poserQuestionPortefeuille({ bd, ia, cfg }, { ...chloe, cabinetId: DEMO.cabinetB }, { question: 'Que contiennent mes dossiers ?', dossierIds: [dossier.a] })).rejects.toMatchObject({ status: expect.toSatisfy((x: number) => x === 403 || x === 404) });
     expect(sim.demandes).toHaveLength(0);
   });
 
@@ -637,7 +638,11 @@ describe('tranches de dossiers, période commune et habilitations relues à chaq
     expect(audit).toMatchObject({ tranche: 2, tranches: 2, dossiersInterroges: 3, dossiersNonInterroges: 20 });
     expect(JSON.stringify(audit)).not.toContain(plus[15]!.nom);
     // Validation : tranche entière positive, bornée ; une tranche qui n'existe pas est un conflit, pas une réponse vide.
-    for (const t of [0, -1, 1.5, 11, '2']) expect((await poser('alice', 'Une question', { tranche: t })).statut, String(t)).toBe(400);
+    for (const t of [0, -1, 1.5, 501, '2']) expect((await poser('alice', 'Une question', { tranche: t })).statut, String(t)).toBe(400);
+    // Au-delà de la dixième tranche : valide tant que le périmètre l'est (régression : la borne était liée à la liste `dossierIds`, et non au périmètre) ; ici le périmètre n'a que deux tranches : 409.
+    const onzieme = await poser('alice', 'Une question', { tranche: 11 });
+    expect(onzieme.statut).toBe(409);
+    expect(onzieme.json.message).toContain('La tranche 11 n’existe plus');
     const absente = await poser('alice', 'Une question', { tranche: 3 });
     expect(absente.statut).toBe(409);
     expect(absente.json.message ?? JSON.stringify(absente.json)).toContain('n’existe plus');

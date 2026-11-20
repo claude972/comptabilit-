@@ -156,7 +156,7 @@ Lecture des colonnes :
 
 | Exigence | Implémentation | Preuve | Reste réel |
 |---|---|---|---|
-| Capacités mesurées, pas d'objectif présenté comme mesure | `rapport-de-tests.md` | Mesures locales datées | Mesures sur l'environnement cible **(externe)** |
+| Capacités mesurées, pas d'objectif présenté comme mesure | `rapport-de-tests.md`, `exploitation.md` § 16, `scripts/mesure-portefeuille.mjs` | Mesures locales datées, dont un portefeuille de 300 dossiers (D-094) | Mesures sur l'environnement cible **(externe)** ; plusieurs utilisateurs simultanés ; portefeuille réel |
 | Sauvegardes, restauration, RPO/RTO, reprise | Scripts, essais isolés, `exploitation.md` | Essais | RPO/RTO : objectifs proposés, non mesurés en cible |
 | Fonctionnement dégradé sans IA | Aucune fonction ne dépend de l'IA ; replis étiquetés | Tests | — |
 | Jeux synthétiques et exigences de recette | `packages/core/src/synthetique`, recettes | Tests | — |
@@ -179,7 +179,7 @@ notées « limite assumée » ou absentes de la matrice ; elles sont rouvertes e
 | Exigence (section) | Ce qui manquait | État |
 |---|---|---|
 | Supervision OpenTelemetry (§5) | Aucune trace émise par l'API ni le worker | Fait (D-074, D-083) : traces de l'API et du worker propagées jusqu'aux travaux, sans donnée comptable, conservées dans un entrepôt auto-hébergé, essayées en local ; reste le déploiement |
-| Fichiers volumineux en flux (§17) | Contrôles non réalisés au-delà de 500 000 lignes | Fait (D-075) : 19 contrôles en flux, égalité prouvée, mesuré sur 1 060 006 lignes ; reste borné par un budget explicite pour trois d'entre eux |
+| Fichiers volumineux en flux (§17) | Contrôles non réalisés au-delà de 500 000 lignes | Fait (D-075) : 19 contrôles en flux, égalité prouvée, mesuré sur 1 060 006 lignes ; reste borné par un budget explicite pour trois d'entre eux. Les écrans de l'API qui calculent en mémoire ont désormais des plafonds explicites, configurables et motivés (D-093), calés sur une mesure de mémoire (264 957 lignes) |
 | Isolation des traitements PDF, image et XML (§16) | Analyseurs exécutés dans le processus du worker | Fait (D-076, D-085) : pièces, relevés bancaires et FEC décodés dans un processus enfant borné ; pas d'isolation par le noyau ; mail non isolé, justifié (aucun décodage MIME) |
 | Tiers, factures, échéances et règlements (§7) | Pas de table des tiers ni de suivi des règlements par facture | Fait (D-077) : tiers, factures et avoirs suivis, échéances, règlements partiels et groupés, suspicion de double comptabilisation ; destinataire lu pour apparier les ventes (D-084), corrigeable à la main avec trace et relisible par une réanalyse explicite des pièces déjà stockées (D-091), euro seulement ; règles à valider **(externe)** |
 | Assistant sur un portefeuille autorisé (§15) | Un seul dossier à la fois | Fait (D-079, D-088) : portefeuille de dossiers autorisés par tranches de vingt, période commune, recherche multi-dossiers, habilitations revérifiées à la relecture ; sans IA aujourd'hui |

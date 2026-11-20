@@ -2,11 +2,12 @@ import { BadRequestException, Body, ConflictException, Controller, ForbiddenExce
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { calculerBalance, dec, type LigneEcriture, schemaChaineDecimale, somme, versChaine } from '@comtaple/core';
 import { type AccesBd, and, asc, eq, inArray, journaliser, schema as s, sql, type Tx } from '@comtaple/db';
-import { lignesDuLot } from '@comtaple/plateforme';
+import type { Config } from '@comtaple/plateforme';
 import type { Response } from 'express';
 import { z } from 'zod';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
-import { BD } from './jetons.js';
+import { BD, CONFIG } from './jetons.js';
+import { avecCalcul, chargerLignes, ApiRefusVolume } from './plafonds.js';
 import { schemaOpenApi, uuid, valider } from './validation.js';
 
 const dateIso = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date AAAA-MM-JJ attendue');
@@ -60,7 +61,7 @@ function versLignes(ecritures: Array<typeof s.ecrituresInventaire.$inferSelect>)
 @ApiBearerAuth()
 @Controller('v1')
 export class InventaireController {
-  constructor(@Inject(BD) private readonly bd: AccesBd) {}
+  constructor(@Inject(BD) private readonly bd: AccesBd, @Inject(CONFIG) private readonly cfg: Config) {}
 
   private async exercice(tx: Tx, id: string, minimum: Parameters<typeof exigerNiveau>[2]) {
     const [ex] = await tx.select().from(s.exercices).where(eq(s.exercices.id, id));
@@ -158,17 +159,19 @@ export class InventaireController {
   }
 
   @Get('exercices/:id/balance-ajustee')
+  @ApiRefusVolume()
   @ApiOperation({
     summary: 'Balance ajustée de TRAVAIL : écritures importées + écritures d’inventaire approuvées',
     description: 'Les deux balances sont restituées côte à côte, avec la liste des écritures prises en compte et l’impact sur le résultat. Les écritures seulement proposées ou rejetées ne comptent pas. Document de travail, non validé.',
   })
   async balanceAjustee(@AccesCourant() acces: Acces, @Param('id') id: string) {
     exigerUuid(id);
-    return this.bd.avecContexte(acces, async (tx) => {
+    return avecCalcul(this.bd, acces, async (tx, budget) => {
       const ex = await this.exercice(tx, id, 'lecture');
       const [lot] = await tx.select().from(s.lotsImport).where(and(eq(s.lotsImport.exerciceId, id), eq(s.lotsImport.type, 'fec'), eq(s.lotsImport.actif, true)));
       if (!lot) throw new ConflictException('Aucune donnée comptable importée pour cet exercice');
-      const importees = await lignesDuLot(tx, lot.id);
+      // Plafond de l'API (D-093) : cette route n'en avait aucun avant.
+      const { lignes: importees } = await chargerLignes(tx, budget, this.cfg, { ecran: 'Balance ajustée', plafond: 'calcul', lot });
       const approuvees = await tx.select().from(s.ecrituresInventaire).where(and(eq(s.ecrituresInventaire.exerciceId, id), inArray(s.ecrituresInventaire.statut, ['approuvee', 'exportee'])));
       const aJour = approuvees.filter((e) => e.versionDonnees === ex.versionDonnees);
       const balanceImportee = calculerBalance(importees);

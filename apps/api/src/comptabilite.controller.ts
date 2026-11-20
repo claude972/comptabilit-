@@ -14,12 +14,13 @@ import {
   Res,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { type AccesBd, and, asc, desc, eq, inArray, journaliser, notifier, schema as s, type Tx } from '@comtaple/db';
-import type { Files, Stockage } from '@comtaple/plateforme';
+import { type AccesBd, and, asc, count, desc, eq, inArray, journaliser, notifier, schema as s, type Tx } from '@comtaple/db';
+import type { Config, Files, Stockage } from '@comtaple/plateforme';
 import type { Response } from 'express';
 import { z } from 'zod';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid, type Niveau } from './acces.js';
-import { BD, STOCKAGE, TACHES } from './jetons.js';
+import { BD, CONFIG, STOCKAGE, TACHES } from './jetons.js';
+import { refusVolume, ApiRefusVolume } from './plafonds.js';
 import { schemaOpenApi, uuid, valider } from './validation.js';
 
 type StatutRevue = (typeof s.statutRevue.enumValues)[number];
@@ -52,6 +53,7 @@ export class ComptabiliteController {
     @Inject(BD) private readonly bd: AccesBd,
     @Inject(STOCKAGE) private readonly stockage: Stockage,
     @Inject(TACHES) private readonly taches: Files,
+    @Inject(CONFIG) private readonly cfg: Config,
   ) {}
 
   private async exercice(tx: Tx, id: string, minimum: Niveau) {
@@ -102,6 +104,7 @@ export class ComptabiliteController {
   }
 
   @Get('exercices/:id/revue')
+  @ApiRefusVolume()
   @ApiOperation({
     summary: 'Dernière exécution des contrôles : résultats par contrôle et constats',
     description:
@@ -123,6 +126,11 @@ export class ComptabiliteController {
         .from(s.resultatsControles)
         .where(eq(s.resultatsControles.executionId, execution.id))
         .orderBy(asc(s.resultatsControles.controleId));
+      // Plafond (D-093) : cet écran renvoie TOUS les constats de l'exécution ; compte en base avant toute lecture.
+      const [{ n: nbConstats } = { n: 0 }] = await tx.select({ n: count() }).from(s.constats).where(eq(s.constats.executionId, execution.id));
+      if (nbConstats > this.cfg.API_CONSTATS_MAX_REVUE) {
+        throw refusVolume({ ecran: 'Écran de revue', objet: 'constats dans la dernière exécution des contrôles', volume: nbConstats, plafond: this.cfg.API_CONSTATS_MAX_REVUE, variable: 'API_CONSTATS_MAX_REVUE', remede: 'Cet écran n’est pas paginé : l’éditeur peut relever le plafond après avoir vérifié la mémoire de l’API.' });
+      }
       const constats = await tx
         .select()
         .from(s.constats)

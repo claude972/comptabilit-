@@ -142,7 +142,9 @@ describe('restitution d’un dossier', () => {
     const immobilisations = JSON.parse(fichiers.get('donnees/immobilisations.json')!.toString('utf8'));
     expect(immobilisations.reprises).toHaveLength(1);
     expect(immobilisations.reprises[0]).toMatchObject({ id: repriseCsv.id, entiteId, sha256: repriseCsv.sha256, nbCreees: 1, nbRejetees: 1 });
-    expect(immobilisations.lignesReprises.map((l: any) => [l.numeroLigne, l.statut])).toEqual([[2, 'creee'], [3, 'rejetee']]);
+    // La restitution lit chaque table dans l'ordre de ses identifiants (uuid, donc sans rapport avec le numéro de ligne) : on trie ici ; l'ancienne
+    // assertion supposait l'ordre du fichier et échouait une fois sur deux (constaté le 2026-11-20, rejouée seule : réussie).
+    expect(immobilisations.lignesReprises.map((l: any) => [l.numeroLigne, l.statut]).sort((a: number[], b: number[]) => a[0]! - b[0]!)).toEqual([[2, 'creee'], [3, 'rejetee']]);
     expect(immobilisations.immobilisations).toHaveLength(1);
     expect(immobilisations.immobilisations[0]).toMatchObject({ repriseId: repriseCsv.id, repriseLigne: 2, baseAmortissable: '1000.00' });
     expect(originaux.some(([nom]) => nom === `originaux/${repriseCsv.sha256}-immobilisations-restitution.csv`)).toBe(true);

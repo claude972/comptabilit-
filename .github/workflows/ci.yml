@@ -43,8 +43,6 @@ jobs:
         run: sh scripts/ci-etape.sh "Migrations et jeu d'essai" sh -c 'pnpm run db:migrate && pnpm run db:seed'
       - name: Tests d'intégration base de données (isolation, audit)
         run: sh scripts/ci-etape.sh "Tests base" pnpm --filter @comtaple/db run test:integration
-      - name: Essais de fin de contrat sur ressources jetables (stockage objet d'essai, royaume Keycloak d'essai)
-        run: sh scripts/ci-etape.sh "Tests plateforme" pnpm --filter @comtaple/plateforme run test:integration
       - name: Navigateur pour le rendu PDF
         run: pnpm --filter @comtaple/worker exec playwright install --with-deps chromium
       - name: API et worker
@@ -57,6 +55,8 @@ jobs:
         run: docker compose up -d --wait --wait-timeout 300 ocr
       - name: Surveillance des sources (base réelle, HTTP injecté)
         run: sh scripts/ci-etape.sh "Tests worker" pnpm --filter @comtaple/worker run test:integration
+      - name: Essais de fin de contrat sur ressources jetables (stockage objet d'essai, royaume Keycloak d'essai)
+        run: sh scripts/ci-etape.sh "Tests plateforme" pnpm --filter @comtaple/plateforme run test:integration
       - name: Parcours de bout en bout
         run: sh scripts/ci-etape.sh "Parcours API" pnpm --filter @comtaple/api run test:integration
       # ── Suites navigateur (Chromium et WebKit réussies au run 44560095560 ; Firefox ajouté ensuite) ──

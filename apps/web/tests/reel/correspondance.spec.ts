@@ -177,7 +177,10 @@ test('correspondance : indéterminée, proposée par la collaboratrice sans effe
   const coche = await imports.isChecked();
   await imports.click();
   await expect(preferences.getByText(coche ? 'Notifications désactivées pour cette famille.' : 'Notifications réactivées.')).toBeVisible();
-  await chloe.reload();
+  // Firefox abandonne parfois un rechargement lancé pendant une requête en cours (NS_BINDING_ABORTED, vu en CI) : reprise.
+  await expect(async () => {
+    await chloe.reload();
+  }).toPass({ timeout: 30_000, intervals: [1_000] });
   await expect(chloe.getByTestId('preferences-notification').locator('input[data-famille="imports"]')).toBeChecked({ checked: !coche });
   await chloe.getByTestId('preferences-notification').locator('input[data-famille="imports"]').click();
   await expect(chloe.getByTestId('preferences-notification').getByText(coche ? 'Notifications réactivées.' : 'Notifications désactivées pour cette famille.')).toBeVisible();

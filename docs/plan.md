@@ -89,6 +89,7 @@ Matrice exigence → implémentation → preuve → reste : `exigences.md`. Réa
 - [x] Recette de tous les écrans par profil (bureau et émulation mobile) ; six écarts d'usage corrigés.
 - [x] Paquet IA, assistant documenté et tâches IA branchés ; état réel « sans IA » ; chemin « modèle » contre simulateur.
 - [x] Indexation des pièces en passages (vecteurs en attente d'un fournisseur d'embeddings).
+- [x] Reprise du fichier des immobilisations par import CSV : aperçu sans écriture, validation explicite, rapport ligne par ligne conservé et téléchargeable (D-092).
 - [x] Lot 5 : préparation de la liasse (2050 à 2053, 2033-A/B), projet d'annexe, propositions d'écritures d'inventaire.
 - [x] Déploiement et exploitation préparés : OpenTofu, composition de production, royaume Keycloak de production, supervision, script de déploiement, guide d'exploitation.
 - [x] Documents juridiques à l'état de projet (`docs/juridique/`).
@@ -96,7 +97,7 @@ Matrice exigence → implémentation → preuve → reste : `exigences.md`. Réa
 Reste réalisable sans intervention extérieure, non fait (par ordre d'utilité) :
 
 1. Persistance de la preuve de connexion de la passerelle IA et route de vérification (inutile tant qu'aucun jeton n'existe).
-2. Amortissements (D-089, D-090) : activer le dégressif après lecture du texte de loi et validation par un expert-comptable (`AMORTISSEMENT_DEGRESSIF_ACTIVE`) ; unités d'œuvre, amortissement dérogatoire, plus ou moins-value de cession, coefficient majoré, exercices non annuels en dégressif ; reprise du fichier des immobilisations depuis le logiciel comptable (aujourd'hui : saisie par le cabinet).
+2. Amortissements (D-089, D-090) : activer le dégressif après lecture du texte de loi et validation par un expert-comptable (`AMORTISSEMENT_DEGRESSIF_ACTIVE`) ; unités d'œuvre, amortissement dérogatoire, plus ou moins-value de cession, coefficient majoré, exercices non annuels en dégressif ; lecture directe d'un classeur XLSX et rattachement de composants par import (la reprise du fichier des immobilisations par CSV est faite, D-092).
 3. Assistant et recherche de portefeuille (D-079, D-088) : mesure sur un gros portefeuille ; recherche par similarité quand des vecteurs réels existeront.
 4. Tiers et factures (D-077, D-084) : tolérances de montant ; règlements groupés non lettrés ; sort de l'ancienne table `factures`, jamais alimentée.
 5. Traces (D-083) : source de données et tableau Grafana chargés et requêtes exécutées en local le 2026-11-20 ; reste : observer la rétention, surveiller le disque et les certificats, essayer sur deux hôtes en recette.

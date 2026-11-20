@@ -5,7 +5,6 @@ import {
   calculerBalance,
   type Constat,
   dec,
-  estDateIso,
   evaluerCategorieTaille,
   type ImpotSurLeResultat,
   type LigneEcriture,
@@ -13,8 +12,9 @@ import {
   preparerLiasse,
   MOTIF_DEGRESSIF_NON_ACTIVE,
   proposerEcrituresInventaire,
+  schemaImmobilisation,
+  schemaImmobilisationBase,
   type RegimeLiasse,
-  schemaChaineDecimale,
   versChaine,
 } from '@comtaple/core';
 import { type AccesBd, and, asc, desc, eq, journaliser, schema as s, type Tx } from '@comtaple/db';
@@ -29,64 +29,9 @@ const PLAFOND_LIGNES = 400_000;
 const CATEGORIES = ['micro_entreprise', 'petite_entreprise', 'personne_morale_regime_simplifie', 'moyenne_ou_grande_entreprise'] as const;
 const categorie = z.object({ categorie: z.enum(CATEGORIES).nullable() });
 const confirmation = z.object({ etat: z.enum(['complete', 'non_applicable']), note: z.string().max(8000).optional() });
-const MODES_AMORTISSEMENT = ['lineaire', 'degressif'] as const;
-const COEFFICIENTS_DEGRESSIFS = ['1.25', '1.75', '2.25'] as const;
-/** Coefficient du dégressif selon la durée en années (CGI art. 39 A, BOFiP BOI-BIC-AMT-20-20-30 § 120) : 3-4 ans 1,25 ; 5-6 ans 1,75 ; au-delà 2,25. */
-const coefficientAttendu = (annees: number): string => (annees <= 4 ? '1.25' : annees <= 6 ? '1.75' : '2.25');
-const immobilisationBase = z.object({
-  libelle: z.string().trim().min(1).max(200),
-  compteImmobilisation: z.string().regex(/^2\d{2,11}$/, 'compte d’immobilisation du PCG attendu (classe 2)'),
-  baseAmortissable: schemaChaineDecimale,
-  /** Date d'acquisition (ou de construction) : obligatoire en dégressif (point de départ : premier jour du mois), facultative sinon. */
-  dateAcquisition: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date AAAA-MM-JJ attendue').nullable().optional(),
-  dateMiseEnService: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date AAAA-MM-JJ attendue'),
-  dureeMois: z.number().int().min(1).max(1200),
-  amortissementsAnterieurs: schemaChaineDecimale.nullable().optional(),
-  modeAmortissement: z.enum(MODES_AMORTISSEMENT).default('lineaire'),
-  coefficientDegressif: schemaChaineDecimale.nullable().optional(),
-  eligibiliteDegressifConfirmee: z.boolean().nullable().optional(),
-  valeurResiduelle: schemaChaineDecimale.nullable().optional(),
-  dateSortie: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date AAAA-MM-JJ attendue').nullable().optional(),
-  composantDe: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, 'identifiant invalide').nullable().optional(),
-});
-/** Règles croisées de la saisie : chacune protège un choix du cabinet que le moteur ne doit jamais deviner. */
-const immobilisation = immobilisationBase.superRefine((d, ctx) => {
-  const erreur = (champ: string, message: string) => ctx.addIssue({ code: 'custom', path: [champ], message });
-  const base = dec(d.baseAmortissable);
-  if (!base.isPositive() || base.isZero()) erreur('baseAmortissable', 'La base amortissable (valeur brute) doit être strictement positive');
-  if (!estDateIso(d.dateMiseEnService)) erreur('dateMiseEnService', 'date inexistante');
-  if (d.dateAcquisition != null) {
-    if (!estDateIso(d.dateAcquisition)) erreur('dateAcquisition', 'date inexistante');
-    else if (d.dateAcquisition > d.dateMiseEnService) erreur('dateAcquisition', 'La date d’acquisition ne peut pas être postérieure à la mise en service');
-  }
-  if (d.dateSortie != null) {
-    if (!estDateIso(d.dateSortie)) erreur('dateSortie', 'date inexistante');
-    else if (d.dateSortie < d.dateMiseEnService) erreur('dateSortie', 'La date de sortie ne peut pas précéder la mise en service');
-  }
-  if (d.valeurResiduelle != null) {
-    const v = dec(d.valeurResiduelle);
-    if (v.isNegative()) erreur('valeurResiduelle', 'La valeur résiduelle ne peut pas être négative');
-    else if (v.greaterThanOrEqualTo(base)) erreur('valeurResiduelle', 'La valeur résiduelle doit être strictement inférieure à la valeur brute (sinon il n’y a rien à amortir)');
-  }
-  const net = base.minus(d.valeurResiduelle != null ? dec(d.valeurResiduelle) : dec('0'));
-  if (d.amortissementsAnterieurs != null && (dec(d.amortissementsAnterieurs).isNegative() || dec(d.amortissementsAnterieurs).greaterThan(net))) {
-    erreur('amortissementsAnterieurs', 'Les amortissements antérieurs sont compris entre zéro et le montant amortissable (valeur brute − valeur résiduelle)');
-  }
-  if (d.modeAmortissement === 'degressif') {
-    if (d.dateAcquisition == null) erreur('dateAcquisition', 'Dégressif : la date d’acquisition (ou de construction) est obligatoire, le point de départ du dégressif étant le premier jour du mois d’acquisition');
-    if (!d.compteImmobilisation.startsWith('21')) erreur('compteImmobilisation', 'Le dégressif ne vise que des immobilisations corporelles (compte de la classe 21)');
-    if (d.dureeMois % 12 !== 0 || d.dureeMois < 36 || d.dureeMois > 600) erreur('dureeMois', 'Dégressif : durée en années entières, de 3 à 50 ans (36 à 600 mois)');
-    if (d.eligibiliteDegressifConfirmee === undefined || d.eligibiliteDegressifConfirmee === null) erreur('eligibiliteDegressifConfirmee', 'Dégressif : le cabinet doit confirmer (true) ou infirmer (false) l’éligibilité du bien ; elle n’est jamais devinée');
-    if (d.coefficientDegressif === undefined || d.coefficientDegressif === null) erreur('coefficientDegressif', 'Dégressif : le coefficient est à déclarer');
-    else if (!(COEFFICIENTS_DEGRESSIFS as readonly string[]).includes(d.coefficientDegressif)) erreur('coefficientDegressif', 'Coefficient attendu : 1.25, 1.75 ou 2.25');
-    else if (d.dureeMois % 12 === 0 && d.dureeMois >= 36 && d.dureeMois <= 600 && d.coefficientDegressif !== coefficientAttendu(d.dureeMois / 12)) {
-      erreur('coefficientDegressif', `Coefficient incohérent avec la durée de ${d.dureeMois / 12} ans : ${coefficientAttendu(d.dureeMois / 12)} attendu (1.25 pour 3 ou 4 ans, 1.75 pour 5 ou 6 ans, 2.25 au-delà de 6 ans)`);
-    }
-  } else {
-    if (d.coefficientDegressif != null) erreur('coefficientDegressif', 'Le coefficient n’a de sens qu’en mode dégressif');
-    if (d.eligibiliteDegressifConfirmee != null) erreur('eligibiliteDegressifConfirmee', 'L’éligibilité au dégressif n’a de sens qu’en mode dégressif');
-  }
-});
+/** Mêmes contrôles que la reprise par import (D-092) : le schéma vit dans le moteur, source unique des deux chemins. */
+const immobilisationBase = schemaImmobilisationBase;
+const immobilisation = schemaImmobilisation;
 const RUBRIQUE = /^ANX-[0-9A-Za-z-]{1,24}$/;
 const PROPOSITION = /^[A-Za-z0-9:_|.-]{1,200}$/;
 

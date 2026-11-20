@@ -34,6 +34,7 @@ function ouvrirZip(contenu: Buffer): Promise<Map<string, Buffer>> {
 
 const SEL = randomBytes(4).toString('hex');
 let entiteId = '';
+let repriseCsv = { sha256: '', id: '' };
 
 beforeAll(async () => {
   await ouvrirSessions();
@@ -54,6 +55,13 @@ beforeAll(async () => {
   await attendreLot('chloe', lot.fin.json.lotImportId);
   const revue = await attendre(() => api('remi', 'GET', `/v1/exercices/${exerciceId}/revue`), (r) => r.json?.execution?.statut === 'termine');
   await api('remi', 'PATCH', `/v1/constats/${revue.json.constats[0].id}`, { action: 'confirmer_anomalie', motif: 'Anomalie avérée' });
+  // Une reprise du fichier des immobilisations (D-092) : la reprise, son rapport ligne par ligne et le CSV original doivent être restitués.
+  const csv = Buffer.from(`Désignation;Compte;Valeur brute;Date de mise en service;Durée (mois)\nServeur ${SEL};218300;1 000,00;15/03/2024;60\nCompte hors classe;231000;5,00;15/03/2024;60\n`, 'utf8');
+  const corps = { nomFichier: 'immobilisations-restitution.csv', contenuBase64: csv.toString('base64') };
+  const apercu = await api('chloe', 'POST', `/v1/dossiers/${entiteId}/reprises-immobilisations/apercu`, corps);
+  const reprise = await api('chloe', 'POST', `/v1/dossiers/${entiteId}/reprises-immobilisations`, { ...corps, correspondance: apercu.json.correspondance, empreinteApercu: apercu.json.empreinteApercu, confirmation: true });
+  expect(reprise.statut).toBe(201);
+  repriseCsv = { sha256: sha(csv), id: reprise.json.id };
 });
 
 describe('restitution d’un dossier', () => {
@@ -130,6 +138,14 @@ describe('restitution d’un dossier', () => {
     expect(ecritures.length).toBeGreaterThan(0);
     const lignes = ecritures.reduce((n, nom) => n + fichiers.get(nom)!.toString('utf8').trimEnd().split('\n').length - 1, 0);
     expect(lignes).toBe(manifeste.lignesEcriture);
+    // Fichier des immobilisations : reprise, rapport ligne par ligne, immobilisation créée et CSV original (restitué à l'identique).
+    const immobilisations = JSON.parse(fichiers.get('donnees/immobilisations.json')!.toString('utf8'));
+    expect(immobilisations.reprises).toHaveLength(1);
+    expect(immobilisations.reprises[0]).toMatchObject({ id: repriseCsv.id, entiteId, sha256: repriseCsv.sha256, nbCreees: 1, nbRejetees: 1 });
+    expect(immobilisations.lignesReprises.map((l: any) => [l.numeroLigne, l.statut])).toEqual([[2, 'creee'], [3, 'rejetee']]);
+    expect(immobilisations.immobilisations).toHaveLength(1);
+    expect(immobilisations.immobilisations[0]).toMatchObject({ repriseId: repriseCsv.id, repriseLigne: 2, baseAmortissable: '1000.00' });
+    expect(originaux.some(([nom]) => nom === `originaux/${repriseCsv.sha256}-immobilisations-restitution.csv`)).toBe(true);
     expect(fichiers.get('LISEZMOI.txt')!.toString('utf8')).toMatch(/PROJETS/);
     // Aucun secret ni jeton dans l'archive.
     for (const [nom, contenu] of fichiers) if (nom.startsWith('donnees/')) expect(contenu.toString('utf8')).not.toMatch(/jetons?_?chiffres|access_token|refresh_token/i);

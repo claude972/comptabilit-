@@ -15,6 +15,7 @@ import { EtatsController } from './etats.controller.js';
 import { FiscalController } from './fiscal.controller.js';
 import { ImportsController } from './imports.controller.js';
 import { IntegrationsController } from './integrations.controller.js';
+import { ReprisesImmobilisationsController } from './reprises-immobilisations.controller.js';
 import { RechercheController } from './recherche.controller.js';
 import { VeilleController } from './veille.controller.js';
 import { InventaireController } from './inventaire.controller.js';
@@ -33,7 +34,7 @@ import { TeleversementsController } from './televersements.controller.js';
 import { TiersController } from './tiers.controller.js';
 
 @Module({
-  controllers: [NotificationsPousseesController, NotificationsController, ProfilController, TeleversementsController, DocumentsController, DestinataireController, ComptabiliteController, ReferenceController, AuditController, IntegrationsController, MailController, BanqueController, AdministrationController, AbonnementController, ReglesController, RestitutionController, MissionsController, ConseilsController, VeilleController, RechercheController, EtatsController, FiscalController, InventaireController, ImportsController, AssistantController, IaTachesController, TiersController],
+  controllers: [NotificationsPousseesController, NotificationsController, ProfilController, TeleversementsController, DocumentsController, DestinataireController, ComptabiliteController, ReferenceController, AuditController, IntegrationsController, MailController, BanqueController, AdministrationController, AbonnementController, ReglesController, RestitutionController, MissionsController, ConseilsController, VeilleController, RechercheController, EtatsController, FiscalController, ReprisesImmobilisationsController, InventaireController, ImportsController, AssistantController, IaTachesController, TiersController],
   providers: [
     { provide: CONFIG, useFactory: () => lireConfig() },
     // Le serveur interactif se connecte avec le rôle comtaple_app : jamais propriétaire, jamais BYPASSRLS.

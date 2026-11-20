@@ -10,7 +10,8 @@ Cette archive contient les données du dossier telles qu'elles existaient à la 
 
   manifeste.json        Liste de tous les fichiers de l'archive avec leur taille et leur empreinte SHA-256.
   donnees/              Données structurées (JSON, UTF-8) et écritures normalisées (CSV, séparateur « ; », UTF-8).
-  originaux/            Fichiers reçus, non modifiés, nommés par leur empreinte SHA-256 suivie du nom d'origine.
+  originaux/            Fichiers reçus, non modifiés, nommés par leur empreinte SHA-256 suivie du nom d'origine
+                        (y compris les fichiers CSV de reprise des immobilisations, dont le rapport est dans donnees/immobilisations.json).
 
 Montants : chaînes décimales (point décimal), jamais des nombres flottants.
 Les productions du logiciel (extractions, constats, rapprochements) sont des PROJETS sauf mention d'une
@@ -115,6 +116,13 @@ export async function genererRestitution(c: Contexte, t: TacheRestitution): Prom
       demandes: tableauJson(lire('reanalysesDestinataire', s.reanalysesDestinataire)),
       pieces: tableauJson(lire('reanalysesDestinatairePieces', s.reanalysesDestinatairePieces)),
     }));
+    // Fichier des immobilisations du dossier (saisies ou reprises par import, D-092), reprises d'import et leur rapport ligne par ligne.
+    // Le fichier CSV original de chaque reprise figure dans « originaux/ » (il est lié à une reprise par son empreinte SHA-256).
+    await archive.ajouterFragments('donnees/immobilisations.json', objetJson({
+      immobilisations: tableauJson(lire('immobilisations', s.immobilisations)),
+      reprises: tableauJson(lire('reprisesImmobilisations', s.reprisesImmobilisations)),
+      lignesReprises: tableauJson(lire('lignesRepriseImmobilisations', s.lignesRepriseImmobilisations)),
+    }));
     await archive.ajouterFragments('donnees/banque.json', objetJson({
       releves: tableauJson(lire('releves', s.relevesBancaires, undefined, sansBrut)),
       mouvements: tableauJson(lire('mouvementsBancaires', s.mouvementsBancaires, undefined, sansBrut)),
@@ -161,11 +169,14 @@ export async function genererRestitution(c: Contexte, t: TacheRestitution): Prom
           tx.execute(sql`
             select f.id, f.sha256, f.cle_stockage as "cleStockage", f.analyse_antivirus as "analyseAntivirus",
                    (select d.nom_origine from documents d where d.fichier_id = f.id and d.entite_id = ${e}::uuid order by d.cree_le limit 1) as "nomPiece",
-                   (select coalesce(l.rapport->>'nomFichier', 'import') from lots_import l where l.fichier_id = f.id and l.entite_id = ${e}::uuid order by l.cree_le limit 1) as "nomImport"
+                   coalesce(
+                     (select coalesce(l.rapport->>'nomFichier', 'import') from lots_import l where l.fichier_id = f.id and l.entite_id = ${e}::uuid order by l.cree_le limit 1),
+                     (select r.nom_fichier from reprises_immobilisations r where r.fichier_id = f.id and r.entite_id = ${e}::uuid order by r.cree_le limit 1)) as "nomImport"
               from fichiers f
              where f.cabinet_id = ${t.cabinetId}::uuid ${dernierFichier === undefined ? sql`` : sql`and f.id > ${dernierFichier}::uuid`}
                and f.id in (select d.fichier_id from documents d where d.entite_id = ${e}::uuid
-                            union select l.fichier_id from lots_import l where l.entite_id = ${e}::uuid and l.fichier_id is not null)
+                            union select l.fichier_id from lots_import l where l.entite_id = ${e}::uuid and l.fichier_id is not null
+                            union select r.fichier_id from reprises_immobilisations r where r.entite_id = ${e}::uuid)
              order by f.id limit 200`),
         )
       ).rows as Array<{ id: string; sha256: string; cleStockage: string; analyseAntivirus: string; nomPiece: string | null; nomImport: string | null }>;

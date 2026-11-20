@@ -151,3 +151,41 @@ export { CATEGORIES_AMELIORATION, CRITERES_AMELIORATION, PARAMETRES_SEUIL_MONTAN
 // Notifications poussées discrètes : charge utile sans donnée, liste blanche des services de notification.
 export { PAGE_POUSSEE, PHRASES_POUSSEES, SERVICES_NOTIFICATION, TITRE_POUSSEE, TYPES_POUSSES, chargeUtilePoussee, reduireAgentUtilisateur, serialiserChargeUtilePoussee, verifierPointAcces } from './notifications-poussees.js';
 export type { ChargeUtilePoussee, RefusPointAcces, ServiceNotification, TypePousse, VerificationPointAcces } from './notifications-poussees.js';
+
+// Reprise du fichier des immobilisations par import CSV (D-092) : schéma commun à la saisie, lecture, correspondance, contrôle.
+export { COEFFICIENTS_DEGRESSIFS, MODES_AMORTISSEMENT, coefficientDegressifAttendu, schemaImmobilisation, schemaImmobilisationBase } from './immobilisations/schema.js';
+export type { ImmobilisationSaisie } from './immobilisations/schema.js';
+export {
+  CHAMPS_REPRISE,
+  CODES_CHAMPS_REPRISE,
+  ErreurReprise,
+  LIGNES_MAX_REPRISE,
+  LONGUEUR_MAX_VALEUR_LUE,
+  TAILLE_MAX_REPRISE,
+  VERSION_REPRISE_IMMOBILISATIONS,
+  analyserReprise,
+  cleDoublon,
+  controlerLigne,
+  lireFichierReprise,
+  neutraliserCellule,
+  normaliserDesignation,
+  problemesCorrespondance,
+  proposerCorrespondance,
+} from './immobilisations/reprise.js';
+export type {
+  CauseDoublon,
+  ChampReprise,
+  CodeChampReprise,
+  CodeErreurReprise,
+  ContexteReprise,
+  CorrespondanceColonnes,
+  EncodageReprise,
+  FichierLu,
+  ImmobilisationReprise,
+  LigneReprise,
+  OptionsLectureReprise,
+  PropositionCorrespondance,
+  ResultatAnalyseReprise,
+  Separateur,
+  StatutLigneReprise,
+} from './immobilisations/reprise.js';

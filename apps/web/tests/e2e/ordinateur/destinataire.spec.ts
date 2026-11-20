@@ -73,7 +73,9 @@ test.describe('correction manuelle du destinataire — collaboratrice', () => {
     await formulaire.getByLabel('Nom du destinataire').fill('Société Cliente');
     await formulaire.getByLabel('Motif de la correction (obligatoire)').fill('Premier essai');
     await formulaire.getByRole('button', { name: 'Enregistrer la correction du destinataire' }).click();
-    await expect(page.getByRole('status').filter({ hasText: 'Correction enregistrée' })).toBeVisible();
+    // Attendre que la première correction soit RETENUE à l'écran (le message « Correction enregistrée » du premier
+    // enregistrement resterait visible et ne prouverait pas le rechargement : source d'une course constatée en CI).
+    await expect(ligne(page, 'destinataireNom').locator('[data-colonne="retenue"]')).toContainText('Société Cliente');
     await formulaire.getByLabel('Nom du destinataire').fill('');
     await formulaire.getByLabel('Motif de la correction (obligatoire)').fill('Nom illisible, à ne pas conserver');
     await formulaire.getByRole('button', { name: 'Enregistrer la correction du destinataire' }).click();

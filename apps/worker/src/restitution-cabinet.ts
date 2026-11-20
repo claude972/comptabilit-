@@ -120,10 +120,11 @@ export async function genererRestitutionCabinet(c: Contexte, t: TacheRestitution
       if (colonnes.entiteId) conditions.push(dansPerimetre(tb.entiteId) as never);
       if (colonnes.dossierAffecteId) conditions.push(dansPerimetre(tb.dossierAffecteId) as never);
       if (nom === 'fichiers') {
-        // Uniquement les fichiers référencés par une pièce ou un import d'un dossier du périmètre.
+        // Uniquement les fichiers référencés par une pièce, un import ou une reprise d'immobilisations d'un dossier du périmètre.
         conditions.push(sql`${tb.id} in (
           select d.fichier_id from documents d where d.entite_id = any(${tableauInclus}::uuid[])
-          union select l.fichier_id from lots_import l where l.entite_id = any(${tableauInclus}::uuid[]) and l.fichier_id is not null)` as never);
+          union select l.fichier_id from lots_import l where l.entite_id = any(${tableauInclus}::uuid[]) and l.fichier_id is not null
+          union select r.fichier_id from reprises_immobilisations r where r.entite_id = any(${tableauInclus}::uuid[]))` as never);
       }
       const gardees = Object.keys(colonnes).filter((k) => !colonneExclue(k));
       for (const k of Object.keys(colonnes)) if (colonneExclue(k)) colonnesExclues.push(`${nom}.${colonnes[k]!.name}`);
@@ -206,7 +207,8 @@ export async function genererRestitutionCabinet(c: Contexte, t: TacheRestitution
                   dernierFichier === undefined ? undefined : gt(s.fichiers.id, dernierFichier),
                   sql`${s.fichiers.id} in (
                     select d.fichier_id from documents d where d.entite_id = any(${tableauInclus}::uuid[])
-                    union select l.fichier_id from lots_import l where l.entite_id = any(${tableauInclus}::uuid[]) and l.fichier_id is not null)`,
+                    union select l.fichier_id from lots_import l where l.entite_id = any(${tableauInclus}::uuid[]) and l.fichier_id is not null
+          union select r.fichier_id from reprises_immobilisations r where r.entite_id = any(${tableauInclus}::uuid[]))`,
                 ),
               )
               .orderBy(asc(s.fichiers.id))

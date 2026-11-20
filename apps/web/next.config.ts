@@ -28,8 +28,9 @@ const config: NextConfig = {
   reactStrictMode: true,
   // Pas de fichier AGENTS.md généré automatiquement dans le dépôt.
   agentRules: false,
-  // Les morceaux de téléversement (4 Mio) traversent le proxy Next : la limite reste proche de cette taille.
-  experimental: { proxyClientMaxBodySize: '6mb' },
+  // Les morceaux de téléversement (4 Mio) traversent le proxy Next ; la reprise des immobilisations (D-092) y fait passer un fichier de 5 Mio
+  // au plus encodé en Base64 (≈ 6,7 Mo) : la limite reste proche de cette taille, l'API appliquant ensuite ses propres bornes.
+  experimental: { proxyClientMaxBodySize: '9mb' },
   async headers() {
     return [
       {

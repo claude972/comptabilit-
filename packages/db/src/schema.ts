@@ -1457,9 +1457,76 @@ export const immobilisations = pgTable(
     /** Immobilisation « structure » dont celle-ci est un composant (une seule profondeur). */
     composantDe: uuid('composant_de').references((): AnyPgColumn => immobilisations.id),
     saisiePar: uuid('saisie_par').notNull().references(() => utilisateurs.id),
+    /** Provenance quand l'immobilisation vient d'une reprise par import (D-092) : la reprise et le numéro de ligne du fichier. Nulls pour une saisie manuelle. */
+    repriseId: uuid('reprise_id').references((): AnyPgColumn => reprisesImmobilisations.id),
+    repriseLigne: integer('reprise_ligne'),
     creeLe: creeLe(),
   },
   (t) => [index('immobilisations_dossier').on(t.entiteId)],
+);
+
+/**
+ * Reprise du fichier des immobilisations par import CSV (D-092) : UNE ligne par import validé, en AJOUT SEUL (l'application ne
+ * modifie ni ne supprime jamais une reprise ni son rapport). Conserve la provenance (qui, quand, empreinte du fichier, nom,
+ * encodage, séparateur, correspondance des colonnes retenue), les décomptes, et le renvoi au fichier original du stockage objet
+ * (`fichiers`). Une même (dossier, empreinte, correspondance) ne s'enregistre qu'une fois : le rejeu renvoie le rapport existant.
+ */
+export const reprisesImmobilisations = pgTable(
+  'reprises_immobilisations',
+  {
+    id: id(),
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    entiteId: uuid('entite_id').notNull().references(() => entites.id),
+    fichierId: uuid('fichier_id').notNull().references(() => fichiers.id),
+    nomFichier: text('nom_fichier').notNull(),
+    sha256: text('sha256').notNull(),
+    taille: integer('taille').notNull(),
+    encodage: text('encodage').notNull(),
+    separateur: text('separateur').notNull(),
+    /** Colonne (indice à partir de 0) retenue pour chaque champ, telle que confirmée après l'aperçu. */
+    correspondance: jsonb('correspondance').notNull(),
+    empreinteCorrespondance: text('empreinte_correspondance').notNull(),
+    /** Empreinte de l'aperçu que la personne a validé : le serveur a recalculé le même résultat avant d'écrire. */
+    empreinteApercu: text('empreinte_apercu').notNull(),
+    versionAnalyseur: text('version_analyseur').notNull(),
+    nbLignes: integer('nb_lignes').notNull(),
+    nbCreees: integer('nb_creees').notNull(),
+    nbIgnorees: integer('nb_ignorees').notNull(),
+    nbRejetees: integer('nb_rejetees').notNull(),
+    importePar: uuid('importe_par').notNull().references(() => utilisateurs.id),
+    creeLe: creeLe(),
+  },
+  (t) => [uniqueIndex('reprises_immobilisations_unique').on(t.entiteId, t.sha256, t.empreinteCorrespondance), index('reprises_immobilisations_dossier').on(t.entiteId, t.creeLe)],
+);
+
+/**
+ * Rapport ligne par ligne d'une reprise (D-092), en ajout seul : numéro de ligne du fichier, statut (créée, ignorée comme doublon,
+ * rejetée), motif en français et valeurs lues. `immobilisation_id` n'est PAS une clé étrangère : l'immobilisation peut être retirée
+ * plus tard du fichier saisi, le rapport garde sa trace. L'index unique partiel sur (dossier, empreinte du fichier, ligne) garantit
+ * qu'une ligne d'un même fichier ne crée jamais deux immobilisations.
+ */
+export const lignesRepriseImmobilisations = pgTable(
+  'lignes_reprise_immobilisations',
+  {
+    id: id(),
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    entiteId: uuid('entite_id').notNull().references(() => entites.id),
+    repriseId: uuid('reprise_id').notNull().references(() => reprisesImmobilisations.id),
+    sha256: text('sha256').notNull(),
+    numeroLigne: integer('numero_ligne').notNull(),
+    /** creee | ignoree_doublon | rejetee */
+    statut: text('statut').notNull(),
+    /** Pour une ligne ignorée : doublon_dossier | doublon_fichier | deja_repris. */
+    cause: text('cause'),
+    motif: text('motif'),
+    valeursLues: jsonb('valeurs_lues').notNull(),
+    immobilisationId: uuid('immobilisation_id'),
+  },
+  (t) => [
+    uniqueIndex('lignes_reprise_unique').on(t.repriseId, t.numeroLigne),
+    uniqueIndex('lignes_reprise_idempotence').on(t.entiteId, t.sha256, t.numeroLigne).where(sql`statut = 'creee'`),
+    index('lignes_reprise_statut').on(t.repriseId, t.statut, t.numeroLigne),
+  ],
 );
 
 // ───────────────────────────── Tiers, factures suivies, règlements ─────────────────────────────

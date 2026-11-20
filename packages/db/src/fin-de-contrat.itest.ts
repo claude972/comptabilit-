@@ -89,6 +89,8 @@ const VALEURS: Record<string, (c: Cabinet | null) => unknown> = {
   'invitations.email': () => `essai-${alea()}@exemple.test`,
   'invitations.role': () => 'collaborateur',
   'immobilisations.compte_immobilisation': () => '2183',
+  // Provenance d'une reprise par import : l'identifiant de la reprise et le numéro de ligne vont ensemble (contrainte de la base).
+  'immobilisations.reprise_ligne': () => 2,
   'politiques_conservation.categorie': () => 'journal_audit', // catégorie conservée : ne s'oppose à aucune suppression
   'abonnements.statut': () => 'resilie',
   'liens_tiers.decision': () => 'confirme',
@@ -106,6 +108,19 @@ const VALEURS: Record<string, (c: Cabinet | null) => unknown> = {
   'reanalyses_destinataire.nb_pieces': () => 1,
   'reanalyses_destinataire_pieces.statut': () => 'en_attente',
   'reanalyses_destinataire_pieces.execution': () => false,
+  // Reprise des immobilisations par import : empreintes hexadécimales, décomptes cohérents, ligne rejetée avec son motif (formes contrôlées par la base).
+  'reprises_immobilisations.sha256': () => createHash('sha256').update(alea()).digest('hex'),
+  'reprises_immobilisations.empreinte_apercu': () => createHash('sha256').update(alea()).digest('hex'),
+  'reprises_immobilisations.empreinte_correspondance': () => createHash('sha256').update(alea()).digest('hex'),
+  'reprises_immobilisations.taille': () => 100,
+  'reprises_immobilisations.separateur': () => ';',
+  'reprises_immobilisations.nb_lignes': () => 1,
+  'reprises_immobilisations.nb_creees': () => 1,
+  'reprises_immobilisations.nb_ignorees': () => 0,
+  'reprises_immobilisations.nb_rejetees': () => 0,
+  'lignes_reprise_immobilisations.sha256': () => createHash('sha256').update(alea()).digest('hex'),
+  'lignes_reprise_immobilisations.statut': () => 'rejetee',
+  'lignes_reprise_immobilisations.motif': () => 'Ligne d’essai rejetée',
   // Notifications poussées : formes contrôlées par la base (empreinte hexadécimale, enveloppe chiffrée, type).
   'abonnements_pousses.empreinte_point_acces': () => createHash('sha256').update(alea()).digest('hex'),
   'abonnements_pousses.service': () => 'fcm',

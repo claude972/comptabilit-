@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { ChoixExercice } from '@/components/dossier';
 import { PiecesJointes } from '@/components/document/pieces-jointes';
 import { ErreurAcces } from '@/components/erreurs';
@@ -207,8 +208,8 @@ export default async function PageInventaire({ params, searchParams }: { params:
       <section aria-labelledby="titre-immobilisations" className="space-y-3" data-testid="fichier-immobilisations">
         <SousTitre id="titre-immobilisations">Immobilisations saisies ({fichierImmos.ok ? fichierImmos.donnees.length : '—'})</SousTitre>
         <p className="text-sm text-texte-doux">
-          Fichier saisi par le cabinet pour proposer les dotations aux amortissements (linéaires ; les dégressifs sont enregistrés comme déclaration du cabinet, sans calcul tant que l’éditeur ne l’a pas activé). Ce n’est pas le fichier des immobilisations du logiciel comptable, qui reste la référence ; rien n’y
-          est importé ni exporté, et aucune écriture n’est créée par cette saisie.
+          Fichier saisi par le cabinet (ou repris d’un fichier CSV après aperçu et confirmation) pour proposer les dotations aux amortissements (linéaires ; les dégressifs sont enregistrés comme déclaration du cabinet, sans calcul tant que l’éditeur ne l’a pas activé). Ce n’est pas le fichier des immobilisations du logiciel comptable, qui reste la référence ; rien n’y
+          est exporté, et aucune écriture n’est créée par cette saisie ni par une reprise.
         </p>
         {fichierImmos.ok && fichierImmos.donnees.length ? (
           <Tableau legende="Immobilisations saisies pour ce dossier">
@@ -249,6 +250,11 @@ export default async function PageInventaire({ params, searchParams }: { params:
             </tbody>
           </Tableau>
         ) : null}
+        <p>
+          <Link href={`/dossiers/${id}/inventaire/reprise`} prefetch={false} data-testid="lien-reprise">
+            {collaboration ? 'Reprendre un fichier d’immobilisations (import CSV)' : 'Rapports des reprises du fichier d’immobilisations'}
+          </Link>
+        </p>
         {collaboration ? (
           <details>
             <summary>Saisir une immobilisation</summary>

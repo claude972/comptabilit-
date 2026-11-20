@@ -41,6 +41,8 @@ export async function creerApplication(): Promise<INestApplication> {
   });
   // Les morceaux de fichiers arrivent en binaire brut, bornés par la taille de morceau ; le reste de l'API est en JSON borné.
   http.use('/v1/televersements', express.raw({ type: 'application/octet-stream', limit: cfg.TAILLE_MORCEAU }));
+  // Reprise des immobilisations (D-092) : le fichier (5 Mio au plus) arrive en Base64 dans un corps JSON ; borne propre à ces deux routes.
+  http.use(/^\/v1\/dossiers\/[^/]+\/reprises-immobilisations(\/apercu)?\/?$/, express.json({ limit: '9mb' }));
   http.use(express.json({ limit: '256kb' }));
   app.enableCors({ origin: [cfg.WEB_URL], allowedHeaders: ['authorization', 'content-type', 'x-cabinet-id'], maxAge: 600 });
   app.enableShutdownHooks();

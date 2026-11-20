@@ -22,6 +22,7 @@ import {
   type ContenuLettre, type LettreDatee, PRESTATIONS, calculerRentabiliteMission, schemaChaineDecimale, dec, estimerTemps, evaluerApplicabilite, schemaContenuLettre, schemaCriteresEvolution, situerTravail, somme, versChaine,
   type ControleAmelioration, type CorrectionExtraction, type DecisionRapprochementRevue, CRITERES_AMELIORATION, PARAMETRES_SEUIL_MONTANT, suggererAmeliorations,
   VERSION_ANALYSEUR_FACTURE, appliquerCorrectionDestinataire, destinataireNonLu, determinerSensPiece, fusionnerReanalyseDestinataire, inchangeDepuis, lignesDestinataire, champsFactureVides,
+  CHAMPS_REPRISE, CODES_CHAMPS_REPRISE, ErreurReprise, VERSION_REPRISE_IMMOBILISATIONS, analyserReprise, lireFichierReprise, neutraliserCellule, proposerCorrespondance, TAILLE_MAX_REPRISE,
   PHRASES_POUSSEES, SERVICES_NOTIFICATION, estDateIso, MOTIF_DEGRESSIF_NON_ACTIVE, proposerEcrituresInventaire, reduireAgentUtilisateur, verifierPointAcces,
 } from '@comtaple/core';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
@@ -151,6 +152,8 @@ interface Suite {
   regles: Enr[];
   ecritures: Enr[];
   immobilisations: Enr[];
+  /** Reprises d'immobilisations par import CSV (reprises-immobilisations.controller.ts) : chacune porte ses lignes de rapport. */
+  reprises: Enr[];
   lignesAmortissements: Enr[];
   /** Calcul du dégressif activé par l'éditeur (AMORTISSEMENT_DEGRESSIF_ACTIVE) : FAUX par défaut, comme l'API. Piloté par /__test/amortissements. */
   degressifActive: boolean;
@@ -193,7 +196,7 @@ function suiteInitiale(): Suite {
     conditions: etatVerification === 'verifiee' ? 'Exercices ouverts à compter du 1er janvier 2025.' : null, resume: etatVerification === 'verifiee' ? `Évolution fictive de test : ${reference}.` : null, criteres, etatVerification, verifieeLe: etatVerification === 'verifiee' ? '2026-11-18' : null,
   });
   return {
-    regles: [], ecritures: [], immobilisations: [], lignesAmortissements: [], degressifActive: false, missions: [], lettres: [], travaux: [], baremes: [], conseils: [], evenements: [], suivis: [], restitutions: [], archives: new Map(), membres: new Map(), campagnes: [], coutsHoraires: new Map(), echangesAssistant: [], echangesPortefeuille: [], suggestionsEcartees: [], correctionsExtraction: [], decisionsRapprochement: [],
+    regles: [], ecritures: [], immobilisations: [], reprises: [], lignesAmortissements: [], degressifActive: false, missions: [], lettres: [], travaux: [], baremes: [], conseils: [], evenements: [], suivis: [], restitutions: [], archives: new Map(), membres: new Map(), campagnes: [], coutsHoraires: new Map(), echangesAssistant: [], echangesPortefeuille: [], suggestionsEcartees: [], correctionsExtraction: [], decisionsRapprochement: [],
     sources: [
       source('BOFiP', 'BOI-BIC-CHG-20-30-10 (biens de faible valeur)', 'https://bofip.impots.gouv.fr/bofip/2109-PGP.html', true),
       source('BOFiP', 'BOI-CF-IOR-60-40-20 (format du FEC)', 'https://bofip.impots.gouv.fr/bofip/9028-PGP.html', true),
@@ -2797,6 +2800,110 @@ function routerSuite(r: Requete, a: Acces): unknown {
     return undefined;
   }
 
+  // ── Reprise du fichier des immobilisations par import CSV (calqué sur reprises-immobilisations.controller.ts) ──
+  // Le simulateur utilise le VRAI analyseur du paquet core (lecture, correspondance, contrôle, doublons) : seuls le stockage,
+  // la base et le journal sont imités en mémoire.
+  if (s[0] === 'dossiers' && s[2] === 'reprises-immobilisations') {
+    const entiteId = exigerUuid(s[1]);
+    const lireFichier = (d: Enr) => {
+      for (const cle of Object.keys(d)) if (!['nomFichier', 'contenuBase64', 'encodage', 'separateur', 'correspondance', 'empreinteApercu', 'confirmation'].includes(cle)) throw invalide(cle, 'champ inconnu');
+      if (typeof d.nomFichier !== 'string' || !d.nomFichier || d.nomFichier.length > 255) throw invalide('nomFichier', 'nom de fichier attendu');
+      if (typeof d.contenuBase64 !== 'string' || d.contenuBase64.length < 4 || d.contenuBase64.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(d.contenuBase64)) throw invalide('contenuBase64', 'Base64 strict attendu');
+      const octets = Buffer.from(d.contenuBase64, 'base64');
+      if (octets.length > TAILLE_MAX_REPRISE) throw new ErreurHttp(413, { message: `Fichier trop volumineux : ${octets.length} octets, maximum ${TAILLE_MAX_REPRISE} octets (5 Mio).`, code: 'trop_gros' });
+      return octets;
+    };
+    const analyser = (octets: Buffer, d: Enr, entite: string) => {
+      let f;
+      try {
+        f = lireFichierReprise(new Uint8Array(octets), { ...(d.encodage ? { encodage: d.encodage } : {}), ...(d.separateur ? { separateur: d.separateur } : {}) });
+      } catch (e) {
+        if (e instanceof ErreurReprise) throw new ErreurHttp(e.code === 'trop_gros' || e.code === 'trop_de_lignes' ? 413 : 422, { message: e.message, code: e.code });
+        throw e;
+      }
+      const empreinteFichier = sha256(octets);
+      const proposition = proposerCorrespondance(f.entetes);
+      const utilisee = Object.fromEntries(CODES_CHAMPS_REPRISE.map((k) => [k, (d.correspondance ?? proposition.correspondance)[k] ?? null])) as Record<string, number | null>;
+      const existantes = suite.immobilisations.filter((i) => i.entiteId === entite).map((i) => ({ libelle: i.libelle, dateMiseEnService: i.dateMiseEnService, baseAmortissable: i.baseAmortissable }));
+      const dejaRepris = new Set<number>(suite.reprises.filter((x) => x.entiteId === entite && x.sha256 === empreinteFichier).flatMap((x) => x.lignes.filter((l: Enr) => l.statut === 'creee').map((l: Enr) => l.ligne as number)));
+      const resultat = analyserReprise(f, utilisee, { existantes, dejaRepris });
+      const empreinteApercu = sha256(JSON.stringify({ v: VERSION_REPRISE_IMMOBILISATIONS, fichier: empreinteFichier, encodage: f.encodage, separateur: f.separateur, correspondance: utilisee, lignes: resultat.lignes }));
+      return { f, empreinteFichier, proposition, utilisee, resultat, empreinteApercu, empreinteCorrespondance: sha256(JSON.stringify(utilisee)) };
+    };
+    const vue = (x: Enr) => ({ id: x.id, entiteId: x.entiteId, nomFichier: x.nomFichier, sha256: x.sha256, taille: x.taille, encodage: x.encodage, separateur: x.separateur, correspondance: x.correspondance, versionAnalyseur: x.versionAnalyseur, nbLignes: x.nbLignes, nbCreees: x.nbCreees, nbIgnorees: x.nbIgnorees, nbRejetees: x.nbRejetees, importePar: x.importePar, importeurNom: nomDe(x.importePar), creeLe: x.creeLe });
+    if (m === 'POST' && s.length === 4 && s[3] === 'apercu') {
+      const d = r.json();
+      const octets = lireFichier(d);
+      exigerNiveau(a, entiteId, 'collaboration');
+      const x = analyser(octets, d, entiteId);
+      return {
+        fichier: { nom: d.nomFichier, taille: octets.length, sha256: x.empreinteFichier, encodage: x.f.encodage, encodageImpose: x.f.encodageImpose, separateur: x.f.separateur, separateurImpose: x.f.separateurImpose, nbLignes: x.f.lignes.length, lignesVidesIgnorees: x.f.lignesVidesIgnorees, avertissements: x.f.avertissements },
+        limites: { tailleMaxOctets: TAILLE_MAX_REPRISE, lignesMax: 5000 }, champs: CHAMPS_REPRISE, entetes: x.f.entetes, correspondance: x.utilisee,
+        correspondanceProposee: Object.fromEntries(CODES_CHAMPS_REPRISE.map((k) => [k, (x.proposition.correspondance as Record<string, number | undefined>)[k] ?? null])), remarques: x.proposition.remarques, problemes: x.resultat.problemes, comptes: x.resultat.comptes,
+        lignes: x.resultat.lignes.map((l) => ({ ligne: l.ligne, statut: l.statut, cause: l.cause, motifs: l.motifs, lues: l.lues })), empreinteApercu: x.empreinteApercu, peutValider: x.resultat.problemes.length === 0 && x.resultat.comptes.valides > 0,
+      };
+    }
+    if (m === 'POST' && s.length === 3) {
+      const d = r.json();
+      const octets = lireFichier(d);
+      if (typeof d.empreinteApercu !== 'string' || !/^[0-9a-f]{64}$/.test(d.empreinteApercu)) throw invalide('empreinteApercu', 'empreinte SHA-256 hexadécimale attendue');
+      if (d.confirmation !== true) throw invalide('confirmation', 'Invalid input: expected true');
+      if (!d.correspondance || typeof d.correspondance !== 'object') throw invalide('correspondance', 'correspondance attendue');
+      exigerNiveau(a, entiteId, 'collaboration');
+      const x = analyser(octets, d, entiteId);
+      const existante = suite.reprises.find((y) => y.entiteId === entiteId && y.sha256 === x.empreinteFichier && y.empreinteCorrespondance === x.empreinteCorrespondance);
+      if (existante) { r.res.statusCode = 200; return { ...vue(existante), dejaImporte: true }; }
+      if (x.resultat.problemes.length) throw new ErreurHttp(409, { message: 'Correspondance des colonnes incomplète ou incohérente : rien n’est importé', code: 'correspondance_invalide', problemes: x.resultat.problemes });
+      if (x.empreinteApercu !== d.empreinteApercu) throw new ErreurHttp(409, { message: 'L’aperçu n’est plus à jour (le fichier, la correspondance ou les immobilisations du dossier ont changé) : relancez l’aperçu, relisez-le puis validez de nouveau. Rien n’a été importé.', code: 'apercu_obsolete' });
+      if (x.resultat.comptes.valides === 0) throw new ErreurHttp(409, { message: 'Aucune ligne valide : rien à importer. Corrigez le fichier ou la correspondance des colonnes.', code: 'rien_a_importer' });
+      const repriseId = randomUUID();
+      const lignes: Enr[] = [];
+      for (const l of x.resultat.lignes) {
+        let immobilisationId: string | null = null;
+        if (l.immobilisation) {
+          immobilisationId = randomUUID();
+          suite.immobilisations.push({ id: immobilisationId, cabinetId: a.cabinetId, entiteId, ...l.immobilisation, composantDe: null, saisiePar: a.utilisateurId, repriseId, repriseLigne: l.ligne, creeLe: instant() });
+          tracerAudit(a, 'immobilisation.saisie', 'immobilisation', immobilisationId, entiteId, { origine: 'reprise', repriseId, ligne: l.ligne });
+        }
+        lignes.push({ ligne: l.ligne, statut: l.statut === 'valide' ? 'creee' : l.statut === 'invalide' ? 'rejetee' : 'ignoree_doublon', cause: l.cause, motif: l.statut === 'valide' ? null : l.motifs.join(' ; '), lues: l.lues, immobilisationId });
+      }
+      const reprise = {
+        id: repriseId, cabinetId: a.cabinetId, entiteId, nomFichier: d.nomFichier, sha256: x.empreinteFichier, taille: octets.length, encodage: x.f.encodage, separateur: x.f.separateur, correspondance: x.utilisee, empreinteCorrespondance: x.empreinteCorrespondance,
+        versionAnalyseur: VERSION_REPRISE_IMMOBILISATIONS, nbLignes: lignes.length, nbCreees: x.resultat.comptes.valides, nbIgnorees: x.resultat.comptes.doublons, nbRejetees: x.resultat.comptes.invalides, importePar: a.utilisateurId, creeLe: instant(), lignes,
+      };
+      suite.reprises.push(reprise);
+      tracerAudit(a, 'immobilisation.reprise', 'reprise_immobilisations', repriseId, entiteId, { sha256: x.empreinteFichier, nbCreees: reprise.nbCreees, nbIgnorees: reprise.nbIgnorees, nbRejetees: reprise.nbRejetees });
+      r.res.statusCode = 201;
+      return { ...vue(reprise), dejaImporte: false };
+    }
+    if (m === 'GET' && s.length === 3) {
+      exigerNiveau(a, entiteId, 'lecture');
+      return suite.reprises.filter((x) => x.entiteId === entiteId).sort((x, y) => y.creeLe.localeCompare(x.creeLe)).map(vue);
+    }
+    if (m === 'GET' && (s.length === 4 || (s.length === 5 && s[4] === 'rapport.csv'))) {
+      exigerNiveau(a, entiteId, 'lecture');
+      const reprise = suite.reprises.find((x) => x.id === exigerUuid(s[3]) && x.entiteId === entiteId);
+      if (!reprise) throw new ErreurHttp(404, 'Reprise introuvable dans ce dossier');
+      if (s.length === 5) {
+        const colonnes = CHAMPS_REPRISE.filter((c) => reprise.correspondance[c.code] != null);
+        const champ = (v: string) => { const t = neutraliserCellule(v); return /[";\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+        const libelle: Record<string, string> = { creee: 'Créée', ignoree_doublon: 'Ignorée (doublon)', rejetee: 'Rejetée' };
+        const sortie = [['Ligne du fichier', 'Statut', 'Motif', ...colonnes.map((c) => `${c.libelle} (valeur lue)`), 'Immobilisation créée'].map(champ).join(';')];
+        for (const l of reprise.lignes) sortie.push([String(l.ligne), libelle[l.statut], l.motif ?? '', ...colonnes.map((c) => l.lues[c.code] ?? ''), l.immobilisationId ?? ''].map(champ).join(';'));
+        tracerAudit(a, 'immobilisation.reprise_rapport_telecharge', 'reprise_immobilisations', reprise.id, entiteId, { lignes: reprise.lignes.length });
+        r.res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="rapport-reprise-immobilisations-${reprise.id.slice(0, 8)}.csv"`, 'Cache-Control': 'private, no-store' });
+        r.res.end(`﻿${sortie.join('\r\n')}\r\n`);
+        return undefined;
+      }
+      const statut = r.query.get('statut');
+      const page = Number(r.query.get('page') ?? '1');
+      if (statut !== null && !['creee', 'ignoree_doublon', 'rejetee'].includes(statut)) throw new ErreurHttp(400, 'statut : creee, ignoree_doublon, rejetee');
+      if (!Number.isSafeInteger(page) || page < 1) throw new ErreurHttp(400, 'page : entier à partir de 1');
+      const filtrees = reprise.lignes.filter((l: Enr) => statut === null || l.statut === statut);
+      return { reprise: vue(reprise), champs: CHAMPS_REPRISE, lignes: filtrees.slice((page - 1) * 200, page * 200), total: filtrees.length, page, parPage: 200 };
+    }
+  }
+
   // ── Fichier des immobilisations et propositions d'amortissement (calqué sur fiscal.controller.ts) ──
   // Le simulateur applique les mêmes règles de saisie que l'API ; les propositions sont calculées par le VRAI moteur du paquet core,
   // sur les écritures fictives posées par /__test/amortissements (aucun import réel ici).
@@ -3705,7 +3812,7 @@ const serveur = http.createServer(async (req, res) => {
   const journaliser = (statut: number) => journal.push({ methode, chemin: `${url.pathname}${url.search}`, statut, utilisateur: (req as Enr).utilisateur ?? null });
   try {
     const binaire = req.headers['content-type'] === 'application/octet-stream';
-    const corps = methode === 'GET' ? Buffer.alloc(0) : await lireCorps(req, binaire ? TAILLE_MORCEAU : 256 * 1024);
+    const corps = methode === 'GET' ? Buffer.alloc(0) : await lireCorps(req, binaire ? TAILLE_MORCEAU : /\/reprises-immobilisations/.test(url.pathname) ? 9 * 1024 * 1024 : 256 * 1024);
     const json = () => {
       try {
         return (corps.length ? JSON.parse(corps.toString('utf8')) : {}) as Enr;

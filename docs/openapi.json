@@ -6196,6 +6196,356 @@
         ]
       }
     },
+    "/v1/dossiers/{entiteId}/reprises-immobilisations/apercu": {
+      "post": {
+        "description": "Lit le fichier (CSV, séparateur « ; » « , » ou tabulation détecté, UTF-8 ou ISO-8859-15 détecté, virgule ou point décimal, dates JJ/MM/AAAA ou AAAA-MM-JJ ; les classeurs XLSX/XLS ne sont pas pris en charge), propose la correspondance des colonnes d’après les en-têtes usuels (sans jamais deviner : une durée sans unité, une colonne ambiguë ne sont pas proposées) et renvoie, pour chaque ligne, son statut (valide, invalide avec motif, doublon). Rien n’est écrit : ni immobilisation, ni fichier, ni journal. Le contenu est du texte inerte : aucune formule n’est évaluée. `empreinteApercu` est à renvoyer à la validation. Limites : 5 Mio, 5 000 lignes de données (refus 413 au-delà). `correspondance` (indice de colonne par champ) est facultative : sans elle, la proposition est utilisée.",
+        "operationId": "ReprisesImmobilisationsController_apercu",
+        "parameters": [
+          {
+            "name": "entiteId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "nomFichier": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255,
+                    "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+                  },
+                  "contenuBase64": {
+                    "type": "string",
+                    "minLength": 4,
+                    "maxLength": 7200000
+                  },
+                  "encodage": {
+                    "type": "string",
+                    "enum": [
+                      "utf-8",
+                      "iso-8859-15",
+                      "windows-1252"
+                    ]
+                  },
+                  "separateur": {
+                    "type": "string",
+                    "enum": [
+                      ";",
+                      ",",
+                      "\t"
+                    ]
+                  },
+                  "correspondance": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "enum": [
+                        "libelle",
+                        "compteImmobilisation",
+                        "baseAmortissable",
+                        "dateAcquisition",
+                        "dateMiseEnService",
+                        "dureeMois",
+                        "dureeAnnees",
+                        "amortissementsAnterieurs",
+                        "modeAmortissement",
+                        "coefficientDegressif",
+                        "eligibiliteDegressifConfirmee",
+                        "valeurResiduelle",
+                        "dateSortie"
+                      ]
+                    },
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 1000
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "nomFichier",
+                  "contenuBase64"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "APERÇU d’une reprise du fichier des immobilisations (CSV) : aucune écriture (niveau collaboration)",
+        "tags": [
+          "Immobilisations : reprise par import"
+        ]
+      }
+    },
+    "/v1/dossiers/{entiteId}/reprises-immobilisations": {
+      "post": {
+        "description": "Exige la confirmation explicite (`confirmation: true`) et l’empreinte de l’aperçu confirmé : le serveur relit le fichier, recalcule et refuse (409) si le résultat n’est plus celui de l’aperçu. Les lignes valides créent des immobilisations (mêmes contrôles que la saisie manuelle) ; les lignes invalides sont REJETÉES avec leur motif ; les doublons (même dossier, désignation normalisée, date de mise en service et valeur brute) sont IGNORÉS. Une immobilisation existante n’est jamais modifiée, remplacée ni supprimée. Le fichier original est conservé dans le stockage objet, avec la provenance (auteur, date, empreinte). Rejeu du même fichier avec la même correspondance : le rapport existant est renvoyé (200), rien n’est écrit. Le mode dégressif d’un fichier est enregistré comme déclaration du cabinet ; le calcul reste en abstention tant que l’éditeur ne l’a pas activé.",
+        "operationId": "ReprisesImmobilisationsController_valider",
+        "parameters": [
+          {
+            "name": "entiteId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "nomFichier": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255,
+                    "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+                  },
+                  "contenuBase64": {
+                    "type": "string",
+                    "minLength": 4,
+                    "maxLength": 7200000
+                  },
+                  "encodage": {
+                    "type": "string",
+                    "enum": [
+                      "utf-8",
+                      "iso-8859-15",
+                      "windows-1252"
+                    ]
+                  },
+                  "separateur": {
+                    "type": "string",
+                    "enum": [
+                      ";",
+                      ",",
+                      "\t"
+                    ]
+                  },
+                  "correspondance": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "enum": [
+                        "libelle",
+                        "compteImmobilisation",
+                        "baseAmortissable",
+                        "dateAcquisition",
+                        "dateMiseEnService",
+                        "dureeMois",
+                        "dureeAnnees",
+                        "amortissementsAnterieurs",
+                        "modeAmortissement",
+                        "coefficientDegressif",
+                        "eligibiliteDegressifConfirmee",
+                        "valeurResiduelle",
+                        "dateSortie"
+                      ]
+                    },
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 1000
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "empreinteApercu": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "confirmation": {
+                    "type": "boolean",
+                    "const": true
+                  }
+                },
+                "required": [
+                  "nomFichier",
+                  "contenuBase64",
+                  "correspondance",
+                  "empreinteApercu",
+                  "confirmation"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "VALIDER la reprise après aperçu : crée les immobilisations valides en une transaction (niveau collaboration)",
+        "tags": [
+          "Immobilisations : reprise par import"
+        ]
+      },
+      "get": {
+        "operationId": "ReprisesImmobilisationsController_lister",
+        "parameters": [
+          {
+            "name": "entiteId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Reprises d’immobilisations déjà validées pour un dossier (niveau lecture)",
+        "tags": [
+          "Immobilisations : reprise par import"
+        ]
+      }
+    },
+    "/v1/dossiers/{entiteId}/reprises-immobilisations/{repriseId}": {
+      "get": {
+        "description": "Pour chaque ligne du fichier : numéro, statut (créée, ignorée comme doublon, rejetée), motif en français et valeurs lues telles qu’elles figuraient dans le fichier (non neutralisées : le client doit neutraliser les préfixes = + - @ à l’affichage ; le CSV téléchargeable le fait).",
+        "operationId": "ReprisesImmobilisationsController_detail",
+        "parameters": [
+          {
+            "name": "entiteId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "repriseId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "statut",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "creee",
+                "ignoree_doublon",
+                "rejetee"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "À partir de 1 ; 200 lignes par page",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Rapport d’une reprise, ligne par ligne (niveau lecture)",
+        "tags": [
+          "Immobilisations : reprise par import"
+        ]
+      }
+    },
+    "/v1/dossiers/{entiteId}/reprises-immobilisations/{repriseId}/rapport.csv": {
+      "get": {
+        "description": "Une ligne par ligne du fichier : numéro, statut, motif et valeurs lues. Les valeurs commençant par = + - @ sont neutralisées par une apostrophe : le fichier ne peut déclencher aucune formule dans un tableur. Le téléchargement est tracé au journal.",
+        "operationId": "ReprisesImmobilisationsController_rapportCsv",
+        "parameters": [
+          {
+            "name": "entiteId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "repriseId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Télécharger le rapport d’une reprise (CSV UTF-8, séparateur « ; », niveau lecture)",
+        "tags": [
+          "Immobilisations : reprise par import"
+        ]
+      }
+    },
     "/v1/exercices/{id}/ecritures-inventaire": {
       "post": {
         "description": "L’écriture doit être équilibrée (vérifié par le moteur, en décimal exact), datée dans l’exercice, justifiée, avec le détail de son calcul. Elle reste séparée des écritures importées et n’a aucun effet tant qu’elle n’est pas approuvée.",

@@ -4,7 +4,7 @@ import { ReponsePortefeuilleStructuree } from '@/components/assistant/affichage-
 import { QuestionPortefeuille } from '@/components/assistant/question-portefeuille';
 import { ErreurAcces } from '@/components/erreurs';
 import { Alerte, Carte, Etiquette, SousTitre, Titre } from '@/components/ui/base';
-import { type HistoriquePortefeuille, LIBELLE_MODE, type PerimetreAssistant, type VueIa } from '@/lib/assistant';
+import { type HistoriquePortefeuille, LIBELLE_MODE, type PerimetreAssistant, periodeDeLAdresse, type VueIa } from '@/lib/assistant';
 import { formaterHorodatage } from '@/lib/montants';
 import { tenter } from '@/lib/serveur/api';
 import { estDeposant, lireMoi } from '@/lib/serveur/donnees';
@@ -12,7 +12,9 @@ import { estDeposant, lireMoi } from '@/lib/serveur/donnees';
 export const metadata: Metadata = { title: 'Assistant' };
 
 /** Assistant au niveau du cabinet : questions sur le portefeuille de dossiers autorisés de la personne connectée. */
-export default async function PageAssistantPortefeuille() {
+export default async function PageAssistantPortefeuille({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const sp = await searchParams;
+  const un = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
   const moi = await lireMoi();
   if (!moi.ok) return <ErreurAcces statut={moi.statut} message={moi.message} />;
   if (estDeposant(moi.donnees.role)) return <ErreurAcces statut={403} message="L’assistant n’est pas ouvert aux déposants." retour="/deposer" />;
@@ -26,7 +28,7 @@ export default async function PageAssistantPortefeuille() {
       <Titre>Assistant</Titre>
       <BandeauEtatIa etat={ia.ok ? ia.donnees : null} />
       <p className="text-sm text-texte-doux">
-        L’assistant ne consulte que les dossiers où vous êtes habilité en lecture au moins, chacun sur son dernier exercice, {perimetre.donnees.borne} dossiers au plus par question. Chaque source citée indique son dossier. Les extraits de pièces et les
+        L’assistant ne consulte que les dossiers où vous êtes habilité en lecture au moins, chacun sur son dernier exercice (ou la part d’une période commune que vous choisissez), {perimetre.donnees.borne} dossiers au plus par question ; au-delà, les dossiers se demandent par tranches. Chaque source citée indique son dossier. Les extraits de pièces et les
         libellés d’écritures sont des données affichées telles quelles ; les calculs viennent du moteur.
       </p>
 
@@ -36,7 +38,7 @@ export default async function PageAssistantPortefeuille() {
         </Alerte>
       ) : (
         <Carte>
-          <QuestionPortefeuille perimetre={perimetre.donnees} />
+          <QuestionPortefeuille perimetre={perimetre.donnees} periodeInitiale={periodeDeLAdresse(un(sp.debut), un(sp.fin))} />
         </Carte>
       )}
 

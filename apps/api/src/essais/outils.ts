@@ -33,9 +33,14 @@ export function choisirCabinet(qui: string, cabinetId: string | null): void {
   else delete cabinets[qui];
 }
 
-export async function api(qui: string, methode: string, chemin: string, corps?: unknown): Promise<{ statut: number; json: any; brut: Buffer }> {
+export function api(qui: string, methode: string, chemin: string, corps?: unknown): Promise<{ statut: number; json: any; brut: Buffer }> {
+  return apiSur(API, qui, methode, chemin, corps);
+}
+
+/** Même appel que `api`, sur une autre API (par exemple une seconde pile lancée avec un environnement dédié). */
+export async function apiSur(base: string, qui: string, methode: string, chemin: string, corps?: unknown): Promise<{ statut: number; json: any; brut: Buffer }> {
   const binaire = Buffer.isBuffer(corps);
-  const r = await fetch(`${API}${chemin}`, {
+  const r = await fetch(`${base}${chemin}`, {
     method: methode,
     headers: {
       ...(qui ? { authorization: `Bearer ${jetons[qui]}` } : {}),

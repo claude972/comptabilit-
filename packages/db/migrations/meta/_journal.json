@@ -302,6 +302,20 @@
       "when": 1795143334367,
       "tag": "0042_cycle_de_vie_poussees",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1795148806308,
+      "tag": "0043_amortissements",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1795153499702,
+      "tag": "0044_acquisition",
+      "breakpoints": true
     }
   ]
 }

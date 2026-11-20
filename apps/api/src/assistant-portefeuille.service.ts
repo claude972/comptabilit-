@@ -8,8 +8,11 @@
  *   moins le niveau « lecture ». Une liste `dossierIds` fournie par l'appelant est INTERSECTÉE avec ce périmètre : un
  *   identifiant qui n'en fait pas partie (dossier non habilité, d'un autre cabinet, inexistant) est écarté et listé
  *   « hors de votre périmètre », de la même façon dans les trois cas (son existence n'est pas révélée) ;
- * - au plus `BORNE_DOSSIERS_PORTEFEUILLE` dossiers par question ; au-delà le périmètre est RÉDUIT (ordre alphabétique)
- *   et les dossiers non interrogés sont nommés dans la réponse — jamais de troncature silencieuse ;
+ * - au plus `BORNE_DOSSIERS_PORTEFEUILLE` dossiers par question ; au-delà le périmètre est découpé en TRANCHES de cette
+ *   taille, classées par pertinence déterministe (voir `classerParPertinence`) puis par ordre alphabétique. Une question
+ *   porte sur UNE tranche (`tranche`, 1 par défaut) ; les dossiers des autres tranches sont nommés dans la réponse,
+ *   jamais tronqués en silence ; chaque tranche est une question distincte, dont la réponse n'est jamais fusionnée
+ *   avec celle d'une autre, et dont les habilitations sont relues en base ;
  * - chaque fonction métier s'exécute dossier par dossier, par les ports du dossier, sous RLS avec l'identité de
  *   l'utilisateur, après relecture en base de son niveau sur CE dossier ;
  * - la période est celle du dernier exercice de chaque dossier (ou sa part dans une période commune fournie), et elle
@@ -17,7 +20,7 @@
  * - chaque source citée porte l'identifiant de son dossier ;
  * - à la RELECTURE, un échange est filtré selon les habilitations du moment (`filtrerSelonHabilitations`).
  */
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { journaliser, schema as s, sql, type Tx } from '@comtaple/db';
 import { type Citation, type ContexteFonction, type PortsFonctionsMetier, type ReponseAssistant, repondreQuestion, type ResultatFonction, type StatutIa } from '@comtaple/ia';
 import type { Acces, Niveau } from './acces.js';
@@ -79,13 +82,27 @@ export type ReponsePortefeuilleAssistant = Omit<ReponseAssistant, 'perimetre' | 
   sources: CitationPortefeuille[];
 };
 
+/** Tranche de dossiers interrogée : numéro (à partir de 1), nombre de tranches du périmètre retenu, rang du premier et du dernier dossier. */
+export interface TranchePortefeuille {
+  numero: number;
+  total: number;
+  premier: number;
+  dernier: number;
+  /** Nombre de dossiers retenus (périmètre autorisé, restreint par la sélection), toutes tranches confondues. */
+  retenus: number;
+}
+
 export interface PerimetrePortefeuille {
   borne: number;
+  /** Absent des échanges conservés avant l'introduction des tranches : une seule tranche. */
+  tranche?: TranchePortefeuille;
+  /** Critère de classement des dossiers entre les tranches, dit tel quel à l'écran. */
+  ordre?: string;
   elementsParDossier: number;
   /** Nombre de dossiers du périmètre autorisé de l'utilisateur au moment de la question. */
   autorises: number;
   dossiers: DossierInterroge[];
-  /** Dossiers autorisés et retenus mais NON interrogés, faute de place sous la borne. */
+  /** Dossiers autorisés et retenus mais NON interrogés par CETTE question (autres tranches), nommés. */
   nonInterroges: Array<{ id: string; nom: string }>;
   /** Identifiants demandés et écartés : « hors de votre périmètre », sans dire s'ils existent. */
   horsPerimetre: string[];
@@ -112,7 +129,7 @@ export interface MasqueRelecture {
   redactionRetiree: boolean;
 }
 
-const estDeposant = (acces: Acces): boolean => acces.role === 'client_deposant';
+export const estDeposant = (acces: Acces): boolean => acces.role === 'client_deposant';
 
 /** Périmètre autorisé : dossiers actifs où l'utilisateur courant a au moins « lecture », calculé par la base (RLS + `app_niveau_entite`). */
 export async function perimetreAutorise(tx: Tx): Promise<DossierAutorise[]> {
@@ -122,6 +139,30 @@ export async function perimetreAutorise(tx: Tx): Promise<DossierAutorise[]> {
     where e.actif and app_niveau_entite(e.id) >= 'lecture'
     order by e.raison_sociale, e.id`);
   return r.rows as unknown as DossierAutorise[];
+}
+
+export const ORDRE_PERTINENCE = 'Dossiers ayant des données comptables importées d’abord, puis dossiers ayant un exercice, puis les autres ; à égalité, ordre alphabétique.';
+
+/**
+ * Rang de pertinence de chaque dossier, calculé par la base sous l'identité de la personne (déterministe, sans IA) :
+ * 0 = données comptables importées (lot FEC actif et terminé) sur un exercice qui recoupe la période (le dernier exercice
+ * ou la période commune), 1 = un exercice sans donnée, 2 = aucun exercice. Les dossiers sans donnée n'ont rien à répondre
+ * aux questions comptables : ils passent après ceux qui en ont, sans jamais être écartés.
+ */
+export async function classerParPertinence(tx: Tx, ids: readonly string[], commune: { debut: string; fin: string } | null): Promise<Map<string, number>> {
+  if (ids.length === 0) return new Map();
+  const recoupe = commune ? sql`x.debut <= ${commune.fin}::date and x.fin >= ${commune.debut}::date` : sql`true`;
+  const liste = sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `);
+  const r = await tx.execute(sql`
+    select e.id,
+      case
+        when exists (select 1 from lots_import l join exercices x on x.id = l.exercice_id
+                     where l.entite_id = e.id and l.actif and l.type = 'fec' and l.statut in ('termine', 'termine_avec_erreurs') and ${recoupe}) then 0
+        when exists (select 1 from exercices x where x.entite_id = e.id and ${recoupe}) then 1
+        else 2
+      end as rang
+    from entites e where e.id in (${liste})`);
+  return new Map((r.rows as Array<{ id: string; rang: number }>).map((l) => [l.id, Number(l.rang)]));
 }
 
 /** Refuse (403) un déposant ; renvoie le périmètre autorisé, vide si aucun dossier n'est ouvert en lecture. */
@@ -202,6 +243,8 @@ export interface DemandePortefeuille {
   question: string;
   dossierIds?: readonly string[] | undefined;
   periode?: { debut: string; fin: string } | undefined;
+  /** Numéro de la tranche de dossiers à interroger, à partir de 1 (défaut 1). */
+  tranche?: number | undefined;
 }
 
 /**
@@ -221,7 +264,15 @@ export async function poserQuestionPortefeuille(dep: DependancesAssistant, acces
     const horsPerimetre = demandes ? demandes.filter((id) => !parId.has(id)) : [];
     const retenus = demandes ? autorises.filter((d) => demandes.includes(d.id)) : autorises;
     if (retenus.length === 0) throw new NotFoundException('Aucun des dossiers demandés n’est dans votre périmètre');
-    const interroges = retenus.slice(0, BORNE_DOSSIERS_PORTEFEUILLE);
+    // Classement par pertinence PUIS ordre alphabétique (déjà celui de `autorises`) : le tri est stable.
+    const rangs = await classerParPertinence(tx, retenus.map((d) => d.id), commune);
+    const classes = [...retenus].sort((x, y) => (rangs.get(x.id) ?? 2) - (rangs.get(y.id) ?? 2));
+    const total = Math.ceil(classes.length / BORNE_DOSSIERS_PORTEFEUILLE);
+    const numero = demande.tranche ?? 1;
+    if (numero > total) throw new ConflictException(`La tranche ${numero} n’existe plus : votre périmètre compte ${total} tranche${total > 1 ? 's' : ''}. Reposez la question depuis la première tranche.`);
+    const debutTranche = (numero - 1) * BORNE_DOSSIERS_PORTEFEUILLE;
+    const interroges = classes.slice(debutTranche, debutTranche + BORNE_DOSSIERS_PORTEFEUILLE);
+    const tranche: TranchePortefeuille = { numero, total, premier: debutTranche + 1, dernier: debutTranche + interroges.length, retenus: classes.length };
     const dossiers: DossierInterroge[] = [];
     for (const d of interroges) {
       const [ex] = commune
@@ -236,7 +287,7 @@ export async function poserQuestionPortefeuille(dep: DependancesAssistant, acces
       const manquantes = exercice ? [] : [commune ? 'Aucun exercice de ce dossier ne recoupe la période demandée : la comptabilité n’a pas été interrogée.' : 'Aucun exercice n’est ouvert dans ce dossier : la comptabilité n’a pas été interrogée.'];
       dossiers.push({ id: d.id, nom: d.nom, exercice, periode, donneesManquantes: manquantes, sources: 0, nonRestitues: 0 });
     }
-    return { autorises: autorises.length, dossiers, nonInterroges: retenus.slice(BORNE_DOSSIERS_PORTEFEUILLE).map((d) => ({ id: d.id, nom: d.nom })), horsPerimetre };
+    return { autorises: autorises.length, dossiers, tranche, nonInterroges: classes.filter((d) => !interroges.includes(d)).map((d) => ({ id: d.id, nom: d.nom })), horsPerimetre };
   });
 
   // 2) Périmètre IMPOSÉ au paquet : ce cabinet, ces dossiers, l'enveloppe des périodes analysées (chaque port la
@@ -279,6 +330,8 @@ export async function poserQuestionPortefeuille(dep: DependancesAssistant, acces
   };
   const perimetre: PerimetrePortefeuille = {
     borne: BORNE_DOSSIERS_PORTEFEUILLE,
+    tranche: prepare.tranche,
+    ordre: ORDRE_PERTINENCE,
     elementsParDossier: budget,
     autorises: prepare.autorises,
     dossiers,
@@ -320,6 +373,8 @@ export async function poserQuestionPortefeuille(dep: DependancesAssistant, acces
         refus: reponse.refus.length,
         longueurQuestion: demande.question.length,
         periodeCommune: commune !== null,
+        tranche: prepare.tranche.numero,
+        tranches: prepare.tranche.total,
         enregistre: echangeId !== null,
       },
     }),

@@ -5,21 +5,23 @@ import {
   calculerBalance,
   type Constat,
   dec,
+  estDateIso,
   evaluerCategorieTaille,
   type ImpotSurLeResultat,
   type LigneEcriture,
   preparerAnnexe,
   preparerLiasse,
+  MOTIF_DEGRESSIF_NON_ACTIVE,
   proposerEcrituresInventaire,
   type RegimeLiasse,
   schemaChaineDecimale,
   versChaine,
 } from '@comtaple/core';
 import { type AccesBd, and, asc, desc, eq, journaliser, schema as s, type Tx } from '@comtaple/db';
-import { lignesDuLot, tailleEtOperationsDuDossier } from '@comtaple/plateforme';
+import { type Config, lignesDuLot, tailleEtOperationsDuDossier } from '@comtaple/plateforme';
 import { z } from 'zod';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
-import { BD } from './jetons.js';
+import { BD, CONFIG } from './jetons.js';
 import { schemaOpenApi, valider } from './validation.js';
 
 /** Au-delà, le calcul immédiat n'est pas proposé (même plafond que les états de travail). */
@@ -27,13 +29,63 @@ const PLAFOND_LIGNES = 400_000;
 const CATEGORIES = ['micro_entreprise', 'petite_entreprise', 'personne_morale_regime_simplifie', 'moyenne_ou_grande_entreprise'] as const;
 const categorie = z.object({ categorie: z.enum(CATEGORIES).nullable() });
 const confirmation = z.object({ etat: z.enum(['complete', 'non_applicable']), note: z.string().max(8000).optional() });
-const immobilisation = z.object({
+const MODES_AMORTISSEMENT = ['lineaire', 'degressif'] as const;
+const COEFFICIENTS_DEGRESSIFS = ['1.25', '1.75', '2.25'] as const;
+/** Coefficient du dégressif selon la durée en années (CGI art. 39 A, BOFiP BOI-BIC-AMT-20-20-30 § 120) : 3-4 ans 1,25 ; 5-6 ans 1,75 ; au-delà 2,25. */
+const coefficientAttendu = (annees: number): string => (annees <= 4 ? '1.25' : annees <= 6 ? '1.75' : '2.25');
+const immobilisationBase = z.object({
   libelle: z.string().trim().min(1).max(200),
   compteImmobilisation: z.string().regex(/^2\d{2,11}$/, 'compte d’immobilisation du PCG attendu (classe 2)'),
   baseAmortissable: schemaChaineDecimale,
+  /** Date d'acquisition (ou de construction) : obligatoire en dégressif (point de départ : premier jour du mois), facultative sinon. */
+  dateAcquisition: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date AAAA-MM-JJ attendue').nullable().optional(),
   dateMiseEnService: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date AAAA-MM-JJ attendue'),
   dureeMois: z.number().int().min(1).max(1200),
   amortissementsAnterieurs: schemaChaineDecimale.nullable().optional(),
+  modeAmortissement: z.enum(MODES_AMORTISSEMENT).default('lineaire'),
+  coefficientDegressif: schemaChaineDecimale.nullable().optional(),
+  eligibiliteDegressifConfirmee: z.boolean().nullable().optional(),
+  valeurResiduelle: schemaChaineDecimale.nullable().optional(),
+  dateSortie: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date AAAA-MM-JJ attendue').nullable().optional(),
+  composantDe: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, 'identifiant invalide').nullable().optional(),
+});
+/** Règles croisées de la saisie : chacune protège un choix du cabinet que le moteur ne doit jamais deviner. */
+const immobilisation = immobilisationBase.superRefine((d, ctx) => {
+  const erreur = (champ: string, message: string) => ctx.addIssue({ code: 'custom', path: [champ], message });
+  const base = dec(d.baseAmortissable);
+  if (!base.isPositive() || base.isZero()) erreur('baseAmortissable', 'La base amortissable (valeur brute) doit être strictement positive');
+  if (!estDateIso(d.dateMiseEnService)) erreur('dateMiseEnService', 'date inexistante');
+  if (d.dateAcquisition != null) {
+    if (!estDateIso(d.dateAcquisition)) erreur('dateAcquisition', 'date inexistante');
+    else if (d.dateAcquisition > d.dateMiseEnService) erreur('dateAcquisition', 'La date d’acquisition ne peut pas être postérieure à la mise en service');
+  }
+  if (d.dateSortie != null) {
+    if (!estDateIso(d.dateSortie)) erreur('dateSortie', 'date inexistante');
+    else if (d.dateSortie < d.dateMiseEnService) erreur('dateSortie', 'La date de sortie ne peut pas précéder la mise en service');
+  }
+  if (d.valeurResiduelle != null) {
+    const v = dec(d.valeurResiduelle);
+    if (v.isNegative()) erreur('valeurResiduelle', 'La valeur résiduelle ne peut pas être négative');
+    else if (v.greaterThanOrEqualTo(base)) erreur('valeurResiduelle', 'La valeur résiduelle doit être strictement inférieure à la valeur brute (sinon il n’y a rien à amortir)');
+  }
+  const net = base.minus(d.valeurResiduelle != null ? dec(d.valeurResiduelle) : dec('0'));
+  if (d.amortissementsAnterieurs != null && (dec(d.amortissementsAnterieurs).isNegative() || dec(d.amortissementsAnterieurs).greaterThan(net))) {
+    erreur('amortissementsAnterieurs', 'Les amortissements antérieurs sont compris entre zéro et le montant amortissable (valeur brute − valeur résiduelle)');
+  }
+  if (d.modeAmortissement === 'degressif') {
+    if (d.dateAcquisition == null) erreur('dateAcquisition', 'Dégressif : la date d’acquisition (ou de construction) est obligatoire, le point de départ du dégressif étant le premier jour du mois d’acquisition');
+    if (!d.compteImmobilisation.startsWith('21')) erreur('compteImmobilisation', 'Le dégressif ne vise que des immobilisations corporelles (compte de la classe 21)');
+    if (d.dureeMois % 12 !== 0 || d.dureeMois < 36 || d.dureeMois > 600) erreur('dureeMois', 'Dégressif : durée en années entières, de 3 à 50 ans (36 à 600 mois)');
+    if (d.eligibiliteDegressifConfirmee === undefined || d.eligibiliteDegressifConfirmee === null) erreur('eligibiliteDegressifConfirmee', 'Dégressif : le cabinet doit confirmer (true) ou infirmer (false) l’éligibilité du bien ; elle n’est jamais devinée');
+    if (d.coefficientDegressif === undefined || d.coefficientDegressif === null) erreur('coefficientDegressif', 'Dégressif : le coefficient est à déclarer');
+    else if (!(COEFFICIENTS_DEGRESSIFS as readonly string[]).includes(d.coefficientDegressif)) erreur('coefficientDegressif', 'Coefficient attendu : 1.25, 1.75 ou 2.25');
+    else if (d.dureeMois % 12 === 0 && d.dureeMois >= 36 && d.dureeMois <= 600 && d.coefficientDegressif !== coefficientAttendu(d.dureeMois / 12)) {
+      erreur('coefficientDegressif', `Coefficient incohérent avec la durée de ${d.dureeMois / 12} ans : ${coefficientAttendu(d.dureeMois / 12)} attendu (1.25 pour 3 ou 4 ans, 1.75 pour 5 ou 6 ans, 2.25 au-delà de 6 ans)`);
+    }
+  } else {
+    if (d.coefficientDegressif != null) erreur('coefficientDegressif', 'Le coefficient n’a de sens qu’en mode dégressif');
+    if (d.eligibiliteDegressifConfirmee != null) erreur('eligibiliteDegressifConfirmee', 'L’éligibilité au dégressif n’a de sens qu’en mode dégressif');
+  }
 });
 const RUBRIQUE = /^ANX-[0-9A-Za-z-]{1,24}$/;
 const PROPOSITION = /^[A-Za-z0-9:_|.-]{1,200}$/;
@@ -54,7 +106,7 @@ function impot(regime: string | null): ImpotSurLeResultat {
 @ApiBearerAuth()
 @Controller('v1')
 export class FiscalController {
-  constructor(@Inject(BD) private readonly bd: AccesBd) {}
+  constructor(@Inject(BD) private readonly bd: AccesBd, @Inject(CONFIG) private readonly cfg: Config) {}
 
   private async donnees(tx: Tx, exerciceId: string, minimum: Parameters<typeof exigerNiveau>[2] = 'lecture') {
     const [exercice] = await tx.select().from(s.exercices).where(eq(s.exercices.id, exerciceId));
@@ -195,7 +247,7 @@ export class FiscalController {
   @Get('dossiers/:entiteId/immobilisations')
   @ApiOperation({
     summary: 'Fichier des immobilisations SAISI par le cabinet pour un dossier',
-    description: 'Sert uniquement à proposer les dotations aux amortissements linéaires. Ce n’est pas le fichier des immobilisations du logiciel de production comptable, qui reste la référence ; rien n’y est importé ni exporté.',
+    description: 'Sert uniquement à proposer les dotations aux amortissements (linéaires, ou dégressifs sur déclaration du cabinet). Ce n’est pas le fichier des immobilisations du logiciel de production comptable, qui reste la référence ; rien n’y est importé ni exporté.',
   })
   async listerImmobilisations(@AccesCourant() acces: Acces, @Param('entiteId') entiteId: string) {
     exigerUuid(entiteId);
@@ -207,22 +259,48 @@ export class FiscalController {
 
   @Post('dossiers/:entiteId/immobilisations')
   @HttpCode(201)
-  @ApiOperation({ summary: 'Saisir une immobilisation (niveau collaboration)', description: 'Base amortissable strictement positive, en chaîne décimale ; durée en mois ; compte de classe 2. Aucune écriture n’est créée : seules des PROPOSITIONS de dotation en découleront.' })
-  @ApiBody({ schema: schemaOpenApi(immobilisation) })
+  @ApiOperation({
+    summary: 'Saisir une immobilisation (niveau collaboration)',
+    description:
+      'baseAmortissable est la VALEUR BRUTE à amortir (chaîne décimale strictement positive) ; valeurResiduelle, si elle est saisie, lui est strictement inférieure et se déduit du montant amortissable. ' +
+      'dateAcquisition (ou de construction) : obligatoire en mode dégressif (le point de départ du dégressif est le premier jour du mois d’acquisition, BOFiP BOI-BIC-AMT-20-20-30), facultative sinon, jamais postérieure à la mise en service. ' +
+      'modeAmortissement : « lineaire » (défaut) ou « degressif ». La saisie du mode dégressif reste possible (déclaration du cabinet) mais AUCUN calcul n’en découle tant que l’éditeur n’a pas activé la fonction (AMORTISSEMENT_DEGRESSIF_ACTIVE, défaut faux : voir « degressif » dans les propositions). Le mode dégressif n’est jamais deviné : il exige un coefficient cohérent avec la durée (1.25 pour 3 ou 4 ans, 1.75 pour 5 ou 6 ans, 2.25 au-delà), la confirmation de l’éligibilité par le cabinet (bien neuf, durée d’au moins trois ans, bien visé par l’art. 39 A du CGI : le cabinet en répond) et une durée en années entières ; les coefficients majorés ou diminués de certains biens d’équipement ne sont pas pris en charge ; les règles correspondantes ne sont pas validées par un professionnel. ' +
+      'dateSortie : si elle tombe dans ou avant l’exercice, le moteur s’abstient (il ne calcule pas la plus ou moins-value). composantDe : identifiant de l’immobilisation « structure » du même dossier (PCG art. 214-9), chaque composant ayant son propre plan. ' +
+      'Aucune écriture n’est créée : seules des PROPOSITIONS de dotation en découleront.',
+  })
+  @ApiBody({ schema: schemaOpenApi(immobilisationBase) })
   async saisirImmobilisation(@AccesCourant() acces: Acces, @Param('entiteId') entiteId: string, @Body() corps: unknown) {
     exigerUuid(entiteId);
     const d = valider(immobilisation, corps);
-    if (!dec(d.baseAmortissable).isPositive() || dec(d.baseAmortissable).isZero()) throw new BadRequestException('La base amortissable doit être strictement positive');
-    if (d.amortissementsAnterieurs != null && (dec(d.amortissementsAnterieurs).isNegative() || dec(d.amortissementsAnterieurs).greaterThan(dec(d.baseAmortissable)))) {
-      throw new BadRequestException('Les amortissements antérieurs sont compris entre zéro et la base amortissable');
-    }
     return this.bd.avecContexte(acces, async (tx) => {
       await exigerNiveau(tx, entiteId, 'collaboration');
+      if (d.composantDe) {
+        const [structure] = await tx.select({ id: s.immobilisations.id, composantDe: s.immobilisations.composantDe }).from(s.immobilisations).where(and(eq(s.immobilisations.id, d.composantDe), eq(s.immobilisations.entiteId, entiteId)));
+        if (!structure) throw new BadRequestException('composantDe : structure introuvable dans ce dossier');
+        if (structure.composantDe) throw new BadRequestException('composantDe : la structure est elle-même un composant (un seul niveau de rattachement)');
+      }
       const [i] = await tx
         .insert(s.immobilisations)
-        .values({ cabinetId: acces.cabinetId, entiteId, libelle: d.libelle, compteImmobilisation: d.compteImmobilisation, baseAmortissable: versChaine(dec(d.baseAmortissable)), dateMiseEnService: d.dateMiseEnService, dureeMois: d.dureeMois, amortissementsAnterieurs: d.amortissementsAnterieurs != null ? versChaine(dec(d.amortissementsAnterieurs)) : null, saisiePar: acces.utilisateurId })
+        .values({
+          cabinetId: acces.cabinetId,
+          entiteId,
+          libelle: d.libelle,
+          compteImmobilisation: d.compteImmobilisation,
+          baseAmortissable: versChaine(dec(d.baseAmortissable)),
+          dateAcquisition: d.dateAcquisition ?? null,
+          dateMiseEnService: d.dateMiseEnService,
+          dureeMois: d.dureeMois,
+          amortissementsAnterieurs: d.amortissementsAnterieurs != null ? versChaine(dec(d.amortissementsAnterieurs)) : null,
+          modeAmortissement: d.modeAmortissement,
+          coefficientDegressif: d.modeAmortissement === 'degressif' ? (d.coefficientDegressif as string) : null,
+          eligibiliteDegressifConfirmee: d.modeAmortissement === 'degressif' ? (d.eligibiliteDegressifConfirmee as boolean) : null,
+          valeurResiduelle: d.valeurResiduelle != null ? versChaine(dec(d.valeurResiduelle)) : null,
+          dateSortie: d.dateSortie ?? null,
+          composantDe: d.composantDe ?? null,
+          saisiePar: acces.utilisateurId,
+        })
         .returning();
-      await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'immobilisation.saisie', cibleType: 'immobilisation', cibleId: i!.id, entiteId, details: { compte: d.compteImmobilisation, dureeMois: d.dureeMois } });
+      await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'immobilisation.saisie', cibleType: 'immobilisation', cibleId: i!.id, entiteId, details: { compte: d.compteImmobilisation, acquisition: d.dateAcquisition ?? null, dureeMois: d.dureeMois, mode: d.modeAmortissement, coefficient: d.coefficientDegressif ?? null, eligibiliteConfirmee: d.eligibiliteDegressifConfirmee ?? null, valeurResiduelle: d.valeurResiduelle != null, sortie: d.dateSortie ?? null, composant: d.composantDe ?? null } });
       return i;
     });
   }
@@ -234,6 +312,8 @@ export class FiscalController {
     exigerUuid(immobilisationId);
     return this.bd.avecContexte(acces, async (tx) => {
       await exigerNiveau(tx, entiteId, 'collaboration');
+      const [composant] = await tx.select({ id: s.immobilisations.id }).from(s.immobilisations).where(and(eq(s.immobilisations.composantDe, immobilisationId), eq(s.immobilisations.entiteId, entiteId))).limit(1);
+      if (composant) throw new ConflictException('Cette immobilisation est la structure d’au moins un composant : retirez d’abord ses composants');
       const retirees = await tx.delete(s.immobilisations).where(and(eq(s.immobilisations.id, immobilisationId), eq(s.immobilisations.entiteId, entiteId))).returning({ id: s.immobilisations.id, libelle: s.immobilisations.libelle });
       if (!retirees.length) throw new NotFoundException('Immobilisation introuvable dans ce dossier');
       await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'immobilisation.retiree', cibleType: 'immobilisation', cibleId: immobilisationId, entiteId });
@@ -257,8 +337,11 @@ export class FiscalController {
     const fichier = await tx.select().from(s.immobilisations).where(eq(s.immobilisations.entiteId, exercice.entiteId)).orderBy(asc(s.immobilisations.creeLe));
     const immobilisations = fichier
       .filter((i) => i.dateMiseEnService <= exercice.fin)
-      .map((i) => ({ id: i.id, libelle: i.libelle, compteImmobilisation: i.compteImmobilisation, baseAmortissable: i.baseAmortissable, dateMiseEnService: i.dateMiseEnService, dureeMois: i.dureeMois, amortissementsAnterieurs: i.amortissementsAnterieurs }));
-    const resultat = proposerEcrituresInventaire({ lignes, exercice: { debut: exercice.debut, fin: exercice.fin }, lireLibelles: true, constatsCesure, immobilisations });
+      .map((i) => ({
+        id: i.id, libelle: i.libelle, compteImmobilisation: i.compteImmobilisation, baseAmortissable: i.baseAmortissable, dateAcquisition: i.dateAcquisition, dateMiseEnService: i.dateMiseEnService, dureeMois: i.dureeMois, amortissementsAnterieurs: i.amortissementsAnterieurs,
+        modeAmortissement: i.modeAmortissement as 'lineaire' | 'degressif', coefficientDegressif: i.coefficientDegressif, eligibiliteDegressifConfirmee: i.eligibiliteDegressifConfirmee, valeurResiduelle: i.valeurResiduelle, dateSortie: i.dateSortie, composantDe: i.composantDe,
+      }));
+    const resultat = proposerEcrituresInventaire({ lignes, exercice: { debut: exercice.debut, fin: exercice.fin }, lireLibelles: true, constatsCesure, immobilisations, options: { amortissementDegressifActive: this.cfg.AMORTISSEMENT_DEGRESSIF_ACTIVE } });
     return { exercice, lot, lignes, resultat, nbImmobilisations: fichier.length, signalCesure: execution ? (execution.obsolete ? 'controles_obsoletes' : 'disponible') : 'controles_non_executes' };
   }
 
@@ -266,7 +349,7 @@ export class FiscalController {
   @ApiOperation({
     summary: 'Propositions DÉTERMINISTES d’écritures d’inventaire (charges et produits constatés d’avance, factures non parvenues, factures à établir)',
     description:
-      'Calculées par le moteur à partir de règles explicites et versionnées ; chaque proposition porte son origine, sa justification, son calcul, ses écritures sources, ses impacts et ses hypothèses. Rien n’est comptabilisé ni même enregistré : une proposition ne devient une écriture d’inventaire (elle-même un projet à approuver par une autre personne) que si quelqu’un la reprend. Quand une donnée manque, le moteur s’abstient et le dit. Les dotations aux amortissements (linéaires seulement) ne sont proposées que pour les immobilisations saisies par le cabinet dans le fichier du dossier.',
+      'Calculées par le moteur à partir de règles explicites et versionnées ; chaque proposition porte son origine, sa justification, son calcul, ses écritures sources, ses impacts et ses hypothèses. Rien n’est comptabilisé ni même enregistré : une proposition ne devient une écriture d’inventaire (elle-même un projet à approuver par une autre personne) que si quelqu’un la reprend. Quand une donnée manque, le moteur s’abstient et le dit. « degressif » : { active, motif } dit si le calcul du dégressif est activé (défaut : non, abstention motivée sans montant). Les dotations aux amortissements (linéaires, ou dégressives si le calcul est activé et sur déclaration explicite du cabinet) ne sont proposées que pour les immobilisations saisies par le cabinet dans le fichier du dossier ; une dotation déjà comptabilisée dans les écritures importées n’est jamais reproposée (l’écart est affiché dans « rapprochement »), et les points à traiter par le professionnel (amortissement dérogatoire éventuel) sont listés dans « signalements ».',
   })
   async listerPropositions(@AccesCourant() acces: Acces, @Param('id') id: string) {
     exigerUuid(id);
@@ -279,9 +362,12 @@ export class FiscalController {
         exercice: { id: exercice.id, debut: exercice.debut, fin: exercice.fin, versionDonnees: exercice.versionDonnees },
         donnees: { lotImportId: lot.id, version: lot.version, statutDonnees: lot.statutDonnees },
         signalCesure,
+        degressif: this.cfg.AMORTISSEMENT_DEGRESSIF_ACTIVE
+          ? { active: true, motif: 'Calcul du dégressif activé par l’éditeur. Le texte de loi (CGI art. 39 A) reste non vérifié sur une source officielle et les règles ne sont pas validées par un professionnel : les propositions sont à contrôler.' }
+          : { active: false, motif: MOTIF_DEGRESSIF_NON_ACTIVE },
         amortissements:
           nbImmobilisations > 0
-            ? { proposes: true, motif: `Dotations linéaires proposées à partir des ${nbImmobilisations} immobilisation(s) SAISIE(S) par le cabinet pour ce dossier ; ce fichier n’est pas celui du logiciel comptable, qui reste la référence.` }
+            ? { proposes: true, motif: `Dotations (linéaires, ou dégressives si le calcul est activé) proposées à partir des ${nbImmobilisations} immobilisation(s) SAISIE(S) par le cabinet pour ce dossier ; ce fichier n’est pas celui du logiciel comptable, qui reste la référence.` }
             : { proposes: false, motif: 'Aucune immobilisation n’est saisie pour ce dossier (base, date de mise en service, durée) : aucune dotation n’est proposée.' },
         propositions: resultat.propositions.map((p) => {
           const reprise = parProposition.get(p.id);

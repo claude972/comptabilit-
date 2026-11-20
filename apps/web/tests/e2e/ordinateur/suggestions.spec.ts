@@ -155,6 +155,70 @@ test.describe('suggestions tirées des corrections', () => {
     await expect(bloc.locator(`[data-suggestion="${EMPREINTE}"]`).getByTestId('deja-ecartee')).toContainText('Cas particuliers de ce client, pas une règle');
   });
 
+  test('« nouvelle règle métier » : extraction (même champ, même émetteur) et rapprochement (même règle rejetée) — signalement à l’éditeur, rien à proposer, preuves et décomptes', async ({ page }) => {
+    const erreurs = surveiller(page);
+    const EMETTEUR = 'siren:552100554';
+    const piecesCorrigees = ['p1', 'p2', 'p3'].map((x, i) => ({ documentId: `00000000-0000-4000-8000-00000000000${i + 1}`, dossierId: ID.dupain, emetteur: EMETTEUR, emetteurLibelle: 'ATELIER FICTIF 0042 SARL', champs: ['totalTtc'], date: `2026-11-1${i}T10:00:00.000Z` }));
+    const ISOLEE = { documentId: '00000000-0000-4000-8000-0000000000a1', dossierId: ID.dupain, emetteur: 'siren:732829320', emetteurLibelle: 'AUTRE ÉMETTEUR', champs: ['totalTtc'], date: '2026-11-12T10:00:00.000Z' };
+    const MOTIF = 'Libellé bancaire sans rapport avec cette écriture';
+    const rappro = (action: string, motif: string) => ({ dossierId: ID.dupain, regle: 'paiement_groupe', action, motif });
+    await simulateur('revue', { corrections: [...piecesCorrigees, ISOLEE], rapprochements: [...[1, 2, 3, 4, 5].map(() => rappro('rejeter', MOTIF)), rappro('rejeter', 'non')] });
+    await page.goto('/regles');
+    const bloc = page.getByTestId('suggestions');
+    // Deux suggestions « nouvelle règle métier » ; la correction isolée et le rejet peu motivé restent des corrections de données.
+    await expect(bloc.getByRole('heading')).toHaveText('Suggestions tirées des corrections (2)');
+    await expect(bloc.locator('[data-categorie="nouvelle_regle_metier"]')).toHaveCount(2);
+
+    const extraction = bloc.locator(`[data-suggestion="nouvelle_regle_metier|extraction|${EMETTEUR}|totalTtc"]`);
+    await expect(extraction).toContainText('Nouvelle règle métier (signalement)');
+    await expect(extraction).toContainText('Extraction : champ « totalTtc » régulièrement corrigé pour l’émetteur ATELIER FICTIF 0042 SARL');
+    await expect(extraction).toContainText('corrigé à la main sur 3 pièces distinctes de cet émetteur');
+    await expect(extraction.getByTestId('renvoi-editeur')).toContainText('Simple signalement : à instruire par l’éditeur du logiciel. Rien n’est créé ni transmis automatiquement.');
+    await expect(extraction.getByTestId('proposer-depuis-suggestion')).toHaveCount(0);
+    await expect(extraction.getByTestId('parametre-suggestion')).toHaveCount(0);
+    await extraction.getByTestId('preuves-suggestion').locator('summary').click();
+    await expect(extraction.getByTestId('decomptes')).toContainText('3 pièces corrigées');
+    await expect(extraction.getByTestId('decomptes')).toContainText('1 dossiers');
+    await expect(extraction.locator('[data-decision]')).toHaveCount(3);
+    const liens = await extraction.locator('[data-decision] a[href*="/pieces/"]').evaluateAll((els) => els.map((e) => e.getAttribute('href')));
+    expect(liens.sort()).toEqual([1, 2, 3].map((n) => `/dossiers/${ID.dupain}/pieces/00000000-0000-4000-8000-00000000000${n}`));
+    await expect(extraction.getByTestId('ne-fait-pas')).toContainText('Ne crée aucune règle d’extraction et ne modifie aucune pièce.');
+    await expect(extraction.getByTestId('ne-fait-pas')).toContainText('Ne transmet rien à l’éditeur');
+
+    const rapprochement = bloc.locator(`[data-suggestion="nouvelle_regle_metier|rapprochement|paiement_groupe|${ID.dupain}"]`);
+    await expect(rapprochement).toContainText('Rapprochement : propositions de la règle « paiement_groupe » régulièrement rejetées dans ce dossier');
+    await expect(rapprochement).toContainText('5 rapprochements proposés par la règle « paiement_groupe » ont été rejetés avec motif dans ce dossier, et aucun n’a été validé.');
+    await expect(rapprochement.getByTestId('renvoi-editeur')).toBeVisible();
+    await expect(rapprochement.getByTestId('proposer-depuis-suggestion')).toHaveCount(0);
+    await rapprochement.getByTestId('preuves-suggestion').locator('summary').click();
+    await expect(rapprochement.getByTestId('decomptes')).toContainText('5 rejets motivés');
+    await expect(rapprochement.getByTestId('decomptes')).toContainText('0 validations');
+    await expect(rapprochement.locator('[data-decision]')).toHaveCount(5);
+    await expect(rapprochement.locator('[data-decision]').first()).toContainText(`motif : ${MOTIF}`);
+    await expect(rapprochement.locator('[data-decision]').first().getByRole('link', { name: 'banque du dossier' })).toHaveAttribute('href', `/dossiers/${ID.dupain}/banque`);
+    await expect(rapprochement.getByTestId('ne-fait-pas')).toContainText('Ne modifie ni la règle de rapprochement ni aucun rapprochement existant.');
+
+    // La correction isolée est comptée comme correction de données ; rien n'est créé.
+    await expect(bloc.locator('[data-categorie="correction_donnee"]')).toContainText('1 champ(s) extrait(s) corrigé(s)');
+    expect((await etatSuite()).regles).toEqual([]);
+    expect((await etatSuite()).suggestionsEcartees).toEqual([]);
+
+    // Une validation d'une proposition de la même règle retire la suggestion de rapprochement ; l'extraction reste.
+    await simulateur('revue', { rapprochements: [rappro('valider', MOTIF)] });
+    await page.reload();
+    await expect(bloc.locator(`[data-suggestion="nouvelle_regle_metier|rapprochement|paiement_groupe|${ID.dupain}"]`)).toHaveCount(0);
+    await expect(bloc.locator(`[data-suggestion="nouvelle_regle_metier|extraction|${EMETTEUR}|totalTtc"]`)).toHaveCount(1);
+    // Écarter le signalement d'extraction : motif conservé, rien n'est transmis (aucune règle).
+    const s = bloc.locator(`[data-suggestion="nouvelle_regle_metier|extraction|${EMETTEUR}|totalTtc"]`);
+    await s.getByRole('button', { name: 'Écarter cette suggestion' }).click();
+    await s.locator('form[data-formulaire="ecarter-suggestion"]').getByLabel('Motif (obligatoire, conservé)').fill('Format propre à ce fournisseur, déjà connu');
+    await s.locator('form[data-formulaire="ecarter-suggestion"]').getByRole('button', { name: 'Confirmer' }).click();
+    await expect(bloc.locator(`[data-suggestion="nouvelle_regle_metier|extraction|${EMETTEUR}|totalTtc"]`)).toHaveCount(0);
+    expect((await etatSuite()).suggestionsEcartees).toEqual([expect.objectContaining({ categorie: 'nouvelle_regle_metier', controleId: null, entiteId: null, ecarteePar: REMI })]);
+    expect((await etatSuite()).regles).toEqual([]);
+    expect(erreurs).toEqual([]);
+  });
+
   test('sans débordement horizontal à 360 px, suggestions et preuves dépliées', async ({ page }) => {
     await simulateur('revue', RECURRENCE);
     await page.setViewportSize({ width: 360, height: 800 });

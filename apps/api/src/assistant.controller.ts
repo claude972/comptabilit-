@@ -25,7 +25,16 @@ const question = z.strictObject({
   question: z.string().trim().min(QUESTION_MIN, `question de ${QUESTION_MIN} caractères au moins`).max(QUESTION_MAX, `question de ${QUESTION_MAX} caractères au plus`),
   exerciceId: uuid.optional(),
 });
-const dateIso = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date AAAA-MM-JJ attendue');
+/** Une date qui existe au calendrier : `Date.parse('2025-02-30')` l'accepte (V8 déborde sur mars) et PostgreSQL la refuse, d'où le va-et-vient. */
+const dateReelle = (v: string): boolean => {
+  const d = new Date(`${v}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+};
+const dateIso = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'date AAAA-MM-JJ attendue')
+  .refine(dateReelle, 'date inexistante au calendrier')
+  .refine((v) => v >= '1900-01-01' && v <= '2200-12-31', 'date entre 1900 et 2200 attendue');
 const questionPortefeuille = z.strictObject({
   question: z.string().trim().min(QUESTION_MIN, `question de ${QUESTION_MIN} caractères au moins`).max(QUESTION_MAX, `question de ${QUESTION_MAX} caractères au plus`),
   /** Absent : tous les dossiers autorisés. Présent : intersecté avec le périmètre autorisé. */
@@ -33,8 +42,10 @@ const questionPortefeuille = z.strictObject({
   /** Période commune facultative ; à défaut, le dernier exercice de chaque dossier. */
   periode: z
     .strictObject({ debut: dateIso, fin: dateIso })
-    .refine((p) => p.debut <= p.fin && !Number.isNaN(Date.parse(p.debut)) && !Number.isNaN(Date.parse(p.fin)), 'période invalide')
+    .refine((p) => p.debut <= p.fin, 'période invalide')
     .optional(),
+  /** Tranche de dossiers (de 20 au plus) à interroger quand le périmètre en compte davantage ; 1 par défaut. */
+  tranche: z.number().int().min(1).max(Math.ceil(DOSSIERS_DEMANDES_MAX / BORNE_DOSSIERS_PORTEFEUILLE)).optional(),
 });
 const TAILLE_PAGE = 20;
 
@@ -101,7 +112,7 @@ export class AssistantController {
   @HttpCode(200)
   @ApiOperation({
     summary: 'Poser une question documentée sur un PORTEFEUILLE de dossiers autorisés',
-    description: `Périmètre calculé par la base sous l’identité de la session : les dossiers actifs du cabinet où la personne a au moins le niveau « lecture ». « dossierIds », s’il est fourni, est intersecté avec ce périmètre : un identifiant qui n’en fait pas partie (non habilité, autre cabinet, inexistant) est écarté et listé dans « perimetre.horsPerimetre », sans dire s’il existe ; 404 si aucun des dossiers demandés n’est dans le périmètre. Au plus ${BORNE_DOSSIERS_PORTEFEUILLE} dossiers par question : au-delà, le périmètre est réduit (ordre alphabétique) et les dossiers non interrogés sont listés dans « perimetre.nonInterroges ». Période : le dernier exercice de chaque dossier, ou sa part dans la période commune fournie ; annoncée dossier par dossier, comme les données manquantes. Chaque source citée porte « dossierId ». Le nombre d’éléments restitués par dossier dépend du nombre de dossiers (« perimetre.elementsParDossier ») ; ce qui dépasse est décompté (« nonRestitues »). Refusé (403) aux déposants et à qui n’a aucun dossier ouvert en lecture. Sans IA connectée — état actuel — la réponse porte « mode: sans_ia ». L’échange est enregistré pour son auteur seulement.`,
+    description: `Périmètre calculé par la base sous l’identité de la session : les dossiers actifs du cabinet où la personne a au moins le niveau « lecture ». « dossierIds », s’il est fourni, est intersecté avec ce périmètre : un identifiant qui n’en fait pas partie (non habilité, autre cabinet, inexistant) est écarté et listé dans « perimetre.horsPerimetre », sans dire s’il existe ; 404 si aucun des dossiers demandés n’est dans le périmètre. Au plus ${BORNE_DOSSIERS_PORTEFEUILLE} dossiers par question : au-delà, le périmètre est découpé en tranches de ${BORNE_DOSSIERS_PORTEFEUILLE} dossiers, classés par pertinence déterministe (données comptables importées d’abord, puis exercice sans donnée, puis les autres ; ordre alphabétique à égalité — « perimetre.ordre »). « tranche » (1 par défaut) choisit la tranche interrogée ; « perimetre.tranche » dit laquelle sur combien, et les dossiers des autres tranches sont nommés dans « perimetre.nonInterroges ». Chaque tranche est une question distincte, enregistrée séparément, jamais fusionnée avec une autre, et ses habilitations sont relues en base ; 409 si la tranche demandée n’existe plus (périmètre réduit entre-temps). Le classement est recalculé à chaque question : un import intercalé entre deux tranches peut le modifier. Période : le dernier exercice de chaque dossier, ou sa part dans la période commune fournie ; annoncée dossier par dossier, comme les données manquantes. Chaque source citée porte « dossierId ». Le nombre d’éléments restitués par dossier dépend du nombre de dossiers (« perimetre.elementsParDossier ») ; ce qui dépasse est décompté (« nonRestitues »). Refusé (403) aux déposants et à qui n’a aucun dossier ouvert en lecture. Sans IA connectée — état actuel — la réponse porte « mode: sans_ia ». L’échange est enregistré pour son auteur seulement.`,
   })
   @ApiBody({ schema: schemaOpenApi(questionPortefeuille) })
   async poserPortefeuille(@AccesCourant() acces: Acces, @Body() corps: unknown) {

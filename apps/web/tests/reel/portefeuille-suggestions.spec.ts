@@ -73,6 +73,27 @@ test('question réelle sur le portefeuille autorisé : réponse « sans IA », p
   await remi.context().close();
 });
 
+test('période commune choisie dans l’écran, conservée dans l’adresse : chaque dossier annonce sa période ou l’absence de recoupement', async ({ browser }) => {
+  const remi = await ouvrir(browser, REMI_MAIL, '/assistant?debut=2025-01-01&fin=2025-03-31');
+  const bloc = remi.getByTestId('periode-commune');
+  await expect(bloc.getByLabel('Début de la période')).toHaveValue('2025-01-01');
+  await expect(bloc.getByLabel('Fin de la période')).toHaveValue('2025-03-31');
+  await remi.getByLabel('Votre question sur ces dossiers').fill('Quel est le solde du compte 512 ?');
+  await remi.getByRole('button', { name: 'Poser la question' }).click();
+  const reponse = remi.getByTestId('zone-reponse').getByTestId('reponse-portefeuille');
+  await expect(reponse).toHaveAttribute('data-mode', 'sans_ia', { timeout: 60_000 });
+  await expect(reponse.getByTestId('perimetre-portefeuille')).toContainText('période commune demandée : du 01/01/2025 au 31/03/2025');
+  // Chaque dossier : soit la part de la période qui recoupe son exercice (jamais hors de la période demandée), soit l'absence de période.
+  const periodes = await reponse.getByTestId('periode-dossier').allTextContents();
+  expect(periodes.length).toBeGreaterThan(0);
+  for (const p of periodes) expect(p).toMatch(/^(aucune période comptable analysée|période analysée : du (\d{2})\/(\d{2})\/2025 au (\d{2})\/(\d{2})\/2025)$/);
+  // L'adresse reste celle de l'écran même après la réponse (l'actualisation qui suit l'appel ne l'efface pas) ; effacer la période la retire.
+  await expect(remi).toHaveURL(/\/assistant\?debut=2025-01-01&fin=2025-03-31$/);
+  await bloc.getByRole('button', { name: 'Effacer la période' }).click();
+  await expect(remi).toHaveURL(/\/assistant$/);
+  await remi.context().close();
+});
+
 test('écran étroit (360 px) : assistant de portefeuille et suggestions sans débordement ; rôles : collaboratrice sans suggestions, déposant sans assistant', async ({ browser }) => {
   const remi = await ouvrir(browser, REMI_MAIL, '/assistant', 360);
   await expect(remi.getByTestId('etat-ia')).toHaveAttribute('data-statut-ia', 'non_connecte');

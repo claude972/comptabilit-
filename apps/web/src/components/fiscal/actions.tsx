@@ -3,7 +3,7 @@
 import { useId, useState } from 'react';
 import { useAppel } from '@/components/appel';
 import { Retours } from '@/components/retours';
-import { Libelle, Liste, Saisie, ZoneTexte } from '@/components/ui/base';
+import { Alerte, Libelle, Liste, Saisie, ZoneTexte } from '@/components/ui/base';
 import { Bouton } from '@/components/ui/bouton';
 import { LIBELLE_CATEGORIE } from '@/lib/fiscal';
 
@@ -94,31 +94,67 @@ export interface Immobilisation {
   id: string;
   libelle: string;
   compteImmobilisation: string;
+  /** Valeur brute à amortir (la valeur résiduelle éventuelle s'en déduit). */
   baseAmortissable: string;
+  /** Date d'acquisition (ou de construction) : point de départ du dégressif (premier jour du mois). */
+  dateAcquisition?: string | null;
   dateMiseEnService: string;
   dureeMois: number;
   amortissementsAnterieurs: string | null;
+  modeAmortissement?: 'lineaire' | 'degressif';
+  coefficientDegressif?: string | null;
+  eligibiliteDegressifConfirmee?: boolean | null;
+  valeurResiduelle?: string | null;
+  dateSortie?: string | null;
+  composantDe?: string | null;
 }
 
+/** Coefficient du dégressif selon la durée en années (3-4 ans : 1,25 ; 5-6 ans : 1,75 ; au-delà : 2,25). */
+export function coefficientPourDuree(dureeMois: number): string | null {
+  if (!Number.isInteger(dureeMois) || dureeMois % 12 !== 0 || dureeMois < 36 || dureeMois > 600) return null;
+  const ans = dureeMois / 12;
+  return ans <= 4 ? '1.25' : ans <= 6 ? '1.75' : '2.25';
+}
+
+const EXPLICATION_MODE: Record<'lineaire' | 'degressif', string> = {
+  lineaire:
+    'Annuité constante sur la durée, à compter de la mise en service ; c’est le mode appliqué à défaut de mode mieux adapté (PCG art. 214-13). Vous répondez de la durée retenue : le moteur ne la juge pas.',
+  degressif:
+    'Annuités décroissantes : taux linéaire × coefficient, appliqué à la valeur nette comptable, avec bascule au linéaire quand il devient plus favorable (faculté de l’entreprise) ; prorata au mois la première année, à compter du premier jour du mois d’acquisition. Les coefficients majorés ou diminués de certains biens d’équipement ne sont pas pris en charge. Ce mode est ici celui du plan d’amortissement COMPTABLE, que vous choisissez (PCG art. 214-13) : Comtaple ne devine ni le mode, ni l’éligibilité, ni le coefficient. Si le dégressif n’est retenu que pour la déduction fiscale, le complément est un amortissement dérogatoire (comptes 145, 6872, 7872) que Comtaple ne propose pas : il est signalé et reste à traiter par le professionnel. Les règles du dégressif ne sont pas validées par un professionnel.',
+};
+
 /** Saisie d'une immobilisation dans le fichier du dossier (`POST v1/dossiers/:id/immobilisations`). */
-export function SaisirImmobilisation({ dossierId }: { dossierId: string }) {
+export function SaisirImmobilisation({ dossierId, structures = [], degressifActive = false }: { dossierId: string; structures?: Immobilisation[]; degressifActive?: boolean }) {
   const appel = useAppel();
-  const vide = { libelle: '', compte: '', base: '', date: '', duree: '', anterieurs: '' };
+  const vide = { libelle: '', compte: '', base: '', acquisition: '', date: '', duree: '', anterieurs: '', mode: 'lineaire', coefficient: '', eligible: false, residuelle: '', sortie: '', composant: '' };
   const [f, setF] = useState(vide);
   const id = useId();
   const maj = (m: Partial<typeof vide>) => setF((v) => ({ ...v, ...m }));
   const decimal = (v: string) => v.trim().replace(/\s/g, '').replace(',', '.');
+  const degressif = f.mode === 'degressif';
+  const attendu = degressif ? coefficientPourDuree(Number(f.duree)) : null;
   return (
     <form
       className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
       aria-label="Saisir une immobilisation"
+      data-formulaire="saisir-immobilisation"
       onSubmit={async (e) => {
         e.preventDefault();
-        const r = await appel.executer(
-          `v1/dossiers/${dossierId}/immobilisations`,
-          { method: 'POST', json: { libelle: f.libelle, compteImmobilisation: f.compte.trim(), baseAmortissable: decimal(f.base), dateMiseEnService: f.date, dureeMois: Number(f.duree), ...(f.anterieurs.trim() ? { amortissementsAnterieurs: decimal(f.anterieurs) } : {}) } },
-          'Immobilisation enregistrée : la dotation de l’exercice figure dans les propositions du moteur.',
-        );
+        const corps = {
+          libelle: f.libelle,
+          compteImmobilisation: f.compte.trim(),
+          baseAmortissable: decimal(f.base),
+          ...(f.acquisition ? { dateAcquisition: f.acquisition } : {}),
+          dateMiseEnService: f.date,
+          dureeMois: Number(f.duree),
+          modeAmortissement: f.mode,
+          ...(f.anterieurs.trim() ? { amortissementsAnterieurs: decimal(f.anterieurs) } : {}),
+          ...(f.residuelle.trim() ? { valeurResiduelle: decimal(f.residuelle) } : {}),
+          ...(f.sortie ? { dateSortie: f.sortie } : {}),
+          ...(f.composant ? { composantDe: f.composant } : {}),
+          ...(degressif ? { coefficientDegressif: f.coefficient, eligibiliteDegressifConfirmee: f.eligible } : {}),
+        };
+        const r = await appel.executer(`v1/dossiers/${dossierId}/immobilisations`, { method: 'POST', json: corps }, 'Immobilisation enregistrée : la dotation de l’exercice figure dans les propositions du moteur.');
         if (r) setF(vide);
       }}
     >
@@ -131,8 +167,22 @@ export function SaisirImmobilisation({ dossierId }: { dossierId: string }) {
         <Saisie id={`${id}-compte`} required inputMode="numeric" pattern="2[0-9]{2,11}" value={f.compte} onChange={(e) => maj({ compte: e.target.value })} autoComplete="off" />
       </div>
       <div>
-        <Libelle htmlFor={`${id}-base`}>Base amortissable (€)</Libelle>
+        <Libelle htmlFor={`${id}-base`}>Valeur brute à amortir (€)</Libelle>
         <Saisie id={`${id}-base`} required inputMode="decimal" value={f.base} onChange={(e) => maj({ base: e.target.value })} autoComplete="off" />
+      </div>
+      <div>
+        <Libelle htmlFor={`${id}-res`}>Valeur résiduelle (€, facultatif)</Libelle>
+        <Saisie id={`${id}-res`} inputMode="decimal" value={f.residuelle} onChange={(e) => maj({ residuelle: e.target.value })} autoComplete="off" aria-describedby={`${id}-aide-res`} />
+        <p id={`${id}-aide-res`} className="mt-1 text-sm text-texte-doux">
+          Seulement si elle est significative et mesurable (PCG art. 214-4) ; strictement inférieure à la valeur brute. Le montant amortissable est la valeur brute moins la valeur résiduelle.
+        </p>
+      </div>
+      <div>
+        <Libelle htmlFor={`${id}-acq`}>{degressif ? 'Date d’acquisition ou de construction' : 'Date d’acquisition (facultatif)'}</Libelle>
+        <Saisie id={`${id}-acq`} type="date" required={degressif} value={f.acquisition} onChange={(e) => maj({ acquisition: e.target.value })} aria-describedby={`${id}-aide-acq`} />
+        <p id={`${id}-aide-acq`} className="mt-1 text-sm text-texte-doux">
+          {degressif ? 'Obligatoire en dégressif : le point de départ est le premier jour du mois d’acquisition (BOFiP BOI-BIC-AMT-20-20-30). Jamais postérieure à la mise en service.' : 'Sans effet sur le linéaire, dont le point de départ est la mise en service.'}
+        </p>
       </div>
       <div>
         <Libelle htmlFor={`${id}-date`}>Date de mise en service</Libelle>
@@ -145,6 +195,71 @@ export function SaisirImmobilisation({ dossierId }: { dossierId: string }) {
       <div>
         <Libelle htmlFor={`${id}-ant`}>Amortissements antérieurs (€, facultatif)</Libelle>
         <Saisie id={`${id}-ant`} inputMode="decimal" value={f.anterieurs} onChange={(e) => maj({ anterieurs: e.target.value })} autoComplete="off" />
+      </div>
+      <div>
+        <Libelle htmlFor={`${id}-sortie`}>Date de sortie de l’actif (facultatif)</Libelle>
+        <Saisie id={`${id}-sortie`} type="date" value={f.sortie} onChange={(e) => maj({ sortie: e.target.value })} aria-describedby={`${id}-aide-sortie`} />
+        <p id={`${id}-aide-sortie`} className="mt-1 text-sm text-texte-doux">
+          Cession ou mise au rebut : si elle tombe dans ou avant l’exercice, le moteur s’abstient (il ne calcule pas la plus ou moins-value) et le dit.
+        </p>
+      </div>
+      <div>
+        <Libelle htmlFor={`${id}-comp`}>Composant de (facultatif)</Libelle>
+        <Liste id={`${id}-comp`} value={f.composant} onChange={(e) => maj({ composant: e.target.value })}>
+          <option value="">Aucun (immobilisation autonome)</option>
+          {structures
+            .filter((x) => !x.composantDe)
+            .map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.libelle}
+              </option>
+            ))}
+        </Liste>
+        <p className="mt-1 text-sm text-texte-doux">Un composant a son propre plan (PCG art. 214-9) : saisissez la structure d’abord, puis chaque composant avec sa durée.</p>
+      </div>
+      <div className="sm:col-span-2 lg:col-span-3 space-y-2 rounded-lg border border-bordure p-3" data-testid="choix-mode">
+        <div className="max-w-md">
+          <Libelle htmlFor={`${id}-mode`}>Mode d’amortissement (plan comptable)</Libelle>
+          <Liste id={`${id}-mode`} value={f.mode} onChange={(e) => maj({ mode: e.target.value, ...(e.target.value === 'lineaire' ? { coefficient: '', eligible: false } : {}) })}>
+            <option value="lineaire">Linéaire (par défaut)</option>
+            <option value="degressif">{degressifActive ? 'Dégressif (sur déclaration du cabinet)' : 'Dégressif (déclaration du cabinet — calcul non activé)'}</option>
+          </Liste>
+        </div>
+        <p className="text-sm text-texte-doux" data-testid="explication-mode">
+          {EXPLICATION_MODE[degressif ? 'degressif' : 'lineaire']}
+        </p>
+        {degressif ? (
+          <Alerte ton="attention" className="text-sm" data-testid="avertissement-degressif">
+            {degressifActive
+              ? 'Calcul du dégressif activé par l’éditeur ; le texte de loi (CGI art. 39 A) reste non vérifié sur une source officielle et les règles ne sont pas validées par un professionnel.'
+              : 'Calcul du dégressif non activé : votre déclaration est enregistrée, mais aucun calcul ni aucune proposition d’écriture n’en découle. Le texte de loi (CGI art. 39 A) n’a pas été vérifié sur une source officielle et les règles n’ont pas été validées par un professionnel ; l’activation relève de l’éditeur.'}
+          </Alerte>
+        ) : null}
+        {degressif ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2" data-testid="champs-degressif">
+            <div>
+              <Libelle htmlFor={`${id}-coef`}>Coefficient dégressif déclaré</Libelle>
+              <Liste id={`${id}-coef`} value={f.coefficient} onChange={(e) => maj({ coefficient: e.target.value })} required>
+                <option value="">Choisir…</option>
+                <option value="1.25">1,25 (durée de 3 ou 4 ans)</option>
+                <option value="1.75">1,75 (durée de 5 ou 6 ans)</option>
+                <option value="2.25">2,25 (durée de plus de 6 ans)</option>
+              </Liste>
+              <p className="mt-1 text-sm text-texte-doux" data-testid="coefficient-attendu">
+                {attendu ? `Pour cette durée (${Number(f.duree) / 12} ans), le coefficient cohérent est ${attendu.replace('.', ',')}.` : 'Durée en années entières, de 3 à 50 ans (36 à 600 mois), exigée en dégressif.'} Le serveur refuse un coefficient incohérent avec la durée.
+              </p>
+            </div>
+            <div>
+              <label className="flex min-h-11 items-start gap-2 text-base">
+                <input type="checkbox" autoComplete="off" className="mt-1 size-5 shrink-0" checked={f.eligible} onChange={(e) => maj({ eligible: e.target.checked })} />
+                <span>
+                  Je confirme que le bien remplit les conditions du dégressif : neuf, durée d’au moins trois ans, bien visé par l’article 39 A du CGI, hors exclusions (voitures de tourisme, mobilier de bureau, locaux…).
+                  <span className="block text-sm text-texte-doux">Le cabinet en répond : Comtaple ne le vérifie pas. Sans cette confirmation, le moteur s’abstient.</span>
+                </span>
+              </label>
+            </div>
+          </div>
+        ) : null}
       </div>
       <div className="sm:col-span-2 lg:col-span-3">
         <Bouton type="submit" variante="secondaire" disabled={appel.occupe}>

@@ -236,8 +236,19 @@ export interface DossierInterroge {
   sources: number;
   nonRestitues: number;
 }
+/** Tranche de dossiers interrogée (absente des échanges conservés avant les tranches : une seule). */
+export interface TranchePortefeuille {
+  numero: number;
+  total: number;
+  premier: number;
+  dernier: number;
+  retenus: number;
+}
 export interface PerimetrePortefeuille {
   borne: number;
+  tranche?: TranchePortefeuille;
+  /** Critère de classement des dossiers entre les tranches, tel que l'API le dit. */
+  ordre?: string;
   elementsParDossier: number;
   autorises: number;
   dossiers: DossierInterroge[];
@@ -285,3 +296,36 @@ export function lienCitationPortefeuille(c: CitationPortefeuille): { href: strin
   if (!c.dossierId || !new RegExp(`^${UUID}$`, 'i').test(c.dossierId)) return null;
   return lienCitation(`/dossiers/${c.dossierId}`, c);
 }
+
+// ───────────────────────────── Période commune et tranches ─────────────────────────────
+
+/** Vrai pour une date AAAA-MM-JJ qui existe au calendrier (le 31/02 et le 2025-13-01 sont refusés, pas corrigés). */
+export function dateReelle(valeur: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(valeur);
+  if (!m) return false;
+  const [annee, mois, jour] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  if (annee < 1900 || annee > 2200) return false;
+  const d = new Date(Date.UTC(annee, mois - 1, jour));
+  return d.getUTCFullYear() === annee && d.getUTCMonth() === mois - 1 && d.getUTCDate() === jour;
+}
+
+/**
+ * Valide la période commune saisie : toutes deux vides (pas de période), ou toutes deux renseignées, réelles et
+ * ordonnées. Renvoie le message à afficher, ou null si la saisie est acceptable.
+ */
+export function erreurPeriode(debut: string, fin: string): string | null {
+  if (!debut && !fin) return null;
+  if (!debut || !fin) return 'Renseignez les deux dates de la période, ou aucune.';
+  if (!dateReelle(debut)) return 'La date de début n’existe pas au calendrier.';
+  if (!dateReelle(fin)) return 'La date de fin n’existe pas au calendrier.';
+  if (debut > fin) return 'La date de début doit précéder ou égaler la date de fin.';
+  return null;
+}
+
+/** Période lue dans l'adresse : uniquement si elle est valide, sinon rien (jamais une période fabriquée). */
+export function periodeDeLAdresse(debut: string | undefined, fin: string | undefined): { debut: string; fin: string } | null {
+  return debut && fin && erreurPeriode(debut, fin) === null ? { debut, fin } : null;
+}
+
+/** Nombre de tranches de dossiers pour `n` dossiers retenus et une borne par question. */
+export const nombreDeTranches = (n: number, borne: number): number => Math.max(1, Math.ceil(n / Math.max(1, borne)));

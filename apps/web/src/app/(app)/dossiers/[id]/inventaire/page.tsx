@@ -4,7 +4,7 @@ import { PiecesJointes } from '@/components/document/pieces-jointes';
 import { ErreurAcces } from '@/components/erreurs';
 import { type Immobilisation, ReprendreProposition, RetirerImmobilisation, SaisirImmobilisation } from '@/components/fiscal/actions';
 import { DeciderEcriture, ExporterEcritures, ProposerEcriture } from '@/components/inventaire/actions';
-import { LIBELLE_TYPE_PROPOSITION, type ReponsePropositions } from '@/lib/fiscal';
+import { LIBELLE_ETAT_COMPTE_IMMOBILISATION, LIBELLE_ETAT_DOTATION, LIBELLE_MODE_AMORTISSEMENT, LIBELLE_TYPE_PROPOSITION, LIBELLE_VERIFICATION_SOURCE, type ReponsePropositions, type SourceInventaire } from '@/lib/fiscal';
 import { Alerte, Carte, Etiquette, MentionProjet, SousTitre, Tableau, type Ton } from '@/components/ui/base';
 import { type BalanceAjustee, type EcritureInventaire, LIBELLE_STATUT_ECRITURE, type StatutEcriture, comparerBalances } from '@/lib/inventaire';
 import { formaterDate, formaterHorodatage, formaterMontant } from '@/lib/montants';
@@ -61,6 +61,10 @@ export default async function PageInventaire({ params, searchParams }: { params:
               Calculées par des règles explicites et versionnées, sans IA. Rien n’est enregistré tant que personne ne reprend une proposition ; une proposition reprise devient une écriture
               proposée, à approuver par une autre personne. {propositions.donnees.amortissements.motif}
             </p>
+            <Alerte ton="attention" className="text-sm" data-testid="etat-degressif" data-degressif-active={propositions.donnees.degressif.active ? 'oui' : 'non'}>
+              <strong>Amortissement dégressif : {propositions.donnees.degressif.active ? 'activé' : 'non activé'}.</strong> {propositions.donnees.degressif.motif}
+              {propositions.donnees.degressif.active ? '' : ' Une immobilisation déclarée en dégressif ne reçoit aucune proposition de dotation ; le linéaire n’est pas concerné.'}
+            </Alerte>
             {propositions.donnees.signalCesure !== 'disponible' ? (
               <Alerte ton="attention" className="text-sm">
                 {propositions.donnees.signalCesure === 'controles_obsoletes'
@@ -111,6 +115,54 @@ export default async function PageInventaire({ params, searchParams }: { params:
                     Impact sur le résultat : {formaterMontant(p.impacts.resultat)}. {p.impacts.commentaire}
                   </p>
                   {p.hypotheses.length ? <p className="text-sm text-texte-doux">Hypothèses : {p.hypotheses.join(' ')}</p> : null}
+                  {p.planAmortissement?.length ? (
+                    <div className="space-y-1" data-testid="plan-amortissement">
+                      <Tableau legende={`Plan d’amortissement année par année : ${p.libelle}`}>
+                        <thead>
+                          <tr>
+                            <th scope="col">Exercice clos le</th>
+                            <th scope="col">Méthode</th>
+                            <th scope="col" className="text-right">Base de calcul</th>
+                            <th scope="col" className="text-right">Dotation</th>
+                            <th scope="col" className="text-right">Cumul</th>
+                            <th scope="col" className="text-right">Valeur nette</th>
+                            <th scope="col">Calcul</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {p.planAmortissement.map((l) => (
+                            <tr key={l.rang} data-rang={l.rang} data-courant={l.exerciceCourant ? 'oui' : 'non'} className={l.exerciceCourant ? 'font-semibold' : undefined}>
+                              <th scope="row" className="!bg-transparent font-normal">
+                                {formaterDate(l.exerciceFin)}
+                                {l.exerciceCourant ? ' (proposée)' : ''}
+                              </th>
+                              <td>{l.methode === 'degressif' ? 'Dégressif' : 'Linéaire'}</td>
+                              <td className="text-right tabular-nums">{formaterMontant(l.baseCalcul)}</td>
+                              <td className="text-right tabular-nums">{formaterMontant(l.dotation)}</td>
+                              <td className="text-right tabular-nums">{formaterMontant(l.cumul)}</td>
+                              <td className="text-right tabular-nums">{formaterMontant(l.vnc)}</td>
+                              <td className="break-words">{l.formule}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </Tableau>
+                      <p className="text-sm text-texte-doux">La somme des dotations du plan est égale au montant amortissable, au centime : le dernier exercice solde l’arrondi.</p>
+                    </div>
+                  ) : null}
+                  {p.source ? (
+                    <details className="text-sm" data-testid="sources-proposition">
+                      <summary>Sources de la règle</summary>
+                      <ul className="list-disc space-y-1 pl-5 break-words">
+                        {[p.source, ...(p.sourcesComplementaires ?? [])].map((x: SourceInventaire, i) => (
+                          <li key={i}>
+                            {x.reference} — <strong>{LIBELLE_VERIFICATION_SOURCE[x.verification] ?? x.verification}</strong>
+                            {x.dateVerification ? `, consultée le ${formaterDate(x.dateVerification)}` : ''}. {x.periodeApplication ?? ''}
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="mt-1 text-texte-doux">Aucune règle n’est validée par un professionnel : elles sont à valider avant tout usage.</p>
+                    </details>
+                  ) : null}
                   {p.reprise ? (
                     <p className="text-sm" data-testid="deja-reprise">
                       Déjà reprise comme écriture d’inventaire ({LIBELLE_STATUT_ECRITURE[p.reprise.statut as StatutEcriture] ?? p.reprise.statut}).
@@ -123,7 +175,7 @@ export default async function PageInventaire({ params, searchParams }: { params:
             </ul>
             {propositions.donnees.abstentions.length ? (
               <details>
-                <summary>Le moteur s’est abstenu {propositions.donnees.abstentions.length} fois (données insuffisantes)</summary>
+                <summary>Le moteur s’est abstenu {propositions.donnees.abstentions.length} fois (données insuffisantes, cas hors périmètre ou dotation déjà comptabilisée)</summary>
                 <ul className="list-disc pl-5 text-sm">
                   {propositions.donnees.abstentions.slice(0, 50).map((x, i) => (
                     <li key={i}>
@@ -133,6 +185,21 @@ export default async function PageInventaire({ params, searchParams }: { params:
                 </ul>
               </details>
             ) : null}
+            {propositions.donnees.signalements?.length ? (
+              <div className="space-y-2" data-testid="signalements">
+                <h3 className="font-semibold">À traiter par le professionnel ({propositions.donnees.signalements.length})</h3>
+                <p className="text-sm text-texte-doux">Points que le moteur signale sans proposer d’écriture : il ne fabrique pas d’écriture non validée.</p>
+                <ul className="space-y-2">
+                  {propositions.donnees.signalements.map((x, i) => (
+                    <li key={i} data-signalement={x.code}>
+                      <Alerte ton="attention" className="text-sm break-words">
+                        <strong>{x.titre}.</strong> {x.motif} <span className="text-texte-doux">Source : {x.source.reference}</span>
+                      </Alerte>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </>
         )}
       </section>
@@ -140,7 +207,7 @@ export default async function PageInventaire({ params, searchParams }: { params:
       <section aria-labelledby="titre-immobilisations" className="space-y-3" data-testid="fichier-immobilisations">
         <SousTitre id="titre-immobilisations">Immobilisations saisies ({fichierImmos.ok ? fichierImmos.donnees.length : '—'})</SousTitre>
         <p className="text-sm text-texte-doux">
-          Fichier saisi par le cabinet pour proposer les dotations aux amortissements linéaires. Ce n’est pas le fichier des immobilisations du logiciel comptable, qui reste la référence ; rien n’y
+          Fichier saisi par le cabinet pour proposer les dotations aux amortissements (linéaires ; les dégressifs sont enregistrés comme déclaration du cabinet, sans calcul tant que l’éditeur ne l’a pas activé). Ce n’est pas le fichier des immobilisations du logiciel comptable, qui reste la référence ; rien n’y
           est importé ni exporté, et aucune écriture n’est créée par cette saisie.
         </p>
         {fichierImmos.ok && fichierImmos.donnees.length ? (
@@ -149,9 +216,14 @@ export default async function PageInventaire({ params, searchParams }: { params:
               <tr>
                 <th scope="col">Désignation</th>
                 <th scope="col">Compte</th>
-                <th scope="col" className="text-right">Base amortissable</th>
+                <th scope="col" className="text-right">Valeur brute</th>
+                <th scope="col">Mode</th>
+                <th scope="col" className="text-right">Valeur résiduelle</th>
+                <th scope="col">Acquisition</th>
                 <th scope="col">Mise en service</th>
                 <th scope="col" className="text-right">Durée (mois)</th>
+                <th scope="col">Sortie</th>
+                <th scope="col">Composant de</th>
                 <th scope="col">Action</th>
               </tr>
             </thead>
@@ -161,8 +233,16 @@ export default async function PageInventaire({ params, searchParams }: { params:
                   <th scope="row" className="!bg-transparent font-normal">{i.libelle}</th>
                   <td>{i.compteImmobilisation}</td>
                   <td className="text-right tabular-nums">{formaterMontant(i.baseAmortissable)}</td>
+                  <td>
+                    {LIBELLE_MODE_AMORTISSEMENT[i.modeAmortissement ?? 'lineaire'] ?? i.modeAmortissement}
+                    {i.modeAmortissement === 'degressif' ? ` (coefficient ${(i.coefficientDegressif ?? '').replace('.', ',')}${i.eligibiliteDegressifConfirmee ? ', éligibilité confirmée' : ', éligibilité non confirmée'})` : ''}
+                  </td>
+                  <td className="text-right tabular-nums">{i.valeurResiduelle ? formaterMontant(i.valeurResiduelle) : '—'}</td>
+                  <td>{i.dateAcquisition ? formaterDate(i.dateAcquisition) : '—'}</td>
                   <td>{formaterDate(i.dateMiseEnService)}</td>
                   <td className="text-right tabular-nums">{i.dureeMois}</td>
+                  <td>{i.dateSortie ? formaterDate(i.dateSortie) : '—'}</td>
+                  <td>{i.composantDe ? (fichierImmos.donnees.find((x) => x.id === i.composantDe)?.libelle ?? 'structure retirée') : '—'}</td>
                   <td>{collaboration ? <RetirerImmobilisation dossierId={id} immobilisation={i} /> : '—'}</td>
                 </tr>
               ))}
@@ -173,10 +253,11 @@ export default async function PageInventaire({ params, searchParams }: { params:
           <details>
             <summary>Saisir une immobilisation</summary>
             <Carte>
-              <SaisirImmobilisation dossierId={id} />
+              <SaisirImmobilisation dossierId={id} structures={fichierImmos.ok ? fichierImmos.donnees : []} degressifActive={propositions.ok && propositions.donnees.degressif.active} />
             </Carte>
           </details>
         ) : null}
+        {propositions.ok && propositions.donnees.rapprochement ? <RapprochementComptabilite rapprochement={propositions.donnees.rapprochement} libelles={fichierImmos.ok ? Object.fromEntries(fichierImmos.donnees.map((x) => [x.id, x.libelle])) : {}} /> : null}
       </section>
 
       <section aria-labelledby="titre-ecritures" className="space-y-3">
@@ -372,6 +453,62 @@ export default async function PageInventaire({ params, searchParams }: { params:
           })()
         )}
       </section>
+    </div>
+  );
+}
+
+
+/** Rapprochement du fichier saisi avec la comptabilité importée : écarts affichés, jamais corrigés. */
+function RapprochementComptabilite({ rapprochement, libelles }: { rapprochement: NonNullable<ReponsePropositions['rapprochement']>; libelles: Record<string, string> }) {
+  const nom = (ids: string[]) => ids.map((i) => libelles[i] ?? i).join(', ');
+  const tonDotation: Record<string, Ton> = { aucune_dotation_comptabilisee: 'neutre', identique: 'succes', differente: 'attention', non_ventilee: 'attention', calcul_indisponible: 'attention' };
+  const vide = rapprochement.dotations.length === 0 && rapprochement.comptes.length === 0 && rapprochement.comptesSansImmobilisation.length === 0;
+  return (
+    <div className="space-y-3" data-testid="rapprochement-immobilisations">
+      <h3 className="font-semibold">Rapprochement avec la comptabilité importée</h3>
+      <p className="text-sm text-texte-doux">
+        Le moteur compare le fichier saisi aux écritures importées. Une dotation déjà comptabilisée n’est jamais reproposée ; l’écart éventuel est affiché et n’est jamais corrigé.
+      </p>
+      {vide ? <p className="text-sm text-texte-doux">Rien à rapprocher.</p> : null}
+      {rapprochement.dotations.length ? (
+        <ul className="space-y-2">
+          {rapprochement.dotations.map((d) => (
+            <li key={d.compteDotation} className="space-y-1 rounded-lg border border-bordure bg-surface p-3 text-sm" data-rapprochement-dotation={d.compteDotation} data-etat={d.etat}>
+              <p className="flex flex-wrap items-center gap-2">
+                <Etiquette ton={tonDotation[d.etat] ?? 'neutre'}>{LIBELLE_ETAT_DOTATION[d.etat] ?? d.etat}</Etiquette>
+                <span className="font-medium">Compte {d.compteDotation}</span>
+                <span className="text-texte-doux break-words">{nom(d.immobilisations)}</span>
+              </p>
+              <p>
+                Calculée par le moteur : {d.dotationCalculee === null ? 'indisponible' : formaterMontant(d.dotationCalculee)} · comptabilisée : {formaterMontant(d.dotationComptabilisee)}
+                {d.ecart !== null ? ` · écart (comptabilisé − calculé) : ${formaterMontant(d.ecart)}` : ''}
+              </p>
+              <p className="text-texte-doux break-words">{d.message}</p>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {rapprochement.comptes.length ? (
+        <ul className="space-y-1 text-sm">
+          {rapprochement.comptes.map((c) => (
+            <li key={c.compte} data-rapprochement-compte={c.compte} data-etat={c.etat} className="break-words">
+              <Etiquette ton={c.etat === 'concordant' ? 'succes' : 'attention'}>{LIBELLE_ETAT_COMPTE_IMMOBILISATION[c.etat] ?? c.etat}</Etiquette> {c.message}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {rapprochement.comptesSansImmobilisation.length ? (
+        <div data-testid="comptes-a-saisir">
+          <p className="text-sm font-medium">Comptes d’immobilisation de la balance sans immobilisation saisie ({rapprochement.comptesSansImmobilisation.length}) — à saisir</p>
+          <ul className="list-disc pl-5 text-sm break-words">
+            {rapprochement.comptesSansImmobilisation.map((c) => (
+              <li key={c.compte} data-compte-a-saisir={c.compte}>
+                {c.compte} {c.libelle} : solde {formaterMontant(c.solde)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }

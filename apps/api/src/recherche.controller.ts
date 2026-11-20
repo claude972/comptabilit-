@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger'
 import { type AccesBd, sql } from '@comtaple/db';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
 import { BD } from './jetons.js';
+import { DELAI_MAX_RECHERCHE_MS, DOSSIERS_PAR_PAGE, MAX_CONSTATS_PAR_DOSSIER, MAX_ECRITURES_PAR_DOSSIER, MAX_PIECES_PAR_DOSSIER, rechercherPortefeuille } from './recherche-portefeuille.service.js';
 
 @ApiTags('Recherche')
 @ApiBearerAuth()
@@ -12,13 +13,16 @@ export class RechercheController {
 
   @Get()
   @ApiOperation({
-    summary: 'Recherche textuelle dans un dossier : pièces (texte extrait), écritures importées, constats',
+    summary: 'Recherche textuelle dans UN dossier (« entiteId ») ou, sans « entiteId », dans tout le portefeuille autorisé : pièces (texte extrait), écritures importées, constats',
     description:
-      'Recherche déterministe (plein texte français), sans IA. Les habilitations sont appliquées par la base avant toute recherche. Chaque résultat cite sa source (pièce et page, écriture et lot, constat) ; les extraits sont des contenus de pièces, donc non fiables, renvoyés en texte brut.',
+      `Recherche déterministe (plein texte français), sans IA. Les habilitations sont appliquées par la base avant toute recherche. Chaque résultat cite sa source (pièce et page, écriture et lot, constat) ; les extraits sont des contenus de pièces, donc non fiables, renvoyés en texte brut.\n\n` +
+      `AVEC « entiteId » : un dossier (niveau « dépôt » au moins ; un déposant ne voit que ses propres dépôts). SANS « entiteId » : le PORTEFEUILLE — les dossiers actifs où la personne a au moins le niveau « lecture », calculés par la base sous son identité (aucun identifiant n’est accepté pour élargir ou choisir le périmètre) ; refusé (403) aux déposants. Résultats groupés PAR DOSSIER (nom, totaux exacts par catégorie, au plus ${MAX_PIECES_PAR_DOSSIER} pièces, ${MAX_ECRITURES_PAR_DOSSIER} écritures et ${MAX_CONSTATS_PAR_DOSSIER} constats par dossier), ${DOSSIERS_PAR_PAGE} dossiers par page (« page »), classés par nombre de résultats décroissant puis nom. Les dossiers sans résultat ne sont ni listés ni nommés, seulement décomptés (« dossiersSansResultat »). Délai maximal ${DELAI_MAX_RECHERCHE_MS / 1000} s : au-delà, 503 explicite, jamais un résultat partiel présenté comme complet. Les pièces en quarantaine sont exclues.`,
   })
-  @ApiQuery({ name: 'entiteId', required: true })
+  @ApiQuery({ name: 'entiteId', required: false, description: 'Un dossier ; absent : tout le portefeuille autorisé.' })
   @ApiQuery({ name: 'q', required: true })
-  async chercher(@AccesCourant() acces: Acces, @Query('entiteId') entiteId: string, @Query('q') q: string) {
+  @ApiQuery({ name: 'page', required: false, description: 'Portefeuille seulement : page de dossiers (à partir de 1).' })
+  async chercher(@AccesCourant() acces: Acces, @Query('entiteId') entiteId: string | undefined, @Query('q') q: string, @Query('page') page?: string) {
+    if (entiteId === undefined) return rechercherPortefeuille(this.bd, acces, q, page);
     exigerUuid(entiteId, 'entiteId');
     const requete = (q ?? '').trim();
     if (requete.length < 2 || requete.length > 200) throw new BadRequestException('Recherche de 2 à 200 caractères');

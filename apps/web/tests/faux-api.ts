@@ -20,8 +20,8 @@ import {
   elementsBanqueDepuisEcritures, enBlocs, lireCamt053, lireCsvBanque, lireOfx, proposerProfilCsv, rapprocher, schemaParametresRapprochement, schemaProfilCsvBanque,
   type DecisionFacture, type DecisionTiers, type FicheFacture, type PieceFacture, cleEcriture, suivreTiersEtFactures,
   type ContenuLettre, type LettreDatee, PRESTATIONS, calculerRentabiliteMission, schemaChaineDecimale, dec, estimerTemps, evaluerApplicabilite, schemaContenuLettre, schemaCriteresEvolution, situerTravail, somme, versChaine,
-  type ControleAmelioration, CRITERES_AMELIORATION, PARAMETRES_SEUIL_MONTANT, suggererAmeliorations,
-  PHRASES_POUSSEES, SERVICES_NOTIFICATION, reduireAgentUtilisateur, verifierPointAcces,
+  type ControleAmelioration, type CorrectionExtraction, type DecisionRapprochementRevue, CRITERES_AMELIORATION, PARAMETRES_SEUIL_MONTANT, suggererAmeliorations,
+  PHRASES_POUSSEES, SERVICES_NOTIFICATION, estDateIso, MOTIF_DEGRESSIF_NON_ACTIVE, proposerEcrituresInventaire, reduireAgentUtilisateur, verifierPointAcces,
 } from '@comtaple/core';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
@@ -149,6 +149,10 @@ let etat: Etat;
 interface Suite {
   regles: Enr[];
   ecritures: Enr[];
+  immobilisations: Enr[];
+  lignesAmortissements: Enr[];
+  /** Calcul du dégressif activé par l'éditeur (AMORTISSEMENT_DEGRESSIF_ACTIVE) : FAUX par défaut, comme l'API. Piloté par /__test/amortissements. */
+  degressifActive: boolean;
   missions: Enr[];
   lettres: Enr[];
   travaux: Enr[];
@@ -171,6 +175,9 @@ interface Suite {
   echangesPortefeuille: Enr[];
   /** Suggestions d'amélioration écartées (amelioration.service.ts), en ajout seul. */
   suggestionsEcartees: Enr[];
+  /** Corrections de champs extraits et décisions de rapprochement FICTIVES (pilotées par /__test/revue), pour les suggestions d'amélioration. */
+  correctionsExtraction: Enr[];
+  decisionsRapprochement: Enr[];
 }
 const ID_EVOLUTIONS = { metropole: 'eeeeeeee-0000-4000-8000-000000000001', naf: 'eeeeeeee-0000-4000-8000-000000000002', martinique: 'eeeeeeee-0000-4000-8000-000000000003', brute: 'eeeeeeee-0000-4000-8000-000000000004' } as const;
 function suiteInitiale(): Suite {
@@ -185,7 +192,7 @@ function suiteInitiale(): Suite {
     conditions: etatVerification === 'verifiee' ? 'Exercices ouverts à compter du 1er janvier 2025.' : null, resume: etatVerification === 'verifiee' ? `Évolution fictive de test : ${reference}.` : null, criteres, etatVerification, verifieeLe: etatVerification === 'verifiee' ? '2026-11-18' : null,
   });
   return {
-    regles: [], ecritures: [], missions: [], lettres: [], travaux: [], baremes: [], conseils: [], evenements: [], suivis: [], restitutions: [], archives: new Map(), membres: new Map(), campagnes: [], coutsHoraires: new Map(), echangesAssistant: [], echangesPortefeuille: [], suggestionsEcartees: [],
+    regles: [], ecritures: [], immobilisations: [], lignesAmortissements: [], degressifActive: false, missions: [], lettres: [], travaux: [], baremes: [], conseils: [], evenements: [], suivis: [], restitutions: [], archives: new Map(), membres: new Map(), campagnes: [], coutsHoraires: new Map(), echangesAssistant: [], echangesPortefeuille: [], suggestionsEcartees: [], correctionsExtraction: [], decisionsRapprochement: [],
     sources: [
       source('BOFiP', 'BOI-BIC-CHG-20-30-10 (biens de faible valeur)', 'https://bofip.impots.gouv.fr/bofip/2109-PGP.html', true),
       source('BOFiP', 'BOI-CF-IOR-60-40-20 (format du FEC)', 'https://bofip.impots.gouv.fr/bofip/9028-PGP.html', true),
@@ -217,7 +224,7 @@ function regleApplicable(entiteId: string, controleId: string): { regle: Enr; po
   return cabinet ? { regle: cabinet, portee: 'cabinet' } : null;
 }
 /** Pannes programmées par les tests (routes /__test/pannes). */
-let pannes = { couperMorceauNumero: 0, conflitMorceauNumero: 0, ralentirMorceauxMs: 0, erreurTerminer: 0 };
+let pannes = { couperMorceauNumero: 0, conflitMorceauNumero: 0, ralentirMorceauxMs: 0, erreurTerminer: 0, delaiRecherche: 0 };
 let compteurMorceaux = 0;
 let journal: Array<{ methode: string; chemin: string; statut: number; utilisateur: string | null }> = [];
 
@@ -650,10 +657,6 @@ async function routerV1(r: Requete): Promise<unknown> {
     return ENTITES.filter((e) => e.cabinetId === a.cabinetId && (gestionnaire || niveauSur(a, e.id)))
       .map((e) => ({ id: e.id, raisonSociale: e.raisonSociale, formeJuridique: e.formeJuridique ?? null, regimeFiscal: e.regimeFiscal ?? 'IS', territoireFiscal: e.territoireFiscal ?? 'metropole', niveau: niveauSur(a, e.id) }))
       .sort((x, y) => x.raisonSociale.localeCompare(y.raisonSociale));
-  }
-  if (m === 'GET' && s[0] === 'dossiers' && s[2] === 'immobilisations' && s.length === 3) {
-    exigerNiveau(a, exigerUuid(s[1]), 'lecture');
-    return [];
   }
   // ── États fiscaux (projets) : le simulateur ne recalcule rien ; il rend l'abstention ou l'absence de données, comme l'API réelle.
   if (m === 'GET' && s[0] === 'exercices' && (s[2] === 'liasse' || s[2] === 'annexe') && s.length === 3) {
@@ -2472,7 +2475,9 @@ function routerSuite(r: Requete, a: Acces): unknown {
           ...suite.suggestionsEcartees.filter((x) => x.cabinetId === a.cabinetId).map((x) => ({ empreinte: x.empreinte, le: x.creeLe, motif: x.motif })),
           ...duCabinet.filter((x) => x.statut === 'refusee' || x.statut === 'retiree').map((x) => ({ empreinte: empreinteRegle(x), le: x.decideeLe ?? x.creeLe, motif: x.statut === 'refusee' ? 'Règle refusée' : 'Règle retirée' })),
         ];
-        const res = suggererAmeliorations({ constats, corrections: [], rapprochements: [], controles, ecartees, reglesEnCours: duCabinet.filter((x) => x.statut === 'proposee' || x.statut === 'approuvee').map(empreinteRegle) });
+        const corrections = suite.correctionsExtraction.filter((x) => visible(x.dossierId)).map((x) => ({ ...x }) as CorrectionExtraction);
+        const rapprochements = suite.decisionsRapprochement.filter((x) => visible(x.dossierId)).map((x) => ({ ...x }) as DecisionRapprochementRevue);
+        const res = suggererAmeliorations({ constats, corrections, rapprochements, controles, ecartees, reglesEnCours: duCabinet.filter((x) => x.statut === 'proposee' || x.statut === 'approuvee').map(empreinteRegle) });
         const vus = ENTITES.filter((e) => e.cabinetId === a.cabinetId && visible(e.id));
         return {
           ...res,
@@ -2592,6 +2597,110 @@ function routerSuite(r: Requete, a: Acces): unknown {
       }
     }
     return undefined;
+  }
+
+  // ── Fichier des immobilisations et propositions d'amortissement (calqué sur fiscal.controller.ts) ──
+  // Le simulateur applique les mêmes règles de saisie que l'API ; les propositions sont calculées par le VRAI moteur du paquet core,
+  // sur les écritures fictives posées par /__test/amortissements (aucun import réel ici).
+  if (s[0] === 'dossiers' && s[2] === 'immobilisations' && (s.length === 3 || s.length === 4)) {
+    const entiteId = exigerUuid(s[1]);
+    if (m === 'GET' && s.length === 3) {
+      exigerNiveau(a, entiteId, 'lecture');
+      return suite.immobilisations.filter((i) => i.entiteId === entiteId);
+    }
+    if (m === 'POST' && s.length === 3) {
+      const d = r.json();
+      const libelle = chaine(d, 'libelle', 1, 200);
+      if (typeof d.compteImmobilisation !== 'string' || !/^2\d{2,11}$/.test(d.compteImmobilisation)) throw invalide('compteImmobilisation', 'compte d’immobilisation du PCG attendu (classe 2)');
+      const decimal = (nom: string, requis: boolean): string | null => {
+        if (d[nom] === undefined || d[nom] === null) { if (requis) throw invalide(nom, 'chaîne décimale attendue'); return null; }
+        if (typeof d[nom] !== 'string' || !DECIMAL.test(d[nom])) throw invalide(nom, 'Montant invalide : chaîne décimale attendue');
+        return d[nom];
+      };
+      const date = (nom: string, requis: boolean): string | null => {
+        if (d[nom] === undefined || d[nom] === null) { if (requis) throw invalide(nom, 'date AAAA-MM-JJ attendue'); return null; }
+        if (typeof d[nom] !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(d[nom]) || !estDateIso(d[nom])) throw invalide(nom, 'date AAAA-MM-JJ attendue');
+        return d[nom];
+      };
+      const base = decimal('baseAmortissable', true) as string;
+      const mes = date('dateMiseEnService', true) as string;
+      const acquisition = date('dateAcquisition', false);
+      if (acquisition !== null && acquisition > mes) throw invalide('dateAcquisition', 'La date d’acquisition ne peut pas être postérieure à la mise en service');
+      if (!Number.isInteger(d.dureeMois) || d.dureeMois < 1 || d.dureeMois > 1200) throw invalide('dureeMois', 'entier de 1 à 1200 attendu');
+      const anterieurs = decimal('amortissementsAnterieurs', false);
+      const residuelle = decimal('valeurResiduelle', false);
+      const sortie = date('dateSortie', false);
+      const mode = d.modeAmortissement ?? 'lineaire';
+      if (mode !== 'lineaire' && mode !== 'degressif') throw invalide('modeAmortissement', 'lineaire ou degressif attendu');
+      if (!dec(base).isPositive() || dec(base).isZero()) throw invalide('baseAmortissable', 'La base amortissable (valeur brute) doit être strictement positive');
+      if (sortie !== null && sortie < mes) throw invalide('dateSortie', 'La date de sortie ne peut pas précéder la mise en service');
+      if (residuelle !== null && (dec(residuelle).isNegative() || dec(residuelle).greaterThanOrEqualTo(dec(base)))) throw invalide('valeurResiduelle', 'La valeur résiduelle doit être positive ou nulle et strictement inférieure à la valeur brute');
+      const net = dec(base).minus(residuelle !== null ? dec(residuelle) : dec('0'));
+      if (anterieurs !== null && (dec(anterieurs).isNegative() || dec(anterieurs).greaterThan(net))) throw invalide('amortissementsAnterieurs', 'Les amortissements antérieurs sont compris entre zéro et le montant amortissable (valeur brute − valeur résiduelle)');
+      const coefficient = d.coefficientDegressif ?? null;
+      const eligible = d.eligibiliteDegressifConfirmee ?? null;
+      if (mode === 'degressif') {
+        if (acquisition === null) throw invalide('dateAcquisition', 'Dégressif : la date d’acquisition (ou de construction) est obligatoire, le point de départ du dégressif étant le premier jour du mois d’acquisition');
+        if (!d.compteImmobilisation.startsWith('21')) throw invalide('compteImmobilisation', 'Le dégressif ne vise que des immobilisations corporelles (compte de la classe 21)');
+        if (d.dureeMois % 12 !== 0 || d.dureeMois < 36 || d.dureeMois > 600) throw invalide('dureeMois', 'Dégressif : durée en années entières, de 3 à 50 ans (36 à 600 mois)');
+        if (typeof eligible !== 'boolean') throw invalide('eligibiliteDegressifConfirmee', 'Dégressif : le cabinet doit confirmer (true) ou infirmer (false) l’éligibilité du bien ; elle n’est jamais devinée');
+        const annees = d.dureeMois / 12;
+        const attendu = annees <= 4 ? '1.25' : annees <= 6 ? '1.75' : '2.25';
+        if (coefficient === null) throw invalide('coefficientDegressif', 'Dégressif : le coefficient est à déclarer');
+        if (coefficient !== attendu) throw invalide('coefficientDegressif', `Coefficient incohérent avec la durée de ${annees} ans : ${attendu} attendu (1.25 pour 3 ou 4 ans, 1.75 pour 5 ou 6 ans, 2.25 au-delà de 6 ans)`);
+      } else if (coefficient !== null || eligible !== null) throw invalide('coefficientDegressif', 'Le coefficient et l’éligibilité n’ont de sens qu’en mode dégressif');
+      if (d.composantDe !== undefined && d.composantDe !== null) {
+        const structure = suite.immobilisations.find((i) => i.id === d.composantDe && i.entiteId === entiteId);
+        if (!structure) throw new ErreurHttp(400, 'composantDe : structure introuvable dans ce dossier');
+        if (structure.composantDe) throw new ErreurHttp(400, 'composantDe : la structure est elle-même un composant (un seul niveau de rattachement)');
+      }
+      exigerNiveau(a, entiteId, 'collaboration');
+      const i = {
+        id: randomUUID(), cabinetId: a.cabinetId, entiteId, libelle, compteImmobilisation: d.compteImmobilisation, baseAmortissable: versChaine(dec(base)), dateAcquisition: acquisition, dateMiseEnService: mes, dureeMois: d.dureeMois,
+        amortissementsAnterieurs: anterieurs !== null ? versChaine(dec(anterieurs)) : null, modeAmortissement: mode, coefficientDegressif: mode === 'degressif' ? coefficient : null, eligibiliteDegressifConfirmee: mode === 'degressif' ? eligible : null,
+        valeurResiduelle: residuelle !== null ? versChaine(dec(residuelle)) : null, dateSortie: sortie, composantDe: d.composantDe ?? null, saisiePar: a.utilisateurId, creeLe: instant(),
+      };
+      suite.immobilisations.push(i);
+      tracerAudit(a, 'immobilisation.saisie', 'immobilisation', i.id, entiteId, { compte: i.compteImmobilisation, acquisition: i.dateAcquisition, dureeMois: i.dureeMois, mode });
+      return i;
+    }
+    if (m === 'DELETE' && s.length === 4) {
+      exigerNiveau(a, entiteId, 'collaboration');
+      const id = exigerUuid(s[3]);
+      const cible = suite.immobilisations.find((i) => i.id === id && i.entiteId === entiteId);
+      if (!cible) throw new ErreurHttp(404, 'Immobilisation introuvable dans ce dossier');
+      if (suite.immobilisations.some((i) => i.composantDe === id)) throw new ErreurHttp(409, 'Cette immobilisation est la structure d’au moins un composant : retirez d’abord ses composants');
+      suite.immobilisations = suite.immobilisations.filter((i) => i.id !== id);
+      tracerAudit(a, 'immobilisation.retiree', 'immobilisation', id, entiteId, {});
+      return { id, retiree: true };
+    }
+  }
+  if (m === 'GET' && s[0] === 'exercices' && s[2] === 'inventaire' && s[3] === 'propositions' && s.length === 4) {
+    const exercice = chargerExercice(a, exigerUuid(s[1]), 'lecture');
+    const fichier = suite.immobilisations.filter((i) => i.entiteId === exercice.entiteId);
+    if (fichier.length === 0 && suite.lignesAmortissements.length === 0) return undefined; // sans donnée importée : 409, comme avant
+    let n = 0;
+    const lignes = suite.lignesAmortissements.map((l) => ({
+      id: `SIM-${n}`, numeroLigne: ++n, journalCode: 'OD', journalLib: 'Opérations diverses', ecritureNum: `SIM${n}`, ecritureDate: l.ecritureDate, compteNum: l.compteNum, compteLib: l.compteLib ?? `Compte ${l.compteNum}`, compAuxNum: null, compAuxLib: null,
+      pieceRef: `SIM${n}`, pieceDate: l.ecritureDate, ecritureLib: 'Écriture fictive de test', debit: l.debit ?? '0.00', credit: l.credit ?? '0.00', ecritureLet: null, dateLet: null, validDate: null, montantDevise: null, idevise: null,
+    })) as unknown as LigneEcriture[];
+    const resultat = proposerEcrituresInventaire({
+      lignes, exercice: { debut: exercice.debut, fin: exercice.fin }, lireLibelles: true, options: { amortissementDegressifActive: suite.degressifActive },
+      immobilisations: fichier.filter((i) => i.dateMiseEnService <= exercice.fin).map((i) => ({ id: i.id, libelle: i.libelle, compteImmobilisation: i.compteImmobilisation, baseAmortissable: i.baseAmortissable, dateAcquisition: i.dateAcquisition, dateMiseEnService: i.dateMiseEnService, dureeMois: i.dureeMois, amortissementsAnterieurs: i.amortissementsAnterieurs, modeAmortissement: i.modeAmortissement, coefficientDegressif: i.coefficientDegressif, eligibiliteDegressifConfirmee: i.eligibiliteDegressifConfirmee, valeurResiduelle: i.valeurResiduelle, dateSortie: i.dateSortie, composantDe: i.composantDe })),
+    });
+    return {
+      ...resultat,
+      exercice: { id: exercice.id, debut: exercice.debut, fin: exercice.fin, versionDonnees: exercice.versionDonnees ?? 1 },
+      donnees: { lotImportId: 'simule', version: 1, statutDonnees: 'travail_avant_cloture' },
+      signalCesure: 'controles_non_executes',
+      degressif: suite.degressifActive
+        ? { active: true, motif: 'Calcul du dégressif activé par l’éditeur. Le texte de loi (CGI art. 39 A) reste non vérifié sur une source officielle et les règles ne sont pas validées par un professionnel : les propositions sont à contrôler.' }
+        : { active: false, motif: MOTIF_DEGRESSIF_NON_ACTIVE },
+      amortissements: fichier.length > 0
+        ? { proposes: true, motif: `Dotations (linéaires, ou dégressives si le calcul est activé) proposées à partir des ${fichier.length} immobilisation(s) SAISIE(S) par le cabinet pour ce dossier ; ce fichier n’est pas celui du logiciel comptable, qui reste la référence.` }
+        : { proposes: false, motif: 'Aucune immobilisation n’est saisie pour ce dossier (base, date de mise en service, durée) : aucune dotation n’est proposée.' },
+      propositions: resultat.propositions.map((p) => ({ ...p, reprise: null })),
+    };
   }
 
   // ── Écritures d'inventaire ──
@@ -2943,6 +3052,46 @@ function routerSuite(r: Requete, a: Acces): unknown {
   }
 
   // ── Recherche (FICTIVE : sous-chaîne insensible à la casse, sans analyse linguistique ; marqueurs « » comme l'API) ──
+  if (m === 'GET' && chemin === 'recherche' && r.query.get('entiteId') === null) {
+    // PORTEFEUILLE (calqué sur recherche-portefeuille.service.ts) : sans « entiteId », dossiers où la personne a au moins « lecture ».
+    if (a.role === 'client_deposant') throw new ErreurHttp(403, 'La recherche sur plusieurs dossiers n’est pas ouverte aux déposants');
+    const requete = (r.query.get('q') ?? '').trim();
+    if (requete.length < 2 || requete.length > 200) throw new ErreurHttp(400, 'Recherche de 2 à 200 caractères');
+    const page = Number(r.query.get('page') ?? 1);
+    if (!Number.isInteger(page) || page < 1 || page > 1000) throw new ErreurHttp(400, 'page : entier positif attendu');
+    if (pannes.delaiRecherche) throw new ErreurHttp(503, 'La recherche a dépassé le délai de 8 s : précisez les termes ou cherchez dans un dossier.');
+    const PAR_PAGE = 10;
+    const mots = requete.split(/\s+/).filter((x) => x !== 'OR' && x.length > 1).map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const motif = new RegExp(mots.join('|') || '$^', 'gi');
+    const trouve = (texte: string) => new RegExp(motif.source, 'i').test(texte);
+    const autorises = ENTITES.filter((e) => e.cabinetId === a.cabinetId && auMoins(niveauSur(a, e.id) ?? 'depot', 'lecture')).map((e) => ({ id: e.id as string, nom: e.raisonSociale as string, niveau: niveauSur(a, e.id) as Niveau }));
+    const actifs = new Set(etat.lots.filter((l) => l.actif).map((l) => l.id));
+    const courantes = new Set(etat.executions.filter((e) => !e.obsolete).map((e) => e.id));
+    const trouves = autorises.map((d) => {
+      const pieces = etat.documents.filter((x) => x.entiteId === d.id && x.statut !== 'quarantaine').flatMap((x) => {
+        const extraction = etat.extractions.find((y) => y.documentId === x.id && y.actuelle);
+        const texte = Object.values((extraction?.champs ?? {}) as Enr).map((c) => c?.extrait).filter((y): y is string => typeof y === 'string').join('\n');
+        return texte && trouve(texte) ? [{ documentId: x.id, nomOrigine: x.nomOrigine, page: 1, statut: x.statut, extrait: texte.replace(motif, '«$&»') }] : [];
+      });
+      const ecritures = etat.lignes
+        .filter((l) => l.entiteId === d.id && actifs.has(l.lotImportId) && trouve(`${l.ecritureLib} ${l.pieceRef} ${l.compteLib}`))
+        .map((l) => ({ id: l.id, exerciceId: l.exerciceId, lotImportId: l.lotImportId, date: l.ecritureDate, journal: l.journalCode, numero: l.ecritureNum, compte: l.compteNum, piece: l.pieceRef, libelle: l.ecritureLib, debit: l.debit, credit: l.credit }));
+      const constats = etat.constats
+        .filter((c) => c.entiteId === d.id && courantes.has(c.executionId) && trouve(`${c.titre} ${c.explication}`))
+        .map((c) => ({ id: c.id, exerciceId: c.exerciceId, controleId: c.controleId, titre: c.titre, statutRevue: c.statutRevue, montant: c.montant }));
+      return { d, pieces, ecritures, constats, total: pieces.length + ecritures.length + constats.length };
+    });
+    const avec = trouves.filter((x) => x.total > 0).sort((x, y) => y.total - x.total || x.d.nom.localeCompare(y.d.nom, 'fr') || x.d.id.localeCompare(y.d.id));
+    return {
+      requete, perimetre: 'Pièces, écritures du lot actif et constats de la dernière exécution, dans les dossiers où vous avez au moins le niveau « lecture »',
+      page, dossiersParPage: PAR_PAGE, dossiersAutorises: autorises.length, dossiersAvecResultats: avec.length, dossiersSansResultat: autorises.length - avec.length,
+      limites: { delaiMaxMs: 8000, piecesParDossier: 3, ecrituresParDossier: 5, constatsParDossier: 5 },
+      dossiers: avec.slice((page - 1) * PAR_PAGE, page * PAR_PAGE).map((x) => ({
+        id: x.d.id, nom: x.d.nom, niveau: x.d.niveau, totaux: { pieces: x.pieces.length, ecritures: x.ecritures.length, constats: x.constats.length },
+        pieces: x.pieces.slice(0, 3), ecritures: x.ecritures.slice(0, 5), constats: x.constats.slice(0, 5),
+      })),
+    };
+  }
   if (m === 'GET' && chemin === 'recherche') {
     const entiteId = exigerUuid(r.query.get('entiteId') ?? undefined, 'entiteId');
     const requete = (r.query.get('q') ?? '').trim();
@@ -3153,27 +3302,40 @@ function routerSuite(r: Requete, a: Acces): unknown {
     }
     if (m === 'POST') {
       const d = r.json();
-      const inconnue = Object.keys(d).find((k) => k !== 'question' && k !== 'dossierIds' && k !== 'periode');
+      const inconnue = Object.keys(d).find((k) => k !== 'question' && k !== 'dossierIds' && k !== 'periode' && k !== 'tranche');
       if (inconnue) throw invalide(inconnue, 'clé inattendue');
       const question = typeof d.question === 'string' ? d.question.trim() : '';
       if (question.length < 3) throw invalide('question', 'question de 3 caractères au moins');
       if (question.length > 1000) throw invalide('question', 'question de 1000 caractères au plus');
       if (d.dossierIds !== undefined && (!Array.isArray(d.dossierIds) || d.dossierIds.length < 1 || d.dossierIds.length > 200 || d.dossierIds.some((x: unknown) => typeof x !== 'string' || !UUID.test(x)))) throw invalide('dossierIds', 'identifiant invalide');
-      if (d.periode !== undefined) throw new ErreurHttp(400, 'Simulateur : la période commune n’est pas imitée');
+      const dateOk = (x: unknown) => typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x) && !Number.isNaN(Date.parse(x));
+      if (d.periode !== undefined && (typeof d.periode !== 'object' || d.periode === null || !dateOk(d.periode.debut) || !dateOk(d.periode.fin) || d.periode.debut > d.periode.fin || Object.keys(d.periode).some((k) => k !== 'debut' && k !== 'fin'))) throw invalide('periode', 'période invalide');
+      if (d.tranche !== undefined && (!Number.isInteger(d.tranche) || d.tranche < 1 || d.tranche > 10)) throw invalide('tranche', 'tranche invalide');
+      const commune: { debut: string; fin: string } | null = d.periode ?? null;
       if (autorises.length === 0) throw new ErreurHttp(403, 'Aucun dossier ne vous est ouvert en lecture : l’assistant n’a rien à interroger');
       const demandes: string[] | null = d.dossierIds ? [...new Set((d.dossierIds as string[]).map((x) => x.toLowerCase()))] : null;
       const horsPerimetre = demandes ? demandes.filter((x) => !autorises.some((e) => e.id === x)) : [];
       const retenus = demandes ? autorises.filter((e) => demandes.includes(e.id)) : autorises;
       if (retenus.length === 0) throw new ErreurHttp(404, 'Aucun des dossiers demandés n’est dans votre périmètre');
-      const interroges = retenus.slice(0, BORNE);
+      // Comme le service réel : pertinence (données importées sur un exercice recoupant, puis exercice, puis rien), puis ordre alphabétique.
+      const exerciceDe = (id: string) => etat.exercices.filter((x) => x.entiteId === id && (!commune || (x.debut <= commune.fin && x.fin >= commune.debut))).sort((x, y) => y.fin.localeCompare(x.fin))[0];
+      const rangDe = (id: string) => {
+        const ex = exerciceDe(id);
+        return !ex ? 2 : etat.lots.some((l) => l.actif && l.exerciceId === ex.id) ? 0 : 1;
+      };
+      const classes = [...retenus].sort((x, y) => rangDe(x.id) - rangDe(y.id));
+      const totalTranches = Math.ceil(classes.length / BORNE);
+      const numero = d.tranche ?? 1;
+      if (numero > totalTranches) throw new ErreurHttp(409, `La tranche ${numero} n’existe plus : votre périmètre compte ${totalTranches} tranche${totalTranches > 1 ? 's' : ''}. Reposez la question depuis la première tranche.`);
+      const interroges = classes.slice((numero - 1) * BORNE, numero * BORNE);
       const budget = budgetPour(interroges.length);
       const segments: Enr[] = [];
       const sources: Enr[] = [];
       let fonctionsTotal = 0;
       const dossiers = interroges.map((dossier) => {
-        const exercice = etat.exercices.filter((x) => x.entiteId === dossier.id).sort((x, y) => y.fin.localeCompare(x.fin))[0];
+        const exercice = exerciceDe(dossier.id);
         const annee = new Date().getUTCFullYear();
-        const periode = exercice ? { debut: exercice.debut, fin: exercice.fin } : { debut: `${annee}-01-01`, fin: `${annee}-12-31` };
+        const periode = exercice ? (commune ? { debut: commune.debut > exercice.debut ? commune.debut : exercice.debut, fin: commune.fin < exercice.fin ? commune.fin : exercice.fin } : { debut: exercice.debut, fin: exercice.fin }) : { debut: `${annee}-01-01`, fin: `${annee}-12-31` };
         const { elements, fonctions } = rechercheSansIa(dossier.id, question, exercice, periode);
         fonctionsTotal += fonctions;
         // Calculs du moteur d'abord, pièces en dernier ; sources officielles hors décompte par dossier.
@@ -3186,7 +3348,7 @@ function routerSuite(r: Requete, a: Acces): unknown {
           sources.push(c);
           segments.push({ type: e.nature === 'resultat_moteur' ? 'calcul' : 'fait', texte: Object.keys(e.valeurs).length ? `${e.libelle} — ${Object.entries(e.valeurs).map(([k, v]) => `${k} : ${v}`).join(' ; ')}` : e.libelle, citations: [c], reglementaire: e.nature === 'source_officielle' });
         }
-        const manquantes = exercice ? (etat.lots.some((l) => l.actif && l.exerciceId === exercice.id) ? [] : ['Aucune donnée comptable importée pour cet exercice.']) : ['Aucun exercice n’est ouvert dans ce dossier : la comptabilité n’a pas été interrogée.'];
+        const manquantes = exercice ? (etat.lots.some((l) => l.actif && l.exerciceId === exercice.id) ? [] : ['Aucune donnée comptable importée pour cet exercice.']) : [commune ? 'Aucun exercice de ce dossier ne recoupe la période demandée : la comptabilité n’a pas été interrogée.' : 'Aucun exercice n’est ouvert dans ce dossier : la comptabilité n’a pas été interrogée.'];
         return { id: dossier.id, nom: dossier.nom, exercice: exercice ? { id: exercice.id, debut: exercice.debut, fin: exercice.fin } : null, periode: exercice ? periode : null, donneesManquantes: manquantes, sources: gardes.length, nonRestitues: duDossier.length - gardes.length };
       });
       const reponse = {
@@ -3196,7 +3358,11 @@ function routerSuite(r: Requete, a: Acces): unknown {
         pointsEcartes: [], abstentionsPartielles: [], refus: [], sources, etapes: 0,
         confiance: { statut: 'non_evaluee', mention: MENTION_CONFIANCE_IA }, iaIndisponible: { code: 'non_connecte' }, prompt: null,
       };
-      const perimetre = { borne: BORNE, elementsParDossier: budget, autorises: autorises.length, dossiers, nonInterroges: retenus.slice(BORNE).map((e) => ({ id: e.id, nom: e.nom })), horsPerimetre, periodeCommune: null };
+      const perimetre = {
+        borne: BORNE, tranche: { numero, total: totalTranches, premier: (numero - 1) * BORNE + 1, dernier: (numero - 1) * BORNE + interroges.length, retenus: classes.length },
+        ordre: 'Dossiers ayant des données comptables importées d’abord, puis dossiers ayant un exercice, puis les autres ; à égalité, ordre alphabétique.',
+        elementsParDossier: budget, autorises: autorises.length, dossiers, nonInterroges: classes.filter((e) => !interroges.includes(e)).map((e) => ({ id: e.id, nom: e.nom })), horsPerimetre, periodeCommune: commune,
+      };
       const echangeId = randomUUID();
       suite.echangesPortefeuille.push({ id: echangeId, cabinetId: a.cabinetId, utilisateurId: a.utilisateurId, question, mode: 'sans_ia', statut: reponse.statut, perimetre, reponse, creeLe: horodatagePg(suite.echangesPortefeuille.length), fonctions: fonctionsTotal });
       tracerAudit(a, 'assistant.question_portefeuille', 'echange_portefeuille', echangeId, null, { mode: 'sans_ia', statut: reponse.statut, dossiersInterroges: dossiers.length, horsPerimetre: horsPerimetre.length, longueurQuestion: question.length });
@@ -3368,7 +3534,7 @@ const serveur = http.createServer(async (req, res) => {
         mail = mailInitial();
         poussees = pousseesInitial();
         preuveIa = 'sans_fournisseur';
-        pannes = { couperMorceauNumero: 0, conflitMorceauNumero: 0, ralentirMorceauxMs: 0, erreurTerminer: 0 };
+        pannes = { couperMorceauNumero: 0, conflitMorceauNumero: 0, ralentirMorceauxMs: 0, erreurTerminer: 0, delaiRecherche: 0 };
         compteurMorceaux = 0;
         journal = [];
         resultat = { ok: true };
@@ -3395,6 +3561,12 @@ const serveur = http.createServer(async (req, res) => {
         if (d.obsoleteRapprochement) for (const x of etat.rapprochementsExec) x.obsolete = true;
         if (d.exercice) Object.assign(etat.exercices[0]!, d.exercice); // ex. exercice ouvert avant 2025 (pas de table de correspondance)
         resultat = { entites: ENTITES.map((e) => ({ id: e.id, raisonSociale: e.raisonSociale, territoireFiscal: e.territoireFiscal ?? 'metropole' })), habilitations: HABILITATIONS, exercices: etat.exercices.map((x) => ({ id: x.id, entiteId: x.entiteId, debut: x.debut, fin: x.fin })), televersements: etat.televersements.map((t) => ({ id: t.id, statut: t.statut })), propositions: etat.propositions.map((x) => ({ id: x.id, statut: x.statut, motif: x.motif, regle: x.regle })) };
+      } else if (methode === 'POST' && segments[1] === 'amortissements') {
+        // Pilotage : écritures FICTIVES (compte, date, débit, crédit) que le vrai moteur d'inventaire rapproche du fichier des immobilisations.
+        const d = json();
+        if (Array.isArray(d.lignes)) suite.lignesAmortissements = d.lignes as Enr[];
+        if (typeof d.degressifActive === 'boolean') suite.degressifActive = d.degressifActive;
+        resultat = { lignes: suite.lignesAmortissements.length, immobilisations: suite.immobilisations.length };
       } else if (methode === 'POST' && segments[1] === 'revue') {
         // Pilotage : constats FICTIFS déjà rejetés avec motif (décisions de revue), pour exercer les suggestions d'amélioration.
         const d = json();
@@ -3405,6 +3577,9 @@ const serveur = http.createServer(async (req, res) => {
           etat.constats.push(constat);
           etat.decisions.push({ cibleType: 'constat', cibleId: constat.id, action: 'rejeter', motif: x.motif ?? null, versionCible: execution.versionDonnees ?? 0, creeLe: instant(), auteurId: x.auteurId ?? DEMO.remi });
         }
+        // Corrections de champs extraits (émetteur, champs, pièce) et décisions de rapprochement (règle, action, motif).
+        for (const x of (d.corrections ?? []) as Enr[]) suite.correctionsExtraction.push({ documentId: x.documentId ?? randomUUID(), dossierId: x.dossierId, emetteur: x.emetteur ?? null, emetteurLibelle: x.emetteurLibelle ?? null, champs: x.champs ?? [], date: x.date ?? instant() });
+        for (const x of (d.rapprochements ?? []) as Enr[]) suite.decisionsRapprochement.push({ decisionId: randomUUID(), rapprochementId: x.rapprochementId ?? randomUUID(), dossierId: x.dossierId, regle: x.regle, action: x.action ?? 'rejeter', motif: x.motif ?? null, date: x.date ?? instant() });
         resultat = { constats: etat.constats.length, decisions: etat.decisions.length };
       } else if (methode === 'POST' && segments[1] === 'mail') {
         // Pilotage de la messagerie simulée : connecteur configuré ou non, jeu de données fictif.
@@ -3429,6 +3604,20 @@ const serveur = http.createServer(async (req, res) => {
           if (typeof d.statut === 'string' && d.statut in DETAILS_POUSSEES) poussees.statut = d.statut as Poussees['statut'];
         }
         resultat = { statut: poussees.statut, appareils: poussees.appareils, coupees: [...poussees.coupees] };
+      } else if (methode === 'POST' && segments[1] === 'dossiers-avec-pieces') {
+        // Peuple le cabinet A de `n` dossiers, chacun avec UNE pièce dont le texte contient `mot` (pagination de la recherche).
+        const d = json();
+        const n = Math.min(Number(d.n) || 0, 60);
+        const mot = String(d.mot ?? 'mot-commun');
+        for (let i = 1; i <= n; i++) {
+          const id = randomUUID();
+          ENTITES.push({ id, cabinetId: DEMO.cabinetA, raisonSociale: `Pagination ${String(i).padStart(2, '0')} SARL (fictive)`, formeJuridique: 'SARL', creeLe: instant() });
+          for (const u of [DEMO.alice, DEMO.remi]) HABILITATIONS.push({ entiteId: id, utilisateurId: u, niveau: u === DEMO.alice ? 'validation' : 'lecture' });
+          const docId = randomUUID();
+          etat.documents.push({ id: docId, cabinetId: DEMO.cabinetA, entiteId: id, exerciceId: null, fichierId: randomUUID(), nature: 'autre', statut: 'a_controler', nomOrigine: `note-${i}.pdf`, commentaire: null, version: 1, remplaceDocumentId: null, remplacePar: null, nbPages: 1, motifStatut: null, creeLe: instant(), majLe: instant() });
+          etat.extractions.push({ id: randomUUID(), cabinetId: DEMO.cabinetA, entiteId: id, documentId: docId, version: 1, methode: 'couche_texte', moteur: 'fictif', champs: { numero: champ(`N-${i}`, 1, `Note ${i} : ${mot}`) }, verifications: [], statut: 'projet', actuelle: true, creeLe: instant() });
+        }
+        resultat = { crees: n };
       } else if (methode === 'POST' && segments[1] === 'pannes') {
         pannes = { ...pannes, ...json() };
         compteurMorceaux = 0;

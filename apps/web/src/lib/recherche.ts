@@ -37,6 +37,29 @@ export interface ResultatsRecherche {
   constats: ResultatConstat[];
 }
 
+/** Recherche sur le portefeuille (`GET v1/recherche?q=…` sans `entiteId`) : résultats groupés par dossier. */
+export interface DossierResultatsRecherche {
+  id: string;
+  nom: string;
+  niveau: string;
+  /** Nombre TOTAL trouvé dans le dossier, par catégorie ; les listes n'en montrent que les meilleurs. */
+  totaux: { pieces: number; ecritures: number; constats: number };
+  pieces: ResultatPiece[];
+  ecritures: ResultatEcriture[];
+  constats: ResultatConstat[];
+}
+export interface ResultatsRecherchePortefeuille {
+  requete: string;
+  perimetre: string;
+  page: number;
+  dossiersParPage: number;
+  dossiersAutorises: number;
+  dossiersAvecResultats: number;
+  dossiersSansResultat: number;
+  limites: { delaiMaxMs: number; piecesParDossier: number; ecrituresParDossier: number; constatsParDossier: number };
+  dossiers: DossierResultatsRecherche[];
+}
+
 export const LONGUEUR_MIN_RECHERCHE = 2;
 export const LONGUEUR_MAX_RECHERCHE = 200;
 /** Requête telle que l'API l'accepte (2 à 200 caractères une fois les espaces de bord retirés), sinon null. */

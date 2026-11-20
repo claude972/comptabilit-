@@ -130,7 +130,7 @@ export interface EtatSuite {
   membres: Array<[string, { role?: string; actif?: boolean }]>;
   habilitations: Array<{ entiteId: string; utilisateurId: string; niveau: string }>;
   echangesAssistant?: Array<{ id: string; entiteId: string; utilisateurId: string; question: string; mode: string; statut: string }>;
-  echangesPortefeuille?: Array<{ id: string; utilisateurId: string; question: string; mode: string; statut: string; perimetre: { dossiers: Array<{ id: string }>; horsPerimetre: string[] } }>;
+  echangesPortefeuille?: Array<{ id: string; utilisateurId: string; question: string; mode: string; statut: string; perimetre: { dossiers: Array<{ id: string }>; horsPerimetre: string[]; tranche?: { numero: number } } }>;
   suggestionsEcartees?: Array<{ id: string; empreinte: string; categorie: string; controleId: string | null; entiteId: string | null; motif: string; ecarteePar: string }>;
 }
 export const etatSuite = () => simulateur<EtatSuite>('suite');

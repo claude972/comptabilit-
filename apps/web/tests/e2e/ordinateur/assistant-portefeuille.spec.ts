@@ -161,8 +161,8 @@ test.describe('assistant du cabinet, sur le portefeuille autorisé', () => {
     await page.keyboard.press('Space');
     await expect(page.getByTestId('choix-dossiers').getByRole('checkbox', { name: MARTIN })).not.toBeChecked();
     await page.keyboard.press('Space');
-    await page.keyboard.press('Tab');
-    await expect(page.getByLabel('Votre question sur ces dossiers')).toBeFocused();
+    // Les champs de période (facultatifs) viennent ensuite : on passe directement à la question.
+    await page.getByLabel('Votre question sur ces dossiers').focus();
     await page.keyboard.type('Quelles écritures de retrait espèces, quels constats et quel solde du compte 530000 ?');
     await page.keyboard.press('Tab');
     await expect(page.getByRole('button', { name: 'Poser la question' })).toBeFocused();
@@ -230,5 +230,160 @@ test.describe('périmètre et refus', () => {
     await expect(choix).not.toContainText('Dupain');
     expect(await statutBff(bruno, 'POST', 'v1/assistant/questions', { question: 'Que contient ce dossier ?', dossierIds: [ID.dupain] })).toBe(404);
     await bruno.context().close();
+  });
+});
+
+/** L'administratrice crée `n` dossiers vides « Portefeuille NN SARL (fictive) » et les ouvre en lecture à Rémi ; renvoie leurs identifiants dans l'ordre. */
+async function peuplerDossiers(browser: import('@playwright/test').Browser, n: number): Promise<string[]> {
+  const alice = await (await browser.newContext({ storageState: etatDe('alice') })).newPage();
+  await alice.goto('http://localhost:3000/');
+  const ids = await alice.evaluate(
+    async ([nb, remi]) => {
+      const sortie: string[] = [];
+      for (let i = 1; i <= (nb as number); i++) {
+        const entetes = { 'X-Comtaple-Csrf': '1', 'Content-Type': 'application/json' };
+        const c = await fetch('/api/bff/v1/dossiers', { method: 'POST', headers: entetes, body: JSON.stringify({ raisonSociale: `Portefeuille ${String(i).padStart(2, '0')} SARL (fictive)`, territoireFiscal: 'metropole' }) });
+        const id = ((await c.json()) as { id: string }).id;
+        await fetch(`/api/bff/v1/dossiers/${id}/habilitations/${remi}`, { method: 'PUT', headers: entetes, body: JSON.stringify({ niveau: 'lecture' }) });
+        sortie.push(id);
+      }
+      return sortie;
+    },
+    [n, REMI] as const,
+  );
+  await alice.context().close();
+  return ids;
+}
+
+test.describe('période commune dans l’interface', () => {
+  test.use({ storageState: etatDe('remi') });
+
+  test('choix de période validé côté écran, conservé dans l’adresse, envoyé à l’API, dossiers sans recoupement annoncés', async ({ page }) => {
+    await page.goto('/assistant');
+    const bloc = page.getByTestId('periode-commune');
+    await expect(bloc).toContainText('Sans période, chaque dossier est interrogé sur son dernier exercice.');
+    await expect(bloc).toContainText('un dossier dont aucun exercice ne la recoupe n’est pas interrogé sur la comptabilité');
+    const debut = bloc.getByLabel('Début de la période');
+    const fin = bloc.getByLabel('Fin de la période');
+    await page.getByLabel('Votre question sur ces dossiers').fill('Quel est le solde du compte 530000 ?');
+    const nbPost = async () => (await journal()).filter((j) => j.methode === 'POST' && j.chemin.endsWith('/assistant/questions')).length;
+    const avant = await nbPost();
+
+    // Une seule date, puis un début postérieur à la fin : refusé à l'écran, aucune requête.
+    await debut.fill('2025-01-01');
+    await page.getByRole('button', { name: 'Poser la question' }).click();
+    await expect(page.getByTestId('erreur-periode')).toHaveText('Renseignez les deux dates de la période, ou aucune.');
+    await expect(page.getByTestId('erreur-question')).toHaveText('Renseignez les deux dates de la période, ou aucune.');
+    await fin.fill('2024-12-31');
+    await expect(page.getByTestId('erreur-periode')).toHaveText('La date de début doit précéder ou égaler la date de fin.');
+    await expect(debut).toHaveAttribute('aria-invalid', 'true');
+    await page.getByRole('button', { name: 'Poser la question' }).click();
+    expect(await nbPost()).toBe(avant);
+
+    // Période valide : conservée dans l'adresse, envoyée telle quelle.
+    await fin.fill('2025-03-31');
+    await expect(page.getByTestId('erreur-periode')).toHaveCount(0);
+    await expect(page).toHaveURL(/\/assistant\?debut=2025-01-01&fin=2025-03-31$/);
+    const envoi = corpsEnvoye(page);
+    const reponse = await poser(page, 'Quel est le solde du compte 530000 ?');
+    expect((await envoi).postDataJSON()).toEqual({ question: 'Quel est le solde du compte 530000 ?', periode: { debut: '2025-01-01', fin: '2025-03-31' } });
+    await expect(reponse.getByTestId('perimetre-portefeuille')).toContainText('période commune demandée : du 01/01/2025 au 31/03/2025');
+    await expect(reponse.locator(`[data-dossier-interroge="${ID.dupain}"]`).getByTestId('periode-dossier')).toHaveText('période analysée : du 01/01/2025 au 31/03/2025');
+    await expect(reponse.getByTestId('sans-recoupement')).toHaveCount(0);
+
+    // Rechargement : la période est relue dans l'adresse ; une période hors de tout exercice est annoncée, dossier par dossier.
+    await page.reload();
+    await expect(bloc.getByLabel('Début de la période')).toHaveValue('2025-01-01');
+    await expect(bloc.getByLabel('Fin de la période')).toHaveValue('2025-03-31');
+    await bloc.getByLabel('Début de la période').fill('2019-01-01');
+    await bloc.getByLabel('Fin de la période').fill('2019-06-30');
+    const hors = await poser(page, 'Quel est le solde du compte 530000 ?');
+    const sans = hors.getByTestId('sans-recoupement');
+    await expect(sans).toContainText('2 dossiers sans exercice recoupant la période demandée : la comptabilité n’a pas été interrogée pour ces dossiers.');
+    await expect(sans).toContainText(DUPAIN);
+    await expect(sans).toContainText(MARTIN);
+    await expect(hors.locator(`[data-dossier-interroge="${ID.dupain}"]`).getByTestId('periode-dossier')).toHaveText('aucune période comptable analysée');
+    await expect(hors.locator(`[data-dossier-interroge="${ID.dupain}"]`).getByTestId('manquantes-dossier')).toContainText('Aucun exercice de ce dossier ne recoupe la période demandée');
+
+    // Effacer la période la retire de l'adresse ; une adresse invalide n'est pas reprise.
+    await bloc.getByRole('button', { name: 'Effacer la période' }).click();
+    await expect(page).toHaveURL(/\/assistant$/);
+    await page.goto('/assistant?debut=2025-02-30&fin=2025-03-31');
+    await expect(page.getByTestId('periode-commune').getByLabel('Début de la période')).toHaveValue('');
+  });
+
+  test('utilisable au clavier, sans débordement horizontal à 360 px', async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 800 });
+    await page.goto('/assistant?debut=2025-01-01&fin=2025-03-31');
+    const bloc = page.getByTestId('periode-commune');
+    await expect(bloc.getByLabel('Début de la période')).toHaveValue('2025-01-01');
+    // Un champ date se parcourt par segments (jour, mois, année) : on atteint le bouton « Effacer » en quelques Tab.
+    await bloc.getByLabel('Fin de la période').focus();
+    await expect(bloc.getByLabel('Fin de la période')).toBeFocused();
+    const effacer = bloc.getByRole('button', { name: 'Effacer la période' });
+    for (let i = 0; i < 4 && !(await effacer.evaluate((e) => e === document.activeElement)); i++) await page.keyboard.press('Tab');
+    await expect(effacer).toBeFocused();
+    await page.getByLabel('Votre question sur ces dossiers').fill('Quel est le solde du compte 530000 ?');
+    await page.getByRole('button', { name: 'Poser la question' }).click();
+    await expect(page.getByTestId('zone-reponse').getByTestId('reponse-portefeuille')).toBeVisible();
+    const d = await page.evaluate(() => ({ contenu: document.documentElement.scrollWidth, fenetre: document.documentElement.clientWidth }));
+    expect(d.contenu).toBeLessThanOrEqual(d.fenetre);
+  });
+});
+
+test.describe('plus de vingt dossiers : tranches', () => {
+  test.use({ storageState: etatDe('remi') });
+
+  test('la première tranche est interrogée, la suivante se demande à part (réponses distinctes, jamais fusionnées), avec la même question et la même période', async ({ page, browser }) => {
+    await peuplerDossiers(browser, 22);
+    await page.goto('/assistant?debut=2025-01-01&fin=2025-03-31');
+    const choix = page.getByTestId('choix-dossiers');
+    await expect(choix).toContainText('Dossiers interrogés (24 sur 24 autorisés)');
+    await expect(page.getByTestId('au-dela-de-la-borne')).toContainText('vos 24 dossiers forment 2 tranches de 20 au plus, classées par pertinence');
+    const q = 'Quel est le solde du compte 530000 ?';
+    const reponse1 = await poser(page, q);
+    await expect(reponse1.getByTestId('tranche-interrogee')).toContainText('Tranche 1 sur 2 : dossiers 1 à 20 sur 24. Dossiers ayant des données comptables importées d’abord');
+    await expect(reponse1.locator('[data-dossier-interroge]')).toHaveCount(20);
+    // Classement : le dossier qui a des données (Dupain), puis celui qui a un exercice (Martin), puis les autres par ordre alphabétique.
+    expect(await reponse1.locator('[data-dossier-interroge]').evaluateAll((els) => els.slice(0, 3).map((e) => e.getAttribute('data-dossier-interroge')))).toEqual([ID.dupain, ID.martin, expect.any(String)]);
+    await expect(reponse1.getByTestId('sans-recoupement')).toContainText('18 dossiers sans exercice recoupant la période demandée');
+    await expect(reponse1.getByTestId('dossiers-non-interroges')).toContainText('4 dossiers retenus n’ont pas été interrogés par cette réponse : ils sont dans les autres tranches.');
+    await expect(reponse1.getByTestId('dossiers-non-interroges')).toContainText('Portefeuille 19 SARL (fictive) ; Portefeuille 20 SARL (fictive) ; Portefeuille 21 SARL (fictive) ; Portefeuille 22 SARL (fictive)');
+    const suivante = page.getByTestId('tranche-suivante');
+    await expect(suivante).toContainText('Tranche 1 sur 2 interrogée : 4 dossiers restent à interroger');
+
+    const envoi = corpsEnvoye(page);
+    await suivante.getByRole('button', { name: 'Interroger les 4 suivants' }).click();
+    expect((await envoi).postDataJSON()).toEqual({ question: q, periode: { debut: '2025-01-01', fin: '2025-03-31' }, tranche: 2 });
+    const blocs = page.getByTestId('zone-reponse').locator('[data-tranche-reponse]');
+    await expect(blocs).toHaveCount(2);
+    const seconde = blocs.nth(1).getByTestId('reponse-portefeuille');
+    await expect(seconde.getByTestId('tranche-interrogee')).toContainText('Tranche 2 sur 2 : dossiers 21 à 24 sur 24.');
+    await expect(seconde.locator('[data-dossier-interroge]')).toHaveCount(4);
+    // Périmètres disjoints : aucun dossier de la tranche 2 n'est dans la tranche 1.
+    const ids = (loc: import('@playwright/test').Locator) => loc.locator('[data-dossier-interroge]').evaluateAll((els) => els.map((e) => e.getAttribute('data-dossier-interroge')));
+    const [a, b] = [await ids(blocs.nth(0)), await ids(blocs.nth(1))];
+    expect(a.filter((x) => b.includes(x))).toEqual([]);
+    // Plus de tranche à demander ; deux échanges distincts sont conservés.
+    await expect(page.getByTestId('tranche-suivante')).toHaveCount(0);
+    expect(((await etatSuite()).echangesPortefeuille ?? []).map((e) => e.perimetre.tranche?.numero)).toEqual([1, 2]);
+    await expect(page.getByTestId('historique-portefeuille')).toContainText('Mes questions précédentes (2)');
+  });
+
+  test('habilitations relues à chaque tranche : après retrait entre deux tranches, la suite l’annonce sans réponse trompeuse', async ({ page, browser }) => {
+    const dossiers = await peuplerDossiers(browser, 22);
+    await page.goto('/assistant');
+    const reponse1 = await poser(page, 'Quels constats ont été relevés ?');
+    await expect(reponse1.getByTestId('tranche-interrogee')).toContainText('Tranche 1 sur 2');
+    // L'administratrice retire les quatre dossiers de la seconde tranche à Rémi : elle n'existe plus.
+    const alice = await (await browser.newContext({ storageState: etatDe('alice') })).newPage();
+    await alice.goto('http://localhost:3000/');
+    for (const id of dossiers.slice(18)) expect(await statutBff(alice, 'DELETE', `v1/dossiers/${id}/habilitations/${REMI}`)).toBeLessThan(300);
+    await alice.context().close();
+    await page.getByTestId('tranche-suivante').getByRole('button', { name: /Interroger les 4 suivants/ }).click();
+    await expect(page.getByTestId('erreur-question')).toContainText('n’existe plus');
+    await expect(page.getByTestId('zone-reponse').locator('[data-tranche-reponse]')).toHaveCount(1);
+    // Le message d'erreur ne nomme aucun des dossiers retirés (la première réponse, établie avant le retrait, les citait comme « autres tranches »).
+    await expect(page.getByTestId('erreur-question')).not.toContainText('Portefeuille 2');
   });
 });

@@ -38,6 +38,8 @@ const dossier = { a: '', b: '', c: '', d: '' };
 const exercice = { a: '', b: '', c: '' };
 const piece = { a: '', b: '', c: '' };
 const questions: string[] = [];
+/** Dix-neuf dossiers vides de plus (Zoulou 01 à 19), créés par le test de la borne et réutilisés par celui des tranches. */
+let plus: Array<{ id: string; nom: string }> = [];
 
 /** Requête vers l'assistant ; si la limite de débit (par utilisateur, par minute) est atteinte, attend la fenêtre suivante. */
 const demander = async (qui: string, methode: string, corps?: unknown) => {
@@ -534,7 +536,7 @@ describe('chemin « modèle » contre le SIMULATEUR, avec les ports réels (base
 describe('borne sur le nombre de dossiers par question', () => {
   it('au-delà de la borne, le périmètre est réduit ET annoncé : dossiers non interrogés nommés, rien de tronqué en silence', async () => {
     // Dix-neuf dossiers vides de plus, ouverts en lecture à Alice : son périmètre passe à 23 dossiers.
-    const plus: Array<{ id: string; nom: string }> = [];
+    plus = [];
     for (let i = 1; i <= 19; i++) {
       const nom = `Portefeuille ${SEL} Zoulou ${String(i).padStart(2, '0')} SARL`;
       const id = (await api('alice', 'POST', '/v1/dossiers', { raisonSociale: nom, territoireFiscal: 'metropole' })).json.id as string;
@@ -549,7 +551,7 @@ describe('borne sur le nombre de dossiers par question', () => {
     const r = await poser('alice', `Que disent les notes ${MOT} ?`);
     expect(r.statut).toBe(200);
     const p = r.json.perimetre;
-    expect(p).toMatchObject({ borne: BORNE_DOSSIERS_PORTEFEUILLE, autorises: 23, elementsParDossier: 1, horsPerimetre: [] });
+    expect(p).toMatchObject({ borne: BORNE_DOSSIERS_PORTEFEUILLE, autorises: 23, elementsParDossier: 1, horsPerimetre: [], tranche: { numero: 1, total: 2, premier: 1, dernier: 20, retenus: 23 } });
     // Les vingt premiers par ordre alphabétique sont interrogés ; les trois autres sont NOMMÉS comme non interrogés.
     expect(p.dossiers.map((d: any) => d.id)).toEqual([dossier.a, dossier.b, dossier.c, dossier.d, ...plus.slice(0, 16).map((d) => d.id)]);
     expect(p.nonInterroges).toEqual(plus.slice(16));
@@ -578,5 +580,128 @@ describe('borne sur le nombre de dossiers par question', () => {
       const d = r.json.perimetre.dossiers.find((x: any) => x.id === dossier[cle]);
       expect(d.nonRestitues).toBeGreaterThanOrEqual(1); // la note trouvée n'est pas restituée, et c'est décompté
     }
+  });
+});
+
+describe('tranches de dossiers, période commune et habilitations relues à chaque tranche', () => {
+  const ids = (r: any): string[] => r.json.perimetre.dossiers.map((d: any) => d.id);
+  const vises = async (instant: string): Promise<Set<string>> => {
+    await api('alice', 'GET', '/v1/ia');
+    return new Set((await depuis(instant)).filter((l) => l.type === 'fonction_metier').map((l) => l.entite_id_cible));
+  };
+  let exercicePlus = '';
+
+  it('classement par pertinence : un dossier ayant des données passe avant des dossiers vides, même placé après dans l’ordre alphabétique', async () => {
+    const dernier = plus[18]!;
+    expect((await api('alice', 'PUT', `/v1/dossiers/${dernier.id}/habilitations/${DEMO.alice}`, { niveau: 'validation' })).statut).toBeLessThan(300);
+    exercicePlus = (await api('alice', 'POST', `/v1/dossiers/${dernier.id}/exercices`, EX_A)).json.id;
+    const fec = genererFecSynthetique({ exercice: EX_A, nbEcritures: 30, graine: Number.parseInt(SEL.slice(0, 6), 16) + 9, anomalies: [] as never });
+    const d = await deposer('alice', dernier.id, Buffer.from(fec.contenu), { usage: 'fec', exerciceId: exercicePlus, statutDonnees: 'travail_avant_cloture' }, fec.nomFichier);
+    await attendreLot('alice', d.fin.json.lotImportId);
+
+    const t1 = await poser('alice', `Que disent les notes ${MOT} ?`);
+    expect(t1.statut).toBe(200);
+    // Rang 0 (données) : A, B, C, Zoulou 19 ; rang 1 (exercice sans donnée) : D ; rang 2 : Zoulou 01 à 18 — alphabétique à égalité.
+    expect(ids(t1)).toEqual([dossier.a, dossier.b, dossier.c, dernier.id, dossier.d, ...plus.slice(0, 15).map((x) => x.id)]);
+    expect(t1.json.perimetre).toMatchObject({ tranche: { numero: 1, total: 2, premier: 1, dernier: 20, retenus: 23 }, ordre: expect.stringContaining('données comptables importées d’abord') });
+    expect(t1.json.perimetre.nonInterroges).toEqual(plus.slice(15, 18));
+    // En base : les dossiers de rang 0 ont bien un lot FEC actif et terminé.
+    const enBase = await editeur.query(`select entite_id from lots_import where cabinet_id = $1 and actif and type = 'fec' and statut in ('termine', 'termine_avec_erreurs')`, [cabinet]);
+    expect(new Set(enBase.rows.map((l) => l.entite_id))).toEqual(new Set([dossier.a, dossier.b, dossier.c, dernier.id]));
+  });
+
+  it('chaque tranche est une question distincte : réponses séparées, périmètres disjoints, enregistrées séparément, jamais fusionnées', async () => {
+    const debut = await maintenant();
+    const t1 = await poser('alice', `Que disent les notes ${MOT} ?`, { tranche: 1 });
+    const t2 = await poser('alice', `Que disent les notes ${MOT} ?`, { tranche: 2 });
+    expect(t2.statut).toBe(200);
+    expect(t2.json.perimetre.tranche).toEqual({ numero: 2, total: 2, premier: 21, dernier: 23, retenus: 23 });
+    expect(ids(t2)).toEqual(plus.slice(15, 18).map((x) => x.id));
+    expect(ids(t1).filter((x) => ids(t2).includes(x))).toEqual([]);
+    // Trois dossiers seulement : le budget par dossier est celui de trois dossiers, pas de vingt.
+    expect(t2.json.perimetre.elementsParDossier).toBe(elementsParDossier(3));
+    expect(t2.json.perimetre.nonInterroges.map((d: any) => d.id)).toEqual(ids(t1));
+    expect(t1.json.echangeId).not.toBe(t2.json.echangeId);
+    // Aucune citation de la tranche 2 ne vise un dossier de la tranche 1, et inversement (aucune fusion).
+    for (const c of citations(t2.json.reponse)) expect([null, ...ids(t2)]).toContain(c.dossierId);
+    for (const c of citations(t1.json.reponse)) expect([null, ...ids(t1)]).toContain(c.dossierId);
+    // Deux échanges distincts dans l'historique, chacun avec SA tranche.
+    const histo = (await api('alice', 'GET', '/v1/assistant/questions')).json.echanges;
+    expect(histo.find((e: any) => e.id === t2.json.echangeId).perimetre.tranche.numero).toBe(2);
+    expect(histo.find((e: any) => e.id === t1.json.echangeId).perimetre.tranche.numero).toBe(1);
+    // Chaque question n'a visé que les dossiers de SA tranche.
+    const v = await vises(debut);
+    for (const d of plus.slice(15, 18)) expect(v.has(d.id)).toBe(true);
+    // Audit : le numéro de tranche, sans nom de dossier ni texte de question.
+    const audit = (await editeur.query(`select details from journal_audit where cabinet_id = $1 and action = 'assistant.question_portefeuille' and cible_id = $2`, [cabinet, t2.json.echangeId])).rows[0].details;
+    expect(audit).toMatchObject({ tranche: 2, tranches: 2, dossiersInterroges: 3, dossiersNonInterroges: 20 });
+    expect(JSON.stringify(audit)).not.toContain(plus[15]!.nom);
+    // Validation : tranche entière positive, bornée ; une tranche qui n'existe pas est un conflit, pas une réponse vide.
+    for (const t of [0, -1, 1.5, 11, '2']) expect((await poser('alice', 'Une question', { tranche: t })).statut, String(t)).toBe(400);
+    const absente = await poser('alice', 'Une question', { tranche: 3 });
+    expect(absente.statut).toBe(409);
+    expect(absente.json.message ?? JSON.stringify(absente.json)).toContain('n’existe plus');
+    // Une sélection de moins de vingt dossiers n'a qu'une tranche.
+    const une = await poser('alice', 'Une question', { dossierIds: [dossier.a], tranche: 2 });
+    expect(une.statut).toBe(409);
+    // Un déposant est refusé avant tout, tranche ou non ; un autre cabinet n'obtient rien d'ici.
+    expect((await poser('client', 'Une question', { tranche: 2 })).statut).toBe(403);
+    expect(JSON.stringify((await poser('bruno', 'Une question', { tranche: 1 })).json)).not.toContain(plus[0]!.id);
+  });
+
+  it('période commune : dossiers sans recoupement annoncés (jamais écartés en silence), classement tenant compte de la période', async () => {
+    const periode = { debut: '2025-01-01', fin: '2025-03-31' };
+    const t1 = await poser('alice', 'Quel est le solde du compte 512 ?', { periode });
+    expect(t1.statut).toBe(200);
+    const dernier = plus[18]!;
+    // Recoupement + données : A, B, C, Zoulou 19 ; ni D (exercice 2026) ni les Zoulou vides ne recoupent : rang 2, alphabétique.
+    expect(ids(t1)).toEqual([dossier.a, dossier.b, dossier.c, dernier.id, dossier.d, ...plus.slice(0, 15).map((x) => x.id)]);
+    expect(t1.json.perimetre).toMatchObject({ periodeCommune: periode, tranche: { numero: 1, total: 2 } });
+    const par = new Map<string, any>(t1.json.perimetre.dossiers.map((d: any) => [d.id, d]));
+    for (const id of [dossier.a, dossier.b, dossier.c, dernier.id]) expect(par.get(id).periode).toEqual(periode);
+    const message = 'Aucun exercice de ce dossier ne recoupe la période demandée : la comptabilité n’a pas été interrogée.';
+    for (const id of [dossier.d, ...plus.slice(0, 15).map((x) => x.id)]) {
+      expect(par.get(id)).toMatchObject({ exercice: null, periode: null, donneesManquantes: [message], sources: 0 });
+    }
+    // Deuxième tranche, même période : les trois derniers dossiers (sans recoupement) sont annoncés eux aussi.
+    const t2 = await poser('alice', 'Quel est le solde du compte 512 ?', { periode, tranche: 2 });
+    expect(ids(t2)).toEqual(plus.slice(15, 18).map((x) => x.id));
+    for (const d of t2.json.perimetre.dossiers) expect(d.donneesManquantes).toEqual([message]);
+    expect(t2.json.perimetre.periodeCommune).toEqual(periode);
+    // Une période qui ne recoupe rien du tout : tous les dossiers sont annoncés sans recoupement, aucun calcul inventé.
+    const nulle = await poser('alice', 'Quel est le solde du compte 512 ?', { periode: { debut: '2015-01-01', fin: '2015-06-30' } });
+    expect(nulle.json.perimetre.dossiers.every((d: any) => d.exercice === null && d.donneesManquantes[0] === message)).toBe(true);
+    expect(citations(nulle.json.reponse).filter((c) => c.id.startsWith('balance:'))).toEqual([]);
+    // Dates réelles : le 30 février est refusé par la validation, pas corrigé.
+    for (const p of [{ debut: '2025-02-30', fin: '2025-03-31' }, { debut: '2025-13-01', fin: '2025-12-31' }, { debut: '2025-04-01', fin: '2025-03-31' }, { debut: '2025-01-01' }, { debut: '0000-01-01', fin: '2025-12-31' }]) {
+      expect((await poser('alice', 'Une question', { periode: p })).statut, JSON.stringify(p)).toBe(400);
+    }
+  });
+
+  it('habilitation retirée ENTRE deux tranches : la seconde est recalculée sous les droits du moment ; le dossier retiré n’est ni interrogé ni nommé', async () => {
+    const t1 = await poser('alice', `Que disent les notes ${MOT} ?`);
+    const [z16, z17, z18] = plus.slice(15, 18) as [typeof plus[number], typeof plus[number], typeof plus[number]];
+    expect(t1.json.perimetre.nonInterroges.map((d: any) => d.id)).toEqual([z16.id, z17.id, z18.id]);
+    // Entre les deux tranches, Alice perd l'accès à Zoulou 17 (tranche 2) et à Zoulou 02 (tranche 1, déjà interrogé).
+    await editeur.query('delete from habilitations_dossier where entite_id = any($1::uuid[]) and utilisateur_id = $2', [[z17.id, plus[1]!.id], DEMO.alice]);
+    const debut = await maintenant();
+    const t2 = await poser('alice', `Que disent les notes ${MOT} ?`, { tranche: 2 });
+    expect(t2.statut).toBe(200);
+    expect(t2.json.perimetre).toMatchObject({ autorises: 21, tranche: { numero: 2, total: 2, premier: 21, dernier: 21, retenus: 21 } });
+    expect(ids(t2)).toEqual([z18.id]);
+    // z16 se retrouve en tranche 1 (le classement est recalculé) : il n'est plus dans la seconde.
+    expect(t2.json.perimetre.nonInterroges.map((d: any) => d.id)).not.toContain(z17.id);
+    for (const interdit of [z17.id, z17.nom, plus[1]!.id, plus[1]!.nom]) expect(JSON.stringify(t2.json)).not.toContain(interdit);
+    expect((await vises(debut)).has(z17.id)).toBe(false);
+    // L'échange de la première tranche, relu, ne montre plus Zoulou 02 : masqué sans être nommé.
+    const relu = (await api('alice', 'GET', '/v1/assistant/questions')).json.echanges.find((e: any) => e.id === t1.json.echangeId);
+    expect(relu.masque).toMatchObject({ dossiers: 1 });
+    expect(relu.perimetre.dossiers.map((d: any) => d.id)).not.toContain(plus[1]!.id);
+    expect(JSON.stringify(relu)).not.toContain(plus[1]!.nom);
+    // Retirer aussi Zoulou 16 et 18 : la seconde tranche n'existe plus, la demander est un conflit (et non une réponse sur d'autres dossiers).
+    await editeur.query('delete from habilitations_dossier where entite_id = any($1::uuid[]) and utilisateur_id = $2', [[z16.id, z18.id], DEMO.alice]);
+    expect((await poser('alice', `Que disent les notes ${MOT} ?`, { tranche: 2 })).statut).toBe(409);
+    const seule = await poser('alice', `Que disent les notes ${MOT} ?`);
+    expect(seule.json.perimetre).toMatchObject({ autorises: 19, tranche: { numero: 1, total: 1, premier: 1, dernier: 19, retenus: 19 }, nonInterroges: [] });
   });
 });

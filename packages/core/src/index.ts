@@ -105,10 +105,11 @@ export { ARTICLES_ANNEXE, MODELE_ANNEXE, SEUILS_TAILLE_PAR_DEFAUT, articlesRequi
 export type {
   AnnexeAbstention, AnnexeProjet, CategorieEntiteAnnexe, DemandeAnnexe, EvaluationTaille, LigneTableauAnnexe, ResultatAnnexe, RubriqueAnnexe, SeuilsCategorie, SeuilsTaille, StatutRubriqueAnnexe, TableauAnnexe,
 } from './etats/annexe.js';
-export { CONVENTIONS_INVENTAIRE, REGLES_INVENTAIRE, lirePeriodeDansLibelle, proposerEcrituresInventaire } from './etats/inventaire.js';
+export { CONVENTIONS_INVENTAIRE, MOTIF_DEGRESSIF_NON_ACTIVE, REGLES_INVENTAIRE, lirePeriodeDansLibelle, proposerEcrituresInventaire } from './etats/inventaire.js';
 export type {
-  AbstentionInventaire, ComptesInventaire, ConventionJoursAmortissement, DemandeInventaire, ImmobilisationAAmortir, LignePropositionInventaire, PeriodeCouverte, PropositionEcritureInventaire, RegleInventaire,
-  ResultatInventaire, TypePropositionInventaire,
+  AbstentionInventaire, ComptesInventaire, CompteSansImmobilisation, ConventionJoursAmortissement, DemandeInventaire, ImmobilisationAAmortir, LignePlanAmortissement, LignePropositionInventaire, ModeAmortissement,
+  PeriodeCouverte, PropositionEcritureInventaire, RapprochementCompteImmobilisation, RapprochementDotation, RapprochementImmobilisations, RegleInventaire, ResultatInventaire, SignalementInventaire,
+  TypePropositionInventaire,
 } from './etats/inventaire.js';
 export { MENTION_PROJET, SOURCES_FISCALES } from './etats/sources-fiscales.js';
 

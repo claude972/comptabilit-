@@ -92,10 +92,52 @@ export interface PropositionInventaire {
   hypotheses: string[];
   extourneLe: string | null;
   reprise: { ecritureInventaireId: string; statut: string } | null;
+  planAmortissement?: LignePlanAmortissement[] | null;
+  source?: SourceInventaire;
+  sourcesComplementaires?: SourceInventaire[];
+}
+export interface SourceInventaire {
+  type: string;
+  reference: string;
+  url: string | null;
+  dateVerification: string | null;
+  verification: 'verifiee' | 'non_verifiee' | 'sans_objet';
+  periodeApplication: string | null;
+}
+export interface LignePlanAmortissement {
+  rang: number;
+  exerciceFin: string;
+  methode: 'degressif' | 'lineaire';
+  baseCalcul: string;
+  dotation: string;
+  cumul: string;
+  vnc: string;
+  formule: string;
+  exerciceCourant: boolean;
+}
+export interface RapprochementDotation {
+  compteDotation: string;
+  immobilisations: string[];
+  dotationCalculee: string | null;
+  calculComplet: boolean;
+  dotationComptabilisee: string;
+  ecart: string | null;
+  etat: 'aucune_dotation_comptabilisee' | 'identique' | 'differente' | 'non_ventilee' | 'calcul_indisponible';
+  propositionsEcartees: boolean;
+  message: string;
+}
+export interface RapprochementImmobilisations {
+  dotations: RapprochementDotation[];
+  comptes: Array<{ compte: string; immobilisations: string[]; valeurBruteSaisie: string; soldeBalance: string; ecart: string; etat: 'concordant' | 'ecart' | 'absent_de_la_balance'; message: string }>;
+  comptesSansImmobilisation: Array<{ compte: string; libelle: string; solde: string; message: string }>;
 }
 export interface ReponsePropositions {
+  signalements?: Array<{ code: string; immobilisation: string | null; titre: string; motif: string; source: SourceInventaire }>;
+  rapprochement?: RapprochementImmobilisations;
   signalCesure: 'disponible' | 'controles_obsoletes' | 'controles_non_executes';
   amortissements: { proposes: boolean; motif: string };
+  /** État du calcul du dégressif : non activé par défaut (décision de l'éditeur, AMORTISSEMENT_DEGRESSIF_ACTIVE). */
+  degressif: { active: boolean; motif: string };
   mention: string;
   propositions: PropositionInventaire[];
   abstentions: Array<{ type: string; code: string; motif: string }>;
@@ -116,5 +158,21 @@ export const LIBELLE_TYPE_PROPOSITION: Record<string, string> = {
   facture_non_parvenue: 'Facture non parvenue',
   facture_a_etablir: 'Facture à établir',
   dotation_amortissement_lineaire: 'Dotation aux amortissements (linéaire)',
+  dotation_amortissement_degressif: 'Dotation aux amortissements (dégressif)',
   cesure: 'Césure',
 };
+
+export const LIBELLE_MODE_AMORTISSEMENT: Record<string, string> = { lineaire: 'Linéaire', degressif: 'Dégressif' };
+export const LIBELLE_ETAT_DOTATION: Record<string, string> = {
+  aucune_dotation_comptabilisee: 'Aucune dotation comptabilisée',
+  identique: 'Dotation déjà comptabilisée, identique au calcul',
+  differente: 'Dotation déjà comptabilisée, écart avec le calcul',
+  non_ventilee: 'Dotation comptabilisée à un compte non ventilé',
+  calcul_indisponible: 'Dotation comptabilisée, calcul indisponible',
+};
+export const LIBELLE_ETAT_COMPTE_IMMOBILISATION: Record<string, string> = {
+  concordant: 'Solde égal à la valeur saisie',
+  ecart: 'Écart entre le solde et la valeur saisie',
+  absent_de_la_balance: 'Absent de la balance',
+};
+export const LIBELLE_VERIFICATION_SOURCE: Record<string, string> = { verifiee: 'lue en ligne', non_verifiee: 'non vérifiée en ligne', sans_objet: 'convention interne' };

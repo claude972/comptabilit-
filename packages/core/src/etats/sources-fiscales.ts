@@ -10,6 +10,20 @@
  *    → `non_verifiee`. Conséquence : aucun code de case n'est fourni ;
  *  - Légifrance : accès automatisé refusé (HTTP 403) → `non_verifiee` ; les seuils de taille ont été lus sur
  *    entreprendre.service-public.gouv.fr (page du 5 mars 2024), pas sur l'article D. 123-200 lui-même.
+ *
+ * Consultation du 2026-11-20 (amortissements dégressifs, valeur résiduelle, composants, dérogatoires) :
+ *  - PCG (version consolidée au 1er janvier 2026) : PDF officiel de l'ANC relu en texte, articles 214-4, 214-8, 214-9, 214-11 à 214-14
+ *    et comptes 145, 6872, 7872 → `verifiee` ;
+ *  - BOFiP (série « Amortissements », 5 documents) : pages officielles consultées le 2026-11-20, chacune portant la mention « en vigueur du
+ *    12/09/2012 à aujourd'hui » (aucune version postérieure) ; même version unique dans le stock open data officiel des documents en
+ *    vigueur `bofip_stock_live_20261028` (MD5 publié vérifié) ; les flux de mises à jour postérieurs identifiés ne touchent pas la série.
+ *    Lacune dite : les flux du 2026-10-29 au 2026-11-11 n'ont pas pu être identifiés ; la mention « à aujourd'hui » de chaque page couvre
+ *    cette période → `verifiee` (VALIDITÉ ACTUELLE ÉTABLIE : une date ancienne n'invalide pas la règle). Le renvoi vers
+ *    BOI-BIC-AMT-20-20-50 (coefficients majorés ou diminués de certains biens d'équipement, version 2015-09-02) n'a PAS été lu :
+ *    ces cas ne sont pas gérés ;
+ *  - CGI art. 39 A : Légifrance refuse l'accès automatisé (HTTP 403) ; l'API officielle PISTE exige un compte → `non_verifiee`, SANS URL
+ *    inventée ; son contenu n'est connu que par les citations du BOFiP (doctrine, pas texte de loi). Le dégressif reste donc NON ACTIVÉ
+ *    par défaut (AMORTISSEMENT_DEGRESSIF_ACTIVE) tant que le texte de loi n'a pas été vérifié et les règles validées par un professionnel.
  */
 import type { SourceRegle } from '../controles/types.js';
 import { DATE_VERIFICATION_SOURCES, URL_PCG_2026, sourceInterne } from '../sources.js';
@@ -28,6 +42,20 @@ function lue(reference: string, url: string, periodeApplication: string): Source
 /** Source officielle identifiée mais NON LUE le jour de la vérification (site indisponible ou accès refusé). */
 function nonLue(reference: string, url: string, periodeApplication: string): SourceRegle {
   return { type: 'reglementaire', reference, url, dateVerification: DATE_VERIFICATION_SOURCES, verification: 'non_verifiee', periodeApplication };
+}
+
+const DATE_CONSULTATION_AMORTISSEMENTS = '2026-11-20';
+
+function pcgAmortissement(reference: string): SourceRegle {
+  return { type: 'reglementaire', reference, url: URL_PCG_2026, dateVerification: DATE_CONSULTATION_AMORTISSEMENTS, verification: 'verifiee', periodeApplication: PERIODE_PCG_2025 };
+}
+
+const PRECISION_BOFIP_EN_VIGUEUR =
+  'En vigueur du 12/09/2012 à aujourd’hui, consultée le 2026-11-20 sur la page officielle ; confirmée dans le stock open data `bofip_stock_live_20261028` (https://bofip.impots.gouv.fr/opendata/stock/10, MD5 492e3cb39df9b8101ccf182aa23220b8 vérifié). ' +
+  'Aucune version postérieure ; flux du 2026-10-29 au 2026-11-11 non identifiés (couverts par la mention « à aujourd’hui » de la page). Règle non validée par un professionnel.';
+
+function bofipEnVigueur(reference: string, url: string, perimetre: string): SourceRegle {
+  return { type: 'reglementaire', reference: `${reference} — périmètre : ${perimetre}`, url, dateVerification: DATE_CONSULTATION_AMORTISSEMENTS, verification: 'verifiee', periodeApplication: PRECISION_BOFIP_EN_VIGUEUR };
 }
 
 const MOTIF_IMPOTS_GOUV =
@@ -148,11 +176,62 @@ export const SOURCES_FISCALES = {
       'Le schéma d’écriture (débit 4181 toutes taxes comprises, crédit du compte de produits et du compte 44587) est le symétrique de celui que l’art. 1214-40 décrit pour les factures non parvenues : lecture interne, à valider.',
   ),
   amortissementLineaire: pcg(
-    'PCG (règlement ANC n° 2014-03), art. 214-11 (« A la clôture de l’exercice, une dotation aux amortissements est comptabilisée conformément au plan d’amortissement pour chaque actif amortissable »), ' +
+    'PCG (règlement ANC n° 2014-03), art. 214-4 (« Le montant amortissable d\'un actif est sa valeur brute sous déduction de sa valeur résiduelle » ; la valeur résiduelle n\'est prise en compte que « lorsqu\'elle est à la fois significative et mesurable »), art. 214-9 (composants : « un plan d\'amortissement propre à chacun de ces éléments »), art. 214-11 (« A la clôture de l’exercice, une dotation aux amortissements est comptabilisée conformément au plan d’amortissement pour chaque actif amortissable »), ' +
       'art. 214-12 (« L’amortissement d’un actif commence à la date de début de consommation des avantages économiques qui lui sont attachés. Cette date correspond généralement à la mise en service de l’actif. »), ' +
       'art. 214-13 (« Le mode linéaire est appliqué à défaut de mode mieux adapté. »), art. 1212-28 (les comptes d’amortissements sont crédités par le débit des comptes 681, 686 ou 687) ; ' +
       'plan de comptes : 68111 « Immobilisations incorporelles et frais d’établissement », 68112 « Immobilisations corporelles », 280 et 281 « même ventilation » que les comptes 20 et 21. ' +
       'Le PCG ne fixe pas la convention de décompte des jours (année de 360 jours ou jours réels) : convention interne paramétrable.',
+  ),
+  amortissementDegressif: {
+    type: 'reglementaire',
+    reference:
+      'BOFiP BOI-BIC-AMT-20-20-30 « Régime de l’amortissement dégressif — calcul » : taux = taux linéaire (100 ÷ durée normale d’utilisation) × coefficient (§ 100 et 120 : 1,25 pour 3 ou 4 ans, 1,75 pour 5 ou 6 ans, 2,25 au-delà de 6 ans) ; ' +
+      'première annuité réduite des mois écoulés avant le premier jour du mois de départ (§ 180 à 220) ; annuités suivantes sur la valeur résiduelle comptable (§ 230) ; bascule au linéaire quand l’annuité dégressive est inférieure à valeur résiduelle ÷ nombre d’années restantes (§ 240 à 260) ; ' +
+      'exemple chiffré à dix ans, coefficient 2,25 (§ 350 et 360). Conditions : BOI-BIC-AMT-20-20-20-10 (biens neufs, § 410 ; voitures de tourisme exclues, § 60 ; mobilier de bureau exclu, § 250) et BOI-BIC-AMT-20-10 § 90 (durée inférieure à trois ans exclue). ' +
+      'Le complément d’amortissement dégressif fiscal se comptabilise en amortissement dérogatoire (BOI-BIC-AMT-20-20, introduction du régime).',
+    url: 'https://bofip.impots.gouv.fr/bofip/4699-PGP.html/identifiant%3DBOI-BIC-AMT-20-20-30-20120912',
+    dateVerification: DATE_CONSULTATION_AMORTISSEMENTS,
+    verification: 'verifiee',
+    periodeApplication: PRECISION_BOFIP_EN_VIGUEUR + ' Périmètre : régime de l’amortissement dégressif, modalités de calcul des amortissements déductibles. Point de départ de la première annuité : premier jour du mois d’acquisition ou de construction (§ 190 à 200). Coefficients majorés ou diminués de certains biens d’équipement (BOI-BIC-AMT-20-20-50) : non analysés, non gérés.',
+  },
+  bofipBiensEligibles: bofipEnVigueur(
+    'BOFiP BOI-BIC-AMT-20-20-20-10-20120912 « Biens éligibles en raison de la nature des immobilisations »',
+    'https://bofip.impots.gouv.fr/bofip/4698-PGP.html/identifiant%3DBOI-BIC-AMT-20-20-20-10-20120912',
+    'biens éligibles au dégressif en raison de leur nature',
+  ),
+  bofipBiensDecomposes: bofipEnVigueur(
+    'BOFiP BOI-BIC-AMT-20-20-40-20120912 « Amortissement des biens décomposés »',
+    'https://bofip.impots.gouv.fr/bofip/4749-PGP.html/identifiant%3DBOI-BIC-AMT-20-20-40-20120912',
+    'structure et composants d’un bien décomposé, amortissables en dégressif si le bien est éligible',
+  ),
+  bofipEntreprisesConcernees: bofipEnVigueur(
+    'BOFiP BOI-BIC-AMT-20-20-10-20120912 « Entreprises concernées »',
+    'https://bofip.impots.gouv.fr/bofip/4748-PGP.html/identifiant%3DBOI-BIC-AMT-20-20-10-20120912',
+    'entreprises pouvant pratiquer l’amortissement dégressif',
+  ),
+  bofipLineaire: bofipEnVigueur(
+    'BOFiP BOI-BIC-AMT-20-10-20120912 « Régime de l’amortissement linéaire »',
+    'https://bofip.impots.gouv.fr/bofip/4543-PGP.html/identifiant%3DBOI-BIC-AMT-20-10-20120912',
+    'régime de l’amortissement linéaire, point de départ à la mise en service, durée inférieure à trois ans',
+  ),
+  amortissementDegressifPcg: pcgAmortissement(
+    'PCG (règlement ANC n° 2014-03), art. 214-13 (« Le mode d’amortissement doit permettre de traduire au mieux le rythme de consommation des avantages économiques attendus de l’actif […] Le mode linéaire est appliqué à défaut de mode mieux adapté »), ' +
+      'art. 214-14 (plan défini à l’entrée du bien à l’actif, révision prospective) et art. 214-4 (valeur résiduelle). Le PCG ne définit pas le dégressif : le choix du mode comptable est celui de l’entité.',
+  ),
+  cgiArticle39A: {
+    type: 'reglementaire',
+    reference:
+      'CGI art. 39 A (amortissement dégressif, coefficients de majoration) et annexe II art. 22 : NON VÉRIFIÉ — accès automatisé à Légifrance refusé (HTTP 403) le 2026-11-20 ; texte de loi non consulté ; l’API officielle PISTE exige un compte. Le contenu n’en est connu que par les citations du BOFiP (doctrine, pas texte de loi) ; ' +
+      'les conditions (bien neuf, durée normale d’utilisation d’au moins trois ans, catégories de biens), les majorations et les coefficients sont à confirmer sur le texte en vigueur par une personne ayant accès à Légifrance.',
+    url: null,
+    dateVerification: DATE_CONSULTATION_AMORTISSEMENTS,
+    verification: 'non_verifiee',
+    periodeApplication: 'À vérifier : texte en vigueur au 2026-11-20 non lu (accès automatisé à Légifrance refusé, HTTP 403).',
+  },
+  amortissementDerogatoire: pcgAmortissement(
+    'PCG (règlement ANC n° 2014-03), art. 214-8 (amortissements dérogatoires, comptabilisés au sein des provisions réglementées lorsque des textes de niveau supérieur les prescrivent ou les autorisent) ; ' +
+      'plan de comptes : 145 « Amortissements dérogatoires », 6872 « Dotations aux provisions réglementées (immobilisations) » (68725 « Amortissements dérogatoires »), 7872 « Reprises sur provisions réglementées (immobilisations) » (78725). ' +
+      'BOFiP BOI-BIC-AMT-20-20 (introduction du régime) : « Le complément d’amortissement résultant de l’application du mode dégressif sera comptabilisé en amortissements dérogatoires » (page BOFiP en vigueur du 12/09/2012 à aujourd’hui, consultée le 2026-11-20).',
   ),
   conventionProrata: sourceInterne(
     'Convention interne de calcul : prorata temporis en jours calendaires réels, bornes incluses, pour les charges et produits constatés d’avance ; pour l’amortissement linéaire, année de 360 jours (mois de 30 jours) par défaut ' +

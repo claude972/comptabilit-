@@ -16,6 +16,15 @@ const schema = z.object({
     .string()
     .default('true')
     .transform((v) => v !== 'false'),
+  /**
+   * Calcul des propositions d'amortissement DÉGRESSIF. DÉFAUT : faux (non activé) : seule la valeur exacte « true » l'active. Le texte de loi
+   * (CGI art. 39 A) n'a pas été vérifié sur une source officielle et les règles n'ont pas été validées par un professionnel ; l'activation
+   * relève de l'éditeur (docs/etats-fiscaux.md, « Activer le dégressif »).
+   */
+  AMORTISSEMENT_DEGRESSIF_ACTIVE: z
+    .string()
+    .default('false')
+    .transform((v) => v.trim() === 'true'),
   OCR_URL: z.string().url().default('http://127.0.0.1:8500'),
   /** Passerelle IA : vide = non connecté (aucun appel sortant). */
   IA_OVH_ENDPOINT: z.string().optional().default(''),

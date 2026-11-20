@@ -96,8 +96,8 @@ Matrice exigence → implémentation → preuve → reste : `exigences.md`. Réa
 Reste réalisable sans intervention extérieure, non fait (par ordre d'utilité) :
 
 1. Persistance de la preuve de connexion de la passerelle IA et route de vérification (inutile tant qu'aucun jeton n'existe).
-2. Amortissements autres que linéaires ; reprise du fichier des immobilisations depuis le logiciel comptable (aujourd'hui : saisie par le cabinet).
-3. Assistant de portefeuille (D-079) : période commune à l'écran, plus de vingt dossiers par question ; recherche textuelle multi-dossiers hors assistant ; suggestions tirées des corrections (D-080) : parcours réels pour les branches « extraction » et « rapprochement ».
+2. Amortissements (D-089, D-090) : activer le dégressif après lecture du texte de loi et validation par un expert-comptable (`AMORTISSEMENT_DEGRESSIF_ACTIVE`) ; unités d'œuvre, amortissement dérogatoire, plus ou moins-value de cession, coefficient majoré, exercices non annuels en dégressif ; reprise du fichier des immobilisations depuis le logiciel comptable (aujourd'hui : saisie par le cabinet).
+3. Assistant et recherche de portefeuille (D-079, D-088) : mesure sur un gros portefeuille ; recherche par similarité quand des vecteurs réels existeront.
 4. Tiers et factures (D-077, D-084) : correction manuelle du destinataire d'une pièce ; réanalyse des pièces déjà stockées ; tolérances de montant ; règlements groupés non lettrés ; sort de l'ancienne table `factures`, jamais alimentée.
 5. Traces (D-083) : charger la source de données et le tableau dans Grafana, observer la rétention, surveiller le disque et les certificats, essayer sur deux hôtes en recette.
 6. Isolation par le noyau des analyseurs (D-076, D-085) ; isolement du mail si un décodage MIME était introduit ; plafonds des écrans de l'API qui chargent encore les lignes en mémoire (D-075) ; dépôt d'une archive répartie entre dossiers ; notifications poussées (D-081, D-086) : essai sur appareils réels, commande de retrait en masse après une rotation des clés VAPID ; passerelle IA (D-087) : alerte d'expiration de la preuve, premier appel réel quand un jeton existera.
@@ -120,4 +120,4 @@ Pour reprendre le travail sans relire l'historique :
 - **Fonctions préparées mais désactivées par défaut** (aucune variable n'est définie dans le fichier d'environnement local) : traces OpenTelemetry (`OTEL_EXPORTER_OTLP_ENDPOINT`), notifications poussées (`PUSH_VAPID_*`), agrégation bancaire, IA. La procédure de fin de contrat n'a jamais été exécutée et ne fait que simuler sans `--appliquer`.
 - **Seconde relecture du cahier des charges** (D-074 à D-081) : traces, contrôles en flux, analyse isolée, tiers et factures, fin de contrat, assistant de portefeuille, suggestions tirées des corrections, notifications poussées — tous publiés, CI verte.
 - **IA** : aucune n'est connectée ; l'assistant répond « sans IA ». Ne jamais activer un jeton sans les vérifications de `packages/ia/docs/passerelle.md` § 7.
-- **Migrations** : 0000 à 0042 (0038 crée le registre des fins de contrat, vide : aucune fin de contrat n'a été exécutée) ; les tests de base les rejouent toutes sur une base neuve.
+- **Migrations** : 0000 à 0044 (0038 crée le registre des fins de contrat, vide : aucune fin de contrat n'a été exécutée) ; les tests de base les rejouent toutes sur une base neuve.

@@ -137,6 +137,22 @@ export function CarteSuggestion({ suggestion: s, peutProposer }: { suggestion: S
                       </Link>
                     </>
                   ) : null}
+                  {s.empreinte.startsWith('nouvelle_regle_metier|extraction|') ? (
+                    <>
+                      {' — '}
+                      <Link href={`/dossiers/${d.dossierId}/pieces/${d.cibleId}`} prefetch={false}>
+                        pièce corrigée
+                      </Link>
+                    </>
+                  ) : null}
+                  {s.empreinte.startsWith('nouvelle_regle_metier|rapprochement|') ? (
+                    <>
+                      {' — '}
+                      <Link href={`/dossiers/${d.dossierId}/banque`} prefetch={false}>
+                        banque du dossier
+                      </Link>
+                    </>
+                  ) : null}
                   {d.motif ? ` — motif : ${d.motif}` : ''}
                 </li>
               ))}

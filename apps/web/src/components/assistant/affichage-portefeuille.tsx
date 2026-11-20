@@ -10,6 +10,8 @@ import { ListeSegments, VerificationsReponse } from './affichage';
  */
 export function ReponsePortefeuilleStructuree({ mode, perimetre, reponse, masque }: { mode: ModeEchange; perimetre: PerimetrePortefeuille; reponse: ReponsePortefeuilleAssistant; masque?: MasqueRelecture | null }) {
   const nomDe = new Map(perimetre.dossiers.map((d) => [d.id, d.nom]));
+  // Dossiers dont aucun exercice ne recoupe la période commune : annoncés, jamais écartés en silence.
+  const sansRecoupement = perimetre.dossiers.filter((d) => d.periode === null && d.exercice === null);
   return (
     <div className="space-y-3" data-testid="reponse-portefeuille" data-mode={mode} data-statut={reponse.statut}>
       <p className="flex flex-wrap items-center gap-2">
@@ -33,6 +35,19 @@ export function ReponsePortefeuilleStructuree({ mode, perimetre, reponse, masque
           Périmètre analysé : {perimetre.dossiers.length} dossier{perimetre.dossiers.length > 1 ? 's' : ''}
           {perimetre.periodeCommune ? ` — période commune demandée : du ${formaterDate(perimetre.periodeCommune.debut)} au ${formaterDate(perimetre.periodeCommune.fin)}` : ''}
         </p>
+        {perimetre.tranche && perimetre.tranche.total > 1 ? (
+          <p className="text-sm" data-testid="tranche-interrogee">
+            Tranche {perimetre.tranche.numero} sur {perimetre.tranche.total} : dossiers {perimetre.tranche.premier} à {perimetre.tranche.dernier} sur {perimetre.tranche.retenus}.{perimetre.ordre ? ` ${perimetre.ordre}` : ''} Cette réponse ne porte que sur ces dossiers.
+          </p>
+        ) : null}
+        {perimetre.periodeCommune && sansRecoupement.length ? (
+          <Alerte ton="attention" data-testid="sans-recoupement">
+            <p>
+              {sansRecoupement.length} dossier{sansRecoupement.length > 1 ? 's' : ''} sans exercice recoupant la période demandée : la comptabilité n’a pas été interrogée {sansRecoupement.length > 1 ? 'pour ces dossiers' : 'pour ce dossier'}.
+            </p>
+            <p className="break-words text-sm">{sansRecoupement.map((d) => d.nom).join(' ; ')}</p>
+          </Alerte>
+        ) : null}
         <ul className="space-y-1 text-sm">
           {perimetre.dossiers.map((d) => (
             <li key={d.id} className="rounded-lg border border-bordure p-2 break-words" data-dossier-interroge={d.id}>
@@ -65,8 +80,8 @@ export function ReponsePortefeuilleStructuree({ mode, perimetre, reponse, masque
         {perimetre.nonInterroges.length ? (
           <Alerte ton="attention" data-testid="dossiers-non-interroges">
             <p>
-              Périmètre réduit : une question porte sur {perimetre.borne} dossiers au plus. {perimetre.nonInterroges.length} dossier{perimetre.nonInterroges.length > 1 ? 's' : ''} autorisé{perimetre.nonInterroges.length > 1 ? 's' : ''} n’
-              {perimetre.nonInterroges.length > 1 ? 'ont' : 'a'} pas été interrogé{perimetre.nonInterroges.length > 1 ? 's' : ''} : sélectionnez-{perimetre.nonInterroges.length > 1 ? 'les' : 'le'} pour une autre question.
+              Une question porte sur {perimetre.borne} dossiers au plus. {perimetre.nonInterroges.length} dossier{perimetre.nonInterroges.length > 1 ? 's' : ''} retenu{perimetre.nonInterroges.length > 1 ? 's' : ''} n’
+              {perimetre.nonInterroges.length > 1 ? 'ont' : 'a'} pas été interrogé{perimetre.nonInterroges.length > 1 ? 's' : ''} par cette réponse : {perimetre.nonInterroges.length > 1 ? 'ils sont' : 'il est'} dans {perimetre.tranche && perimetre.tranche.total > 1 ? 'les autres tranches' : 'une autre question'}.
             </p>
             <p className="break-words text-sm">{perimetre.nonInterroges.map((d) => d.nom).join(' ; ')}</p>
           </Alerte>

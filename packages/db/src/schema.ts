@@ -9,6 +9,7 @@
  */
 import { sql } from 'drizzle-orm';
 import {
+  type AnyPgColumn,
   bigint,
   bigserial,
   boolean,
@@ -1423,8 +1424,10 @@ export const confirmationsAnnexe = pgTable(
 
 /**
  * Fichier des immobilisations d'un dossier, SAISI par le cabinet (aucune donnée importée ne le fournit). Il ne sert qu'à
- * proposer les dotations aux amortissements linéaires ; il ne remplace pas le fichier des immobilisations du logiciel
- * de production comptable, qui reste la référence. Une immobilisation retirée ici n'est pas supprimée de la comptabilité.
+ * proposer les dotations aux amortissements (linéaires, ou dégressifs sur déclaration du cabinet) ; il ne remplace pas le
+ * fichier des immobilisations du logiciel de production comptable, qui reste la référence. Une immobilisation retirée ici
+ * n'est pas supprimée de la comptabilité. `base_amortissable` est la VALEUR BRUTE à amortir : le montant amortissable est
+ * cette valeur diminuée de la valeur résiduelle (PCG art. 214-4).
  */
 export const immobilisations = pgTable(
   'immobilisations',
@@ -1435,10 +1438,24 @@ export const immobilisations = pgTable(
     libelle: text('libelle').notNull(),
     compteImmobilisation: text('compte_immobilisation').notNull(),
     baseAmortissable: montant('base_amortissable').notNull(),
+    /** Date d'acquisition (ou de construction) : point de départ du dégressif (premier jour du mois, BOI-BIC-AMT-20-20-30). Obligatoire en dégressif (API), facultative sinon. */
+    dateAcquisition: date('date_acquisition', { mode: 'string' }),
     dateMiseEnService: date('date_mise_en_service', { mode: 'string' }).notNull(),
     dureeMois: integer('duree_mois').notNull(),
     /** Amortissements cumulés avant le premier exercice suivi ici ; null = non renseigné (le moteur le dit). */
     amortissementsAnterieurs: montant('amortissements_anterieurs'),
+    /** Mode du plan d'amortissement comptable, choisi par le cabinet : 'lineaire' ou 'degressif'. */
+    modeAmortissement: text('mode_amortissement').notNull().default('lineaire'),
+    /** Coefficient dégressif déclaré (1.25, 1.75 ou 2.25) ; renseigné si et seulement si le mode est dégressif. */
+    coefficientDegressif: numeric('coefficient_degressif', { precision: 4, scale: 2 }),
+    /** Le cabinet confirme que le bien remplit les conditions du dégressif ; jamais déduit. */
+    eligibiliteDegressifConfirmee: boolean('eligibilite_degressif_confirmee'),
+    /** Valeur résiduelle, strictement inférieure à la valeur brute ; null = aucune. */
+    valeurResiduelle: montant('valeur_residuelle'),
+    /** Date de sortie de l'actif (cession, mise au rebut) : le moteur s'abstient quand elle tombe dans ou avant l'exercice. */
+    dateSortie: date('date_sortie', { mode: 'string' }),
+    /** Immobilisation « structure » dont celle-ci est un composant (une seule profondeur). */
+    composantDe: uuid('composant_de').references((): AnyPgColumn => immobilisations.id),
     saisiePar: uuid('saisie_par').notNull().references(() => utilisateurs.id),
     creeLe: creeLe(),
   },

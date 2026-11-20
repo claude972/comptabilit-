@@ -5232,17 +5232,9 @@
     },
     "/v1/recherche": {
       "get": {
-        "description": "Recherche déterministe (plein texte français), sans IA. Les habilitations sont appliquées par la base avant toute recherche. Chaque résultat cite sa source (pièce et page, écriture et lot, constat) ; les extraits sont des contenus de pièces, donc non fiables, renvoyés en texte brut.",
+        "description": "Recherche déterministe (plein texte français), sans IA. Les habilitations sont appliquées par la base avant toute recherche. Chaque résultat cite sa source (pièce et page, écriture et lot, constat) ; les extraits sont des contenus de pièces, donc non fiables, renvoyés en texte brut.\n\nAVEC « entiteId » : un dossier (niveau « dépôt » au moins ; un déposant ne voit que ses propres dépôts). SANS « entiteId » : le PORTEFEUILLE — les dossiers actifs où la personne a au moins le niveau « lecture », calculés par la base sous son identité (aucun identifiant n’est accepté pour élargir ou choisir le périmètre) ; refusé (403) aux déposants. Résultats groupés PAR DOSSIER (nom, totaux exacts par catégorie, au plus 3 pièces, 5 écritures et 5 constats par dossier), 10 dossiers par page (« page »), classés par nombre de résultats décroissant puis nom. Les dossiers sans résultat ne sont ni listés ni nommés, seulement décomptés (« dossiersSansResultat »). Délai maximal 8 s : au-delà, 503 explicite, jamais un résultat partiel présenté comme complet. Les pièces en quarantaine sont exclues.",
         "operationId": "RechercheController_chercher",
         "parameters": [
-          {
-            "name": "entiteId",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "q",
             "required": true,
@@ -5250,6 +5242,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "Portefeuille seulement : page de dossiers (à partir de 1).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "entiteId",
+            "required": false,
+            "in": "query",
+            "description": "Un dossier ; absent : tout le portefeuille autorisé.",
+            "schema": {}
           }
         ],
         "responses": {
@@ -5262,7 +5270,7 @@
             "bearer": []
           }
         ],
-        "summary": "Recherche textuelle dans un dossier : pièces (texte extrait), écritures importées, constats",
+        "summary": "Recherche textuelle dans UN dossier (« entiteId ») ou, sans « entiteId », dans tout le portefeuille autorisé : pièces (texte extrait), écritures importées, constats",
         "tags": [
           "Recherche"
         ]
@@ -5609,7 +5617,7 @@
     },
     "/v1/dossiers/{entiteId}/immobilisations": {
       "get": {
-        "description": "Sert uniquement à proposer les dotations aux amortissements linéaires. Ce n’est pas le fichier des immobilisations du logiciel de production comptable, qui reste la référence ; rien n’y est importé ni exporté.",
+        "description": "Sert uniquement à proposer les dotations aux amortissements (linéaires, ou dégressifs sur déclaration du cabinet). Ce n’est pas le fichier des immobilisations du logiciel de production comptable, qui reste la référence ; rien n’y est importé ni exporté.",
         "operationId": "FiscalController_listerImmobilisations",
         "parameters": [
           {
@@ -5637,7 +5645,7 @@
         ]
       },
       "post": {
-        "description": "Base amortissable strictement positive, en chaîne décimale ; durée en mois ; compte de classe 2. Aucune écriture n’est créée : seules des PROPOSITIONS de dotation en découleront.",
+        "description": "baseAmortissable est la VALEUR BRUTE à amortir (chaîne décimale strictement positive) ; valeurResiduelle, si elle est saisie, lui est strictement inférieure et se déduit du montant amortissable. dateAcquisition (ou de construction) : obligatoire en mode dégressif (le point de départ du dégressif est le premier jour du mois d’acquisition, BOFiP BOI-BIC-AMT-20-20-30), facultative sinon, jamais postérieure à la mise en service. modeAmortissement : « lineaire » (défaut) ou « degressif ». La saisie du mode dégressif reste possible (déclaration du cabinet) mais AUCUN calcul n’en découle tant que l’éditeur n’a pas activé la fonction (AMORTISSEMENT_DEGRESSIF_ACTIVE, défaut faux : voir « degressif » dans les propositions). Le mode dégressif n’est jamais deviné : il exige un coefficient cohérent avec la durée (1.25 pour 3 ou 4 ans, 1.75 pour 5 ou 6 ans, 2.25 au-delà), la confirmation de l’éligibilité par le cabinet (bien neuf, durée d’au moins trois ans, bien visé par l’art. 39 A du CGI : le cabinet en répond) et une durée en années entières ; les coefficients majorés ou diminués de certains biens d’équipement ne sont pas pris en charge ; les règles correspondantes ne sont pas validées par un professionnel. dateSortie : si elle tombe dans ou avant l’exercice, le moteur s’abstient (il ne calcule pas la plus ou moins-value). composantDe : identifiant de l’immobilisation « structure » du même dossier (PCG art. 214-9), chaque composant ayant son propre plan. Aucune écriture n’est créée : seules des PROPOSITIONS de dotation en découleront.",
         "operationId": "FiscalController_saisirImmobilisation",
         "parameters": [
           {
@@ -5669,6 +5677,17 @@
                     "type": "string",
                     "pattern": "^-?\\d{1,13}(\\.\\d{1,6})?$"
                   },
+                  "dateAcquisition": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "dateMiseEnService": {
                     "type": "string",
                     "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
@@ -5688,6 +5707,64 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "modeAmortissement": {
+                    "default": "lineaire",
+                    "type": "string",
+                    "enum": [
+                      "lineaire",
+                      "degressif"
+                    ]
+                  },
+                  "coefficientDegressif": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^-?\\d{1,13}(\\.\\d{1,6})?$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "eligibiliteDegressifConfirmee": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "valeurResiduelle": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^-?\\d{1,13}(\\.\\d{1,6})?$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "dateSortie": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "composantDe": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 },
                 "required": [
@@ -5695,7 +5772,8 @@
                   "compteImmobilisation",
                   "baseAmortissable",
                   "dateMiseEnService",
-                  "dureeMois"
+                  "dureeMois",
+                  "modeAmortissement"
                 ],
                 "additionalProperties": false
               }
@@ -5758,7 +5836,7 @@
     },
     "/v1/exercices/{id}/inventaire/propositions": {
       "get": {
-        "description": "Calculées par le moteur à partir de règles explicites et versionnées ; chaque proposition porte son origine, sa justification, son calcul, ses écritures sources, ses impacts et ses hypothèses. Rien n’est comptabilisé ni même enregistré : une proposition ne devient une écriture d’inventaire (elle-même un projet à approuver par une autre personne) que si quelqu’un la reprend. Quand une donnée manque, le moteur s’abstient et le dit. Les dotations aux amortissements (linéaires seulement) ne sont proposées que pour les immobilisations saisies par le cabinet dans le fichier du dossier.",
+        "description": "Calculées par le moteur à partir de règles explicites et versionnées ; chaque proposition porte son origine, sa justification, son calcul, ses écritures sources, ses impacts et ses hypothèses. Rien n’est comptabilisé ni même enregistré : une proposition ne devient une écriture d’inventaire (elle-même un projet à approuver par une autre personne) que si quelqu’un la reprend. Quand une donnée manque, le moteur s’abstient et le dit. « degressif » : { active, motif } dit si le calcul du dégressif est activé (défaut : non, abstention motivée sans montant). Les dotations aux amortissements (linéaires, ou dégressives si le calcul est activé et sur déclaration explicite du cabinet) ne sont proposées que pour les immobilisations saisies par le cabinet dans le fichier du dossier ; une dotation déjà comptabilisée dans les écritures importées n’est jamais reproposée (l’écart est affiché dans « rapprochement »), et les points à traiter par le professionnel (amortissement dérogatoire éventuel) sont listés dans « signalements ».",
         "operationId": "FiscalController_listerPropositions",
         "parameters": [
           {
@@ -6513,7 +6591,7 @@
     },
     "/v1/assistant/questions": {
       "post": {
-        "description": "Périmètre calculé par la base sous l’identité de la session : les dossiers actifs du cabinet où la personne a au moins le niveau « lecture ». « dossierIds », s’il est fourni, est intersecté avec ce périmètre : un identifiant qui n’en fait pas partie (non habilité, autre cabinet, inexistant) est écarté et listé dans « perimetre.horsPerimetre », sans dire s’il existe ; 404 si aucun des dossiers demandés n’est dans le périmètre. Au plus 20 dossiers par question : au-delà, le périmètre est réduit (ordre alphabétique) et les dossiers non interrogés sont listés dans « perimetre.nonInterroges ». Période : le dernier exercice de chaque dossier, ou sa part dans la période commune fournie ; annoncée dossier par dossier, comme les données manquantes. Chaque source citée porte « dossierId ». Le nombre d’éléments restitués par dossier dépend du nombre de dossiers (« perimetre.elementsParDossier ») ; ce qui dépasse est décompté (« nonRestitues »). Refusé (403) aux déposants et à qui n’a aucun dossier ouvert en lecture. Sans IA connectée — état actuel — la réponse porte « mode: sans_ia ». L’échange est enregistré pour son auteur seulement.",
+        "description": "Périmètre calculé par la base sous l’identité de la session : les dossiers actifs du cabinet où la personne a au moins le niveau « lecture ». « dossierIds », s’il est fourni, est intersecté avec ce périmètre : un identifiant qui n’en fait pas partie (non habilité, autre cabinet, inexistant) est écarté et listé dans « perimetre.horsPerimetre », sans dire s’il existe ; 404 si aucun des dossiers demandés n’est dans le périmètre. Au plus 20 dossiers par question : au-delà, le périmètre est découpé en tranches de 20 dossiers, classés par pertinence déterministe (données comptables importées d’abord, puis exercice sans donnée, puis les autres ; ordre alphabétique à égalité — « perimetre.ordre »). « tranche » (1 par défaut) choisit la tranche interrogée ; « perimetre.tranche » dit laquelle sur combien, et les dossiers des autres tranches sont nommés dans « perimetre.nonInterroges ». Chaque tranche est une question distincte, enregistrée séparément, jamais fusionnée avec une autre, et ses habilitations sont relues en base ; 409 si la tranche demandée n’existe plus (périmètre réduit entre-temps). Le classement est recalculé à chaque question : un import intercalé entre deux tranches peut le modifier. Période : le dernier exercice de chaque dossier, ou sa part dans la période commune fournie ; annoncée dossier par dossier, comme les données manquantes. Chaque source citée porte « dossierId ». Le nombre d’éléments restitués par dossier dépend du nombre de dossiers (« perimetre.elementsParDossier ») ; ce qui dépasse est décompté (« nonRestitues »). Refusé (403) aux déposants et à qui n’a aucun dossier ouvert en lecture. Sans IA connectée — état actuel — la réponse porte « mode: sans_ia ». L’échange est enregistré pour son auteur seulement.",
         "operationId": "AssistantController_poserPortefeuille",
         "parameters": [],
         "requestBody": {
@@ -6554,6 +6632,11 @@
                       "fin"
                     ],
                     "additionalProperties": false
+                  },
+                  "tranche": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10
                   }
                 },
                 "required": [

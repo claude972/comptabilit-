@@ -1,7 +1,7 @@
 import type { LigneFec } from '@comtaple/core';
 import { and, eq, inArray, journaliser, ne, schema as s, sql } from '@comtaple/db';
 import type { TacheImportFec } from '@comtaple/plateforme';
-import { analyserFecIsole, type CauseEchec, motifEchecFec } from './analyse-isolee.js';
+import { analyserFecIsole, type CauseEchec, isolementDepuisConfig, motifEchecFec } from './analyse-isolee.js';
 import type { Contexte } from './contexte.js';
 
 const TAILLE_LOT = 1000;
@@ -105,7 +105,7 @@ export async function importerFec(c: Contexte, t: TacheImportFec): Promise<void>
             }
           },
         },
-        { dureeMaxMs: c.cfg.ANALYSE_FEC_DUREE_MAX_MS, tasMaxMo: c.cfg.ANALYSE_TAS_MAX_MO, memoireMaxMo: c.cfg.ANALYSE_MEMOIRE_MAX_MO, ...c.analyseFec },
+        { dureeMaxMs: c.cfg.ANALYSE_FEC_DUREE_MAX_MS, tasMaxMo: c.cfg.ANALYSE_TAS_MAX_MO, memoireMaxMo: c.cfg.ANALYSE_MEMOIRE_MAX_MO, ...isolementDepuisConfig(c.cfg), ...c.analyseFec },
       );
       if (!analyse.ok) throw new AnalyseInterrompue(analyse.cause);
       const rapport = analyse.valeur;

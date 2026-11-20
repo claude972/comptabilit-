@@ -1,7 +1,7 @@
 import { type ChampsFacture, type PageTexte, VERSION_ANALYSEUR_FACTURE, verifierCoherenceFacture } from '@comtaple/core';
 import { and, eq, journaliser, schema as s, sql } from '@comtaple/db';
 import type { TacheAnalyseDocument } from '@comtaple/plateforme';
-import { analyserPieceIsolee, type CauseEchec, extraireTexteIsole, motifEchecAnalyse, type OptionsAnalyse } from './analyse-isolee.js';
+import { analyserPieceIsolee, type CauseEchec, extraireTexteIsole, isolementDepuisConfig, motifEchecAnalyse, type OptionsAnalyse } from './analyse-isolee.js';
 import { caracteresUtiles } from './analyse-types.js';
 import { analyserAntivirus } from './antivirus.js';
 import type { Contexte } from './contexte.js';
@@ -150,6 +150,7 @@ export async function extrairePiece(c: Contexte, type: ReturnType<typeof detecte
     tasMaxMo: c.cfg.ANALYSE_TAS_MAX_MO,
     memoireMaxMo: c.cfg.ANALYSE_MEMOIRE_MAX_MO,
     sortieMaxOctets: c.cfg.ANALYSE_SORTIE_MAX_OCTETS,
+    ...isolementDepuisConfig(c.cfg),
     ...c.analyse,
   };
   // Le motif technique (cause) va au journal du worker, jamais à l'utilisateur ; aucun contenu de pièce n'y figure.

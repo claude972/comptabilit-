@@ -4,6 +4,8 @@ import { arreterTraces, connecteursMail, creerIa, demarrerTraces, Metriques, con
 import { Worker, type Job } from 'bullmq';
 import { signalerExpirationPreuveIa } from './alerte-ia.js';
 import { analyserDocument } from './analyse-document.js';
+import { retirerConteneursAnalyseExpires } from './analyse-conteneur.js';
+import { isolementDepuisConfig } from './analyse-isolee.js';
 import { executerRapprochement, importerReleve } from './banque.js';
 import type { Contexte } from './contexte.js';
 import { executerControlesExecution } from './controles.js';
@@ -166,6 +168,17 @@ setInterval(() => {
     console.log(`mémoire : pic tas ${picMemoire.tas} Mo (plafond ${plafondTasMo} Mo), résidente ${picMemoire.residente} Mo`);
   }
 }, 500).unref();
+
+// Mode conteneur (D-098) : retire les conteneurs d'analyse EXPIRÉS qu'un worker tué brutalement aurait laissés (étiquette et date
+// d'expiration inscrites au lancement) ; jamais un conteneur encore dans sa durée autorisée, jamais un autre conteneur.
+const isolementAnalyse = isolementDepuisConfig(cfg);
+if (isolementAnalyse.conteneur) {
+  const parametres = isolementAnalyse.conteneur;
+  const entretienConteneurs = () => retirerConteneursAnalyseExpires(parametres).then((n) => n > 0 && console.log(`${n} conteneur(s) d'analyse expiré(s) retiré(s).`), () => undefined);
+  void entretienConteneurs();
+  setInterval(entretienConteneurs, 300_000).unref();
+  console.log(`Analyse en conteneurs dédiés (image ${parametres.image}).`);
+}
 
 console.log(`Worker Comtaple démarré (files : documents, comptabilite, exports, mail${poussees.statut === 'non_configure' ? '' : ', pousses'}) ; plafond de tas : ${plafondTasMo} Mo.`);
 

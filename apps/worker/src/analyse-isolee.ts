@@ -16,6 +16,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type LigneFec, PLAFOND_ANOMALIES_FEC, type PageTexte, type ProfilCsvBanque, type RapportFec, referentielFec, schemaProfilCsvBanque, TAILLE_MAX_LIGNE_FEC } from '@comtaple/core';
 import { z } from 'zod';
+import { demarrerConteneur, type ParametresConteneur, RACINE_IMAGE } from './analyse-conteneur.js';
 import { type DemandeAnalyse, LIGNES_MAX_PAR_PAGE, MOUVEMENTS_MAX_RELEVE, PAGES_MAX, PAGES_MAX_TEXTE, type ResultatPiece, type ResultatReleve, type ResultatTexte, type TypePieceDecodee } from './analyse-types.js';
 
 export interface LimitesAnalyse {
@@ -38,6 +39,27 @@ export type Issue<T> = { ok: true; valeur: T; dureeMs: number } | { ok: false; c
 export interface OptionsAnalyse extends Partial<LimitesAnalyse> {
   entree?: string;
   lecturesSupplementaires?: string[];
+  /** Mode d'exécution (D-098) : `processus` (défaut) ou `conteneur`. */
+  isolation?: 'processus' | 'conteneur';
+  /** Paramètres du mode `conteneur` (image, client docker, bornes) ; ignorés en mode `processus`. */
+  conteneur?: ParametresConteneur;
+}
+
+/** Options d'isolement issues de la configuration (mode, image, bornes du conteneur) : à répandre dans les options d'un appel. */
+export function isolementDepuisConfig(cfg: {
+  ANALYSE_ISOLATION: 'processus' | 'conteneur';
+  ANALYSE_CONTENEUR_IMAGE: string;
+  ANALYSE_CONTENEUR_DOCKER: string;
+  ANALYSE_CONTENEUR_HOTE: string;
+  ANALYSE_CONTENEUR_CPUS: number;
+  ANALYSE_CONTENEUR_PIDS: number;
+  ANALYSE_CONTENEUR_TMPFS_MO: number;
+}): Pick<OptionsAnalyse, 'isolation' | 'conteneur'> {
+  if (cfg.ANALYSE_ISOLATION !== 'conteneur') return {};
+  return {
+    isolation: 'conteneur',
+    conteneur: { image: cfg.ANALYSE_CONTENEUR_IMAGE, docker: cfg.ANALYSE_CONTENEUR_DOCKER, hote: cfg.ANALYSE_CONTENEUR_HOTE, cpus: cfg.ANALYSE_CONTENEUR_CPUS, pidsMax: cfg.ANALYSE_CONTENEUR_PIDS, tmpfsMo: cfg.ANALYSE_CONTENEUR_TMPFS_MO },
+  };
 }
 
 const ICI = dirname(fileURLToPath(import.meta.url)); // apps/worker/dist en service, apps/worker/src sous vitest
@@ -50,15 +72,20 @@ export const ENTREE_ENFANT = join(PAQUET, 'dist', 'analyse-enfant.js');
  * Seuls chemins lisibles par l'enfant (modèle de permissions de Node) : son propre code et ses dépendances.
  * Ni la racine du dépôt (fichier `.env`), ni le répertoire personnel, ni /etc, ni /proc ; aucune écriture nulle part.
  */
-const LECTURES_ENFANT = [join(PAQUET, 'dist'), join(PAQUET, 'node_modules'), join(PAQUET, 'package.json'), join(RACINE, 'node_modules'), join(RACINE, 'packages', 'core')];
+const lecturesEnfant = (paquet: string, racine: string) => [join(paquet, 'dist'), join(paquet, 'node_modules'), join(paquet, 'package.json'), join(racine, 'node_modules'), join(racine, 'packages', 'core')];
+const LECTURES_ENFANT = lecturesEnfant(PAQUET, RACINE);
+/** Même disposition dans l'image d'analyse : `/app/apps/worker/…`, `/app/node_modules`, `/app/packages/core`. */
+const PAQUET_IMAGE = `${RACINE_IMAGE}/apps/worker`;
+export const ENTREE_ENFANT_IMAGE = `${PAQUET_IMAGE}/dist/analyse-enfant.js`;
 
-export function argumentsEnfant(limites: LimitesAnalyse, entree: string, lecturesSupplementaires: string[] = []): string[] {
+export function argumentsEnfant(limites: LimitesAnalyse, entree: string, lecturesSupplementaires: string[] = [], dansImage = false): string[] {
+  const lectures = dansImage ? lecturesEnfant(PAQUET_IMAGE, RACINE_IMAGE) : LECTURES_ENFANT;
   return [
     `--max-old-space-size=${limites.tasMaxMo}`,
     // Modèle de permissions (stable depuis Node 22.13 / 23.5) : lecture limitée aux chemins listés ; écriture, processus
     // fils, fils d'exécution, modules natifs, WASI et inspecteur refusés faute d'autorisation explicite.
     '--permission',
-    ...[...LECTURES_ENFANT, ...lecturesSupplementaires].map((c) => `--allow-fs-read=${c}`),
+    ...[...lectures, ...lecturesSupplementaires].map((c) => `--allow-fs-read=${c}`),
     // Les lecteurs n'ont pas à fabriquer de code : eval et new Function sont refusés.
     '--disallow-code-generation-from-strings',
     entree,
@@ -114,30 +141,46 @@ function lancer(options: OptionsAnalyse): Lancement {
     memoireMaxMo: options.memoireMaxMo ?? LIMITES_PAR_DEFAUT.memoireMaxMo,
     sortieMaxOctets: options.sortieMaxOctets ?? LIMITES_PAR_DEFAUT.sortieMaxOctets,
   };
-  const entree = options.entree ?? ENTREE_ENFANT;
+  const modeConteneur = options.isolation === 'conteneur';
+  if (modeConteneur && !options.conteneur) throw new Error('Mode conteneur demandé sans paramètres de conteneur');
   const debut = performance.now();
-  const enfant = spawn(process.execPath, argumentsEnfant(limites, entree, options.lecturesSupplementaires), {
-    env: {},
-    cwd: dirname(entree),
-    stdio: ['pipe', 'pipe', 'pipe'],
-    windowsHide: true,
-  });
-  enCours.add(enfant);
+  let conteneur: ReturnType<typeof demarrerConteneur> | null = null;
+  let enfant: ReturnType<typeof spawn>;
+  if (modeConteneur) {
+    // Mode conteneur : l'enfant est le CLIENT docker qui pilote un conteneur dédié. Mêmes arguments Node qu'en mode processus
+    // (tas, permissions, code non généré), avec les chemins de l'image ; les bornes de mémoire et de processus sont celles du conteneur.
+    const p = options.conteneur!;
+    conteneur = demarrerConteneur(p, { dureeMaxMs: limites.dureeMaxMs, memoireMaxMo: limites.memoireMaxMo }, argumentsEnfant(limites, options.entree ?? ENTREE_ENFANT_IMAGE, options.lecturesSupplementaires, true));
+    enfant = conteneur.client;
+  } else {
+    const entree = options.entree ?? ENTREE_ENFANT;
+    enfant = spawn(process.execPath, argumentsEnfant(limites, entree, options.lecturesSupplementaires), {
+      env: {},
+      cwd: dirname(entree),
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+    enCours.add(enfant);
+  }
   let arret: CauseEchec | null = null;
   const arreter = (cause: CauseEchec) => {
     arret ??= cause;
-    enfant.kill('SIGKILL');
+    if (conteneur) conteneur.arreter();
+    else enfant.kill('SIGKILL');
   };
   const minuterie = setTimeout(() => arreter('delai'), limites.dureeMaxMs);
   let mesureEnCours = false;
-  const surveillance = setInterval(() => {
-    if (mesureEnCours || enfant.pid === undefined) return;
-    mesureEnCours = true;
-    void memoireResidenteMo(enfant.pid).then((mo) => {
-      mesureEnCours = false;
-      if (mo !== null && mo > limites.memoireMaxMo) arreter('memoire');
-    });
-  }, 100);
+  // La mémoire d'un conteneur est bornée par son cgroup (arrêt par le noyau, constaté par le moteur) : pas de sondage.
+  const surveillance = conteneur
+    ? null
+    : setInterval(() => {
+        if (mesureEnCours || enfant.pid === undefined) return;
+        mesureEnCours = true;
+        void memoireResidenteMo(enfant.pid).then((mo) => {
+          mesureEnCours = false;
+          if (mo !== null && mo > limites.memoireMaxMo) arreter('memoire');
+        });
+      }, 100);
   // Sortie d'erreur : seuls ses premiers octets servent, à reconnaître un dépassement du tas ; jamais relayée.
   let erreurs = '';
   enfant.stderr!.on('data', (m: Buffer) => {
@@ -147,17 +190,30 @@ function lancer(options: OptionsAnalyse): Lancement {
   enfant.stdin!.on('error', () => undefined);
   const finir = () => {
     clearTimeout(minuterie);
-    clearInterval(surveillance);
+    if (surveillance) clearInterval(surveillance);
     enCours.delete(enfant);
   };
   const fin = new Promise<number | null>((rendre, rejeter) => {
     enfant.on('error', (e) => {
       finir();
+      void conteneur?.nettoyer();
       rejeter(new Error(`Lancement du processus d'analyse impossible : ${e.message}`));
     });
     enfant.on('close', (code) => {
-      finir();
-      rendre(code);
+      void (async () => {
+        if (conteneur) {
+          // Le conteneur est constaté puis supprimé AVANT de rendre l'issue : aucun conteneur ne survit à son analyse.
+          const etat = await conteneur.nettoyer();
+          if (etat.memoire) arret ??= 'memoire'; // arrêté par le noyau pour dépassement de mémoire (OOM)
+          if (etat.absent && arret === null && code !== 0) {
+            // Aucun conteneur n'a existé : le moteur a refusé le lancement (image absente, moteur injoignable) : tâche retentée.
+            finir();
+            return rejeter(new Error(`Lancement du conteneur d'analyse impossible (code ${String(code)}) : ${etat.erreurClient.replace(/\s+/g, ' ').trim().slice(0, 300)}`));
+          }
+        }
+        finir();
+        rendre(code);
+      })();
     });
   });
   return { enfant, limites, debut, arreter, cause: () => arret, fin, causeSortie: () => (/heap out of memory|Allocation failed|out of memory/i.test(erreurs) ? 'memoire' : 'plantage') };

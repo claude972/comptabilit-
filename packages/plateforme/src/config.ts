@@ -75,6 +75,23 @@ const schema = z.object({
    */
   ANALYSE_FEC_DUREE_MAX_MS: z.coerce.number().int().min(10_000).default(3_600_000),
   /**
+   * Mode d'exécution des analyseurs (D-098). `processus` (défaut) : un processus enfant Node par fichier, dans le conteneur du
+   * worker. `conteneur` : un CONTENEUR dédié par fichier (sans réseau, sans privilège, système de fichiers en lecture seule,
+   * bornes de mémoire, de processus et de durée), piloté par le seul code du worker ; voir docs/architecture.md.
+   * Les options de sécurité du conteneur sont écrites en dur dans le code : aucune variable ne peut les relâcher.
+   */
+  ANALYSE_ISOLATION: z.enum(['processus', 'conteneur']).default('processus'),
+  /** Image d'analyse (construite par `docker build --target analyse`) : jamais téléchargée à l'exécution (`--pull never`). */
+  ANALYSE_CONTENEUR_IMAGE: z.string().min(1).max(300).default('comtaple-analyse:dev'),
+  /** Client Docker utilisé par le worker pour piloter le moteur (ou un lanceur restreint). */
+  ANALYSE_CONTENEUR_DOCKER: z.string().min(1).max(300).default('docker'),
+  /** Hôte du moteur (valeur de DOCKER_HOST transmise au client) : vide = celui du worker. En production : le lanceur restreint. */
+  ANALYSE_CONTENEUR_HOTE: z.string().max(300).optional().default(''),
+  /** Bornes du conteneur d'analyse : processeurs, nombre de processus et fils d'exécution, taille du tmpfs. */
+  ANALYSE_CONTENEUR_CPUS: z.coerce.number().min(0.1).max(8).default(1),
+  ANALYSE_CONTENEUR_PIDS: z.coerce.number().int().min(16).max(1024).default(64),
+  ANALYSE_CONTENEUR_TMPFS_MO: z.coerce.number().int().min(1).max(1024).default(64),
+  /**
    * Seuil du chemin EN MÉMOIRE : nombre maximal de lignes d'écriture chargées en mémoire par UN traitement du worker
    * (contrôles : exercice + exercice précédent ; rapprochement : exercice). Dimensionné sur les mesures du 2026-11-19
    * (D-061) : environ 1,45 Ko de tas par ligne, deux traitements simultanés, tas plafonné à 2 048 Mo.

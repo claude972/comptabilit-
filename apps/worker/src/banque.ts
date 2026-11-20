@@ -12,7 +12,7 @@ import {
 } from '@comtaple/core';
 import { and, asc, eq, gte, inArray, journaliser, lte, schema as s, sql, type Tx } from '@comtaple/db';
 import { lignesDuLot, type TacheImportReleve, type TacheRapprochement } from '@comtaple/plateforme';
-import { lireReleveIsole, motifEchecReleve, type OptionsAnalyse } from './analyse-isolee.js';
+import { isolementDepuisConfig, lireReleveIsole, motifEchecReleve, type OptionsAnalyse } from './analyse-isolee.js';
 import type { Contexte } from './contexte.js';
 import { preparerSourceDuLot } from './source-lignes.js';
 
@@ -64,6 +64,7 @@ export async function importerReleve(c: Contexte, t: TacheImportReleve): Promise
     tasMaxMo: c.cfg.ANALYSE_TAS_MAX_MO,
     memoireMaxMo: c.cfg.ANALYSE_MEMOIRE_MAX_MO,
     sortieMaxOctets: c.cfg.ANALYSE_RELEVE_SORTIE_MAX_OCTETS,
+    ...isolementDepuisConfig(c.cfg),
     ...c.analyse,
   };
   const lecture = await lireReleveIsole(octets, { profilCsv: profilDemande?.success ? profilDemande.data : null, profilInvalide: profilDemande !== null && !profilDemande.success }, isolement);

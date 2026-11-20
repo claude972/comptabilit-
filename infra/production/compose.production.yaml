@@ -10,7 +10,8 @@
 # - conteneurs en lecture seule, sans capacités, sans élévation de privilèges, ressources plafonnées — sauf exceptions
 #   signalées (antivirus) ;
 # - toute variable sans valeur fait échouer la commande avec son nom : aucun secret n'a de valeur par défaut ;
-# - aucun montage de dossier de l'hôte (sauf la sonde de l'hôte, en lecture seule) : configuration passée par
+# - aucun montage de dossier de l'hôte (sauf la sonde de l'hôte, en lecture seule, et, SEULEMENT si le profil facultatif
+#   `analyse-conteneur` est activé, le socket du moteur dans le lanceur restreint : D-098) : configuration passée par
 #   l'environnement, données dans des volumes Docker.
 #
 # Usage sur l'hôte (par scripts/deployer.sh) :
@@ -297,7 +298,9 @@ services:
     pids_limit: 128
 
   worker:
-    image: ${REGISTRE}/comtaple-worker:${VERSION}
+    # Analyse isolée en conteneurs (D-098) : DÉSACTIVÉE par défaut. Pour l'activer, WORKER_VARIANTE=-conteneurs (image du worker
+    # + client docker, cible `worker-conteneurs` du Dockerfile), ANALYSE_ISOLATION=conteneur et le profil `analyse-conteneur`.
+    image: ${REGISTRE}/comtaple-worker${WORKER_VARIANTE:-}:${VERSION}
     <<: *durcissement
     environment:
       <<: *environnement-serveur
@@ -305,6 +308,15 @@ services:
       # Plafond de tas et limite de volume vont ENSEMBLE (docs/decisions.md, D-061).
       NODE_OPTIONS: --max-old-space-size=2048
       LIGNES_MAX_PAR_TRAITEMENT: ${LIGNES_MAX_PAR_TRAITEMENT:-500000}
+      # Mode d'exécution des analyseurs (D-098). Défaut : processus enfant dans ce conteneur. `conteneur` : un conteneur dédié par
+      # fichier, créé par le LANCEUR RESTREINT ci-dessous ; ce conteneur ne monte JAMAIS le socket du moteur.
+      ANALYSE_ISOLATION: ${ANALYSE_ISOLATION:-processus}
+      ANALYSE_CONTENEUR_IMAGE: ${REGISTRE}/comtaple-analyse:${VERSION}
+      ANALYSE_CONTENEUR_HOTE: ${ANALYSE_CONTENEUR_HOTE:-}
+      # Le client docker n'écrit que dans /tmp (racine en lecture seule).
+      DOCKER_CONFIG: /tmp/docker-config
+    # Socket du lanceur restreint (volume partagé en écriture) : vide et inutilisé tant que le mode conteneur est désactivé.
+    volumes: ["lanceur_socket:/run/lanceur"]
     # Écrit l'autorité de certification de la base (PG_AC_PEM, texte public) en mémoire, puis lance le service.
     command: ["sh", "-c", "printf '%s\\n' \"$$PG_AC_PEM\" > /tmp/ac-base.pem && exec node apps/worker/dist/main.js"]
     # Chromium (rendu PDF hors ligne) écrit son profil et ses fichiers temporaires dans /tmp.
@@ -325,6 +337,38 @@ services:
       timeout: 5s
       retries: 8
       start_period: 20s
+
+  # ── Lanceur restreint des conteneurs d'analyse (D-098) : DÉSACTIVÉ par défaut (profil `analyse-conteneur`) ──
+  # Seul service qui monte le socket du moteur. Il ne sert QUE le worker, par un socket Unix partagé (volume `lanceur_socket`),
+  # et n'accepte que la création et le pilotage de conteneurs d'analyse aux options imposées (scripts/lanceur-analyse.mjs) :
+  # image fixée, sans réseau, sans capacité, racine en lecture seule, aucun montage, plafonds de ressources. Il n'a aucun
+  # réseau (`network_mode: none`). Sa compromission reste celle de l'hôte : voir docs/architecture.md (limites).
+  # L'image d'analyse doit être PRÉSENTE sur le moteur (docker load / pull par l'exploitant) : elle n'est jamais téléchargée par le lanceur.
+  lanceur-analyse:
+    image: ${REGISTRE}/comtaple-lanceur:${VERSION}
+    profiles: ["analyse-conteneur"]
+    <<: *durcissement
+    network_mode: none
+    # Utilisateur sans compte ; groupe 1000 = groupe du worker (accès au socket du lanceur) ; groupe du socket du moteur ajouté.
+    user: "65532:1000"
+    # DOCKER_GID : groupe propriétaire de /var/run/docker.sock sur l'hôte (`stat -c %g /var/run/docker.sock`). Valeur par défaut
+    # inoffensive (groupe sans droit) : sans elle, le lanceur ne peut pas joindre le moteur et l'analyse échoue, sans rien ouvrir.
+    group_add: ["${DOCKER_GID:-65534}"]
+    environment:
+      LANCEUR_ECOUTE: /run/lanceur/docker.sock
+      LANCEUR_MOTEUR: /var/run/docker.sock
+      LANCEUR_IMAGE: ${REGISTRE}/comtaple-analyse:${VERSION}
+      LANCEUR_MEMOIRE_MAX_MO: "2048"
+      LANCEUR_PIDS_MAX: "256"
+      LANCEUR_CPUS_MAX: "2"
+      LANCEUR_TMPFS_MAX_MO: "256"
+      LANCEUR_MAX_CONTENEURS: "4"
+    volumes:
+      - lanceur_socket:/run/lanceur
+      - /var/run/docker.sock:/var/run/docker.sock
+    mem_limit: 128m
+    cpus: 0.5
+    pids_limit: 64
 
   # Files BullMQ. Sur l'instance et non managé : justification dans infra/opentofu/main.tf. Pas d'éviction (exigence de
   # BullMQ), persistance AOF. Les files sont reconstructibles depuis la base (rattrapage du worker).
@@ -532,4 +576,6 @@ volumes:
   proxy_config:
   redis_donnees:
   clamav_signatures:
+  # Socket Unix du lanceur restreint (D-098) ; vide tant que le profil `analyse-conteneur` n'est pas activé.
+  lanceur_socket:
 

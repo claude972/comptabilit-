@@ -100,7 +100,20 @@ export interface TotauxNatureIa {
   fonctionsRefusees: number;
 }
 
+/** Preuve de connexion persistée de la passerelle, telle que l'API la décrit (ni prompt ni réponse). */
+export interface VerificationIa {
+  etat: 'sans_objet' | 'absente' | 'valide' | 'perimee' | 'autre_configuration' | 'non_concluante' | 'non_conforme';
+  detail: string;
+  verifieeLe: string | null;
+  valideJusquAu: string | null;
+  atteste: { hote: string; modeleLangage: string | null; modeleEmbeddings: string | null; dimensionsEmbeddings: number | null } | null;
+  validiteJours: number | null;
+  /** Qui peut vérifier, et comment : jamais depuis l'écran. */
+  declenchement: string;
+}
+
 export interface VueIa extends EtatIa {
+  verification?: VerificationIa;
   fournisseur: string;
   modeles: { langage: { id: string; temperature: number; maxJetonsSortie: number }; embeddings: { id: string; dimensions: number } };
   prompts: Array<{ tache: string; id: string; version: string }>;

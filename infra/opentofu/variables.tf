@@ -58,6 +58,17 @@ variable "reseau_fin" {
   default     = "10.20.0.200"
 }
 
+variable "port_entree_traces" {
+  description = "Port de l'entrée des traces (OTLP/HTTP, TLS mutuel) sur l'adresse privée de l'instance de supervision ; doit égaler TRACES_PORT_ENTREE de infra/supervision. Ouvert au seul sous-réseau privé."
+  type        = number
+  default     = 4319
+
+  validation {
+    condition     = var.port_entree_traces >= 1024 && var.port_entree_traces <= 65535
+    error_message = "port_entree_traces doit être un port non privilégié (1024 à 65535)."
+  }
+}
+
 variable "passerelle_modele" {
   description = "Modèle de la passerelle (sortie Internet de l'instance sans interface publique) : S, M, L…"
   type        = string

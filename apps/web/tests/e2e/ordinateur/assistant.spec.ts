@@ -233,6 +233,59 @@ test.describe('administration : état et mesures de l’IA', () => {
     await expect(cellules('reel')).toHaveText(['0', '0', '0', '0', '0', '0', '0', '0']);
     await expect(cellules('simulateur')).toHaveText(['0', '0', '0', '0', '0', '0', '0', '0']);
     await expect(cellules('sans_ia')).toHaveText(['0', '0', '0', '0', '0', '1', '3', '0']);
+    // État réel par défaut : rien à vérifier, et aucun bouton qui laisserait croire à une activation depuis l'écran.
+    await expect(alice.getByTestId('verification-ia')).toHaveAttribute('data-etat-verification', 'sans_objet');
+    await expect(alice.getByTestId('detail-verification')).toHaveText('Aucun fournisseur n’est configuré : il n’y a rien à vérifier.');
+    await expect(alice.getByTestId('declenchement-verification')).toContainText('Elle n’est ni automatique ni déclenchable depuis cet écran.');
+    await expect(alice.getByRole('main').getByRole('button')).toHaveCount(0);
     await alice.context().close();
+  });
+
+  test('preuve de connexion : chaque état est dit sans détour — non vérifiée, connectée depuis le…, périmée, autre configuration, échec — et l’écran n’offre aucun bouton', async ({ browser }) => {
+    // AFFICHAGE seulement : l'API simulée de ces tests rend l'état demandé ; aucun modèle n'est appelé et rien n'est
+    // « connecté ». Le calcul du statut à partir d'une preuve réelle est vérifié dans les tests d'intégration de l'API.
+    const alice = await (await browser.newContext({ storageState: etatDe('alice') })).newPage();
+    const erreurs = surveiller(alice);
+    const voir = async (preuve: string) => {
+      await simulateur('ia', { preuve });
+      await alice.goto('http://localhost:3000/administration/ia');
+      await expect(alice.getByTestId('verification-ia')).toHaveAttribute('data-etat-verification', preuve === 'sans_fournisseur' ? 'sans_objet' : preuve);
+      await expect(alice.getByRole('main').getByRole('button')).toHaveCount(0);
+      await expect(alice.getByTestId('declenchement-verification')).toContainText('elle est faite par l’éditeur du service, sur demande explicite');
+    };
+    try {
+      await voir('absente');
+      await expect(alice.getByTestId('statut-passerelle')).toHaveText('Configurée, non vérifiée');
+      await expect(alice.getByTestId('detail-verification')).toHaveText('Aucune vérification de connexion n’a été faite pour la configuration courante.');
+      await expect(alice.getByTestId('consequence-verification')).toContainText('aucun modèle n’est sollicité');
+      await expect(alice.getByTestId('preuve-ia')).toHaveCount(0);
+
+      await voir('valide');
+      await expect(alice.getByTestId('statut-passerelle')).toContainText('Connectée — vérifiée le 10/11/2026');
+      await expect(alice.getByTestId('preuve-ia')).toContainText('Ce qu’elle atteste');
+      await expect(alice.getByTestId('preuve-ia')).toContainText('hôte oai.endpoints.kepler.ai.cloud.ovh.net');
+      await expect(alice.getByTestId('preuve-ia')).toContainText('Mistral-Small-3.2-24B-Instruct-2506');
+      await expect(alice.getByTestId('preuve-ia')).toContainText('Fin de validité');
+      await expect(alice.getByTestId('consequence-verification')).toHaveCount(0);
+      await expect(alice.getByText('« Connectée » signifie seulement que le service répond')).toBeVisible();
+
+      await voir('perimee');
+      await expect(alice.getByTestId('statut-passerelle')).toHaveText('Configurée — vérification périmée');
+      await expect(alice.getByTestId('detail-verification')).toContainText('est périmée (validité : 30 jours)');
+      await expect(alice.getByTestId('preuve-ia')).toContainText('Périmée depuis le');
+      await expect(alice.getByTestId('consequence-verification')).toContainText('aucun modèle n’est sollicité');
+
+      await voir('autre_configuration');
+      await expect(alice.getByTestId('statut-passerelle')).toHaveText('Configurée, non vérifiée');
+      await expect(alice.getByTestId('detail-verification')).toContainText('concernait une autre configuration');
+
+      await voir('non_concluante');
+      await expect(alice.getByTestId('statut-passerelle')).toHaveText('Configurée, non vérifiée');
+      await expect(alice.getByTestId('detail-verification')).toContainText('La dernière vérification a échoué');
+      expect(erreurs).toEqual([]);
+    } finally {
+      await simulateur('ia', { preuve: 'sans_fournisseur' });
+      await alice.context().close();
+    }
   });
 });

@@ -25,7 +25,10 @@ if (!/^(mailto:[^\s@]+@[^\s@]+\.[^\s@]+|https:\/\/\S+)$/.test(sujet)) {
 const paire = createECDH('prime256v1');
 paire.generateKeys();
 const publique = paire.getPublicKey().toString('base64url');
-const privee = paire.getPrivateKey().toString('base64url');
+// La clé privée est ramenée à 32 octets : `getPrivateKey()` omet les octets nuls de tête (une clé sur 256 environ), et le
+// service refuse au démarrage une clé privée qui ne fait pas 32 octets.
+const brute = paire.getPrivateKey();
+const privee = Buffer.concat([Buffer.alloc(32 - brute.length), brute]).toString('base64url');
 // Contrôle : la clé publique se recalcule à partir de la clé privée (point non compressé de 65 octets).
 const controle = createECDH('prime256v1');
 controle.setPrivateKey(Buffer.from(privee, 'base64url'));

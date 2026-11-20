@@ -1,18 +1,10 @@
 import {
-  decoderTexteReleve,
   DepassementBudget,
-  detecterFormatReleve,
   elementDepuisMouvement,
   elementsBanqueDepuisEcritures,
   type LigneEcriture,
-  lireCamt053,
-  lireCsvBanque,
-  lireOfx,
-  lireReleveAgregation,
   type MouvementBancaire,
-  proposerProfilCsv,
   rapprocher,
-  type RapportReleve,
   reduireAuxEcrituresDeBanque,
   schemaParametresRapprochement,
   schemaProfilCsvBanque,
@@ -20,6 +12,7 @@ import {
 } from '@comtaple/core';
 import { and, asc, eq, gte, inArray, journaliser, lte, schema as s, sql, type Tx } from '@comtaple/db';
 import { lignesDuLot, type TacheImportReleve, type TacheRapprochement } from '@comtaple/plateforme';
+import { lireReleveIsole, motifEchecReleve, type OptionsAnalyse } from './analyse-isolee.js';
 import type { Contexte } from './contexte.js';
 import { preparerSourceDuLot } from './source-lignes.js';
 
@@ -30,6 +23,11 @@ const PREFIXES_BANQUE = ['512'];
  * Import d'un relevé bancaire (camt.053, OFX, CSV). Fonctionne sans aucun prestataire d'agrégation.
  * Idempotent : un mouvement déjà connu du dossier (même clé stable) n'est jamais dupliqué, y compris lorsque deux
  * relevés se chevauchent. Les libellés bancaires sont des données non fiables : stockés, jamais interprétés.
+ *
+ * ISOLEMENT : ce processus ne DÉCODE pas le relevé. Il lit le fichier dans le stockage, transmet ses octets au processus
+ * enfant d'analyse (`analyse-isolee.ts` : environnement vide, lecture restreinte, réseau neutralisé, durée, mémoire et
+ * sortie bornées), valide le résultat par schéma et écrit en base. Un enfant qui plante, boucle ou déborde met le lot
+ * en échec avec un motif en français ; le fichier d'origine n'est jamais modifié et les autres imports continuent.
  */
 export async function importerReleve(c: Contexte, t: TacheImportReleve): Promise<void> {
   const ctx = { cabinetId: t.cabinetId };
@@ -59,28 +57,30 @@ export async function importerReleve(c: Contexte, t: TacheImportReleve): Promise
 
   if (fichier.taille > TAILLE_MAX_RELEVE) return void (await echec('Fichier trop volumineux pour un relevé bancaire'));
   const octets = await c.stockage.lire(fichier.cleStockage, TAILLE_MAX_RELEVE);
-  const { texte, encodage } = decoderTexteReleve(new Uint8Array(octets));
-  const format = detecterFormatReleve(texte.slice(0, 8192));
-
-  let rapport: RapportReleve;
-  let profilUtilise: unknown = null;
-  if (format === 'camt.053') rapport = lireCamt053(texte);
-  else if (format === 'ofx') rapport = lireOfx(texte);
-  else if (format === 'agregation') rapport = lireReleveAgregation(texte);
-  else if (format === 'csv') {
-    // Un profil de colonnes confirmé par un humain l'emporte ; sinon proposition prudente, abstention si ambiguë.
-    let profil = demande.profilCsv ? schemaProfilCsvBanque.safeParse(demande.profilCsv) : null;
-    if (profil && !profil.success) return void (await echec('Profil de colonnes CSV invalide', { format }));
-    if (!profil) {
-      const proposition = proposerProfilCsv(texte);
-      if (!proposition.profil) {
-        return void (await echec('Colonnes du fichier CSV non reconnues avec certitude : un profil de colonnes doit être confirmé', { format, profilAConfirmer: true, raisons: proposition.raisons }));
-      }
-      profil = { success: true, data: proposition.profil } as never;
-      profilUtilise = { ...proposition.profil, origine: 'propose_automatiquement', raisons: proposition.raisons };
-    } else profilUtilise = { ...profil.data, origine: 'confirme' };
-    rapport = lireCsvBanque(texte, (profil as { data: Parameters<typeof lireCsvBanque>[1] }).data);
-  } else return void (await echec('Format de relevé non reconnu (camt.053, OFX, CSV ou document d’agrégation attendus)', { format }));
+  // Le profil de colonnes vient de la demande (base), pas du fichier : il est validé ici ; son emploi dépend du format lu.
+  const profilDemande = demande.profilCsv ? schemaProfilCsvBanque.safeParse(demande.profilCsv) : null;
+  const isolement: OptionsAnalyse = {
+    dureeMaxMs: c.cfg.ANALYSE_DUREE_MAX_MS,
+    tasMaxMo: c.cfg.ANALYSE_TAS_MAX_MO,
+    memoireMaxMo: c.cfg.ANALYSE_MEMOIRE_MAX_MO,
+    sortieMaxOctets: c.cfg.ANALYSE_RELEVE_SORTIE_MAX_OCTETS,
+    ...c.analyse,
+  };
+  const lecture = await lireReleveIsole(octets, { profilCsv: profilDemande?.success ? profilDemande.data : null, profilInvalide: profilDemande !== null && !profilDemande.success }, isolement);
+  if (!lecture.ok) {
+    // Le motif technique (cause) va au journal du worker, jamais à l'utilisateur ; aucun contenu du relevé n'y figure.
+    console.error(`[banque] lecture isolée interrompue pour le lot ${lot.id} : ${lecture.cause}`);
+    return void (await echec(motifEchecReleve(lecture.cause)));
+  }
+  const lu = lecture.valeur;
+  if (lu.etat === 'profil_invalide') return void (await echec('Profil de colonnes CSV invalide', { format: lu.format }));
+  if (lu.etat === 'profil_a_confirmer') {
+    return void (await echec('Colonnes du fichier CSV non reconnues avec certitude : un profil de colonnes doit être confirmé', { format: lu.format, profilAConfirmer: true, raisons: lu.raisons }));
+  }
+  if (lu.etat === 'format_inconnu') return void (await echec('Format de relevé non reconnu (camt.053, OFX, CSV ou document d’agrégation attendus)', { format: lu.format }));
+  const { rapport, encodage } = lu;
+  const profilUtilise: unknown =
+    lu.profil === null ? null : lu.origineProfil === 'confirme' ? { ...lu.profil, origine: 'confirme' } : { ...lu.profil, origine: 'propose_automatiquement', raisons: lu.raisons };
 
   if (!rapport.lisible) {
     return void (await echec('Relevé illisible', { format: rapport.format, version: rapport.version, anomalies: rapport.anomalies.slice(0, 200) }));

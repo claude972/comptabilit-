@@ -20,7 +20,7 @@ import { chiffrerMessagePousse, type ClesVapid, clesVapidCoherentes, enteteVapid
 
 export type StatutPoussees = 'non_configure' | 'simule' | 'configure_non_verifie';
 
-interface CleRepos {
+export interface CleRepos {
   id: string;
   cle: Buffer;
 }
@@ -51,6 +51,23 @@ function cleRepos(secret: string): CleRepos {
 }
 
 /**
+ * Clés de chiffrement des abonnements au repos d'après les secrets de la plateforme : la courante d'abord (elle seule
+ * chiffre), puis celles des anciens secrets (`JETONS_CLES_ANCIENNES`), acceptées en DÉCHIFFREMENT seulement — même
+ * mécanisme que les jetons de la collecte par mail. Indépendant des clés VAPID : l'outil de rechiffrement de l'éditeur
+ * (rotation-secrets.ts) s'en sert même si la fonction a été désactivée depuis. Vide si le secret est absent ou trop court.
+ */
+export function clesReposAbonnements(cfg: Pick<Config, 'JETONS_CLE_CHIFFREMENT'> & Partial<Pick<Config, 'JETONS_CLES_ANCIENNES'>>): CleRepos[] {
+  if (cfg.JETONS_CLE_CHIFFREMENT.length < 32) return [];
+  const anciennes = (cfg.JETONS_CLES_ANCIENNES ?? '').split(',').map((x) => x.trim()).filter((x) => x.length >= 32 && x !== cfg.JETONS_CLE_CHIFFREMENT);
+  return [cleRepos(cfg.JETONS_CLE_CHIFFREMENT), ...anciennes.map(cleRepos)];
+}
+
+/** Vrai si l'enveloppe n'est pas chiffrée avec la clé courante (rotation du secret : à rechiffrer). */
+export function abonnementARechiffrer(etat: Pick<EtatPoussees, 'clesRepos'>, enveloppe: string): boolean {
+  return enveloppe.split('.')[1] !== etat.clesRepos[0]?.id;
+}
+
+/**
  * État des notifications poussées d'après la configuration. Une configuration PARTIELLE ou incohérente est refusée au
  * démarrage (le nom des variables est donné, jamais leur valeur) : mieux vaut un arrêt explicite qu'une fonction
  * à moitié active. Le simulateur est refusé en production.
@@ -68,8 +85,7 @@ export function notificationsPoussees(cfg: ConfigPoussees): EtatPoussees {
   if (!clesVapidCoherentes(cles)) throw new Error('Configuration refusée : PUSH_VAPID_CLE_PUBLIQUE et PUSH_VAPID_CLE_PRIVEE ne forment pas une paire de clés P-256 valide.');
   if (!/^(mailto:[^\s@]+@[^\s@]+\.[^\s@]+|https:\/\/[^\s]+)$/.test(cfg.PUSH_VAPID_SUJET)) throw new Error('Configuration refusée : PUSH_VAPID_SUJET doit être un contact « mailto:… » ou « https://… ».');
   if (cfg.JETONS_CLE_CHIFFREMENT.length < 32) throw new Error('Configuration refusée : les notifications poussées exigent JETONS_CLE_CHIFFREMENT (32 caractères au moins) pour chiffrer les abonnements au repos.');
-  const anciennes = (cfg.JETONS_CLES_ANCIENNES ?? '').split(',').map((x) => x.trim()).filter((x) => x.length >= 32 && x !== cfg.JETONS_CLE_CHIFFREMENT);
-  const commun = { clePublique: cles.publique, verifieSurAppareilReel: false as const, vapid: { cles, sujet: cfg.PUSH_VAPID_SUJET }, clesRepos: [cleRepos(cfg.JETONS_CLE_CHIFFREMENT), ...anciennes.map(cleRepos)] };
+  const commun = { clePublique: cles.publique, verifieSurAppareilReel: false as const, vapid: { cles, sujet: cfg.PUSH_VAPID_SUJET }, clesRepos: clesReposAbonnements(cfg) };
   if (simulateur !== '') {
     return { ...commun, statut: 'simule', detail: 'SIMULATEUR de test : aucun service de notification réel n’est contacté, aucun appareil réel ne reçoit quoi que ce soit.', origineSimulateur: new URL(simulateur).origin };
   }

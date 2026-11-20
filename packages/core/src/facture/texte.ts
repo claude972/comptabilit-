@@ -9,6 +9,7 @@
  */
 import { Decimal } from 'decimal.js';
 import { dateCivileValide, versIso } from '../dates.js';
+import { sirenDeTvaFr } from '../identifiants.js';
 import { analyserMontantFr, versChaine } from '../montant.js';
 import { champsFactureVides } from './types.js';
 import type { ChampExtrait, ChampsFacture, PageTexte } from './types.js';
@@ -50,7 +51,8 @@ function lireDate(jeton: string): string | null {
 
 function preparer(pages: PageTexte[]): Ligne[] {
   const lignes: Ligne[] = [];
-  const MARQUE_CLIENT = new RegExp(String.raw`^\s*(?:client|destinataire|acheteur|factur[ée]e?\s+[àa]|adress[ée]e?\s+[àa]|livr[ée]e?\s+[àa]|adresse\s+de\s+(?:facturation|livraison))\b`, 'i');
+  // Fin de repère : « \b » ne reconnaît pas de frontière après une lettre accentuée (« à ») ; d'où l'alternative explicite.
+  const MARQUE_CLIENT = new RegExp(String.raw`^\s*(?:client|destinataire|acheteur|factur[ée]e?\s+[àa]|adress[ée]e?\s+[àa]|livr[ée]e?\s+[àa]|adresse\s+de\s+(?:facturation|livraison))(?:\b|(?=[\s:]|$))`, 'i');
   const MARQUE_EMETTEUR = /^\s*(?:[ée]metteur|vendeur|fournisseur|exp[ée]diteur)\b/i;
   let resteZoneClient = 0;
   for (const p of pages) {
@@ -66,12 +68,19 @@ function preparer(pages: PageTexte[]): Ligne[] {
       if (texte.trim() === '') continue;
       if (MARQUE_EMETTEUR.test(texte)) resteZoneClient = 0;
       else if (MARQUE_CLIENT.test(texte)) resteZoneClient = 5;
-      lignes.push({ page: Number.isInteger(p.page) ? p.page : 0, texte, boite: b.boite, zoneClient: resteZoneClient > 0, index: lignes.length });
+      // Un identifiant explicitement attribué au client (« SIRET client : … ») n'est jamais un candidat pour l'émetteur.
+      lignes.push({ page: Number.isInteger(p.page) ? p.page : 0, texte, boite: b.boite, zoneClient: resteZoneClient > 0 || IDENTIFIANT_CLIENT.test(texte), index: lignes.length });
       if (resteZoneClient > 0) resteZoneClient--;
     }
   }
   return lignes;
 }
+
+/** Étiquette d'identifiant attribuée EXPLICITEMENT au client : « SIRET client », « N° TVA du destinataire », « SIREN de l'acheteur ». */
+const IDENTIFIANT_CLIENT = new RegExp(
+  String.raw`\b(?:SIRE[NT]|T\.?V\.?A\.?(?:\s+intra(?:communautaire|com)?\.?)?|VAT(?:\s+number)?)\s+(?:du\s+|de\s+l${APO}\s*)?(?:client|destinataire|acheteur)\b`,
+  'i',
+);
 
 function champ<T>(valeur: T, ligne: Ligne): ChampExtrait<T> {
   return { valeur, page: ligne.page, extrait: ligne.texte.trim().slice(0, 300), boite: ligne.boite, methode: 'regle', confiance: 'non_evaluee' };
@@ -227,6 +236,9 @@ export function extraireChampsFacture(pages: PageTexte[]): ChampsFacture {
     champs.emetteurNom = formes.length === 1 ? unique(formes) : null;
   }
 
+  // --- Destinataire ----------------------------------------------------------
+  extraireDestinataire(lignes, champs);
+
   // --- Totaux ----------------------------------------------------------------
   champs.totalHt = montantUnique(candidatsMontant(lignes, /\b(?:total|montant|sous[- ]total)\s+(?:net\s+)?(?:H\.?T\.?(?![A-Za-z])|hors\s+taxes?)/i));
   const candidatsTtc = candidatsMontant(lignes, /\b(?:total|montant)\s+(?:net\s+)?T\.?T\.?C\.?(?![A-Za-z])/i);
@@ -277,4 +289,133 @@ export function extraireChampsFacture(pages: PageTexte[]): ChampsFacture {
   }
 
   return champs;
+}
+
+// ── Destinataire (client facturé) ────────────────────────────────────────────────────────────────────────────────────
+// Règles INTERNES, prudentes : le destinataire n'est retenu que dans une zone ouverte par un repère explicite de
+// FACTURATION, ou sur une ligne dont l'étiquette l'attribue expressément au client. La seule position d'un identifiant
+// sur la page ne suffit jamais. Au moindre doute : abstention, avec son motif.
+
+/** Repère de facturation seul sur sa ligne ou suivi de « : » (« Client », « Destinataire », « Acheteur »). */
+const REPERE_NOM = /^\s*(?:client(?:\s+factur[ée]e?)?|destinataire|acheteur)\s*(?::\s*(.*))?$/i;
+/** Repère de facturation pouvant être suivi directement du nom (« Facturé à DUPONT SAS »). */
+const REPERE_A = /^\s*(?:factur[ée]e?\s+(?:et\s+livr[ée]e?\s+)?[àa]|adress[ée]e?\s+[àa]|adresse\s+de\s+facturation)\s*:?\s*(.*)$/i;
+/** Repère de LIVRAISON : le lieu ou le destinataire de la livraison n'est pas nécessairement le client facturé. */
+const REPERE_LIVRAISON = /^\s*(?:livr[ée]e?\s+[àa]|(?:adresse|lieu)\s+de\s+livraison|destinataire\s+de\s+la\s+livraison)(?=[\s:]|$)/i;
+const REPERE_EMETTEUR = /^\s*(?:[ée]metteur|vendeur|fournisseur|exp[ée]diteur)\b/i;
+/** Lignes qui ferment une zone de destinataire : le corps de la pièce commence. */
+const FIN_ZONE = new RegExp(String.raw`^\s*(?:facture|avoir|note\s+de\s+cr[ée]dit|date|d[ée]signation|total|montant|r[èe]glement|[ée]ch[ée]ance|conditions|objet|r[ée]f[ée]rence)\b`, 'i');
+const LIGNES_ZONE_MAX = 5;
+const PAS_UN_NOM = /SIRE[NT]|T\.?V\.?A\b|\bVAT\b|\bR\.?C\.?S\b|\bIBAN\b|\bBIC\b|\bt[ée]l\b|\bfax\b|e-?mail|@|www\.|https?:|\bcedex\b|\b\d{5}\b/i;
+const PAYS_UE = new Set(['AT', 'BE', 'BG', 'CY', 'CZ', 'DE', 'DK', 'EE', 'EL', 'ES', 'FI', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'MT', 'NL', 'PL', 'PT', 'RO', 'SE', 'SI', 'SK', 'XI']);
+
+const MOTIFS_DESTINATAIRE = {
+  aucunRepere: 'Aucun repère de destinataire sur la pièce (« Client », « Facturé à », « Destinataire », « Adresse de facturation ») : destinataire non lu.',
+  livraisonSeule: 'Seul un repère de livraison (« Livré à », « Adresse de livraison ») figure sur la pièce : le destinataire d’une livraison n’est pas nécessairement le client facturé.',
+  aucunIdentifiant: 'Aucun SIREN, SIRET ni numéro de TVA lisible dans la zone du destinataire.',
+  plusieurs: 'Plusieurs identifiants différents sont attribuables au destinataire : aucun n’est retenu.',
+  emetteurInconnu: 'L’identifiant lu dans la zone du destinataire est le seul de la pièce attribuable avec certitude : faute d’identifiant de l’émetteur distinct, il n’est pas retenu.',
+  identiqueEmetteur: 'L’identifiant lu dans la zone du destinataire est celui de l’émetteur : il n’est pas retenu.',
+} as const;
+
+function nomPlausible(brut: string): string | null {
+  const t = brut.replace(/\s{2,}/g, ' ').replace(/^[\s:;,.\-–—]+|[\s:;,\-–—]+$/g, '');
+  if (t.length < 3 || t.length > 120 || /^\d/.test(t) || PAS_UN_NOM.test(t)) return null;
+  return (t.match(/\p{L}/gu) ?? []).length >= 3 ? t : null;
+}
+
+const cleNom = (v: string): string => sansAccents(v).toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
+
+function identifiantsDe(lignes: Ligne[]): { siret: Array<Candidat<string>>; siren: Array<Candidat<string>>; tva: Array<Candidat<string>> } {
+  const versCandidat = (valeur: string, ligne: Ligne): Candidat<string> => ({ valeur, cle: valeur, ligne });
+  const siret = chercher(lignes, /\bSIRET\b[^:\d]{0,30}:?\s*((?:\d[ .]?){13}\d)(?![ .]?[\dA-Za-z])/i).map(({ m, ligne }) => versCandidat(compact(m[1] ?? ''), ligne));
+  const siren = [
+    ...chercher(lignes, /\bSIREN\b[^:\d]{0,30}:?\s*((?:\d[ .]?){8}\d)(?![ .]?[\dA-Za-z])/i),
+    ...chercher(lignes, /\bR\.?C\.?S\.?\s+[A-Za-zÀ-ÿ' \-]{2,40}?\s+(?:[AB]\s+)?((?:\d[ ]?){8}\d)(?![ ]?\d)/),
+  ].map(({ m, ligne }) => versCandidat(compact(m[1] ?? ''), ligne));
+  const lignesTva = lignes.filter((l) => /T\.?V\.?A|VAT|intracom/i.test(l.texte) && !/\bIBAN\b/i.test(l.texte));
+  const tva = [
+    ...chercher(lignesTva, /\bFR[ ]?([0-9A-Z]{2})[ ]?((?:\d[ ]?){8}\d)(?![ ]?[\dA-Za-z])/).map(({ m, ligne }) => versCandidat(`FR${m[1] ?? ''}${compact(m[2] ?? '')}`, ligne)),
+    // Numéro de TVA d'un autre État membre : uniquement après une étiquette de TVA, code pays connu, 8 à 12 caractères.
+    ...chercher(lignesTva, /(?:T\.?V\.?A|VAT)[^:]{0,40}:\s*([A-Z]{2})[ ]?([0-9A-Z]{8,12})(?![0-9A-Za-z])/)
+      .filter(({ m }) => PAYS_UE.has(m[1] ?? '') && /\d/.test(m[2] ?? ''))
+      .map(({ m, ligne }) => versCandidat(`${m[1] ?? ''}${m[2] ?? ''}`, ligne)),
+  ];
+  return { siret, siren, tva };
+}
+
+/** SIREN désigné par un identifiant (SIREN, SIRET, TVA française) ; pour une TVA étrangère, le numéro lui-même. */
+function entiteDe(nature: 'siret' | 'siren' | 'tva', valeur: string): string {
+  if (nature === 'siren') return valeur;
+  if (nature === 'siret') return valeur.slice(0, 9);
+  return valeur.startsWith('FR') ? (sirenDeTvaFr(valeur) ?? valeur.slice(4)) : valeur;
+}
+
+function extraireDestinataire(lignes: Ligne[], champs: ChampsFacture): void {
+  // 1) Zones ouvertes par un repère explicite, bornées à quelques lignes de la même page.
+  interface Zone { type: 'facturation' | 'livraison'; lignes: Ligne[]; nom: Candidat<string> | null }
+  const zones: Zone[] = [];
+  let courante: Zone | null = null;
+  for (const ligne of lignes) {
+    const livraison = REPERE_LIVRAISON.test(ligne.texte);
+    const repere = livraison ? null : (REPERE_NOM.exec(ligne.texte) ?? REPERE_A.exec(ligne.texte));
+    if (livraison || repere) {
+      courante = { type: livraison ? 'livraison' : 'facturation', lignes: [ligne], nom: null };
+      zones.push(courante);
+      const suite = repere ? nomPlausible(repere[1] ?? '') : null;
+      if (suite !== null) courante.nom = { valeur: suite, cle: cleNom(suite), ligne };
+      continue;
+    }
+    if (courante === null) continue;
+    const premiere = courante.lignes[0]!;
+    if (ligne.page !== premiere.page || courante.lignes.length > LIGNES_ZONE_MAX || REPERE_EMETTEUR.test(ligne.texte) || FIN_ZONE.test(ligne.texte)) {
+      courante = null;
+      continue;
+    }
+    // Le nom est la ligne qui suit immédiatement le repère, si le repère ne le portait pas lui-même.
+    if (courante.nom === null && courante.lignes.length === 1 && (REPERE_NOM.exec(premiere.texte)?.[1] ?? REPERE_A.exec(premiere.texte)?.[1] ?? '').trim() === '') {
+      const nom = nomPlausible(ligne.texte);
+      if (nom !== null) courante.nom = { valeur: nom, cle: cleNom(nom), ligne };
+    }
+    courante.lignes.push(ligne);
+  }
+  const facturation = zones.filter((z) => z.type === 'facturation');
+  const explicites = lignes.filter((l) => IDENTIFIANT_CLIENT.test(l.texte));
+  if (facturation.length === 0 && explicites.length === 0) {
+    champs.destinataireAbstention = zones.length > 0 ? MOTIFS_DESTINATAIRE.livraisonSeule : MOTIFS_DESTINATAIRE.aucunRepere;
+    return;
+  }
+
+  // 2) Identifiants attribuables au destinataire.
+  const vus = new Set<number>();
+  const perimetre = [...facturation.flatMap((z) => z.lignes), ...explicites].filter((l) => !vus.has(l.index) && vus.add(l.index));
+  const ids = identifiantsDe(perimetre);
+  const entites = new Set([
+    ...ids.siren.map((c) => entiteDe('siren', c.valeur)),
+    ...ids.siret.map((c) => entiteDe('siret', c.valeur)),
+    ...ids.tva.map((c) => entiteDe('tva', c.valeur)),
+  ]);
+  const emetteur = new Set<string>();
+  if (champs.emetteurSiren) emetteur.add(entiteDe('siren', champs.emetteurSiren.valeur));
+  if (champs.emetteurSiret) emetteur.add(entiteDe('siret', champs.emetteurSiret.valeur));
+  if (champs.emetteurTva) emetteur.add(entiteDe('tva', champs.emetteurTva.valeur));
+
+  // 3) Nom : un seul nom distinct parmi les zones de facturation, différent de celui de l'émetteur.
+  const noms = facturation.flatMap((z) => (z.nom ? [z.nom] : []));
+  const nom = unique(noms);
+  const nomEmetteur = champs.emetteurNom ? cleNom(champs.emetteurNom.valeur.replace(/\s+au\s+capital\b.*$/i, '')) : null;
+  if (nom !== null && (nomEmetteur === null || cleNom(nom.valeur) !== nomEmetteur)) champs.destinataireNom = nom;
+
+  if (entites.size === 0) champs.destinataireAbstention = MOTIFS_DESTINATAIRE.aucunIdentifiant;
+  else if (entites.size > 1) champs.destinataireAbstention = MOTIFS_DESTINATAIRE.plusieurs;
+  else if (emetteur.size === 0) champs.destinataireAbstention = MOTIFS_DESTINATAIRE.emetteurInconnu;
+  else if ([...entites].some((e) => emetteur.has(e))) champs.destinataireAbstention = MOTIFS_DESTINATAIRE.identiqueEmetteur;
+  else {
+    champs.destinataireSiren = unique(ids.siren);
+    champs.destinataireSiret = unique(ids.siret);
+    champs.destinataireTva = unique(ids.tva);
+    if (champs.destinataireSiren === null && champs.destinataireSiret === null && champs.destinataireTva === null) champs.destinataireAbstention = MOTIFS_DESTINATAIRE.plusieurs;
+  }
+  // Un nom contredit par des identifiants multiples ne vaut pas mieux qu'eux.
+  if (champs.destinataireAbstention === MOTIFS_DESTINATAIRE.plusieurs || champs.destinataireAbstention === MOTIFS_DESTINATAIRE.identiqueEmetteur) champs.destinataireNom = null;
 }

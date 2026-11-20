@@ -36,9 +36,13 @@ async function preparerNavigateur(page: Page, options: { permission: 'default' |
         localStorage.setItem('essai-permission', o.reponse ?? 'granted');
         return (o.reponse ?? 'granted') as NotificationPermission;
       };
+      // Le point d'accès peut être changé par le test (« essai-point-acces ») pour imiter un renouvellement par le navigateur.
+      const adresse = () => localStorage.getItem('essai-point-acces') ?? pointAcces;
       const faux = {
-        endpoint: pointAcces,
-        toJSON: () => ({ endpoint: pointAcces, keys: { p256dh: `B${'A'.repeat(86)}`, auth: 'A'.repeat(22) } }),
+        get endpoint() {
+          return adresse();
+        },
+        toJSON: () => ({ endpoint: adresse(), keys: { p256dh: `B${'A'.repeat(86)}`, auth: 'A'.repeat(22) } }),
         unsubscribe: async () => (localStorage.removeItem('essai-abonne'), true),
       };
       PushManager.prototype.getSubscription = async () => (localStorage.getItem('essai-abonne') ? (faux as unknown as PushSubscription) : null);
@@ -200,5 +204,59 @@ test.describe('Notifications poussées : états de l’écran', () => {
     await expect(ios).toContainText('elles n’ont pas été essayées sur un appareil réel avec Comtaple');
     await expect(p.getByTestId('activer-poussees')).toHaveCount(0);
     await iphone.close();
+  });
+
+  test('renouvellement par le navigateur non enregistré : l’écran le dit, retire l’ancien abonnement et propose « Réactiver » ; le remplacement ne laisse qu’un abonnement', async ({ page }) => {
+    // Ce test imite ce que laisse le service worker après « pushsubscriptionchange » quand le service n'a pas pu être
+    // joint (session fermée, hors connexion) : une MARQUE locale et un abonnement du navigateur à une nouvelle adresse.
+    // L'événement lui-même n'est pas déclenchable dans un navigateur de test : son gestionnaire est vérifié en test unitaire.
+    await simulateur('poussees', { statut: 'simule' });
+    const erreurs = surveiller(page);
+    const externes = hotesExternes(page);
+    await preparerNavigateur(page, { permission: 'default' });
+    await page.goto('/notifications');
+    const bloc = page.getByTestId('notifications-poussees');
+    await page.getByTestId('activer-poussees').click();
+    await expect(bloc).toHaveAttribute('data-etat-appareil', 'abonne');
+    const [ancien] = (await simulateur<EtatPousseesSimule>('poussees')).appareils;
+    expect(ancien).toBeTruthy();
+
+    const NOUVEAU = 'https://fcm.googleapis.com/fcm/send/essai-e2e-renouvele-jamais-contacte';
+    await page.evaluate(
+      async ([ancienneEmpreinte, nouveau]) => {
+        localStorage.setItem('essai-point-acces', nouveau!);
+        await new Promise<void>((ok, ko) => {
+          const o = indexedDB.open('comtaple-poussees', 1);
+          o.onupgradeneeded = () => o.result.createObjectStore('etat');
+          o.onerror = () => ko(o.error);
+          o.onsuccess = () => {
+            const t = o.result.transaction('etat', 'readwrite');
+            t.objectStore('etat').put({ ancienneEmpreinte, le: new Date().toISOString() }, 'renouvellement');
+            t.oncomplete = () => (o.result.close(), ok());
+            t.onerror = () => ko(t.error);
+          };
+        });
+      },
+      [ancien!.empreinte, NOUVEAU] as const,
+    );
+    await page.reload();
+    await expect(bloc).toHaveAttribute('data-etat-appareil', 'a_reactiver');
+    await expect(page.getByTestId('poussees-a-reactiver')).toContainText('Le navigateur a renouvelé ou perdu l’abonnement de cet appareil');
+    // L'ancien abonnement, devenu inutilisable, est retiré du service sans attendre ; rien n'est réabonné sans geste.
+    await expect(page.getByTestId('aucun-appareil-poussees')).toBeVisible();
+    expect((await simulateur<EtatPousseesSimule>('poussees')).appareils).toEqual([]);
+    await expect(page.getByTestId('activer-poussees')).toHaveText('Réactiver sur cet appareil');
+
+    await page.getByTestId('activer-poussees').click();
+    await expect(bloc).toHaveAttribute('data-etat-appareil', 'abonne');
+    const apres = (await simulateur<EtatPousseesSimule>('poussees')).appareils;
+    expect(apres).toHaveLength(1);
+    expect(apres[0]!.empreinte).not.toBe(ancien!.empreinte);
+    // La marque est effacée : après rechargement, l'appareil est simplement abonné.
+    await page.reload();
+    await expect(bloc).toHaveAttribute('data-etat-appareil', 'abonne');
+    await expect(page.getByTestId('poussees-a-reactiver')).toHaveCount(0);
+    expect(externes).toEqual([]);
+    expect(erreurs).toEqual([]);
   });
 });

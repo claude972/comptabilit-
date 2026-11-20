@@ -27,6 +27,40 @@ export const REGLES_INTERNES_PIECES = {
   ],
 } as const;
 
+/** Bornes de lecture d'un message (contenu non fiable) : au-delà, le reste de l'arbre ou de la liste est ignoré. */
+export const LIMITES_MESSAGE = {
+  /** Profondeur maximale de l'arbre des parties d'un message (multipart imbriqués). */
+  profondeurParties: 20,
+  /** Nombre maximal de parties visitées dans un message. */
+  parties: 2000,
+  /** Nombre maximal de pièces jointes retenues par message. */
+  pieces: 200,
+  /** Longueur maximale d'un nom de pièce jointe. */
+  nomFichier: 255,
+} as const;
+
+/**
+ * Nom de pièce jointe ASSAINI. Le nom vient de l'expéditeur : il ne sert jamais de chemin, mais il est affiché, journalisé
+ * et sert à reconnaître l'extension. Sont retirés : caractères de contrôle (dont l'octet nul), marques directionnelles et
+ * caractères invisibles (un nom ne peut plus s'afficher à l'envers), tout chemin (« ../../x », « C:\x »), points et espaces
+ * de tête. La longueur est bornée en conservant l'extension. Un nom vide devient « piece-jointe ».
+ */
+export function assainirNomPiece(nom: unknown): string {
+  if (typeof nom !== 'string') return 'piece-jointe';
+  // eslint-disable-next-line no-control-regex
+  const INVISIBLES = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2028\u2029\u2060-\u2069\ufeff]/g;
+  // Seuls le début et la fin d'un nom démesuré sont examinés : le début pour le nom, la fin pour l'extension.
+  const extensionDeFin = nom.length > 4096 ? (/\.[A-Za-z0-9]{1,5}$/.exec(nom.slice(-32).normalize('NFC').replace(INVISIBLES, '').trimEnd())?.[0] ?? '') : '';
+  let propre = `${nom.slice(0, 4096).normalize('NFC').replace(INVISIBLES, '')}${extensionDeFin}`;
+  propre = propre.slice(Math.max(propre.lastIndexOf('/'), propre.lastIndexOf('\\')) + 1);
+  propre = propre.replace(/^[.\s]+/, '').replace(/\s+/g, ' ').trim();
+  if (propre.length > LIMITES_MESSAGE.nomFichier) {
+    const extension = /\.[A-Za-z0-9]{1,5}$/.exec(propre)?.[0] ?? '';
+    propre = `${propre.slice(0, LIMITES_MESSAGE.nomFichier - extension.length)}${extension}`;
+  }
+  return propre === '' ? 'piece-jointe' : propre;
+}
+
 const EXTENSIONS: Record<string, CategoriePiece> = {
   pdf: 'pdf',
   jpg: 'image',

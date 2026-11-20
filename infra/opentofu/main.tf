@@ -83,16 +83,19 @@ resource "ovh_cloud_security_group" "applications" {
   )
 }
 
-# Instance de supervision : aucune entrée d'Internet ; accès par le réseau privé seulement (rebond SSH par l'instance
-# applicative).
+# Instance de supervision : aucune entrée d'Internet (elle n'a pas d'interface publique) ; du réseau privé, deux ports
+# seulement : SSH (rebond par l'instance applicative) et l'entrée des traces (OTLP/HTTP en TLS mutuel, service
+# `entree-traces` de infra/supervision, publié sur l'adresse privée). Prometheus, Grafana, Tempo et le collecteur
+# n'écoutent que sur 127.0.0.1 : on les joint par tunnel SSH. La collecte des métriques PART de cette instance (sortie).
 resource "ovh_cloud_security_group" "supervision" {
   service_name = var.projet_ovh
   region       = local.region_i
   name         = "${local.prefixe}-supervision"
-  description  = "Reseau prive seulement"
+  description  = "Reseau prive seulement : SSH et entree des traces"
 
   rule = [
-    { description = "Reseau prive", direction = "INGRESS", ethernet_type = "IPV4", protocol = null, port_range_min = null, port_range_max = null, remote_ip_prefix = var.reseau_cidr, remote_group_id = null },
+    { description = "SSH depuis le reseau prive (rebond)", direction = "INGRESS", ethernet_type = "IPV4", protocol = "TCP", port_range_min = 22, port_range_max = 22, remote_ip_prefix = var.reseau_cidr, remote_group_id = null },
+    { description = "Entree des traces (OTLP/HTTP, TLS mutuel) depuis le reseau prive", direction = "INGRESS", ethernet_type = "IPV4", protocol = "TCP", port_range_min = var.port_entree_traces, port_range_max = var.port_entree_traces, remote_ip_prefix = var.reseau_cidr, remote_group_id = null },
     { description = "Sortie", direction = "EGRESS", ethernet_type = "IPV4", protocol = null, port_range_min = null, port_range_max = null, remote_ip_prefix = "0.0.0.0/0", remote_group_id = null },
   ]
 }
@@ -116,7 +119,7 @@ resource "ovh_cloud_instance" "applications" {
   image_id           = var.image_id
   ssh_key_name       = ovh_cloud_ssh_key.deploiement.name
   security_group_ids = [ovh_cloud_security_group.applications.id]
-  user_data          = base64encode(templatefile("${path.module}/cloud-init.yaml.tftpl", { role = "applications" }))
+  user_data          = base64encode(templatefile("${path.module}/cloud-init.yaml.tftpl", { role = "applications", reseau_cidr = var.reseau_cidr, port_entree_traces = var.port_entree_traces }))
 
   networks = [
     { auto_assign_public_ip = true },
@@ -134,7 +137,9 @@ resource "ovh_cloud_instance" "applications" {
   }
 }
 
-# Instance de supervision : Prometheus, Grafana, collecteur OpenTelemetry (infra/supervision). Réseau privé seulement.
+# Instance de supervision : Prometheus, Grafana, collecteur OpenTelemetry, entrepôt de traces Tempo (infra/supervision).
+# Réseau privé seulement. Son disque porte les métriques (30 jours) et les traces (72 h, 2,1 Go reçus au plus) :
+# dimensionnement indicatif, non mesuré, dans docs/exploitation.md, § 9.
 resource "ovh_cloud_instance" "supervision" {
   service_name       = var.projet_ovh
   region             = local.region_i
@@ -143,7 +148,7 @@ resource "ovh_cloud_instance" "supervision" {
   image_id           = var.image_id
   ssh_key_name       = ovh_cloud_ssh_key.deploiement.name
   security_group_ids = [ovh_cloud_security_group.supervision.id]
-  user_data          = base64encode(templatefile("${path.module}/cloud-init.yaml.tftpl", { role = "supervision" }))
+  user_data          = base64encode(templatefile("${path.module}/cloud-init.yaml.tftpl", { role = "supervision", reseau_cidr = var.reseau_cidr, port_entree_traces = var.port_entree_traces }))
 
   networks = [
     {

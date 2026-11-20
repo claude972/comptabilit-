@@ -97,7 +97,7 @@ export class AdministrationController {
   @ApiOperation({
     summary: 'Changer le rôle d’un membre ou le désactiver (gestionnaires)',
     description:
-      'Garde-fous : on ne modifie pas sa propre appartenance ; le cabinet garde toujours au moins un administrateur actif ; un changement de rôle retire les habilitations de dossier qui dépassent le plafond du nouveau rôle ; une désactivation ferme immédiatement tous les accès. Pour faire entrer une personne : voir les invitations.',
+      'Garde-fous : on ne modifie pas sa propre appartenance ; le cabinet garde toujours au moins un administrateur actif ; un changement de rôle retire les habilitations de dossier qui dépassent le plafond du nouveau rôle ; une désactivation ferme immédiatement tous les accès et retire, dans la même transaction, les abonnements de la personne aux notifications poussées pour ce cabinet (retrait journalisé ; une réactivation ne les recrée pas : la personne réactive elle-même ses appareils). Pour faire entrer une personne : voir les invitations.',
   })
   @ApiBody({ schema: schemaOpenApi(membre) })
   async modifierMembre(@AccesCourant() acces: Acces, @Param('utilisateurId') utilisateurId: string, @Body() corps: unknown) {

@@ -128,7 +128,10 @@ export interface ClesVapid {
 export function genererClesVapid(): ClesVapid {
   const e = createECDH('prime256v1');
   e.generateKeys();
-  return { publique: b64u(e.getPublicKey()), privee: b64u(e.getPrivateKey()) };
+  // `getPrivateKey()` rend l'entier SANS ses octets nuls de tête : une clé sur 256 environ ferait moins de 32 octets et
+  // serait refusée par `clesVapidCoherentes`. Elle est donc ramenée à 32 octets (complétée à gauche par des zéros).
+  const privee = e.getPrivateKey();
+  return { publique: b64u(e.getPublicKey()), privee: b64u(Buffer.concat([Buffer.alloc(32 - privee.length), privee])) };
 }
 
 /** Vrai si la paire est bien formée ET cohérente (la clé publique est celle de la clé privée). */

@@ -4,7 +4,7 @@ import { BandeauEtatIa } from '@/components/assistant/affichage';
 import { ErreurAcces } from '@/components/erreurs';
 import { Alerte, Carte, Etiquette, SousTitre, Tableau, Titre } from '@/components/ui/base';
 import { LIBELLE_NATURE_MESURE, type VueIa } from '@/lib/assistant';
-import { formaterDate } from '@/lib/montants';
+import { formaterDate, formaterHorodatage } from '@/lib/montants';
 import { tenter } from '@/lib/serveur/api';
 import { accesMessagerie } from '@/lib/serveur/messagerie';
 
@@ -12,6 +12,13 @@ export const metadata: Metadata = { title: 'Intelligence artificielle — état 
 
 const LIBELLE_STATUT: Record<string, string> = { non_connecte: 'Non connectée', configure_non_verifie: 'Configurée, non vérifiée', connecte: 'Connectée', simule: 'Simulateur de test' };
 const NATURES = ['reel', 'simulateur', 'sans_ia'] as const;
+/** Libellé de l'état, preuve comprise : « périmée » et « connectée depuis le … » sont dits en toutes lettres. */
+function libelleEtat(ia: VueIa): string {
+  const v = ia.verification;
+  if (ia.statut === 'connecte' && v?.verifieeLe) return `Connectée — vérifiée le ${formaterHorodatage(v.verifieeLe)}`;
+  if (ia.statut === 'configure_non_verifie' && v?.etat === 'perimee') return 'Configurée — vérification périmée';
+  return LIBELLE_STATUT[ia.statut] ?? ia.statut;
+}
 
 export default async function PageAdministrationIa() {
   // Même règle que le reste de l'administration : gestionnaires du cabinet (administrateur, associé) uniquement.
@@ -37,7 +44,7 @@ export default async function PageAdministrationIa() {
           <p className="flex flex-wrap items-center gap-2">
             <span className="font-medium">État :</span>
             <Etiquette ton={ia.statut === 'connecte' ? 'succes' : 'attention'} data-testid="statut-passerelle">
-              {LIBELLE_STATUT[ia.statut] ?? ia.statut}
+              {libelleEtat(ia)}
             </Etiquette>
             <span className="text-sm text-texte-doux">Fournisseur prévu : {ia.fournisseur}</span>
           </p>
@@ -50,6 +57,48 @@ export default async function PageAdministrationIa() {
           ) : null}
           <p className="text-sm text-texte-doux">« Connectée » signifie seulement que le service répond : cela ne dit rien de la qualité du modèle sur les tâches du cabinet.</p>
         </Carte>
+        {ia.verification ? (
+          <Carte className="space-y-2" data-testid="verification-ia" data-etat-verification={ia.verification.etat}>
+            <p className="font-medium">Vérification de la connexion</p>
+            <p data-testid="detail-verification">{ia.verification.detail}</p>
+            {ia.verification.verifieeLe || ia.verification.atteste ? (
+              <dl className="grid grid-cols-1 gap-x-3 gap-y-1 text-sm sm:grid-cols-[auto_1fr]" data-testid="preuve-ia">
+                {ia.verification.verifieeLe ? (
+                  <>
+                    <dt className="text-texte-doux">Dernière vérification</dt>
+                    <dd>{formaterHorodatage(ia.verification.verifieeLe)}</dd>
+                  </>
+                ) : null}
+                {ia.verification.valideJusquAu ? (
+                  <>
+                    <dt className="text-texte-doux">{ia.verification.etat === 'perimee' ? 'Périmée depuis le' : 'Fin de validité'}</dt>
+                    <dd>{formaterHorodatage(ia.verification.valideJusquAu)}</dd>
+                  </>
+                ) : null}
+                {ia.verification.atteste ? (
+                  <>
+                    <dt className="text-texte-doux">{ia.verification.etat === 'valide' ? 'Ce qu’elle atteste' : 'Ce qu’elle avait relevé'}</dt>
+                    <dd className="break-all">
+                      hôte {ia.verification.atteste.hote}
+                      {ia.verification.atteste.modeleLangage ? ` ; modèle de langage renvoyé : ${ia.verification.atteste.modeleLangage}` : ''}
+                      {ia.verification.atteste.modeleEmbeddings ? ` ; modèle de vecteurs renvoyé : ${ia.verification.atteste.modeleEmbeddings}` : ''}
+                      {ia.verification.atteste.dimensionsEmbeddings ? ` (${ia.verification.atteste.dimensionsEmbeddings} dimensions)` : ''}
+                    </dd>
+                  </>
+                ) : null}
+              </dl>
+            ) : null}
+            {ia.statut !== 'connecte' && ia.verification.etat !== 'sans_objet' ? (
+              <p className="text-sm" data-testid="consequence-verification">
+                Tant que la connexion n’est pas vérifiée, aucun modèle n’est sollicité : les tâches rendent leurs résultats sans IA.
+              </p>
+            ) : null}
+            <p className="text-sm text-texte-doux" data-testid="declenchement-verification">
+              {ia.verification.declenchement}
+              {ia.verification.validiteJours ? ` Une vérification vaut ${ia.verification.validiteJours} jours, pour la configuration vérifiée seulement.` : ''}
+            </p>
+          </Carte>
+        ) : null}
       </section>
 
       <section aria-labelledby="titre-modeles" className="space-y-2">

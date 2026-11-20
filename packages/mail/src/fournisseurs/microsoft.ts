@@ -19,6 +19,7 @@ import {
   type ResultatRevocation,
   type TypeBoite,
 } from '../oauth.js';
+import { assainirNomPiece, LIMITES_MESSAGE } from '../pieces.js';
 import { ENTETE_SIMULATEUR } from '../statut.js';
 import type { EtatSurveillance, MessageBrut, PieceJointeBrute } from '../types.js';
 import { chaine, exigerSucces, lireJson, tableau, type ContexteAppel, type FournisseurMail, type PageChangements } from './commun.js';
@@ -239,7 +240,8 @@ export function creerFournisseurMicrosoft(configuration: ConfigurationMicrosoft)
       // `hasAttachments` ne compte pas les pièces en ligne : celles-ci (signatures, logos) ne sont donc pas listées.
       if (m['hasAttachments'] === true) {
         let lien: string | null = `${base}/attachments?$select=id,name,contentType,size,isInline`;
-        while (lien !== null) {
+        // Liste bornée : au-delà du nombre maximal de pièces par message, les suivantes sont ignorées.
+        while (lien !== null && pieces.length < LIMITES_MESSAGE.pieces) {
           const page: Response = await ctx.requete(exigerLienApi(lien), { headers: { prefer: PREFERENCE_ID } });
           exigerSucces(page, 'liste des pièces jointes');
           const liste = await lireJson(page);
@@ -249,11 +251,11 @@ export function creerFournisseurMicrosoft(configuration: ConfigurationMicrosoft)
             // Seuls les fichiers sont lus. Les éléments joints (itemAttachment) et les références vers un
             // stockage en ligne (referenceAttachment, qui est un lien) ne sont jamais ouverts.
             const type = chaine(p['@odata.type']) ?? '#microsoft.graph.fileAttachment';
-            if (!type.toLowerCase().endsWith('fileattachment')) continue;
+            if (!type.toLowerCase().endsWith('fileattachment') || pieces.length >= LIMITES_MESSAGE.pieces) continue;
             pieces.push({
               id,
               reference: 'fichier',
-              nom: chaine(p['name']) ?? '',
+              nom: assainirNomPiece(chaine(p['name']) ?? ''),
               typeMime: chaine(p['contentType']) ?? '',
               taille: typeof p['size'] === 'number' ? p['size'] : 0,
               enLigne: p['isInline'] === true,

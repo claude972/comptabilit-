@@ -36,7 +36,7 @@ OVHcloud Public Cloud, région française ; OpenTofu et scripts ; Docker Compose
 
 | Élément | Choix | Fichiers | État |
 |---|---|---|---|
-| Réseau | Réseau privé (vRack), sous-réseau, passerelle de sortie, groupes de sécurité (web public ; SSH limité aux adresses d'administration ; supervision sans entrée d'Internet) | `infra/opentofu/main.tf` | Validé syntaxiquement |
+| Réseau | Réseau privé (vRack), sous-réseau, passerelle de sortie, groupes de sécurité (web public ; SSH limité aux adresses d'administration ; supervision sans entrée d'Internet : du réseau privé, SSH et l'entrée des traces seulement) | `infra/opentofu/main.tf` | Validé syntaxiquement |
 | Instances | Une instance applicative (adresse publique), une instance de supervision (réseau privé seulement) | `infra/opentofu/main.tf`, `cloud-init.yaml.tftpl` | Validé syntaxiquement ; cloud-init jamais exécuté |
 | Base | PostgreSQL managé dans le réseau privé ; bases `comtaple` et `keycloak` ; rôle de migration et utilisateur Keycloak | `infra/opentofu/main.tf` | Validé syntaxiquement ; `vector`, création de rôles et `BYPASSRLS` à vérifier chez l'hébergeur |
 | Files | **Redis sur l'instance applicative**, pas de service managé par défaut (Valkey managé descriptible par `valkey_manage = true`) | `infra/production/compose.production.yaml` | Conteneur durci essayé en local |
@@ -44,7 +44,8 @@ OVHcloud Public Cloud, région française ; OpenTofu et scripts ; Docker Compose
 | Registre | Registre privé managé | `infra/opentofu/main.tf` | Validé syntaxiquement |
 | Applications | Proxy TLS Caddy, web, API, worker, OCR, antivirus, Keycloak, Redis, deux sondes | `infra/production/compose.production.yaml` | `docker compose config` réussi ; jamais démarré dans son ensemble |
 | Identités | Keycloak `start --optimized` sur PostgreSQL ; royaume de production avec TOTP exigé | `infra/keycloak/` | Essayé en local (26 contrôles) |
-| Supervision | Prometheus, Grafana, collecteur OpenTelemetry, liés à 127.0.0.1 | `infra/supervision/` | Essayée en local |
+| Supervision | Prometheus, Grafana, collecteur OpenTelemetry, entrepôt de traces Tempo (rétention 72 h), liés à 127.0.0.1 | `infra/supervision/` | Essayée en local ; Tempo essayé par `scripts/essai-traces.sh`, sans Grafana |
+| Traces | Désactivées par défaut. Agent sur l'instance applicative (profil `traces`) → TLS mutuel sur le réseau privé, port 4319 → entrée de l'instance de supervision (profil `acheminement`) → collecteur → Tempo | `infra/production/compose.production.yaml`, `infra/supervision/`, `infra/opentofu/main.tf` (groupe de sécurité : SSH et 4319 du réseau privé seulement) | Chaîne essayée en local sur un seul poste ; jamais sur deux hôtes (`docs/exploitation.md`, § 9) |
 | Déploiement | Images étiquetées par commit, migration avant bascule, vérification, retour arrière | `scripts/deployer.sh` | Mode à blanc essayé seulement |
 | Secrets | Fichiers d'environnement sur les hôtes (`chmod 600`), jamais versionnés | `infra/production/exemple.env` (valeurs factices) | Gestionnaire de secrets de l'hébergeur non utilisé : à décider |
 

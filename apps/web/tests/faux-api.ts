@@ -236,6 +236,10 @@ const CLE_PUBLIQUE_POUSSEES = (() => {
 })();
 const pousseesInitial = (): Poussees => ({ statut: 'non_configure', appareils: [], coupees: new Set() });
 let poussees: Poussees = pousseesInitial();
+// Écran d'administration de l'IA : état de la preuve de connexion AFFICHÉ, pilotable par /__test/ia. Ce n'est qu'un
+// affichage : ce simulateur n'appelle aucun modèle et ne « connecte » rien, quel que soit l'état choisi ici.
+type PreuveIaSimulee = 'sans_fournisseur' | 'absente' | 'valide' | 'perimee' | 'autre_configuration' | 'non_concluante';
+let preuveIa: PreuveIaSimulee = 'sans_fournisseur';
 const DETAILS_POUSSEES = {
   non_configure: 'Les notifications poussées ne sont pas activées sur ce service.',
   simule: 'SIMULATEUR de test : aucun service de notification réel n’est contacté, aucun appareil réel ne reçoit quoi que ce soit.',
@@ -2369,18 +2373,26 @@ function routerSuite(r: Requete, a: Acces): unknown {
       };
     }
     if (m === 'GET' && s[2] === 'abonnements' && s.length === 3) return { appareils: miens() };
-    if (m === 'POST' && s[2] === 'abonnements' && s.length === 3) {
+    // Abonnement, ou remplacement après renouvellement par le navigateur (l'ancien abonnement DE L'APPELANT est retiré avec).
+    const remplacementPousse = m === 'POST' && s[2] === 'abonnements' && s[3] === 'remplacement' && s.length === 4;
+    if ((m === 'POST' && s[2] === 'abonnements' && s.length === 3) || remplacementPousse) {
       if (!envoiExterne) throw new ErreurHttp(503, { message: DETAILS_POUSSEES.non_configure, code: 'poussees_non_configurees' });
       const d = r.json();
       const destination = verifierPointAcces(d.endpoint);
       if (!destination.ok) throw new ErreurHttp(400, { message: 'Point d’accès refusé : ce n’est pas l’adresse d’un service de notification connu.', code: 'point_acces_refuse', motif: destination.motif });
       if (typeof d.keys?.p256dh !== 'string' || typeof d.keys?.auth !== 'string') throw invalide('keys', 'clés attendues');
       const empreinte = createHash('sha256').update(String(d.endpoint), 'utf8').digest('hex');
+      let ancienRetire = false;
+      if (remplacementPousse && typeof d.ancienneEmpreinte === 'string' && d.ancienneEmpreinte !== empreinte) {
+        const avant = poussees.appareils.length;
+        poussees.appareils = poussees.appareils.filter((x) => !(x.empreinte === d.ancienneEmpreinte && x.utilisateurId === a.utilisateurId && x.cabinetId === a.cabinetId));
+        ancienRetire = poussees.appareils.length < avant;
+      }
       poussees.appareils = poussees.appareils.filter((x) => !(x.empreinte === empreinte && (x.utilisateurId !== a.utilisateurId || x.cabinetId === a.cabinetId)));
       const ligne = { id: randomUUID(), cabinetId: a.cabinetId, utilisateurId: a.utilisateurId, service: destination.service, agent: reduireAgentUtilisateur(d.agentUtilisateur), creeLe: instant(), dernierEnvoiAccepteLe: null, empreinte };
       poussees.appareils.push(ligne);
       tracerAudit(a, 'notification_poussee.appareil_abonne', 'abonnement_pousse', ligne.id, null, { service: ligne.service, agent: ligne.agent });
-      return miens().find((x) => x.id === ligne.id);
+      return remplacementPousse ? { ...miens().find((x) => x.id === ligne.id), ancienRetire } : miens().find((x) => x.id === ligne.id);
     }
     if (m === 'DELETE' && s[2] === 'abonnements' && s.length === 4) {
       const i = poussees.appareils.findIndex((x) => x.id === s[3] && x.cabinetId === a.cabinetId && x.utilisateurId === a.utilisateurId);
@@ -2974,8 +2986,32 @@ function routerSuite(r: Requete, a: Acces): unknown {
     const vide = { appelsModele: 0, reussis: 0, abstentions: 0, rejets: 0, erreurs: 0, indisponibles: 0, fonctionsExecutees: 0, fonctionsRefusees: 0 };
     const miens = suite.echangesAssistant.filter((e) => e.cabinetId === a.cabinetId);
     const fonctions = miens.reduce((n, e) => n + (e.fonctions as number), 0);
+    // État de la preuve de connexion (calqué sur assistant.controller.ts et packages/plateforme/src/ia.ts), piloté par /__test/ia.
+    const atteste = { hote: 'oai.endpoints.kepler.ai.cloud.ovh.net', modeleLangage: 'Mistral-Small-3.2-24B-Instruct-2506', modeleEmbeddings: 'bge-m3', dimensionsEmbeddings: 1024 };
+    const declenchement = 'La vérification émet un appel réel au fournisseur : elle est faite par l’éditeur du service, sur demande explicite. Elle n’est ni automatique ni déclenchable depuis cet écran.';
+    const nonVerifie = (raison: string) => ({ statut: 'configure_non_verifie', raisons: [raison], message: 'IA configurée mais non vérifiée : aucun modèle n’est sollicité. Les réponses ci-dessous sont des résultats de recherche et des calculs du moteur, sans rédaction par un modèle.', modeleSollicite: false });
+    const VUES_IA: Record<PreuveIaSimulee, { etat: Record<string, unknown>; verification: Record<string, unknown> }> = {
+      sans_fournisseur: { etat: ETAT_IA, verification: { etat: 'sans_objet', detail: 'Aucun fournisseur n’est configuré : il n’y a rien à vérifier.', verifieeLe: null, valideJusquAu: null, atteste: null, validiteJours: null } },
+      absente: { etat: nonVerifie('Aucun appel réel réussi n’a été constaté.'), verification: { etat: 'absente', detail: 'Aucune vérification de connexion n’a été faite pour la configuration courante.', verifieeLe: null, valideJusquAu: null, atteste: null, validiteJours: 30 } },
+      valide: {
+        etat: { statut: 'connecte', raisons: [], message: 'IA connectée : les réponses sont rédigées par un modèle à partir des sources citées, et restent à vérifier. Les calculs proviennent du moteur.', modeleSollicite: true },
+        verification: { etat: 'valide', detail: 'Connexion vérifiée le 2026-11-10, valable jusqu’au 2026-12-10.', verifieeLe: '2026-11-10T09:30:00.000Z', valideJusquAu: '2026-12-10T09:30:00.000Z', atteste, validiteJours: 30 },
+      },
+      perimee: {
+        etat: nonVerifie('La vérification du 2026-09-01 est périmée (validité : 30 jours) : une nouvelle vérification par l’éditeur est nécessaire.'),
+        verification: { etat: 'perimee', detail: 'La vérification du 2026-09-01 est périmée (validité : 30 jours) : une nouvelle vérification par l’éditeur est nécessaire.', verifieeLe: '2026-09-01T09:30:00.000Z', valideJusquAu: '2026-10-01T09:30:00.000Z', atteste, validiteJours: 30 },
+      },
+      autre_configuration: {
+        etat: nonVerifie('La dernière vérification concernait une autre configuration (URL, modèles ou jeton différents) : elle ne vaut pas pour la configuration courante.'),
+        verification: { etat: 'autre_configuration', detail: 'La dernière vérification concernait une autre configuration (URL, modèles ou jeton différents) : elle ne vaut pas pour la configuration courante.', verifieeLe: null, valideJusquAu: null, atteste: null, validiteJours: 30 },
+      },
+      non_concluante: {
+        etat: nonVerifie('La dernière vérification a échoué : l’appel au fournisseur n’a pas abouti.'),
+        verification: { etat: 'non_concluante', detail: 'La dernière vérification a échoué : l’appel au fournisseur n’a pas abouti.', verifieeLe: '2026-11-18T09:30:00.000Z', valideJusquAu: '2026-12-18T09:30:00.000Z', atteste: { hote: 'oai.endpoints.kepler.ai.cloud.ovh.net', modeleLangage: null, modeleEmbeddings: null, dimensionsEmbeddings: null }, validiteJours: 30 },
+      },
+    };
     return {
-      ...ETAT_IA, fournisseur: 'OVHcloud AI Endpoints',
+      ...VUES_IA[preuveIa].etat, verification: { ...VUES_IA[preuveIa].verification, declenchement }, fournisseur: 'OVHcloud AI Endpoints',
       modeles: { langage: { id: 'Mistral-Small-3.2-24B-Instruct-2506', temperature: 0, maxJetonsSortie: 2048 }, embeddings: { id: 'bge-m3', dimensions: 1024 } },
       prompts: [['assistant', 'assistant-documente'], ['classer_piece', 'classer-piece'], ['expliquer_constat', 'expliquer-constat'], ['commenter_indicateurs', 'commenter-indicateurs'], ['analyser_lettre_mission', 'analyser-lettre-mission'], ['suggerer_rapprochements', 'suggerer-rapprochements']].map(([tache, id]) => ({ tache, id, version: '1.0.0' })),
       etiquettes: { sansIa: 'Sans IA : résultats de recherche et calculs du moteur, sans rédaction', ia: 'Réponse rédigée par une IA à partir des sources citées : à vérifier. Les calculs proviennent du moteur.', confiance: MENTION_CONFIANCE_IA },
@@ -3331,6 +3367,7 @@ const serveur = http.createServer(async (req, res) => {
         tracerAudit({ cabinetId: DEMO.cabinetA }, 'import.fec.termine', 'lot_import', etat.lots[0]!.id, DEMO.dupain, { lignes: 1250, lisible: true, anomalies: { CHAMP_VIDE: 60 } });
         mail = mailInitial();
         poussees = pousseesInitial();
+        preuveIa = 'sans_fournisseur';
         pannes = { couperMorceauNumero: 0, conflitMorceauNumero: 0, ralentirMorceauxMs: 0, erreurTerminer: 0 };
         compteurMorceaux = 0;
         journal = [];
@@ -3378,6 +3415,13 @@ const serveur = http.createServer(async (req, res) => {
       } else if (methode === 'GET' && segments[1] === 'fournisseur') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(pageFournisseur(url.searchParams));
+      } else if (segments[1] === 'ia') {
+        // Pilotage de l'AFFICHAGE de l'état de la passerelle IA (aucun modèle n'est appelé, rien n'est connecté).
+        if (methode === 'POST') {
+          const d = json();
+          if (['sans_fournisseur', 'absente', 'valide', 'perimee', 'autre_configuration', 'non_concluante'].includes(d.preuve)) preuveIa = d.preuve as PreuveIaSimulee;
+        }
+        resultat = { preuve: preuveIa };
       } else if (segments[1] === 'poussees') {
         // Pilotage des notifications poussées simulées : statut du service ; lecture des abonnements enregistrés.
         if (methode === 'POST') {

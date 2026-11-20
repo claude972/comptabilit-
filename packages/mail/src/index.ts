@@ -64,7 +64,7 @@ export {
 } from './oauth.js';
 export { decrirePerimetre, type FiltreLogiciel, type PermissionOAuth, type Perimetre } from './perimetre.js';
 export { detecterFactureDerriereLien, extraitPourQualification, LIMITES_EXTRAIT, masquerAdresse } from './extrait.js';
-export { categoriserPiece, evaluerPiece, lireDimensionsImage, REGLES_INTERNES_PIECES, type DecisionPiece, type MotifIgnore } from './pieces.js';
+export { assainirNomPiece, categoriserPiece, evaluerPiece, LIMITES_MESSAGE, lireDimensionsImage, REGLES_INTERNES_PIECES, type DecisionPiece, type MotifIgnore } from './pieces.js';
 export { filtrerMessage, rattacher } from './rattachement.js';
 export {
   chargerClesGoogle,

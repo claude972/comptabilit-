@@ -1,15 +1,15 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { messageErreur, useAppel } from '@/components/appel';
 import { Retours } from '@/components/retours';
 import { Alerte, Etiquette } from '@/components/ui/base';
 import { Bouton } from '@/components/ui/bouton';
 import { formaterHorodatage } from '@/lib/montants';
-import { type CapacitesNavigateur, cleServeur, empreintePointAcces, type EtatAppareil, etatAppareil, type EtatServicePoussees } from '@/lib/notifications-poussees';
+import { type CapacitesNavigateur, cleServeur, creeAvecUneAutreCle, effacerMarqueRenouvellement, empreintePointAcces, type EtatAppareil, etatAppareil, type EtatServicePoussees, lireMarqueRenouvellement } from '@/lib/notifications-poussees';
 
 /** Relève ce que le navigateur sait faire. Ne demande JAMAIS l'autorisation : la demande n'a lieu que sur un geste (bouton). */
-async function releverCapacites(serviceActif: boolean): Promise<CapacitesNavigateur> {
+async function releverCapacites(serviceActif: boolean, clePublique: string | null): Promise<CapacitesNavigateur> {
   const ua = navigator.userAgent;
   const c: CapacitesNavigateur = {
     serviceWorker: 'serviceWorker' in navigator,
@@ -20,6 +20,7 @@ async function releverCapacites(serviceActif: boolean): Promise<CapacitesNavigat
     ios: /iPad|iPhone|iPod/.test(ua) || (ua.includes('Macintosh') && navigator.maxTouchPoints > 1),
     autonome: window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true,
     empreinteLocale: null,
+    renouvellement: null,
   };
   if (!c.serviceWorker || !c.pushManager) return c;
   // Tant que le service n'a pas activé les notifications poussées (état réel par défaut), le navigateur n'est PAS
@@ -43,6 +44,11 @@ async function releverCapacites(serviceActif: boolean): Promise<CapacitesNavigat
   };
   const abonnement = await Promise.race([lire(), new Promise<null>((r) => setTimeout(() => r(null), 3000))]);
   if (abonnement) c.empreinteLocale = await empreintePointAcces(abonnement.endpoint);
+  // Rotation des clés du service : un abonnement créé avec l'ancienne clé publique ne reçoit plus rien.
+  if (abonnement) c.cleServiceDifferente = creeAvecUneAutreCle(abonnement.options?.applicationServerKey, clePublique);
+  // Marque laissée par le service worker si le navigateur a renouvelé ou perdu l'abonnement sans que le service l'ait su.
+  // Lue APRÈS la garde ci-dessus (rien n'est interrogé tant que la fonction n'est pas activée), et bornée dans le temps.
+  c.renouvellement = await lireMarqueRenouvellement().catch(() => null);
   return c;
 }
 
@@ -57,12 +63,31 @@ export function NotificationsPoussees({ etat }: { etat: EtatServicePoussees }) {
   const [erreur, setErreur] = useState<string | null>(null);
   const [succes, setSucces] = useState<string | null>(null);
   const serviceActif = etat.activees;
-  const relever = useCallback(() => releverCapacites(serviceActif).then(setCapacites, () => setCapacites(null)), [serviceActif]);
+  const clePublique = etat.clePublique;
+  const relever = useCallback(() => releverCapacites(serviceActif, clePublique).then(setCapacites, () => setCapacites(null)), [serviceActif, clePublique]);
   useEffect(() => {
     void relever();
   }, [relever]);
 
   const appareil: EtatAppareil | null = capacites ? etatAppareil(etat, capacites) : null;
+
+  // Renouvellement signalé par le service worker : l'ANCIEN abonnement de cet appareil, s'il est encore connu du service,
+  // est retiré ici (il est devenu inutilisable) ; la réactivation, elle, reste un geste explicite. Une fois l'appareil de
+  // nouveau reconnu par le service, la marque est effacée.
+  const ancienRetire = useRef<string | null>(null);
+  useEffect(() => {
+    const marque = capacites?.renouvellement;
+    if (!marque || !etat.activees) return;
+    if (capacites.empreinteLocale && etat.appareils.some((a) => a.empreinte === capacites.empreinteLocale)) {
+      void effacerMarqueRenouvellement().then(relever);
+      return;
+    }
+    const ancien = marque.ancienneEmpreinte && marque.ancienneEmpreinte !== capacites.empreinteLocale ? etat.appareils.find((a) => a.empreinte === marque.ancienneEmpreinte) : undefined;
+    if (ancien && ancienRetire.current !== ancien.id) {
+      ancienRetire.current = ancien.id;
+      void appel.executer(`v1/notifications/poussees/abonnements/${ancien.id}`, { method: 'DELETE' }, 'L’ancien abonnement de cet appareil, renouvelé par le navigateur, a été retiré.');
+    }
+  }, [capacites, etat.activees, etat.appareils, appel, relever]);
 
   /** Geste explicite : demande d'autorisation au navigateur, puis abonnement de l'appareil et enregistrement auprès du service. */
   async function activer() {
@@ -78,9 +103,24 @@ export function NotificationsPoussees({ etat }: { etat: EtatServicePoussees }) {
       }
       const enregistrement = await navigator.serviceWorker.ready;
       // « userVisibleOnly » : chaque message reçu affiche une notification — il n'existe pas de message silencieux.
-      const abonnement = (await enregistrement.pushManager.getSubscription()) ?? (await enregistrement.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: cleServeur(etat.clePublique) }));
+      let existant = await enregistrement.pushManager.getSubscription();
+      let remplacee: string | null = null;
+      // Abonnement créé avec une ancienne clé du service (rotation) : inutilisable, et le navigateur refuserait d'en créer
+      // un second avec une autre clé. Il est retiré du navigateur, puis remplacé côté service.
+      if (existant && creeAvecUneAutreCle(existant.options?.applicationServerKey, etat.clePublique)) {
+        remplacee = await empreintePointAcces(existant.endpoint);
+        await existant.unsubscribe();
+        existant = null;
+      }
+      const abonnement = existant ?? (await enregistrement.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: cleServeur(etat.clePublique) }));
       const json = abonnement.toJSON();
-      await appel.executer('v1/notifications/poussees/abonnements', { method: 'POST', json: { endpoint: abonnement.endpoint, keys: { p256dh: json.keys?.p256dh, auth: json.keys?.auth }, agentUtilisateur: navigator.userAgent } }, 'Cet appareil est abonné aux notifications poussées.');
+      const corps = { endpoint: abonnement.endpoint, keys: { p256dh: json.keys?.p256dh, auth: json.keys?.auth }, agentUtilisateur: navigator.userAgent };
+      // Après un renouvellement par le navigateur : remplacement ATOMIQUE de l'ancien abonnement de cet appareil.
+      const marque = capacites?.renouvellement ?? null;
+      const fait = marque || remplacee
+        ? await appel.executer('v1/notifications/poussees/abonnements/remplacement', { method: 'POST', json: { ...corps, ancienneEmpreinte: remplacee ?? marque?.ancienneEmpreinte ?? null } }, 'Cet appareil est de nouveau abonné aux notifications poussées.')
+        : await appel.executer('v1/notifications/poussees/abonnements', { method: 'POST', json: corps }, 'Cet appareil est abonné aux notifications poussées.');
+      if (fait && marque) await effacerMarqueRenouvellement();
     } catch (e) {
       setErreur(e instanceof DOMException ? 'Le navigateur n’a pas pu abonner cet appareil. Rien n’a été activé.' : messageErreur(e));
     } finally {
@@ -99,6 +139,7 @@ export function NotificationsPoussees({ etat }: { etat: EtatServicePoussees }) {
       const abonnement = await enregistrement?.pushManager.getSubscription();
       const empreinte = abonnement ? await empreintePointAcces(abonnement.endpoint) : null;
       await abonnement?.unsubscribe();
+      await effacerMarqueRenouvellement();
       const connu = etat.appareils.find((a) => a.empreinte === empreinte);
       if (connu) await appel.executer(`v1/notifications/poussees/abonnements/${connu.id}`, { method: 'DELETE' }, 'Cet appareil n’est plus abonné.');
       else setSucces('Cet appareil n’est plus abonné.');
@@ -175,7 +216,11 @@ export function NotificationsPoussees({ etat }: { etat: EtatServicePoussees }) {
             <div className="space-y-3">
               {appareil === 'a_reactiver' ? (
                 <Alerte ton="attention" data-testid="poussees-a-reactiver">
-                  Ce navigateur détient un abonnement que Comtaple ne connaît pas pour ce compte (abonnement renouvelé par le navigateur, ou autre compte utilisé ici) : aucune notification ne lui est adressée tant qu’il n’est pas réactivé.
+                  {capacites?.cleServiceDifferente
+                    ? 'Les clés du service de notifications ont été renouvelées : l’abonnement de cet appareil ne reçoit plus rien tant qu’il n’est pas réactivé.'
+                    : capacites?.renouvellement
+                    ? 'Le navigateur a renouvelé ou perdu l’abonnement de cet appareil, et Comtaple n’a pas pu enregistrer le nouveau (session fermée, appareil hors connexion ou réabonnement impossible) : aucune notification ne lui est adressée tant qu’il n’est pas réactivé.'
+                    : 'Ce navigateur détient un abonnement que Comtaple ne connaît pas pour ce compte (abonnement renouvelé par le navigateur, retiré après une longue inactivité ou une désactivation du compte, ou autre compte utilisé ici) : aucune notification ne lui est adressée tant qu’il n’est pas réactivé.'}
                 </Alerte>
               ) : null}
               {explication}

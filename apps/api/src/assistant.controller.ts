@@ -138,11 +138,26 @@ export class AssistantController {
   @ApiOperation({
     summary: 'État RÉEL de la passerelle IA, modèles figés, prompts versionnés et — pour les gestionnaires — mesures',
     description:
-      'Statut : non_connecte, configure_non_verifie, connecte (appel réel vérifié sur l’hôte officiel) ou simule (tests). Les mesures viennent des traces sans contenu (table en ajout seul) et distinguent toujours les natures « reel », « simulateur » et « sans_ia » : un appel au simulateur n’est jamais compté comme un appel réel. Le coût est une estimation (jetons × tarif configuré et daté), nulle si aucun tarif n’est configuré.',
+      'Statut : non_connecte, configure_non_verifie, connecte (appel réel vérifié sur l’hôte officiel) ou simule (tests). « verification » décrit la PREUVE de connexion persistée : son état (sans_objet, absente, valide, perimee, autre_configuration, non_concluante, non_conforme), sa date, sa fin de validité et ce qu’elle atteste (hôte, modèles renvoyés, dimension des vecteurs — ni prompt ni réponse). ' +
+      '« connecte » exige une preuve valide, non périmée, établie pour la configuration courante ; sinon le statut est « configure_non_verifie » et AUCUNE tâche ne sollicite le modèle. La vérification émet un appel réel : elle est faite par l’éditeur (commande d’exploitation), il n’existe AUCUNE route pour la déclencher, et rien ne la relance automatiquement. Les mesures viennent des traces sans contenu (table en ajout seul) et distinguent toujours les natures « reel », « simulateur » et « sans_ia » : un appel au simulateur n’est jamais compté comme un appel réel. Le coût est une estimation (jetons × tarif configuré et daté), nulle si aucun tarif n’est configuré.',
   })
   async etatIa(@AccesCourant() acces: Acces) {
+    // La preuve est relue de la base avant d'afficher l'état (lecture seule ; sans fournisseur configuré, aucune lecture).
+    await this.ia.rafraichirPreuve();
+    const preuve = this.ia.preuve();
     const base = {
       ...this.etat(),
+      verification: {
+        ...(preuve ?? {
+          etat: 'sans_objet' as const,
+          detail: this.ia.natureFournisseur === 'simulateur' ? 'Simulateur de test : il ne peut pas être vérifié et ne donne jamais le statut « connecté ».' : 'Aucun fournisseur n’est configuré : il n’y a rien à vérifier.',
+          verifieeLe: null,
+          valideJusquAu: null,
+          atteste: null,
+          validiteJours: null,
+        }),
+        declenchement: 'La vérification émet un appel réel au fournisseur : elle est faite par l’éditeur du service, sur demande explicite. Elle n’est ni automatique ni déclenchable depuis cet écran.',
+      },
       fournisseur: 'OVHcloud AI Endpoints',
       modeles: MODELES_IA,
       prompts: [

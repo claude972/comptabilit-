@@ -75,8 +75,9 @@ x-environnement-serveur: &environnement-serveur
   PUSH_VAPID_CLE_PUBLIQUE: ${PUSH_VAPID_CLE_PUBLIQUE:-}
   PUSH_VAPID_CLE_PRIVEE: ${PUSH_VAPID_CLE_PRIVEE:-}
   PUSH_VAPID_SUJET: ${PUSH_VAPID_SUJET:-}
-  # Traces OpenTelemetry de l'API et du worker (docs/exploitation.md, § 9). Point d'accès OTLP/HTTP du collecteur ;
-  # VIDE = aucune trace, aucun appel réseau. L'acheminement vers le collecteur (réseau privé) reste à mettre en place.
+  # Traces OpenTelemetry de l'API et du worker (docs/exploitation.md, § 9). Point d'accès OTLP/HTTP ; VIDE = aucune
+  # trace, aucun appel réseau. Pour les activer : `http://agent-traces:4318` (service `agent-traces` ci-dessous, profil
+  # `traces`), qui relaie vers l'instance de supervision par le réseau privé, en TLS mutuel.
   OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
   TRACES_TAUX_ECHANTILLONNAGE: ${TRACES_TAUX_ECHANTILLONNAGE:-0.1}
   TRACES_ENVIRONNEMENT: ${TRACES_ENVIRONNEMENT:-production}
@@ -242,7 +243,7 @@ services:
     # Écrit l'autorité de certification de la base (PG_AC_PEM, texte public) en mémoire, puis lance le service.
     command: ["sh", "-c", "printf '%s\\n' \"$$PG_AC_PEM\" > /tmp/ac-base.pem && exec node apps/api/dist/main.js"]
     tmpfs: ["/tmp:rw,noexec,nosuid,size=256m"]
-    networks: [entree, interne, ocr, metriques]
+    networks: [entree, interne, ocr, metriques, traces]
     depends_on:
       redis: { condition: service_healthy }
     mem_limit: 1g
@@ -298,7 +299,7 @@ services:
     # Chromium (rendu PDF hors ligne) écrit son profil et ses fichiers temporaires dans /tmp.
     tmpfs: ["/tmp:rw,nosuid,size=1g"]
     shm_size: 512m
-    networks: [interne, ocr, metriques]
+    networks: [interne, ocr, metriques, traces]
     depends_on:
       redis: { condition: service_healthy }
     # Tas de 2 048 Mo + Chromium + mémoire hors tas.
@@ -446,6 +447,57 @@ services:
     cpus: 0.25
     pids_limit: 64
 
+  # ── Traces : agent local qui relaie vers l'instance de supervision (profil `traces`, absent par défaut) ──
+  # Activation dans production.env : COMPOSE_PROFILES=traces, OTEL_EXPORTER_OTLP_ENDPOINT=http://agent-traces:4318 et
+  # les quatre variables TRACES_* ci-dessous. Sans le profil, ce service n'existe pas et rien n'est émis.
+  # Pourquoi un agent plutôt qu'un export direct de l'API et du worker vers la supervision : (1) l'application ne sait
+  # ni présenter un certificat client ni ajouter d'en-tête d'authentification à son export (traces.ts), et n'a pas à
+  # détenir ce secret ; (2) l'API et le worker ne parlent qu'à un voisin du même hôte, par un réseau interne sans
+  # sortie : une panne ou une lenteur du réseau privé est absorbée ici (file bornée, reprises), pas dans l'application ;
+  # (3) un seul point de sortie à autoriser et à surveiller.
+  # Sortie : OTLP/HTTP vers l'adresse PRIVÉE de l'instance de supervision, TLS 1.3 mutuel (le réseau privé n'est pas
+  # chiffré par lui-même). Rien n'est publié sur l'hôte. Les certificats (PEM) sont passés par l'environnement : aucun
+  # fichier, conteneur en lecture seule.
+  agent-traces:
+    profiles: ["traces"]
+    image: otel/opentelemetry-collector:0.165.0
+    <<: *durcissement
+    # Configuration lue dans l'environnement (fournisseur `env:` du collecteur) : l'image n'a pas de shell.
+    command: ["--config=env:CONFIGURATION"]
+    environment:
+      TRACES_AC_PEM: ${TRACES_AC_PEM:-}
+      TRACES_AGENT_CERT_PEM: ${TRACES_AGENT_CERT_PEM:-}
+      TRACES_AGENT_CLE_PEM: ${TRACES_AGENT_CLE_PEM:-}
+      CONFIGURATION: |
+        receivers:
+          otlp:
+            protocols:
+              http: { endpoint: 0.0.0.0:4318 }
+        processors:
+          memory_limiter: { check_interval: 5s, limit_mib: 96 }
+          batch: { timeout: 5s, send_batch_size: 512, send_batch_max_size: 1024 }
+        exporters:
+          otlp_http/supervision:
+            endpoint: ${TRACES_ENTREE_SUPERVISION:-https://supervision.invalid:4319}
+            compression: gzip
+            tls:
+              min_version: "1.3"
+              ca_pem: $${env:TRACES_AC_PEM}
+              cert_pem: $${env:TRACES_AGENT_CERT_PEM}
+              key_pem: $${env:TRACES_AGENT_CLE_PEM}
+            # Supervision injoignable : au plus 200 lots en attente (en mémoire), abandon après 5 minutes de reprises.
+            sending_queue: { queue_size: 200 }
+            retry_on_failure: { max_elapsed_time: 5m }
+        service:
+          telemetry:
+            metrics: { level: none }
+          pipelines:
+            traces: { receivers: [otlp], processors: [memory_limiter, batch], exporters: [otlp_http/supervision] }
+    networks: [traces, sortie-traces]
+    mem_limit: 160m
+    cpus: 0.5
+    pids_limit: 128
+
 networks:
   # Proxy ↔ web, API, Keycloak.
   entree: {}
@@ -457,6 +509,12 @@ networks:
   # Points de collecte des métriques ↔ proxy (port privé). Sans sortie.
   metriques:
     internal: true
+  # API, worker → agent des traces. Sans sortie.
+  traces:
+    internal: true
+  # Agent des traces → instance de supervision (réseau privé de l'hébergeur). Seul l'agent y est : il ne voit ni Redis,
+  # ni l'antivirus, ni le proxy.
+  sortie-traces: {}
 
 volumes:
   proxy_donnees:

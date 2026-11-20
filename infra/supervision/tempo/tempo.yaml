@@ -1,0 +1,63 @@
+# Entrepôt de traces : Grafana Tempo en mode monolithique (un seul processus, `-target=all`), stockage LOCAL dans le
+# volume `tempo_donnees`. D'après la documentation officielle de Tempo 3.1 (configuration, « monolithic mode » ; exemple
+# `example/docker-compose/single-binary` du dépôt grafana/tempo, étiquette v3.1.1, consultés le 2026-11-19) : le
+# stockage `local` n'est pris en charge que dans ce mode, et aucun Kafka n'est nécessaire.
+#
+# Les valeurs TEMPO_… viennent de l'environnement du conteneur (`-config.expand-env=true`, posées par
+# compose.supervision.yaml). L'expansion s'applique à TOUT le fichier, commentaires compris : ne jamais y écrire de
+# signe dollar ailleurs que devant une variable définie.
+#
+# BORNES (Tempo n'a PAS de plafond de taille de stockage : la taille est bornée par débit d'entrée × durée de rétention) :
+# - rétention : les blocs plus vieux que TEMPO_RETENTION sont supprimés (vérification toutes les 10 minutes) ;
+# - débit d'entrée : TEMPO_DEBIT_OCTETS_S octets par seconde en régime continu, TEMPO_RAFALE_OCTETS en pointe ; au-delà,
+#   Tempo refuse (le collecteur réessaie puis abandonne : l'application n'en voit rien).
+stream_over_http_enabled: false
+
+server:
+  http_listen_port: 3200
+  grpc_listen_port: 9095
+  log_level: warn
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /var/tempo/wal
+    local:
+      path: /var/tempo/blocks
+
+# La rétention est appliquée par l'ordonnanceur et l'ouvrier de fond (tous deux dans le processus en mode monolithique).
+backend_scheduler:
+  provider:
+    retention:
+      interval: 10m
+    compaction:
+      compaction:
+        block_retention: ${TEMPO_RETENTION}
+        compacted_block_retention: 10m
+backend_worker:
+  compaction:
+    block_retention: ${TEMPO_RETENTION}
+    compacted_block_retention: 10m
+
+overrides:
+  defaults:
+    ingestion:
+      rate_strategy: local
+      rate_limit_bytes: ${TEMPO_DEBIT_OCTETS_S}
+      burst_size_bytes: ${TEMPO_RAFALE_OCTETS}
+    global:
+      max_bytes_per_trace: 2000000
+    compaction:
+      block_retention: ${TEMPO_RETENTION}
+
+# Aucun appel sortant : pas de rapport d'usage anonyme vers l'éditeur.
+usage_report:
+  reporting_enabled: false

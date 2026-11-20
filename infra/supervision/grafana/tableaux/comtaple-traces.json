@@ -1,0 +1,104 @@
+{
+  "uid": "comtaple-traces",
+  "title": "Comtaple — traces",
+  "description": "Recherche d'une trace par service, par nom de span et par durée minimale (entrepôt Tempo). Les traces ne portent que des identifiants techniques : ni adresse, ni jeton, ni nom de fichier, ni texte SQL (docs/exploitation.md, § 9).",
+  "tags": ["comtaple"],
+  "timezone": "Europe/Paris",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "refresh": "",
+  "time": { "from": "now-6h", "to": "now" },
+  "graphTooltip": 0,
+  "links": [
+    { "type": "dashboards", "title": "Tableaux Comtaple", "tags": ["comtaple"], "asDropdown": true, "includeVars": false, "keepTime": true, "targetBlank": false }
+  ],
+  "templating": {
+    "list": [
+      {
+        "type": "custom",
+        "name": "service",
+        "label": "Service",
+        "query": "Tous : .*,API : comtaple-api,Worker : comtaple-worker",
+        "options": [
+          { "text": "Tous", "value": ".*", "selected": true },
+          { "text": "API", "value": "comtaple-api", "selected": false },
+          { "text": "Worker", "value": "comtaple-worker", "selected": false }
+        ],
+        "current": { "text": "Tous", "value": ".*", "selected": true },
+        "multi": false,
+        "includeAll": false
+      },
+      {
+        "type": "textbox",
+        "name": "span",
+        "label": "Nom de span (expression régulière)",
+        "description": "Exemples : « traiter comptabilite importer-fec », « POST /v1/televersements/:id/terminer », « traiter .* ». « .* » = tous.",
+        "query": ".*",
+        "options": [{ "text": ".*", "value": ".*", "selected": true }],
+        "current": { "text": ".*", "value": ".*", "selected": true }
+      },
+      {
+        "type": "textbox",
+        "name": "duree_min",
+        "label": "Durée minimale du span",
+        "description": "Durée TraceQL : 0ms, 250ms, 2s, 1m…",
+        "query": "0ms",
+        "options": [{ "text": "0ms", "value": "0ms", "selected": true }],
+        "current": { "text": "0ms", "value": "0ms", "selected": true }
+      }
+    ]
+  },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "type": "text",
+      "title": "Mode d'emploi",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 4 },
+      "options": {
+        "mode": "markdown",
+        "content": "Choisir un **service**, un **nom de span** (expression régulière, ex. `traiter comptabilite importer-fec`) et une **durée minimale** : les traces qui contiennent au moins un span correspondant sont listées ci-dessous. Cliquer sur un identifiant de trace ouvre la trace entière (requête de l'API, mise en file, traitement du worker). Requête TraceQL équivalente, utilisable dans *Explorer* : `{ resource.service.name =~ \"comtaple-worker\" && name =~ \"traiter comptabilite importer-fec\" && duration > 2s }`. Rétention courte : une trace plus ancienne que la durée de rétention de Tempo n'existe plus."
+      }
+    },
+    {
+      "type": "table",
+      "title": "Traces correspondantes (50 au plus)",
+      "description": "Recherche TraceQL dans Tempo sur la période affichée.",
+      "datasource": { "type": "tempo", "uid": "tempo" },
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 14 },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "showHeader": true, "cellHeight": "sm" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "tempo", "uid": "tempo" },
+          "queryType": "traceql",
+          "query": "{ resource.service.name =~ \"${service:raw}\" && name =~ \"${span:raw}\" && duration > ${duree_min:raw} }",
+          "tableType": "traces",
+          "limit": 50,
+          "spss": 3
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Traces en erreur (50 au plus)",
+      "description": "Traces dont un span du service choisi porte le statut « erreur ».",
+      "datasource": { "type": "tempo", "uid": "tempo" },
+      "gridPos": { "x": 0, "y": 18, "w": 24, "h": 10 },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "showHeader": true, "cellHeight": "sm" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "tempo", "uid": "tempo" },
+          "queryType": "traceql",
+          "query": "{ resource.service.name =~ \"${service:raw}\" && status = error }",
+          "tableType": "traces",
+          "limit": 50,
+          "spss": 3
+        }
+      ]
+    }
+  ]
+}

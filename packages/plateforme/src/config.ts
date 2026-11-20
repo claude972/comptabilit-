@@ -21,6 +21,12 @@ const schema = z.object({
   IA_OVH_ENDPOINT: z.string().optional().default(''),
   IA_OVH_JETON: z.string().optional().default(''),
   /**
+   * Durée de validité d'une vérification de connexion de la passerelle IA, en jours (30 par défaut, 90 au plus). Passé ce
+   * délai, la preuve est PÉRIMÉE : le statut revient à « configuré, non vérifié » et plus aucune tâche ne sollicite le
+   * modèle, jusqu'à une nouvelle vérification EXPLICITE par l'éditeur. Aucun appel automatique n'est fait.
+   */
+  IA_PREUVE_VALIDITE_JOURS: z.coerce.number().int().min(1).max(90).default(30),
+  /**
    * Tarifs IA DATÉS pour l'estimation de coût, en JSON : { relevesLe, devise, source, parMillionDeJetons: { <modèle>: { entree, sortie } } }.
    * Vide (défaut) = aucun coût estimé. Le code n'embarque aucun tarif (voir packages/ia/docs/passerelle.md).
    */
@@ -43,6 +49,16 @@ const schema = z.object({
   ANALYSE_TAS_MAX_MO: z.coerce.number().int().min(64).default(512),
   ANALYSE_MEMOIRE_MAX_MO: z.coerce.number().int().min(128).default(1024),
   ANALYSE_SORTIE_MAX_OCTETS: z.coerce.number().int().min(65_536).default(8 * 1024 * 1024),
+  /**
+   * Relevés bancaires, lus dans le même processus enfant : la sortie porte TOUS les mouvements (0,4 Ko chacun en JSON sur les
+   * jeux synthétiques, jusqu'à 1 Ko environ avec des libellés longs), d'où une borne propre, dimensionnée pour 200 000 mouvements environ. Au-delà, le relevé est à scinder.
+   */
+  ANALYSE_RELEVE_SORTIE_MAX_OCTETS: z.coerce.number().int().min(65_536).default(192 * 1024 * 1024),
+  /**
+   * FEC, analysé EN FLUX dans un processus enfant : durée maximale de l'import complet (lecture, analyse et insertions en
+   * base, qui dominent). Défaut : une heure, large devant le débit mesuré (voir docs/architecture.md).
+   */
+  ANALYSE_FEC_DUREE_MAX_MS: z.coerce.number().int().min(10_000).default(3_600_000),
   /**
    * Seuil du chemin EN MÉMOIRE : nombre maximal de lignes d'écriture chargées en mémoire par UN traitement du worker
    * (contrôles : exercice + exercice précédent ; rapprochement : exercice). Dimensionné sur les mesures du 2026-11-19
@@ -125,6 +141,12 @@ const schema = z.object({
   PUSH_PERIODE_RELEVE_S: z.coerce.number().int().min(1).max(600).default(15),
   /** Délai avant la première reprise d'un envoi en erreur temporaire, en secondes (doublé à chaque reprise, 5 tentatives au plus). */
   PUSH_DELAI_REPRISE_S: z.coerce.number().int().min(1).max(3600).default(30),
+  /**
+   * Durée maximale d'un abonnement INACTIF, en jours : sans confirmation par l'appareil (abonnement, réabonnement,
+   * renouvellement) ni envoi accepté par le service depuis ce délai, l'abonnement est retiré par le worker, et le retrait
+   * journalisé. 180 jours par défaut (valeur PROPOSÉE, voir docs/exploitation.md § 13) ; jamais moins de 30.
+   */
+  PUSH_INACTIVITE_MAX_JOURS: z.coerce.number().int().min(30).max(1095).default(180),
 });
 
 export type Config = z.infer<typeof schema>;

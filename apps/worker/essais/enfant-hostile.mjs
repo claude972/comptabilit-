@@ -24,6 +24,21 @@ const mode = entete.mode ?? marque?.[1] ?? 'sain';
 const rendre = (v) => process.stdout.write(typeof v === 'string' ? v : JSON.stringify(v), () => process.exit(0));
 const pieceVide = { pages: [], nbPages: null, champs: null, methode: 'aucune', moteur: null, lectureImpossible: false };
 
+function trame(objet) {
+  const c = Buffer.from(JSON.stringify(objet), 'utf8');
+  const l = Buffer.alloc(4);
+  l.writeUInt32BE(c.length);
+  return new Promise((ok) => process.stdout.write(Buffer.concat([l, c]), () => ok()));
+}
+const ligneFec = (numeroLigne) => ({
+  numeroLigne, journalCode: 'HOS', journalLib: 'Hostile', ecritureNum: `H${numeroLigne}`, ecritureDate: '2025-06-30', compteNum: '471000', compteLib: 'Attente', compAuxNum: null, compAuxLib: null,
+  pieceRef: 'X', pieceDate: '2025-06-30', ecritureLib: 'ligne fabriquée par l’enfant hostile', debit: '1.00', credit: '0.00', ecritureLet: null, dateLet: null, validDate: null, montantDevise: null, idevise: null,
+});
+const rapportFec = (n) => ({
+  encodage: 'utf-8', separateur: 'tabulation', variante: 'debit_credit', entetes: [], nbLignesLues: n, nbLignesNormalisees: n, anomalies: [], nbAnomaliesParCode: {}, lisible: true, conforme: true,
+  suffisantPourTravaux: true, totalDebit: '0.00', totalCredit: '0.00', dateMin: null, dateMax: null,
+});
+
 async function tenter(rapport, nom, f) {
   try {
     await f();
@@ -98,6 +113,43 @@ switch (mode) {
     rendre(r);
     break;
   }
+  // ── Protocole en trames du FEC (4 octets de longueur puis JSON) ──
+  case 'fec-lot-hors-schema':
+    await trame({ t: 'lignes', lignes: [{ ...ligneFec(2), ecritureDate: '31/12/2025', debit: 'beaucoup' }] });
+    await trame({ t: 'rapport', rapport: rapportFec(1) });
+    process.exit(0);
+    break;
+  case 'fec-trame-enorme': {
+    const longueur = Buffer.alloc(4);
+    longueur.writeUInt32BE(0x7fffffff);
+    process.stdout.write(longueur, () => undefined);
+    setInterval(() => process.stdout.write('x'.repeat(65536)), 5);
+    break;
+  }
+  case 'fec-sans-rapport':
+    await trame({ t: 'lignes', lignes: [ligneFec(2)] });
+    process.exit(0);
+    break;
+  case 'fec-compte-faux':
+    await trame({ t: 'lignes', lignes: [ligneFec(2)] });
+    await trame({ t: 'rapport', rapport: rapportFec(250_000) });
+    process.exit(0);
+    break;
+  case 'fec-apres-rapport':
+    await trame({ t: 'rapport', rapport: rapportFec(0) });
+    await trame({ t: 'lignes', lignes: [ligneFec(2)] });
+    process.exit(0);
+    break;
+  case 'fec-trame-inconnue':
+    await trame({ t: 'ordre', sql: 'drop table lignes_ecriture' });
+    process.exit(0);
+    break;
+  case 'fec-lignes-puis-boucle':
+    // Des lignes valides, puis plus rien : le parent ne doit rien en garder.
+    await trame({ t: 'lignes', lignes: Array.from({ length: 400 }, (_, i) => ligneFec(i + 2)) });
+    for (;;) {
+      /* ne rend jamais la main */
+    }
   default:
     rendre(pieceVide);
 }

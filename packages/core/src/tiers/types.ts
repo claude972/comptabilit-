@@ -49,6 +49,14 @@ export interface PieceFacture {
   emetteurSiren: string | null;
   emetteurSiret: string | null;
   emetteurTva: string | null;
+  /**
+   * Destinataire lu sur la pièce (facultatif : absent pour une extraction antérieure à sa lecture, ou quand l'extraction
+   * s'est abstenue). Sans destinataire, le client d'une pièce de vente n'est pas identifié par la pièce.
+   */
+  destinataireNom?: string | null;
+  destinataireSiren?: string | null;
+  destinataireSiret?: string | null;
+  destinataireTva?: string | null;
   totalHt: ChaineDecimale | null;
   totalTva: ChaineDecimale | null;
   totalTtc: ChaineDecimale | null;
@@ -247,6 +255,11 @@ export interface FicheFacture {
   montant: ChaineDecimale | null;
   devise: string | null;
   tiersPiece: { cle: string; nom: string | null; siren: string | null; tva: string | null } | null;
+  /** Rôle, sur la pièce, du tiers retenu : l'émetteur pour un achat, le destinataire pour une vente ; null sans tiers de pièce. */
+  roleTiersPiece: 'emetteur' | 'destinataire' | null;
+  /** Sens déduit des SEULS identifiants lus sur la pièce, comparés au SIREN du dossier (indépendant de la nature qualifiée). */
+  sensLu: 'achat' | 'vente' | 'indetermine';
+  motifSensLu: string;
   motifTiers: string | null;
   /** Fiche de tiers à laquelle la facture est rattachée (par l'écriture, sinon par le tiers de la pièce). */
   tiersCle: string | null;

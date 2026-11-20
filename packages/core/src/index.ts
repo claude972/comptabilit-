@@ -26,7 +26,9 @@ export { DATE_VERIFICATION_SOURCES, SOURCES } from './sources.js';
 
 // 5. facture
 export { extraireChampsFacture } from './facture/texte.js';
-export { ErreurDocumentXml, SOURCE_FACTURE_XML, TAILLE_MAX_XML_FACTURE, extraireChampsFacturX, extraireChampsUbl } from './facture/xml.js';
+export { determinerSensPiece, sirenDePartie } from './facture/sens.js';
+export type { DemandeSensPiece, IdentifiantsPartie, SensPiece } from './facture/sens.js';
+export { ErreurDocumentXml, SOURCE_FACTURE_ACHETEUR, SOURCE_FACTURE_XML, TAILLE_MAX_XML_FACTURE, extraireChampsFacturX, extraireChampsUbl } from './facture/xml.js';
 export { TAUX_TVA_CONNUS, verifierCoherenceFacture } from './facture/verification.js';
 export type { ChampExtrait, ChampsFacture, PageTexte, VerificationFacture } from './facture/types.js';
 

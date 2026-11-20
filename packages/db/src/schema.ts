@@ -1536,6 +1536,11 @@ export const abonnementsPousses = pgTable(
     dernierEchecLe: horodatage('dernier_echec_le'),
     /** Refus consécutifs du service ; l'abonnement est retiré au-delà d'une borne. */
     echecs: integer('echecs').notNull().default(0),
+    /**
+     * Dernière confirmation par l'appareil lui-même : abonnement, réabonnement ou remplacement. Avec `dernier_succes_le`,
+     * sert à retirer un abonnement resté inactif trop longtemps (PUSH_INACTIVITE_MAX_JOURS, migration 0042).
+     */
+    confirmeLe: horodatage('confirme_le').notNull().defaultNow(),
   },
   (t) => [uniqueIndex('abonnements_pousses_appareil').on(t.cabinetId, t.utilisateurId, t.empreintePointAcces), index('abonnements_pousses_empreinte').on(t.empreintePointAcces)],
 );
@@ -1558,10 +1563,43 @@ export const envoisPousses = pgTable(
     nombre: integer('nombre').notNull().default(1),
     creeLe: creeLe(),
     traiteLe: horodatage('traite_le'),
-    /** distribue | sans_abonnement | preference_desactivee | perime (resté en attente plus de 24 heures : jamais émis) */
+    /** distribue | sans_abonnement | preference_desactivee | destinataire_inactif (appartenance désactivée ou expirée) | perime (resté en attente plus de 24 heures : jamais émis) */
     issue: text('issue'),
     /** Nombre d'appareils auxquels l'envoi a été distribué. */
     appareils: integer('appareils'),
   },
   (t) => [uniqueIndex('envois_pousses_en_attente').on(t.cabinetId, t.destinataireId).where(sql`traite_le is null`), index('envois_pousses_releve').on(t.traiteLe, t.creeLe)],
+);
+
+// ───────────────────────────── Passerelle IA : vérifications de connexion ─────────────────────────────
+
+/**
+ * Vérifications de connexion de la passerelle IA, faites par l'ÉDITEUR (`node scripts/editeur.mjs ia-verifier`). La
+ * passerelle est un service de l'éditeur, commun à tous les cabinets : la table ne porte PAS de `cabinet_id`. Ajout
+ * seul ; la ligne la plus récente pour l'empreinte de la configuration courante est LA preuve. Elle ne contient ni
+ * prompt ni réponse : hôte, modèles renvoyés, dimension des vecteurs, dates, empreinte de la configuration.
+ * L'API et le worker la LISENT ; ni l'un ni l'autre ne peut y écrire (migration 0041).
+ */
+export const verificationsConnexionIa = pgTable(
+  'verifications_connexion_ia',
+  {
+    id: id(),
+    verifieeLe: horodatage('verifiee_le').notNull().defaultNow(),
+    /** connecte (preuve) | refusee (appels réussis mais hôte, modèle ou dimension non conformes) | echec (appel en échec) */
+    resultat: text('resultat').notNull(),
+    /** Raisons affichables d'un refus ou d'un échec (phrases fixes et codes : jamais de contenu). */
+    raisons: jsonb('raisons').notNull().default([]),
+    urlBase: text('url_base').notNull(),
+    hote: text('hote').notNull(),
+    urlsAppelees: jsonb('urls_appelees').notNull().default([]),
+    modeleLangage: text('modele_langage'),
+    modeleEmbeddings: text('modele_embeddings'),
+    dimensionsEmbeddings: integer('dimensions_embeddings'),
+    reponseSimulateur: boolean('reponse_simulateur').notNull().default(false),
+    /** SHA-256 de la configuration vérifiée (URL de base, modèles figés, empreinte du jeton) : tout changement invalide la preuve. */
+    empreinteConfiguration: text('empreinte_configuration').notNull(),
+    /** Fin de validité : au-delà, la preuve est périmée et le statut revient à « configuré, non vérifié ». */
+    valideJusquAu: horodatage('valide_jusqu_au').notNull(),
+  },
+  (t) => [index('verifications_connexion_ia_courante').on(t.empreinteConfiguration, t.verifieeLe)],
 );

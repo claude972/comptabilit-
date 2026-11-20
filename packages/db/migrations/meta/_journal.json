@@ -288,6 +288,20 @@
       "when": 1795132841718,
       "tag": "0040_notifications_poussees",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1795143289704,
+      "tag": "0041_preuve_ia",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1795143334367,
+      "tag": "0042_cycle_de_vie_poussees",
+      "breakpoints": true
     }
   ]
 }

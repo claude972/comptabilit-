@@ -64,13 +64,54 @@ export interface FournisseurMail {
   arreterSurveillance(ctx: ContexteAppel, actuelle: EtatSurveillance | null): Promise<void>;
 }
 
-export async function lireJson(reponse: Response): Promise<Record<string, unknown>> {
+/**
+ * Taille maximale d'une réponse JSON lue en mémoire. Les plus grosses réponses légitimes sont un message Gmail complet
+ * ou le contenu d'une pièce jointe Gmail (base64 dans du JSON) : 25 Mo de message au plus chez Google, soit environ
+ * 34 Mo encodés. Au-delà de 64 Mo, la réponse est abandonnée sans être analysée.
+ */
+export const REPONSE_JSON_MAX_OCTETS = 64 * 1024 * 1024;
+
+/** Lit le corps d'une réponse sans jamais dépasser `tailleMax` octets en mémoire ; `null` si la borne est franchie. */
+async function lireCorpsBorne(reponse: Response, tailleMax: number): Promise<Uint8Array | null> {
+  const annoncee = Number(reponse.headers.get('content-length') ?? Number.NaN);
+  if (Number.isFinite(annoncee) && annoncee > tailleMax) {
+    await reponse.body?.cancel().catch(() => undefined);
+    return null;
+  }
+  if (reponse.body === null) return new Uint8Array(0);
+  const lecteur = reponse.body.getReader();
+  const blocs: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await lecteur.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > tailleMax) {
+      await lecteur.cancel().catch(() => undefined);
+      return null;
+    }
+    blocs.push(value);
+  }
+  return Buffer.concat(blocs);
+}
+
+/**
+ * Lit une réponse JSON du fournisseur. Taille bornée ; l'analyse est celle du moteur JavaScript (`JSON.parse`), aucune
+ * bibliothèque de décodage n'intervient. Une réponse trop volumineuse, non JSON ou trop imbriquée pour être analysée
+ * donne la même erreur de protocole, sans détail technique.
+ */
+export async function lireJson(reponse: Response, tailleMax: number = REPONSE_JSON_MAX_OCTETS): Promise<Record<string, unknown>> {
+  let octets: Uint8Array | null = null;
   try {
-    const corps: unknown = await reponse.json();
-    if (typeof corps === 'object' && corps !== null && !Array.isArray(corps)) return corps as Record<string, unknown>;
+    octets = await lireCorpsBorne(reponse, tailleMax);
+    if (octets !== null) {
+      const corps: unknown = JSON.parse(new TextDecoder('utf-8').decode(octets));
+      if (typeof corps === 'object' && corps !== null && !Array.isArray(corps)) return corps as Record<string, unknown>;
+    }
   } catch {
     // traité ci-dessous
   }
+  if (octets === null) throw new ErreurProtocole(`Réponse du fournisseur trop volumineuse (statut ${reponse.status}).`);
   throw new ErreurProtocole(`Réponse non JSON du fournisseur (statut ${reponse.status}).`);
 }
 

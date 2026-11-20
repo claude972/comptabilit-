@@ -106,6 +106,82 @@
         ]
       }
     },
+    "/v1/notifications/poussees/abonnements/remplacement": {
+      "post": {
+        "description": "Appelée par le service worker (événement « pushsubscriptionchange ») ou par l’écran (« Réactiver »), avec la session de la personne. « ancienneEmpreinte » est le SHA-256 du point d’accès remplacé — l’ancienne adresse n’est jamais transmise. ATOMIQUE : dans une seule transaction, l’ancien abonnement DE L’APPELANT dans ce cabinet est retiré (s’il existe) et le nouveau enregistré ; en cas de refus du nouveau (point d’accès non admis, clés invalides, trop d’appareils), rien n’est retiré. L’abonnement d’une autre personne n’est jamais retiré sur la foi d’une empreinte : « ancienRetire » vaut alors faux et seul le nouvel abonnement est enregistré. Rejouable. Mêmes contrôles et mêmes refus que l’abonnement. Cet événement est peu fiable selon les navigateurs (disponibilité limitée d’après MDN) : sans lui, l’ancien abonnement est retiré au premier refus du service de notification et l’écran propose de réactiver.",
+        "operationId": "NotificationsPousseesController_remplacer",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "endpoint": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "keys": {
+                    "type": "object",
+                    "properties": {
+                      "p256dh": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9_-]{80,100}$"
+                      },
+                      "auth": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9_-]{16,32}$"
+                      }
+                    },
+                    "required": [
+                      "p256dh",
+                      "auth"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "agentUtilisateur": {
+                    "type": "string",
+                    "maxLength": 600
+                  },
+                  "ancienneEmpreinte": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{64}$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "endpoint",
+                  "keys"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Remplacer l’abonnement de cet appareil après son renouvellement par le navigateur",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
     "/v1/notifications/poussees/abonnements/{id}": {
       "delete": {
         "description": "Supprime l’abonnement et ses clés : plus rien n’est adressé à cet appareil. Possible même si la fonction a été désactivée depuis. L’abonnement côté navigateur se retire depuis l’appareil lui-même (l’écran le fait pour l’appareil courant).",
@@ -2732,7 +2808,7 @@
     },
     "/v1/cabinet/membres/{utilisateurId}": {
       "patch": {
-        "description": "Garde-fous : on ne modifie pas sa propre appartenance ; le cabinet garde toujours au moins un administrateur actif ; un changement de rôle retire les habilitations de dossier qui dépassent le plafond du nouveau rôle ; une désactivation ferme immédiatement tous les accès. Pour faire entrer une personne : voir les invitations.",
+        "description": "Garde-fous : on ne modifie pas sa propre appartenance ; le cabinet garde toujours au moins un administrateur actif ; un changement de rôle retire les habilitations de dossier qui dépassent le plafond du nouveau rôle ; une désactivation ferme immédiatement tous les accès et retire, dans la même transaction, les abonnements de la personne aux notifications poussées pour ce cabinet (retrait journalisé ; une réactivation ne les recrée pas : la personne réactive elle-même ses appareils). Pour faire entrer une personne : voir les invitations.",
         "operationId": "AdministrationController_modifierMembre",
         "parameters": [
           {
@@ -6555,7 +6631,7 @@
     },
     "/v1/ia": {
       "get": {
-        "description": "Statut : non_connecte, configure_non_verifie, connecte (appel réel vérifié sur l’hôte officiel) ou simule (tests). Les mesures viennent des traces sans contenu (table en ajout seul) et distinguent toujours les natures « reel », « simulateur » et « sans_ia » : un appel au simulateur n’est jamais compté comme un appel réel. Le coût est une estimation (jetons × tarif configuré et daté), nulle si aucun tarif n’est configuré.",
+        "description": "Statut : non_connecte, configure_non_verifie, connecte (appel réel vérifié sur l’hôte officiel) ou simule (tests). « verification » décrit la PREUVE de connexion persistée : son état (sans_objet, absente, valide, perimee, autre_configuration, non_concluante, non_conforme), sa date, sa fin de validité et ce qu’elle atteste (hôte, modèles renvoyés, dimension des vecteurs — ni prompt ni réponse). « connecte » exige une preuve valide, non périmée, établie pour la configuration courante ; sinon le statut est « configure_non_verifie » et AUCUNE tâche ne sollicite le modèle. La vérification émet un appel réel : elle est faite par l’éditeur (commande d’exploitation), il n’existe AUCUNE route pour la déclencher, et rien ne la relance automatiquement. Les mesures viennent des traces sans contenu (table en ajout seul) et distinguent toujours les natures « reel », « simulateur » et « sans_ia » : un appel au simulateur n’est jamais compté comme un appel réel. Le coût est une estimation (jetons × tarif configuré et daté), nulle si aucun tarif n’est configuré.",
         "operationId": "AssistantController_etatIa",
         "parameters": [],
         "responses": {

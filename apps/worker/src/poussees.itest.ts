@@ -7,7 +7,7 @@ import { randomBytes } from 'node:crypto';
 import { type AccesBd, creerAccesBd, sql, urlBd } from '@comtaple/db';
 import { DEMO } from '@comtaple/db/amorcer';
 import { chargerEnvLocal } from '@comtaple/db/env';
-import { ouvrirEssai } from '@comtaple/db/provisionnement';
+import { fermerAccesSupport, ouvrirAccesSupport, ouvrirEssai } from '@comtaple/db/provisionnement';
 import {
   type AbonnementSimule, associeAbonnement, chiffrerAbonnement, connexionRedis, demarrerSimulateurPoussees, empreintePointAcces, type EtatPoussees, Files, genererClesVapid, lireConfig, notificationsPoussees,
   type SimulateurPoussees, TENTATIVES_POUSSEE,
@@ -15,7 +15,7 @@ import {
 import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Contexte } from './contexte.js';
-import { distribuerEnvoi, livrerPoussee, LivraisonARejouer, REFUS_MAX_ABONNEMENT, releverEnvoisPousses } from './poussees.js';
+import { distribuerEnvoi, entretenirAbonnementsPousses, livrerPoussee, LivraisonARejouer, REFUS_MAX_ABONNEMENT, releverEnvoisPousses } from './poussees.js';
 
 chargerEnvLocal();
 const SEL = randomBytes(4).toString('hex');
@@ -335,5 +335,130 @@ describe('livraison à un appareil, contre le simulateur', () => {
     expect(await livrerPoussee(c, reel, tache)).toBe('refuse');
     expect(sim.messages).toEqual([]);
     expect(sim.refus).toEqual([]);
+  });
+});
+
+describe('cycle de vie : membre désactivé, accès arrivé à son terme, abonnement inactif', () => {
+  const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const retablir = () => admin.query(`update appartenances set actif = true, expire_le = now() + interval '20 minutes' where cabinet_id = $1 and role <> 'support'`, [cabinet]);
+  beforeEach(retablir);
+  afterAll(retablir);
+  /** Désactivation par une gestionnaire, avec le rôle de l'APPLICATION et son contexte (comme `PATCH v1/cabinet/membres/:id`). */
+  const desactiver = (utilisateurId: string) => app.avecContexte(ctx(DEMO.alice), (tx) => tx.execute(sql`update appartenances set actif = false where cabinet_id = ${cabinet}::uuid and utilisateur_id = ${utilisateurId}::uuid`));
+
+  it('désactivation d’un membre : ses abonnements pour CE cabinet sont retirés dans la même transaction et journalisés ; réactivé, rien n’est recréé', async () => {
+    const a = await abonner(DEMO.client);
+    const b = await abonner(DEMO.client);
+    const dAlice = await abonner(DEMO.alice);
+    await notifier(DEMO.chloe, DEMO.client, 'document.complement_demande'); // un envoi en attente pour la personne
+    // Même transaction : si la désactivation est annulée, les abonnements restent.
+    await expect(
+      app.avecContexte(ctx(DEMO.alice), async (tx) => {
+        await tx.execute(sql`update appartenances set actif = false where cabinet_id = ${cabinet}::uuid and utilisateur_id = ${DEMO.client}::uuid`);
+        throw new Error('annulation volontaire');
+      }),
+    ).rejects.toThrow('annulation volontaire');
+    expect(await abonnements(DEMO.client)).toHaveLength(2);
+
+    await desactiver(DEMO.client);
+    expect(await abonnements(DEMO.client)).toEqual([]);
+    expect((await abonnements(DEMO.alice)).map((x) => x.id)).toEqual([dAlice.id]); // les autres membres ne sont pas touchés
+    expect((await envois(DEMO.client))[0]).toMatchObject({ issue: 'destinataire_inactif', appareils: 0 });
+    const lignes = (await audit()).filter((l) => l.details.motif === 'membre_desactive');
+    expect(lignes.map((l) => l.cible_id).sort()).toEqual([a.id, b.id].sort());
+    for (const l of lignes) expect(l).toMatchObject({ action: 'notification_poussee.appareil_retire', acteur_type: 'utilisateur', details: { service: 'simulateur', par: 'systeme', membre: DEMO.client } });
+    const brut = JSON.stringify(lignes);
+    for (const secret of [a.appareil.endpoint, a.appareil.keys.auth, a.appareil.keys.p256dh, '127.0.0.1']) expect(brut).not.toContain(secret);
+
+    // Désactivée, la personne ne peut pas se réabonner ; réactivée, aucun abonnement ne réapparaît de lui-même.
+    await expect(abonner(DEMO.client)).rejects.toThrow();
+    await retablir();
+    expect(await abonnements(DEMO.client)).toEqual([]);
+    await notifier(DEMO.chloe, DEMO.client, 'document.complement_demande');
+    expect(await envois(DEMO.client)).toHaveLength(1); // sans appareil abonné, aucun nouvel envoi n'est mis en file
+    // Une seconde désactivation (rien à retirer) ne journalise rien de plus.
+    await desactiver(DEMO.client);
+    expect((await audit()).filter((l) => l.details.motif === 'membre_desactive')).toHaveLength(lignes.length);
+  });
+
+  it('course désactivation / livraison déjà en file : rien n’est émis', async () => {
+    const a = await abonner(DEMO.client);
+    await notifier(DEMO.chloe, DEMO.client, 'document.complement_demande');
+    const envoi = (await envois(DEMO.client)).at(-1)!;
+    expect(await distribuerEnvoi(c, cabinet, envoi.id)).toBe(1); // la tâche de livraison est en file
+    await desactiver(DEMO.client);
+    expect(await livrerPoussee(c, etat, { cabinetId: cabinet, envoiId: envoi.id, abonnementId: a.id })).toBe('abonnement_absent');
+    expect(sim.messages).toEqual([]);
+  });
+
+  it('accès arrivé à son terme sans autre écriture : le worker ne distribue pas, ne livre pas une tâche déjà en file, et retire l’abonnement', async () => {
+    const a = await abonner(DEMO.client);
+    const autre = await abonner(DEMO.client);
+    await notifier(DEMO.chloe, DEMO.client, 'document.complement_demande');
+    const premier = (await envois(DEMO.client)).at(-1)!;
+    expect(await distribuerEnvoi(c, cabinet, premier.id)).toBe(2); // deux tâches en file, appartenance encore active
+    await notifier(DEMO.chloe, DEMO.client, 'document.complement_demande');
+    const second = (await envois(DEMO.client)).at(-1)!;
+    // L'appartenance expire d'elle-même (aucun déclencheur ne s'exécute : l'échéance posée est encore dans le futur).
+    await admin.query(`update appartenances set expire_le = now() + interval '1 second' where cabinet_id = $1 and utilisateur_id = $2`, [cabinet, DEMO.client]);
+    expect(await abonnements(DEMO.client)).toHaveLength(2);
+    await pause(1300);
+
+    // Garde-fou à la distribution : l'envoi en attente est clos sans tâche.
+    const avant = (await enFile()).length;
+    expect(await distribuerEnvoi(c, cabinet, second.id)).toBe(0);
+    expect((await envois(DEMO.client)).find((e) => e.id === second.id)).toMatchObject({ issue: 'destinataire_inactif', appareils: 0 });
+    expect(await enFile()).toHaveLength(avant);
+    // Garde-fou à la livraison : la tâche déjà en file n'émet rien, et l'abonnement est retiré, retrait journalisé.
+    expect(await livrerPoussee(c, etat, { cabinetId: cabinet, envoiId: premier.id, abonnementId: a.id })).toBe('destinataire_inactif');
+    expect(sim.messages).toEqual([]);
+    expect((await abonnements(DEMO.client)).map((x) => x.id)).toEqual([autre.id]);
+    expect((await audit()).at(-1)).toMatchObject({ acteur_type: 'systeme', cible_id: a.id, details: { par: 'systeme', motif: 'appartenance_inactive', statut: null } });
+    // L'entretien périodique retire ce qui reste.
+    const bilan = await entretenirAbonnementsPousses(c);
+    expect(bilan.appartenanceInactive).toBeGreaterThanOrEqual(1);
+    expect(await abonnements(DEMO.client)).toEqual([]);
+    expect((await audit()).at(-1)).toMatchObject({ acteur_type: 'systeme', cible_id: autre.id, details: { service: 'simulateur', par: 'systeme', motif: 'appartenance_inactive', membre: DEMO.client } });
+  });
+
+  it('fin d’un accès support temporaire (outil de l’éditeur) : abonnements retirés avec la fermeture', async () => {
+    const sujet = `support-poussees-${SEL}`;
+    const { utilisateurId } = await ouvrirAccesSupport(admin, { cabinetId: cabinet, sujetOidc: sujet, email: `support-${SEL}@editeur.example`, nom: 'Support (fictif)', heures: 1, motif: 'Essai du retrait des abonnements' });
+    const a = await abonner(utilisateurId);
+    expect(await abonnements(utilisateurId)).toHaveLength(1);
+    await fermerAccesSupport(admin, cabinet, utilisateurId);
+    expect(await abonnements(utilisateurId)).toEqual([]);
+    expect((await audit()).find((l) => l.cible_id === a.id && l.action === 'notification_poussee.appareil_retire')).toMatchObject({ acteur_type: 'systeme', details: { par: 'systeme', motif: 'membre_desactive', membre: utilisateurId } });
+    await admin.query('delete from appartenances where cabinet_id = $1 and utilisateur_id = $2', [cabinet, utilisateurId]);
+  });
+
+  it('abonnement inactif plus longtemps que PUSH_INACTIVITE_MAX_JOURS : retiré par le worker et journalisé ; une confirmation ou un envoi accepté le garde', async () => {
+    expect(cfg.PUSH_INACTIVITE_MAX_JOURS).toBe(180);
+    const vieux = await abonner(DEMO.client);
+    const confirme = await abonner(DEMO.client);
+    const servi = await abonner(DEMO.client);
+    const recent = await abonner(DEMO.alice);
+    const ancien = `now() - interval '181 days'`;
+    await admin.query(`update abonnements_pousses set cree_le = ${ancien}, confirme_le = ${ancien} where id = any($1)`, [[vieux.id, confirme.id, servi.id]]);
+    await admin.query(`update abonnements_pousses set dernier_succes_le = now() - interval '10 days' where id = $1`, [servi.id]);
+    // L'appareil « confirme » se réabonne (même point d'accès) : la date de confirmation est rafraîchie par la fonction.
+    const empreinte = empreintePointAcces(confirme.appareil.endpoint);
+    const secrets = chiffrerAbonnement(etat, { endpoint: confirme.appareil.endpoint, p256dh: confirme.appareil.keys.p256dh, auth: confirme.appareil.keys.auth }, associeAbonnement(cabinet, DEMO.client, empreinte));
+    await app.avecContexte(ctx(DEMO.client), (tx) => tx.execute(sql`select abonnement_pousse_enregistrer(${empreinte}, 'simulateur', ${secrets}, 'Chrome sur Android')`));
+
+    const bilan = await entretenirAbonnementsPousses(c);
+    expect(bilan.inactivite).toBeGreaterThanOrEqual(1);
+    expect((await abonnements(DEMO.client)).map((x) => x.id).sort()).toEqual([confirme.id, servi.id].sort());
+    expect((await abonnements(DEMO.alice)).map((x) => x.id)).toEqual([recent.id]);
+    expect((await audit()).filter((l) => l.details.motif === 'inactivite')).toMatchObject([{ action: 'notification_poussee.appareil_retire', acteur_type: 'systeme', cible_id: vieux.id, details: { service: 'simulateur', par: 'systeme', jours: 180, membre: DEMO.client } }]);
+    // Rejouable : un second passage ne retire rien de plus dans ce cabinet.
+    await entretenirAbonnementsPousses(c);
+    expect(await abonnements(DEMO.client)).toHaveLength(2);
+    // Plancher de la fonction : une valeur absurde (1 jour) ne vide pas la table — 30 jours au moins.
+    await admin.query(`update abonnements_pousses set cree_le = now() - interval '20 days', confirme_le = now() - interval '20 days', dernier_succes_le = null where id = $1`, [servi.id]);
+    await c.bd.pool.query('select * from worker_abonnements_pousses_entretenir(1)');
+    expect(await abonnements(DEMO.client)).toHaveLength(2);
+    // Le rôle de l'application ne peut pas lancer l'entretien.
+    await expect(app.avecContexte(ctx(DEMO.alice), (tx) => tx.execute(sql`select * from worker_abonnements_pousses_entretenir(180)`))).rejects.toThrow();
   });
 });

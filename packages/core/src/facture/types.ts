@@ -26,6 +26,19 @@ export interface ChampsFacture {
   emetteurSiren: ChampExtrait | null;
   emetteurSiret: ChampExtrait | null;
   emetteurTva: ChampExtrait | null;
+  /**
+   * Destinataire (acheteur, BG-7 de la norme EN 16931). Chaque champ est null quand il n'a pas été lu de façon sûre :
+   * l'extraction s'abstient plutôt que de deviner. Les extractions antérieures à ces champs ne les portent pas
+   * (valeur absente) : tout lecteur doit traiter l'absence comme null.
+   */
+  destinataireNom: ChampExtrait | null;
+  destinataireSiren: ChampExtrait | null;
+  destinataireSiret: ChampExtrait | null;
+  destinataireTva: ChampExtrait | null;
+  /** Code pays ISO 3166-1 alpha-2 de l'adresse du destinataire (factures structurées seulement). */
+  destinatairePays: ChampExtrait | null;
+  /** Motif, en français, pour lequel aucun identifiant du destinataire n'a été retenu ; null si un identifiant a été lu. */
+  destinataireAbstention: string | null;
   totalHt: ChampExtrait<ChaineDecimale> | null;
   totalTva: ChampExtrait<ChaineDecimale> | null;
   totalTtc: ChampExtrait<ChaineDecimale> | null;
@@ -43,6 +56,7 @@ export interface VerificationFacture {
 export function champsFactureVides(): ChampsFacture {
   return {
     typeDocument: null, numero: null, dateEmission: null, dateEcheance: null, emetteurNom: null, emetteurSiren: null,
-    emetteurSiret: null, emetteurTva: null, totalHt: null, totalTva: null, totalTtc: null, devise: null, ventilationTva: [],
+    emetteurSiret: null, emetteurTva: null, destinataireNom: null, destinataireSiren: null, destinataireSiret: null, destinataireTva: null,
+    destinatairePays: null, destinataireAbstention: null, totalHt: null, totalTva: null, totalTtc: null, devise: null, ventilationTva: [],
   };
 }

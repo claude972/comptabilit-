@@ -15,6 +15,9 @@
     "to": "now"
   },
   "graphTooltip": 1,
+  "links": [
+    { "type": "dashboards", "title": "Tableaux Comtaple (dont « traces »)", "tags": ["comtaple"], "asDropdown": true, "includeVars": false, "keepTime": true, "targetBlank": false }
+  ],
   "templating": {
     "list": []
   },

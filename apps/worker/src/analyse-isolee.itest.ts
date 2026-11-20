@@ -173,6 +173,65 @@ describe('enfant réel — pièces saines : même extraction que la lecture dire
   });
 });
 
+describe('enfant réel — destinataire de la facture (acheteur)', () => {
+  // SIREN, SIRET et TVA synthétiques valides.
+  const ACHETEUR = { siren: '552100554', siret: '55210055400013', tva: 'FR96552100554' };
+  const ciiAvecAcheteur = CII.replace(
+    '</ram:SellerTradeParty>',
+    `<ram:SpecifiedLegalOrganization><ram:ID schemeID="0002">732829320</ram:ID></ram:SpecifiedLegalOrganization></ram:SellerTradeParty>
+     <ram:BuyerTradeParty><ram:GlobalID schemeID="0009">${ACHETEUR.siret}</ram:GlobalID><ram:Name>Client d’essai ${SEL} (fictif)</ram:Name>
+       <ram:SpecifiedLegalOrganization><ram:ID schemeID="0002">${ACHETEUR.siren}</ram:ID></ram:SpecifiedLegalOrganization>
+       <ram:PostalTradeAddress><ram:CountryID>FR</ram:CountryID></ram:PostalTradeAddress>
+       <ram:SpecifiedTaxRegistration><ram:ID schemeID="VA">${ACHETEUR.tva}</ram:ID></ram:SpecifiedTaxRegistration></ram:BuyerTradeParty>`,
+  );
+  const attenduStructure = { destinataireNom: { valeur: `Client d’essai ${SEL} (fictif)`, methode: 'structure' }, destinataireSiren: { valeur: ACHETEUR.siren }, destinataireSiret: { valeur: ACHETEUR.siret }, destinataireTva: { valeur: ACHETEUR.tva }, destinatairePays: { valeur: 'FR' }, destinataireAbstention: null };
+
+  it('XML CII et PDF Factur-X : l’acheteur (nom, SIREN, SIRET, TVA, pays) traverse le schéma du parent', async () => {
+    expect(ciiAvecAcheteur).not.toBe(CII);
+    const xml = await analyserPieceIsolee('application/xml', Buffer.from(ciiAvecAcheteur));
+    expect(xml.ok && xml.valeur.champs).toMatchObject(attenduStructure);
+    expect(xml.ok && xml.valeur.champs?.emetteurSiren?.valeur).toBe('732829320');
+    const pdf = await analyserPieceIsolee('application/pdf', pdfTexte([lignesFacture], { nom: 'factur-x.xml', contenu: ciiAvecAcheteur }));
+    expect(pdf.ok && pdf.valeur).toMatchObject({ methode: 'structure', champs: attenduStructure });
+  });
+
+  it('UBL : cac:AccountingCustomerParty', async () => {
+    const ubl = UBL.replace('<LegalMonetaryTotal>', `<AccountingCustomerParty><Party><PartyTaxScheme><CompanyID>${ACHETEUR.tva}</CompanyID><TaxScheme><ID>VAT</ID></TaxScheme></PartyTaxScheme><PartyLegalEntity><RegistrationName>Client UBL (fictif)</RegistrationName><CompanyID schemeID="0002">${ACHETEUR.siren}</CompanyID></PartyLegalEntity></Party></AccountingCustomerParty><LegalMonetaryTotal>`);
+    expect(ubl).not.toBe(UBL);
+    const r = await analyserPieceIsolee('application/xml', Buffer.from(ubl));
+    expect(r.ok && r.valeur.champs).toMatchObject({ destinataireNom: { valeur: 'Client UBL (fictif)' }, destinataireSiren: { valeur: ACHETEUR.siren }, destinataireTva: { valeur: ACHETEUR.tva }, destinataireAbstention: null });
+  });
+
+  it('PDF à couche texte et texte reconnu (OCR) : destinataire avec sa page et sa ligne ; « facturé à » ; abstention motivée', async () => {
+    const pdf = await analyserPieceIsolee('application/pdf', pdfTexte([lignesFacture]));
+    expect(facture.attendu.destinataireSiret).toMatch(/^\d{14}$/);
+    expect(pdf.ok && pdf.valeur.champs).toMatchObject({
+      destinataireNom: { valeur: facture.attendu.destinataireNom, page: 1, methode: 'regle' },
+      destinataireSiret: { valeur: facture.attendu.destinataireSiret, page: 1, methode: 'regle', confiance: 'non_evaluee' },
+      destinataireSiren: null, destinataireTva: null, destinataireAbstention: null,
+      emetteurSiren: { valeur: facture.attendu.emetteurSiren },
+    });
+    expect(pdf.ok && pdf.valeur.champs?.destinataireSiret?.extrait).toMatch(/^SIRET : /);
+    const factureA = genererTexteFactureSynthetique({ graine: 4217, client: 'facture_a' });
+    const ocrA = await extraireTexteIsole(factureA.pages);
+    expect(ocrA.ok && ocrA.valeur.champs).toMatchObject({ destinataireNom: { valeur: factureA.attendu.destinataireNom }, destinataireSiren: { valeur: factureA.attendu.destinataireSiren }, destinataireTva: { valeur: factureA.attendu.destinataireTva } });
+    for (const client of ['livraison_seule', 'absent'] as const) {
+      const sans = await extraireTexteIsole(genererTexteFactureSynthetique({ graine: 4217, client }).pages);
+      expect(sans.ok && sans.valeur.champs, client).toMatchObject({ destinataireNom: null, destinataireSiren: null, destinataireSiret: null, destinataireTva: null });
+      expect(sans.ok && sans.valeur.champs?.destinataireAbstention, client).toMatch(client === 'absent' ? /Aucun repère de destinataire/ : /livraison/);
+    }
+  });
+
+  it('un enfant qui renverrait un destinataire hors schéma est rejeté (valeur trop longue, champ mal formé)', () => {
+    const base = json(extraireChampsFacture(facture.pages));
+    const piece = (champs: unknown) => ({ pages: [], nbPages: null, champs, methode: 'aucune', moteur: null, lectureImpossible: false });
+    expect(schemaResultatPiece.safeParse(piece(base)).success).toBe(true);
+    expect(schemaResultatPiece.safeParse(piece({ ...base, destinataireSiren: { ...base.destinataireSiret, valeur: 'x'.repeat(2001) } })).success).toBe(false);
+    expect(schemaResultatPiece.safeParse(piece({ ...base, destinataireNom: 'texte nu' })).success).toBe(false);
+    expect(schemaResultatPiece.safeParse(piece({ ...base, destinataireAbstention: 'x'.repeat(1001) })).success).toBe(false);
+  });
+});
+
 describe('enfant réel — fichiers malformés ou hostiles', () => {
   it('PDF invalide ou tronqué : lecture refusée proprement, sans plantage', async () => {
     const sain = pdfTexte([lignesFacture]);
@@ -427,6 +486,17 @@ describe('chaîne complète analyserDocument — PostgreSQL réel', () => {
     expect(e.extraction.verifications).toEqual(json(verifierCoherenceFacture(direct.champs!)));
     expect(e.pages.map((p) => ({ page: p.numero, texte: p.texte, lignes: p.lignes }))).toEqual(direct.pages);
     expect(e.extraction.champs.totalTtc.valeur).toBe(facture.attendu.totalTtc);
+  });
+
+  it('pièce saine : le destinataire lu par l’enfant est enregistré dans l’extraction', async () => {
+    const id = await deposer('avec-destinataire.pdf', pdfTexte([lignesFacture]));
+    await analyser(id);
+    const e = await etat(id);
+    expect(e.extraction.champs).toMatchObject({
+      destinataireNom: { valeur: facture.attendu.destinataireNom, page: 1 },
+      destinataireSiret: { valeur: facture.attendu.destinataireSiret, page: 1, methode: 'regle' },
+      destinataireSiren: null, destinataireTva: null, destinatairePays: null, destinataireAbstention: null,
+    });
   });
 
   it('pièce saine (XML CII) : extraction structurée', async () => {

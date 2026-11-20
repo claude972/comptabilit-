@@ -7,7 +7,8 @@ import { ErreurDocumentXml, TAILLE_MAX_XML_FACTURE, extraireChampsFacturX, extra
 
 /** Aplati les champs en valeurs simples pour comparer à l'attendu. */
 function valeurs(c: ChampsFacture): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(c).map(([k, v]) => [k, Array.isArray(v) ? v : v === null ? null : (v as { valeur: unknown }).valeur]));
+  // Le motif d'abstention du destinataire est un texte, pas un champ extrait : il est vérifié à part.
+  return Object.fromEntries(Object.entries(c).filter(([k]) => k !== 'destinataireAbstention').map(([k, v]) => [k, Array.isArray(v) ? v : v === null ? null : (v as { valeur: unknown }).valeur]));
 }
 const statuts = (c: ChampsFacture): Record<string, string> => Object.fromEntries(verifierCoherenceFacture(c).map((v) => [v.code, v.statut]));
 const page = (texte: string): PageTexte[] => [{ page: 1, texte }];
@@ -243,7 +244,8 @@ const ATTENDU_COMMUN = {
 describe('extraireChampsFacturX (CII)', () => {
   it('extrait les champs du vendeur (jamais ceux de l’acheteur), méthode « structure »', () => {
     const c = extraireChampsFacturX(CII());
-    expect(valeurs(c)).toEqual({ ...ATTENDU_COMMUN, typeDocument: 'facture', numero: 'FA-2026-0042', dateEcheance: '2026-04-11', emetteurNom: 'Atelier Fictif & Fils SARL', emetteurSiret: null });
+    expect(valeurs(c)).toEqual({ ...ATTENDU_COMMUN, typeDocument: 'facture', numero: 'FA-2026-0042', dateEcheance: '2026-04-11', emetteurNom: 'Atelier Fictif & Fils SARL', emetteurSiret: null,
+      destinataireNom: 'Client Fictif SAS', destinataireSiren: '356000000', destinataireSiret: null, destinataireTva: 'FR00000000000', destinatairePays: null });
     expect(c.totalTtc).toEqual({ valeur: '1411.00', page: null, extrait: '1411.00', boite: null, methode: 'structure', confiance: 'non_evaluee' });
     expect(Object.entries(statuts(c)).filter(([, s]) => s !== 'ok')).toEqual([['SIRET_VALIDE', 'non_verifiable']]);
   });
@@ -300,7 +302,8 @@ describe('extraireChampsFacturX (CII)', () => {
 describe('extraireChampsUbl', () => {
   it('Invoice UBL 2.1', () => {
     const c = extraireChampsUbl(UBL());
-    expect(valeurs(c)).toEqual({ ...ATTENDU_COMMUN, typeDocument: 'facture', numero: 'FA-2026-0042', dateEcheance: '2026-04-11', emetteurNom: 'Atelier Fictif SARL', emetteurSiret: '73282932000074' });
+    expect(valeurs(c)).toEqual({ ...ATTENDU_COMMUN, typeDocument: 'facture', numero: 'FA-2026-0042', dateEcheance: '2026-04-11', emetteurNom: 'Atelier Fictif SARL', emetteurSiret: '73282932000074',
+      destinataireNom: 'Client Fictif SAS', destinataireSiren: '356000000', destinataireSiret: null, destinataireTva: null, destinatairePays: null });
     expect(Object.values(statuts(c)).every((s) => s === 'ok')).toBe(true);
     expect(c.numero?.methode).toBe('structure');
   });

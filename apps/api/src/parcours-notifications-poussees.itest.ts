@@ -384,6 +384,88 @@ describe('envoi par le worker, déclenché par un événement réel', () => {
     expect(await lignesEnvois(DEMO.alice)).toHaveLength(1); // aucun nouvel envoi mis en file
   });
 
+  it('renouvellement par le navigateur : remplacement ATOMIQUE — jamais deux abonnements pour l’appareil, jamais celui d’une autre personne ; le nouvel abonnement reçoit, l’ancien plus rien', async () => {
+    const REMPLACEMENT = '/v1/notifications/poussees/abonnements/remplacement';
+    appareils.clientAncien = sim.abonner(vapid.publique);
+    const premier = await api('client', 'POST', '/v1/notifications/poussees/abonnements', corpsAbonnement(appareils.clientAncien));
+    expect(premier.statut, premier.texte).toBe(201);
+    const ancienneEmpreinte = premier.json.empreinte as string;
+    appareils.client = sim.abonner(vapid.publique); // ce que le navigateur détient après renouvellement
+    const duClient = async () => (await lignesAbonnements()).filter((l) => l.utilisateur_id === DEMO.client);
+
+    // Sans session : refusé (c'est le cas où le service worker laisse une marque pour l'écran).
+    expect((await api('', 'POST', REMPLACEMENT, { ...corpsAbonnement(appareils.client), ancienneEmpreinte })).statut).toBe(401);
+    // Nouveau point d'accès refusé : RIEN n'est retiré (l'ancien abonnement reste tant que le nouveau n'est pas enregistré).
+    const refuse = await api('client', 'POST', REMPLACEMENT, { ...corpsAbonnement(appareils.client), endpoint: 'https://service-inconnu.example/push/abc', ancienneEmpreinte });
+    expect(refuse.statut).toBe(400);
+    expect(refuse.json.code).toBe('point_acces_refuse');
+    expect((await api('client', 'POST', REMPLACEMENT, { ...corpsAbonnement(appareils.client), ancienneEmpreinte: 'pas-une-empreinte' })).statut).toBe(400);
+    expect((await duClient()).map((l) => l.id)).toEqual([premier.json.id]);
+
+    // Une AUTRE personne présente l'empreinte de l'abonnement du client : son propre appareil est enregistré, celui du client n'est pas touché.
+    appareils.alice = sim.abonner(vapid.publique);
+    const autre = await api('alice', 'POST', REMPLACEMENT, { ...corpsAbonnement(appareils.alice), ancienneEmpreinte });
+    expect(autre.statut, autre.texte).toBe(200);
+    expect(autre.json.ancienRetire).toBe(false);
+    expect((await duClient()).map((l) => [l.id, l.empreinte_point_acces])).toEqual([[premier.json.id, ancienneEmpreinte]]);
+
+    // Le remplacement par le titulaire : un seul abonnement après, le nouveau.
+    const r = await api('client', 'POST', REMPLACEMENT, { ...corpsAbonnement(appareils.client), ancienneEmpreinte });
+    expect(r.statut, r.texte).toBe(200);
+    expect(r.json).toMatchObject({ service: 'simulateur', ancienRetire: true });
+    expect(r.json.empreinte).not.toBe(ancienneEmpreinte);
+    expect(r.texte).not.toContain(appareils.client!.endpoint);
+    expect((await duClient()).map((l) => [l.id, l.empreinte_point_acces])).toEqual([[r.json.id, r.json.empreinte]]);
+    // Rejoué (le service worker puis l'écran, par exemple) : toujours un seul abonnement, le même.
+    const rejoue = await api('client', 'POST', REMPLACEMENT, { ...corpsAbonnement(appareils.client), ancienneEmpreinte });
+    expect(rejoue.json).toMatchObject({ id: r.json.id, ancienRetire: false });
+    expect(await duClient()).toHaveLength(1);
+    expect((await api('client', 'GET', '/v1/notifications/poussees')).json.appareils.map((x: any) => x.empreinte)).toEqual([r.json.empreinte]);
+    const audit = (await editeur.query(`select action, acteur_id, cible_id, details from journal_audit where cabinet_id = $1 and action like 'notification_poussee.%' and acteur_id = $2 order by id desc limit 3`, [cabinet, DEMO.client])).rows.reverse();
+    expect(audit[0]).toMatchObject({ action: 'notification_poussee.appareil_retire', cible_id: premier.json.id, details: { par: 'navigateur', motif: 'renouvellement' } });
+    expect(audit[1]).toMatchObject({ action: 'notification_poussee.appareil_abonne', cible_id: r.json.id, details: { renouvellement: true, ancienRetire: true } });
+    expect(JSON.stringify(audit)).not.toContain('127.0.0.1');
+
+    // De bout en bout : l'événement suivant arrive au NOUVEL abonnement, et à lui seul.
+    expect((await demanderComplement('chloe', 'Question après renouvellement de l’abonnement.')).statut).toBeLessThan(300);
+    await attendre(async () => messagesDe('client').length, (n) => n === 1, 30_000);
+    await pause(1500);
+    expect(messagesDe('client')).toHaveLength(1);
+    expect(messagesDe('clientAncien')).toEqual([]);
+  });
+
+  it('membre désactivé : ses abonnements pour ce cabinet sont retirés dans la même transaction, l’envoi en attente n’est jamais émis ; réactivé, rien n’est recréé', async () => {
+    appareils.chloe = sim.abonner(vapid.publique);
+    expect((await api('chloe', 'POST', '/v1/notifications/poussees/abonnements', corpsAbonnement(appareils.chloe))).statut).toBe(201);
+    const deChloe = async () => (await lignesAbonnements()).filter((l) => l.utilisateur_id === DEMO.chloe);
+    const [abonnementChloe] = await deChloe();
+    // Un envoi est mis en attente pour Chloé (réponse du client à sa demande), puis elle est désactivée PENDANT la fenêtre de regroupement.
+    expect((await demanderComplement('chloe', 'Question posée juste avant la désactivation.')).statut).toBeLessThan(300);
+    expect((await api('client', 'POST', `/v1/documents/${documentId}/echanges`, { type: 'reponse', message: 'Réponse arrivée juste avant la désactivation.' })).statut).toBeLessThan(300);
+    expect((await lignesEnvois(DEMO.chloe)).at(-1)).toMatchObject({ issue: null });
+    const d = await api('alice', 'PATCH', `/v1/cabinet/membres/${DEMO.chloe}`, { actif: false });
+    expect(d.statut, d.texte).toBe(200);
+    // Dès la réponse : plus aucun abonnement, envoi clos sans émission, retrait journalisé au nom de qui a désactivé.
+    expect(await deChloe()).toEqual([]);
+    expect((await lignesEnvois(DEMO.chloe)).at(-1)).toMatchObject({ issue: 'destinataire_inactif', appareils: 0 });
+    const retrait = (await editeur.query(`select acteur_id, acteur_type, cible_id, details from journal_audit where cabinet_id = $1 and action = 'notification_poussee.appareil_retire' order by id desc limit 1`, [cabinet])).rows[0];
+    expect(retrait).toMatchObject({ acteur_id: DEMO.alice, acteur_type: 'utilisateur', cible_id: abonnementChloe.id, details: { service: 'simulateur', par: 'systeme', motif: 'membre_desactive', membre: DEMO.chloe } });
+    expect(JSON.stringify(retrait)).not.toContain('127.0.0.1');
+    await apresFenetre();
+    expect(messagesDe('chloe')).toEqual([]);
+
+    // Réactivation : l'accès revient, AUCUN abonnement n'est recréé (la personne réactive elle-même son appareil).
+    expect((await api('alice', 'PATCH', `/v1/cabinet/membres/${DEMO.chloe}`, { actif: true })).statut).toBe(200);
+    expect(await deChloe()).toEqual([]);
+    expect((await api('chloe', 'GET', '/v1/notifications/poussees')).json.appareils).toEqual([]);
+    const envois = (await lignesEnvois(DEMO.chloe)).length;
+    expect((await demanderComplement('chloe', 'Question après réactivation.')).statut).toBeLessThan(300);
+    expect((await api('client', 'POST', `/v1/documents/${documentId}/echanges`, { type: 'reponse', message: 'Réponse après réactivation.' })).statut).toBeLessThan(300);
+    await apresFenetre();
+    expect(messagesDe('chloe')).toEqual([]);
+    expect(await lignesEnvois(DEMO.chloe)).toHaveLength(envois); // sans appareil abonné, aucun envoi n'est mis en file
+  });
+
   it('journaux des deux processus : ni point d’accès, ni clé d’appareil, ni clé privée VAPID, ni nom de dossier ou de fichier', async () => {
     const tout = journaux.api + journaux.worker;
     expect(journaux.worker).toContain('Notifications poussées : SIMULATEUR de test');

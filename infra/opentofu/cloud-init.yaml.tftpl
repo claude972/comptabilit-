@@ -38,5 +38,11 @@ runcmd:
   - ufw allow 443/tcp
   - ufw allow 443/udp
 %{ endif ~}
+%{ if role == "supervision" ~}
+  # Entrée des traces, depuis le seul réseau privé. ATTENTION : un port publié par Docker ne passe pas par ufw ; ce qui
+  # protège réellement ce port est son adresse de publication (adresse privée) et le groupe de sécurité. La règle vaut
+  # pour un collecteur qui tournerait hors de Docker.
+  - ufw allow from ${reseau_cidr} to any port ${port_entree_traces} proto tcp
+%{ endif ~}
   - ufw --force enable
   - systemctl restart ssh docker

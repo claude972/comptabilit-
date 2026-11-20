@@ -139,6 +139,7 @@ else
   if [ -n "$HOTE_SUPERVISION" ]; then
     localement docker build --platform "$PLATEFORME" -t "$REGISTRE/comtaple-prometheus:$VERSION" infra/supervision/prometheus
     localement docker build --platform "$PLATEFORME" -t "$REGISTRE/comtaple-grafana:$VERSION" infra/supervision/grafana
+    localement docker build --platform "$PLATEFORME" -t "$REGISTRE/comtaple-tempo:$VERSION" infra/supervision/tempo
   fi
 
   etape "Envoi vers le registre"
@@ -148,6 +149,7 @@ else
   if [ -n "$HOTE_SUPERVISION" ]; then
     localement docker push "$REGISTRE/comtaple-prometheus:$VERSION"
     localement docker push "$REGISTRE/comtaple-grafana:$VERSION"
+    localement docker push "$REGISTRE/comtaple-tempo:$VERSION"
   fi
 
   etape "Composition et images sur l'hôte"

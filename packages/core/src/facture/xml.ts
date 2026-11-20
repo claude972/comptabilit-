@@ -34,6 +34,37 @@ export const SOURCE_FACTURE_XML: SourceRegle = {
   periodeApplication: 'Factur-X 1.09.2 (août 2026) ; compatibilité avec les versions antérieures non testée.',
 };
 
+/**
+ * Emplacement de l'ACHETEUR (BG-7 « Buyer » de la norme EN 16931) dans les deux syntaxes. Chemins vérifiés en ligne le
+ * 2026-11-19 sur les règles Schematron et les exemples officiels du dépôt de validation CEN/TC 434, et recoupés avec
+ * l'arbre UBL de Peppol BIS Billing 3.0 :
+ *
+ * | Terme | CII (sous rsm:SupplyChainTradeTransaction/ram:ApplicableHeaderTradeAgreement/ram:BuyerTradeParty) | UBL 2.1 (sous cac:AccountingCustomerParty/cac:Party) |
+ * | BT-44 nom | ram:Name (règle BR-07) | cac:PartyLegalEntity/cbc:RegistrationName (BR-07) |
+ * | BT-45 nom commercial | ram:SpecifiedLegalOrganization/ram:TradingBusinessName | cac:PartyName/cbc:Name (UBL-SR-40) |
+ * | BT-46 identifiant | ram:ID, ou ram:GlobalID avec @schemeID (CII-SR-450 : l'un ou l'autre) | cac:PartyIdentification/cbc:ID, @schemeID facultatif (UBL-SR-16) |
+ * | BT-47 identifiant légal | ram:SpecifiedLegalOrganization/ram:ID, @schemeID facultatif (BR-AE-02) | cac:PartyLegalEntity/cbc:CompanyID, @schemeID facultatif (UBL-SR-17) |
+ * | BT-48 n° de TVA | ram:SpecifiedTaxRegistration/ram:ID[@schemeID='VA'] (BR-IC-02) | cac:PartyTaxScheme[cac:TaxScheme/cbc:ID = 'VAT', casse indifférente]/cbc:CompanyID (UBL-SR-18) |
+ * | BT-55 pays | ram:PostalTradeAddress/ram:CountryID (BR-11) | cac:PostalAddress/cac:Country/cbc:IdentificationCode (BR-11) |
+ *
+ * Codes ISO/IEC 6523 des schémas d'identifiant : 0002 = SIRENE (SIREN), 0009 = SIRET (liste de codes EN 16931 de la
+ * Commission européenne, version 18). Un identifiant SANS @schemeID n'est jamais pris pour un SIREN ou un SIRET.
+ */
+export const SOURCE_FACTURE_ACHETEUR: SourceRegle = {
+  type: 'reglementaire',
+  reference:
+    'EN 16931-1, groupe BG-7 « Buyer » (BT-44, BT-45, BT-46, BT-47, BT-48, BT-55), dans les syntaxes UN/CEFACT CII (ram:BuyerTradeParty) et UBL 2.1 (cac:AccountingCustomerParty). ' +
+    'Lus le 2026-11-19 : règles Schematron et exemples du dépôt de validation CEN/TC 434 (https://github.com/ConnectingEurope/eInvoicing-EN16931, version validation-1.3.17 du 12 octobre 2026 : ' +
+    'cii/schematron/CII/EN16931-CII-model.sch, ubl/schematron/UBL/EN16931-UBL-model.sch, cii/examples, ubl/examples) ; arbre UBL de Peppol BIS Billing 3.0, édition de mai 2026 ' +
+    '(https://docs.peppol.eu/poacc/billing/3.0/syntax/ubl-invoice/tree/) ; listes de codes EN 16931 de la Commission européenne, version 18 publiée le 12 octobre 2026 (ICD 0002 = SIRENE, 0009 = SIRET). ' +
+    'NON consultés : le texte de la norme EN 16931 et les CEN/TS 16931-3-2 et 3-3 (payants) ; le dossier de spécification Factur-X 1.09.2 (FNFE-MPE, téléchargement sur formulaire) ; ' +
+    'les spécifications externes de la facturation électronique de la DGFiP (impots.gouv.fr en maintenance le 2026-11-19, non vérifiées en ligne).',
+  url: 'https://github.com/ConnectingEurope/eInvoicing-EN16931',
+  dateVerification: '2026-11-19',
+  verification: 'verifiee',
+  periodeApplication: 'Artefacts de validation EN 16931 version 1.3.17 (octobre 2026) ; les chemins de l’acheteur sont stables depuis la version 1.0 des syntaxes CII D16B et UBL 2.1.',
+};
+
 export class ErreurDocumentXml extends Error {
   readonly code: 'TROP_VOLUMINEUX' | 'DOCTYPE_INTERDIT' | 'XML_INVALIDE' | 'RACINE_INATTENDUE';
   constructor(code: ErreurDocumentXml['code'], message: string) {
@@ -157,15 +188,30 @@ function typeDocument(code: string | null): ChampsFacture['typeDocument'] {
   return structure(valeur, code);
 }
 
-function identifiantsLegaux(champs: ChampsFacture, elements: unknown[]): void {
+type Role = 'emetteur' | 'destinataire';
+
+function identifiantsLegaux(champs: ChampsFacture, elements: unknown[], role: Role = 'emetteur'): void {
   for (const e of elements) {
     const valeur = texte(e)?.replace(/\s/g, '') ?? null;
     const schema = attribut(e, 'schemeID');
     if (valeur === null) continue;
-    // ISO/IEC 6523 : 0002 = SIRENE (SIREN), 0009 = SIRET.
-    if (schema === '0002' && /^\d{9}$/.test(valeur) && champs.emetteurSiren === null) champs.emetteurSiren = structure(valeur, valeur);
-    else if ((schema === '0009' || schema === '0002') && /^\d{14}$/.test(valeur) && champs.emetteurSiret === null) champs.emetteurSiret = structure(valeur, valeur);
+    // ISO/IEC 6523 : 0002 = SIRENE (SIREN), 0009 = SIRET. Sans schéma déclaré, l'identifiant n'est pas interprété.
+    if (schema === '0002' && /^\d{9}$/.test(valeur) && champs[`${role}Siren`] === null) champs[`${role}Siren`] = structure(valeur, valeur);
+    else if ((schema === '0009' || schema === '0002') && /^\d{14}$/.test(valeur) && champs[`${role}Siret`] === null) champs[`${role}Siret`] = structure(valeur, valeur);
   }
+}
+
+function champPays(v: unknown): ChampExtrait | null {
+  const t = texte(v)?.toUpperCase() ?? null;
+  return t !== null && /^[A-Z]{2}$/.test(t) ? structure(t, t) : null;
+}
+
+/** Motif d'abstention quand le bloc acheteur ne donne aucun identifiant exploitable (jamais de déduction par le nom). */
+function conclureDestinataire(champs: ChampsFacture, blocPresent: boolean): void {
+  if (champs.destinataireSiren !== null || champs.destinataireSiret !== null || champs.destinataireTva !== null) return;
+  champs.destinataireAbstention = !blocPresent
+    ? 'Bloc acheteur absent du document structuré : destinataire non lu.'
+    : 'Le bloc acheteur du document structuré ne porte ni SIREN ou SIRET déclaré comme tel (schéma 0002 ou 0009), ni numéro de TVA : destinataire non identifié.';
 }
 
 function dateCii(v: unknown): ChampExtrait | null {
@@ -200,6 +246,21 @@ export function extraireChampsFacturX(xmlCii: string): ChampsFacture {
       if (v !== null) champs.emetteurTva = structure(v, texte(id) ?? v);
     }
   }
+
+  // Acheteur (BG-7) : voir SOURCE_FACTURE_ACHETEUR pour les chemins et leur vérification.
+  const acheteur = noeud(transaction, 'ApplicableHeaderTradeAgreement', 'BuyerTradeParty');
+  champs.destinataireNom = champTexte(noeud(acheteur, 'Name'));
+  identifiantsLegaux(champs, liste(noeud(acheteur, 'SpecifiedLegalOrganization', 'ID')), 'destinataire');
+  identifiantsLegaux(champs, liste(noeud(acheteur, 'GlobalID')), 'destinataire');
+  for (const enr of liste(noeud(acheteur, 'SpecifiedTaxRegistration'))) {
+    const id = noeud(enr, 'ID');
+    if (attribut(id, 'schemeID') === 'VA' && champs.destinataireTva === null) {
+      const v = texte(id)?.replace(/\s/g, '').toUpperCase() ?? null;
+      if (v !== null) champs.destinataireTva = structure(v, texte(id) ?? v);
+    }
+  }
+  champs.destinatairePays = champPays(noeud(acheteur, 'PostalTradeAddress', 'CountryID'));
+  conclureDestinataire(champs, acheteur !== undefined && acheteur !== null && typeof acheteur === 'object' && !Array.isArray(acheteur));
 
   const reglement = noeud(transaction, 'ApplicableHeaderTradeSettlement');
   const devise = texte(noeud(reglement, 'InvoiceCurrencyCode'));
@@ -275,6 +336,29 @@ export function extraireChampsUbl(xmlUbl: string): ChampsFacture {
       champs.emetteurTva = structure(id.replace(/\s/g, '').toUpperCase(), id);
     }
   }
+
+  // Acheteur (BG-7) : voir SOURCE_FACTURE_ACHETEUR pour les chemins et leur vérification.
+  const client = noeud(racine, 'AccountingCustomerParty', 'Party');
+  for (const entite of liste(noeud(client, 'PartyLegalEntity'))) {
+    if (champs.destinataireNom === null) champs.destinataireNom = champTexte(noeud(entite, 'RegistrationName'));
+    identifiantsLegaux(champs, liste(noeud(entite, 'CompanyID')), 'destinataire');
+  }
+  if (champs.destinataireNom === null) {
+    for (const nom of liste(noeud(client, 'PartyName'))) {
+      if (champs.destinataireNom === null) champs.destinataireNom = champTexte(noeud(nom, 'Name'));
+    }
+  }
+  for (const ident of liste(noeud(client, 'PartyIdentification'))) identifiantsLegaux(champs, liste(noeud(ident, 'ID')), 'destinataire');
+  for (const regime of liste(noeud(client, 'PartyTaxScheme'))) {
+    const schema = texte(noeud(regime, 'TaxScheme', 'ID'));
+    const id = texte(noeud(regime, 'CompanyID'));
+    // BT-48 : seul le régime « VAT » (casse indifférente) désigne le numéro de TVA de l'acheteur.
+    if (schema !== null && schema.toUpperCase() === 'VAT' && id !== null && champs.destinataireTva === null) {
+      champs.destinataireTva = structure(id.replace(/\s/g, '').toUpperCase(), id);
+    }
+  }
+  champs.destinatairePays = champPays(noeud(client, 'PostalAddress', 'Country', 'IdentificationCode'));
+  conclureDestinataire(champs, client !== undefined && client !== null && typeof client === 'object' && !Array.isArray(client));
 
   const totauxTva = liste(noeud(racine, 'TaxTotal')).filter((t) => {
     const d = attribut(noeud(t, 'TaxAmount'), 'currencyID');

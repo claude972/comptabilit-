@@ -38,6 +38,12 @@ Exemples testés : Windows-1252 ou point décimal → lisible, suffisant, **non 
 - **Équilibre des écritures** : suivi par (journal, numéro d'écriture) même si les lignes ne sont pas contiguës. Ce n'est pas un contrôle du référentiel de format.
 - **Champs obligatoires vides** : seuls les champs 7, 8, 14, 15, 17 et 18 peuvent être à blanc (A47 A-1, VII). Un `ValidDate`, `PieceRef`, `PieceDate`… vide est signalé (`CHAMP_OBLIGATOIRE_VIDE`, mineure) et rend le fichier non conforme ; la ligne est conservée.
 
+- **Longueur maximale d'une ligne** (`LIGNE_TROP_LONGUE`, 1 048 576 octets) : la borne est appréciée au fil des blocs lus, sur les octets en attente d'une fin de ligne. Une ligne qui dépasse la borne de moins d'un bloc peut donc être acceptée ou refusée selon le découpage des blocs par la source (stockage, tube). Au-delà d'un bloc de dépassement, elle est toujours refusée et la lecture s'arrête.
+
+## Exécution
+
+Le moteur est pur et lit un flux de blocs. En service, le worker ne l'appelle pas dans son propre processus : l'analyse s'exécute dans un processus enfant borné qui renvoie les lignes normalisées par lots (voir `docs/architecture.md`, « Traitements isolés »). Les lignes et le rapport sont identiques à ceux d'un appel direct (vérifié par `apps/worker/src/isolement-imports.itest.ts`), sous la réserve du point précédent.
+
 ## Non pris en charge (voir aussi `rapport.referentiel.controlesNonImplementes`)
 
 - FEC au format XML (XSD de l'administration), fichiers à zones de longueur fixe, EBCDIC.

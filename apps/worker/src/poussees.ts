@@ -8,7 +8,7 @@
  * Les journaux ne portent que des identifiants techniques et un code HTTP : jamais le point d'accès, ni les clés.
  */
 import { chargeUtilePoussee } from '@comtaple/core';
-import { journaliser, sql } from '@comtaple/db';
+import { journaliser, sql, type Tx } from '@comtaple/db';
 import { associeAbonnement, dechiffrerAbonnement, envoyerNotificationPoussee, type EtatPoussees, type OptionsEnvoiPousse, type TachePoussee, TENTATIVES_POUSSEE } from '@comtaple/plateforme';
 import type { Contexte } from './contexte.js';
 
@@ -57,6 +57,12 @@ export async function distribuerEnvoi(c: Pick<Contexte, 'bd' | 'taches' | 'cfg'>
       await clore('preference_desactivee', 0);
       return 0;
     }
+    // Garde-fou : jamais d'envoi à une personne dont l'appartenance n'est plus active (désactivée, ou accès temporaire
+    // arrivé à son terme pendant la fenêtre de regroupement). Ses abonnements sont retirés par l'entretien périodique.
+    if (!(await membreActif(tx, cabinetId, envoi.destinataireId))) {
+      await clore('destinataire_inactif', 0);
+      return 0;
+    }
     const appareils = (await tx.execute(sql`select id from abonnements_pousses where utilisateur_id = ${envoi.destinataireId}::uuid order by id`)).rows as Array<{ id: string }>;
     for (const a of appareils) await c.taches.livrerPoussee({ cabinetId, envoiId, abonnementId: a.id }, c.cfg.PUSH_DELAI_REPRISE_S * 1000);
     await clore(appareils.length ? 'distribue' : 'sans_abonnement', appareils.length);
@@ -64,7 +70,13 @@ export async function distribuerEnvoi(c: Pick<Contexte, 'bd' | 'taches' | 'cfg'>
   });
 }
 
-export type IssueLivraison = 'accepte' | 'abonnement_absent' | 'abonnement_retire' | 'abonnement_illisible' | 'refuse' | 'abandonne';
+/** Vrai si la personne est membre ACTIF du cabinet à cet instant (appartenance active et non expirée). */
+async function membreActif(tx: Tx, cabinetId: string, utilisateurId: string): Promise<boolean> {
+  const r = await tx.execute(sql`select 1 from appartenances where cabinet_id = ${cabinetId}::uuid and utilisateur_id = ${utilisateurId}::uuid and actif and (expire_le is null or expire_le > now())`);
+  return Boolean(r.rowCount);
+}
+
+export type IssueLivraison = 'accepte' | 'abonnement_absent' | 'abonnement_retire' | 'abonnement_illisible' | 'destinataire_inactif' | 'refuse' | 'abandonne';
 
 /** Erreur temporaire : la file rejoue la tâche (délai doublé à chaque tentative, TENTATIVES_POUSSEE au plus). */
 export class LivraisonARejouer extends Error {}
@@ -81,7 +93,9 @@ export async function livrerPoussee(c: Pick<Contexte, 'bd'>, etat: EtatPoussees,
   const lu = await c.bd.avecContexte(ctx, async (tx) => {
     const [a] = (await tx.execute(sql`select id, utilisateur_id as "utilisateurId", empreinte_point_acces as empreinte, secrets_chiffres as secrets, service from abonnements_pousses where id = ${t.abonnementId}::uuid`)).rows as Array<{ id: string; utilisateurId: string; empreinte: string; secrets: string; service: string }>;
     const [e] = (await tx.execute(sql`select id, type, destinataire_id as "destinataireId" from envois_pousses where id = ${t.envoiId}::uuid`)).rows as Array<{ id: string; type: string; destinataireId: string }>;
-    return { a, e };
+    // Relue ICI, au moment de l'envoi : la tâche a pu attendre en file (reprises comprises) pendant qu'on désactivait la personne.
+    const actif = a ? await membreActif(tx, t.cabinetId, a.utilisateurId) : false;
+    return { a, e, actif };
   });
   // Abonnement retiré entre-temps (par la personne ou par une livraison précédente), ou envoi purgé : rien à faire.
   if (!lu.a || !lu.e || lu.a.utilisateurId !== lu.e.destinataireId) return 'abonnement_absent';
@@ -89,9 +103,15 @@ export async function livrerPoussee(c: Pick<Contexte, 'bd'>, etat: EtatPoussees,
   const retirer = (motif: string, statut: number | null) =>
     c.bd.avecContexte(ctx, async (tx) => {
       const r = await tx.execute(sql`delete from abonnements_pousses where id = ${a.id}::uuid`);
-      if (r.rowCount) await journaliser(tx, { cabinetId: t.cabinetId, acteurType: 'systeme', action: 'notification_poussee.appareil_retire', cibleType: 'abonnement_pousse', cibleId: a.id, details: { service: a.service, par: 'service', motif, statut } });
+      if (r.rowCount) await journaliser(tx, { cabinetId: t.cabinetId, acteurType: 'systeme', action: 'notification_poussee.appareil_retire', cibleType: 'abonnement_pousse', cibleId: a.id, details: { service: a.service, par: motif === 'appartenance_inactive' ? 'systeme' : 'service', motif, statut } });
     });
 
+  if (!lu.actif) {
+    // Course désactivation / envoi déjà en file : rien n'est émis, et l'abonnement (que la désactivation aurait dû
+    // retirer, ou qui survit à un accès arrivé à son terme) est retiré ici.
+    await retirer('appartenance_inactive', null);
+    return 'destinataire_inactif';
+  }
   const secrets = dechiffrerAbonnement(etat, a.secrets, associeAbonnement(t.cabinetId, a.utilisateurId, a.empreinte));
   if (!secrets) {
     // Clé de chiffrement retirée ou enveloppe altérée : l'abonnement est inutilisable, la personne devra se réabonner.
@@ -118,4 +138,21 @@ export async function livrerPoussee(c: Pick<Contexte, 'bd'>, etat: EtatPoussees,
     return 'abonnement_retire';
   }
   return 'refuse';
+}
+
+export interface BilanEntretien {
+  appartenanceInactive: number;
+  inactivite: number;
+}
+
+/**
+ * Entretien périodique des abonnements (fonction de la base, tous cabinets) : retire ceux dont le titulaire n'est plus
+ * membre actif (accès temporaire arrivé à son terme sans autre écriture) et ceux restés inactifs plus de
+ * `PUSH_INACTIVITE_MAX_JOURS` jours. Chaque retrait est journalisé par la base, sans point d'accès ni clé. Aucun appel
+ * sortant : l'entretien tourne même quand la fonction est désactivée (des abonnements peuvent subsister d'une activation passée).
+ */
+export async function entretenirAbonnementsPousses(c: Pick<Contexte, 'bd' | 'cfg'>): Promise<BilanEntretien> {
+  const { rows } = await c.bd.pool.query<{ motif: string; retires: number }>('select motif, retires from worker_abonnements_pousses_entretenir($1)', [c.cfg.PUSH_INACTIVITE_MAX_JOURS]);
+  const de = (motif: string) => Number(rows.find((r) => r.motif === motif)?.retires ?? 0);
+  return { appartenanceInactive: de('appartenance_inactive'), inactivite: de('inactivite') };
 }

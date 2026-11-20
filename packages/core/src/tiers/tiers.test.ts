@@ -479,3 +479,100 @@ describe('déterminisme et montants', () => {
     for (const m of JSON.stringify(a).matchAll(/"(montant|solde|resteDu|montantRegle|totalDebit|totalCredit)":"(-?\d[^"]*)"/g)) expect(m[2]).toMatch(/^-?\d+\.\d{2}$/);
   });
 });
+
+describe('ventes : le destinataire lu sur la pièce identifie le client', () => {
+  const SIREN_MARTIN = SIREN_AUTRE;
+  const pieceVente = (p: Partial<PieceFacture> = {}): PieceFacture =>
+    piece({ nature: 'facture_vente', numero: 'FV-2025-010', totalTtc: '600.00', dateEmission: '2025-02-01', dateEcheance: '2025-03-03', emetteurNom: 'DOSSIER SARL', emetteurSiren: SIREN_DOSSIER, destinataireNom: 'MARTIN SA', destinataireSiren: SIREN_MARTIN, ...p });
+
+  it('vente appariée d’office : montant égal, référence, date, client identifié par le SIREN du compte auxiliaire', () => {
+    const lignes = vente('CMARTIN', `Martin SA ${SIREN_MARTIN}`, 'FV-2025-010', '2025-02-01', '600.00');
+    const r = suivre(lignes, [pieceVente()]);
+    const f = r.factures[0]!;
+    expect(f).toMatchObject({ sens: 'vente', sensLu: 'vente', roleTiersPiece: 'destinataire', tiersCle: 'aux:CMARTIN', motifTiers: null });
+    expect(f.tiersPiece).toMatchObject({ cle: `siren:${SIREN_MARTIN}`, nom: 'MARTIN SA', siren: SIREN_MARTIN });
+    expect(f.comptabilisation).toMatchObject({ statut: 'apparie', criteres: { montant: 'exact', reference: 'identique', date: 'concordante', tiers: 'identifie' } });
+    expect(f.comptabilisation.ecriture).toMatchObject({ compteNum: '411000', compAuxNum: 'CMARTIN', sens: 'debit' });
+    expect(f.etat).toBe('echue_non_reglee');
+    expect(r.tiers.find((t) => t.cle === 'aux:CMARTIN')!.tiersPieces).toEqual([{ cle: `siren:${SIREN_MARTIN}`, nom: 'MARTIN SA', lien: 'identifiant_fort' }]);
+  });
+  it('SIREN du client tiré de son SIRET ou de son numéro de TVA ; encaissement lettré suivi', () => {
+    const lignes = [...vente('CMARTIN', `Martin SA ${SIREN_MARTIN}`, 'FV-2025-010', '2025-02-01', '600.00', 'A'), ...encaissement('CMARTIN', 'Martin SA', '2025-02-20', '600.00', 'A')];
+    const f = suivre(lignes, [pieceVente({ destinataireSiren: null, destinataireTva: `FR96${SIREN_MARTIN}` })]).factures[0]!;
+    expect(f.comptabilisation.statut).toBe('apparie');
+    expect(f).toMatchObject({ etat: 'reglee', resteDu: '0.00' });
+  });
+  it('client proposé par son nom (candidat unique côté clients) : apparié comme un achat ; jamais sur un compte fournisseur homonyme', () => {
+    const lignes = [...vente('CMARTIN', 'Martin SA', 'FV-2025-010', '2025-02-01', '600.00'), ...achat('FMARTIN', 'MARTIN', 'X-1', '2025-02-01', '50.00')];
+    const r = suivre(lignes, [pieceVente({ destinataireSiren: null })]);
+    expect(r.factures[0]!.comptabilisation).toMatchObject({ statut: 'apparie', criteres: { tiers: 'propose' } });
+    expect(r.propositionsTiers).toHaveLength(1);
+    expect(r.propositionsTiers[0]!.candidats.map((c) => c.cle)).toEqual(['aux:CMARTIN']);
+  });
+  it('mêmes exigences que pour un achat : référence absente ou date éloignée → à confirmer ; montant différent → non trouvé', () => {
+    const base = (ref: string, date: string, ttc: string) => vente('CMARTIN', `Martin SA ${SIREN_MARTIN}`, ref, date, ttc);
+    expect(suivre(base('AUTRE-REF', '2025-02-01', '600.00'), [pieceVente()]).factures[0]!.comptabilisation).toMatchObject({ statut: 'a_confirmer', propositions: [{ criteres: { reference: 'absente', tiers: 'identifie' } }] });
+    expect(suivre(base('FV-2025-010', '2025-06-30', '600.00').map((l) => ({ ...l, pieceDate: '2025-06-30' })), [pieceVente()]).factures[0]!.comptabilisation).toMatchObject({ statut: 'a_confirmer', propositions: [{ criteres: { date: 'ecart' } }] });
+    expect(suivre(base('FV-2025-010', '2025-02-01', '600.01'), [pieceVente()]).factures[0]!.comptabilisation.statut).toBe('non_trouve');
+  });
+  it('vente ambiguë : deux écritures réunissent tous les critères → aucune retenue ; client homonyme → à confirmer', () => {
+    const deux = [...vente('CMARTIN', `Martin SA ${SIREN_MARTIN}`, 'FV-2025-010', '2025-02-01', '600.00'), ...vente('CMARTIN', `Martin SA ${SIREN_MARTIN}`, 'FV-2025-010', '2025-02-03', '600.00')];
+    const a = suivre(deux, [pieceVente()]);
+    expect(a.factures[0]!.comptabilisation).toMatchObject({ statut: 'ambigu', ecriture: null });
+    expect(a.suspicions.some((x) => x.type === 'ecritures_multiples')).toBe(true);
+    const homonymes = [...vente('CMARTIN1', 'Martin SA', 'FV-2025-010', '2025-02-01', '600.00'), ...vente('CMARTIN2', 'MARTIN', 'FV-2025-099', '2025-02-01', '10.00')];
+    const h = suivre(homonymes, [pieceVente({ destinataireSiren: null })]);
+    expect(h.factures[0]!.comptabilisation).toMatchObject({ statut: 'a_confirmer', propositions: [{ criteres: { tiers: 'homonymes' } }] });
+    expect(h.propositionsTiers[0]!.statut).toBe('homonymes');
+  });
+  it('client lu différent du tiers de l’écriture : pas d’appariement d’office', () => {
+    const lignes = vente('CDURAND', `Durand SAS ${SIREN_DUPONT}`, 'FV-2025-010', '2025-02-01', '600.00');
+    const f = suivre(lignes, [pieceVente()], { decisionsTiers: [{ cleComptable: 'aux:CMARTIN', clePiece: `siren:${SIREN_MARTIN}`, decision: 'confirme' }] }).factures[0]!;
+    expect(f.comptabilisation.statut).toBe('a_confirmer');
+    expect(f.comptabilisation.propositions[0]!.criteres.tiers).toBe('sans_lien');
+  });
+  it('vente sans destinataire (extraction antérieure ou abstention) : comportement inchangé, à confirmer', () => {
+    const lignes = vente('CMARTIN', `Martin SA ${SIREN_MARTIN}`, 'FV-2025-010', '2025-02-01', '600.00');
+    for (const sans of [{ destinataireNom: null, destinataireSiren: null }, { destinataireNom: undefined, destinataireSiren: undefined }]) {
+      const f = suivre(lignes, [pieceVente(sans)]).factures[0]!;
+      expect(f).toMatchObject({ sens: 'vente', tiersPiece: null, roleTiersPiece: null });
+      expect(f.motifTiers).toMatch(/destinataire n’a pas été lu/);
+      expect(f.comptabilisation).toMatchObject({ statut: 'a_confirmer', propositions: [{ criteres: { tiers: 'non_determinable' } }] });
+    }
+  });
+  it('destinataire dont la clé de SIREN est fausse : non retenu comme identifiant fort (le nom seul reste une proposition)', () => {
+    const lignes = vente('CMARTIN', `Martin SA ${SIREN_MARTIN}`, 'FV-2025-010', '2025-02-01', '600.00');
+    const f = suivre(lignes, [pieceVente({ destinataireSiren: '552100555', destinataireNom: 'INCONNU SAS' })]).factures[0]!;
+    expect(f.tiersPiece).toMatchObject({ cle: 'nom:INCONNU', siren: null });
+    expect(f.comptabilisation.statut).toBe('a_confirmer');
+  });
+  it('incohérences : émetteur lu ≠ dossier, destinataire = dossier, dossier des deux côtés → client non identifié, réserve affichée', () => {
+    const lignes = vente('CMARTIN', `Martin SA ${SIREN_MARTIN}`, 'FV-2025-010', '2025-02-01', '600.00');
+    const autreEmetteur = suivre(lignes, [pieceVente({ emetteurSiren: SIREN_DUPONT })]).factures[0]!;
+    expect(autreEmetteur).toMatchObject({ tiersPiece: null, sensLu: 'indetermine' });
+    expect(autreEmetteur.motifTiers).toMatch(/n’est pas le dossier/);
+    expect(autreEmetteur.comptabilisation.statut).toBe('a_confirmer');
+    const achatMalQualifie = suivre(lignes, [pieceVente({ emetteurSiren: SIREN_DUPONT, destinataireSiren: SIREN_DOSSIER })]).factures[0]!;
+    expect(achatMalQualifie).toMatchObject({ tiersPiece: null, sensLu: 'achat' });
+    expect(achatMalQualifie.reserves.join(' ')).toMatch(/qualifiée « facture de vente » mais ses identifiants indiquent un achat/);
+    const deuxCotes = suivre(lignes, [pieceVente({ destinataireSiren: SIREN_DOSSIER })]).factures[0]!;
+    expect(deuxCotes.tiersPiece).toBeNull();
+    expect(deuxCotes.motifTiers).toMatch(/à la fois comme émetteur et comme destinataire/);
+  });
+  it('avoir : sens déduit par le destinataire quand l’émetteur n’est pas lu ; contradiction → indéterminé', () => {
+    const avoirRecu = suivre([], [piece({ nature: 'avoir', typeDocument: 'avoir', emetteurSiren: null, emetteurNom: 'DUPONT', destinataireSiren: SIREN_DOSSIER })]).factures[0]!;
+    expect(avoirRecu).toMatchObject({ sens: 'achat', roleTiersPiece: 'emetteur' });
+    const avoirEmis = suivre([], [piece({ nature: 'avoir', typeDocument: 'avoir', emetteurSiren: SIREN_DOSSIER, destinataireSiren: SIREN_MARTIN, destinataireNom: 'MARTIN SA' })]).factures[0]!;
+    expect(avoirEmis).toMatchObject({ sens: 'vente', roleTiersPiece: 'destinataire', tiersPiece: { cle: `siren:${SIREN_MARTIN}` } });
+    const contradictoire = suivre([], [piece({ nature: 'avoir', typeDocument: 'avoir', emetteurSiren: SIREN_DOSSIER, destinataireSiren: SIREN_DOSSIER })]).factures[0]!;
+    expect(contradictoire).toMatchObject({ sens: 'indetermine', tiersPiece: null });
+  });
+  it('achat : le destinataire lu ne change rien au tiers (l’émetteur) ; tiers connu des seules pièces typé client pour une vente', () => {
+    const a = suivre(achat('FDUPONT', 'Dupont Matériaux', 'FA-2025-0042', '2025-03-10', '1200.00'), [piece({ destinataireSiren: SIREN_DOSSIER, destinataireNom: 'DOSSIER SARL' })], { decisionsTiers: [LIEN_DUPONT] }).factures[0]!;
+    expect(a).toMatchObject({ sens: 'achat', sensLu: 'achat', roleTiersPiece: 'emetteur', tiersPiece: { cle: `siren:${SIREN_DUPONT}` } });
+    expect(a.comptabilisation.statut).toBe('apparie');
+    const r = suivre([], [pieceVente()]);
+    expect(r.tiers.find((t) => t.cle === `piece:siren:${SIREN_MARTIN}`)).toMatchObject({ origine: 'piece', type: 'client' });
+    expect(r.reserves.join(' ')).toMatch(/destinataire y a été lu de façon sûre/);
+  });
+});

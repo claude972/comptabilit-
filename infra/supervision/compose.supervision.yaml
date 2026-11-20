@@ -1,13 +1,18 @@
-# Supervision : Prometheus, Grafana, collecteur OpenTelemetry. Hébergée dans le même périmètre que l'application
-# (instance de supervision du réseau privé) ; tous les ports sont liés à 127.0.0.1 : accès par tunnel SSH seulement.
+# Supervision : Prometheus, Grafana, collecteur OpenTelemetry, entrepôt de traces (Grafana Tempo). Hébergée dans le même
+# périmètre que l'application (instance de supervision du réseau privé) ; tous les ports sont liés à 127.0.0.1 (accès
+# par tunnel SSH seulement), SAUF l'entrée des traces (profil `acheminement`), liée à l'adresse PRIVÉE de l'instance.
 #
-# ÉTAT : essayée EN LOCAL (collecte de l'API et du worker du poste, règles et tableaux chargés), jamais déployée.
+# ÉTAT : essayée EN LOCAL (collecte de l'API et du worker du poste, règles et tableaux chargés ; traces : collecteur →
+# Tempo, recherche par l'API de Tempo, scripts/essai-traces.sh), jamais déployée.
 #
 #   Production : docker compose --env-file supervision.env -f compose.supervision.yaml up -d --wait
+#                (profil `acheminement` activé par COMPOSE_PROFILES dans supervision.env : voir exemple.env)
 #   Essai local : docker compose --env-file local.env -f compose.supervision.yaml --profile essai-local up -d --build --wait
+#   Traces seules : scripts/essai-traces.sh (collecteur et Tempo, projet et ports à part)
 #
-# Aucun montage de dossier de l'hôte (D-006) : règles et tableaux sont dans des images construites, la configuration de
-# collecte dans l'environnement des conteneurs. Les cibles viennent de l'environnement : voir exemple.env (production) et local.env.
+# Aucun montage de dossier de l'hôte (D-006) : règles, tableaux et configuration de Tempo sont dans des images
+# construites, la configuration de collecte dans l'environnement des conteneurs. Les cibles viennent de
+# l'environnement : voir exemple.env (production) et local.env.
 name: comtaple-supervision
 
 x-durcissement: &durcissement
@@ -104,9 +109,34 @@ services:
       timeout: 3s
       retries: 40
 
-  # Collecteur OpenTelemetry : point d'entrée OTLP des traces de l'application (API et worker les émettent quand
-  # OTEL_EXPORTER_OTLP_ENDPOINT désigne ce collecteur : docs/exploitation.md, § 9). Aucun entrepôt de traces n'est
-  # choisi : les traces reçues sont comptées et un échantillon est journalisé, rien n'est conservé.
+  # Entrepôt de traces : Grafana Tempo, un seul processus, stockage local dans un volume dédié. Reçoit les traces du
+  # collecteur (OTLP/gRPC, réseau de la composition) ; interrogé par Grafana (source de données « Tempo », tableau
+  # « Comtaple — traces ») et par son API HTTP (port lié à 127.0.0.1 ; 3201 sur l'hôte, 3200 étant pris en local).
+  # Rétention COURTE et bornée : TEMPO_RETENTION (72 h par défaut : un incident du vendredi soir reste visible le lundi ;
+  # les traces servent au diagnostic récent, pas à l'historique, et portent des identifiants techniques de cabinet et de
+  # dossier qu'il n'y a pas lieu de garder). Taille : Tempo n'a pas de plafond de stockage ; elle est bornée par le débit
+  # d'entrée accepté × la rétention, soit au plus 8 000 o/s × 72 h ≈ 2,1 Go de traces reçues (avant compression), plus
+  # la rafale (4 Mo). Au-delà du débit, Tempo refuse et le collecteur abandonne après ses reprises.
+  # L'image officielle n'a ni shell ni client HTTP : pas de sonde de santé (constater par GET /ready sur le port publié).
+  tempo:
+    build: ./tempo
+    image: ${REGISTRE:-comtaple}/comtaple-tempo:${VERSION:-local}
+    <<: *durcissement
+    command: ["-target=all", "-config.file=/etc/tempo/tempo.yaml", "-config.expand-env=true"]
+    environment:
+      TEMPO_RETENTION: ${TEMPO_RETENTION:-72h}
+      TEMPO_DEBIT_OCTETS_S: ${TEMPO_DEBIT_OCTETS_S:-8000}
+      TEMPO_RAFALE_OCTETS: ${TEMPO_RAFALE_OCTETS:-4000000}
+    ports: ["127.0.0.1:${TEMPO_PORT:-3201}:3200"]
+    volumes: ["tempo_donnees:/var/tempo"]
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 256
+
+  # Collecteur OpenTelemetry : point d'entrée OTLP des traces (API et worker les émettent quand
+  # OTEL_EXPORTER_OTLP_ENDPOINT est renseigné : docs/exploitation.md, § 9). Il les transmet à Tempo, les compte
+  # (métriques collectées par Prometheus) et en journalise un échantillon. Ses ports ne sont liés qu'à 127.0.0.1 : en
+  # production, les traces de l'instance applicative arrivent par `entree-traces` (ci-dessous).
   # Essai local : COLLECTEUR_VERBOSITE=detailed et COLLECTEUR_JOURNAL_INITIAL=100000 journalisent chaque span en entier
   # (identifiants de trace, attributs) ; à ne pas utiliser en production (volume des journaux).
   collecteur:
@@ -126,6 +156,13 @@ services:
           batch: {}
         exporters:
           debug: { verbosity: ${COLLECTEUR_VERBOSITE:-basic}, sampling_initial: ${COLLECTEUR_JOURNAL_INITIAL:-2}, sampling_thereafter: 500 }
+          # Réseau de la composition, même hôte : pas de TLS entre le collecteur et Tempo. File d'attente bornée :
+          # Tempo indisponible ou débit refusé, les traces sont abandonnées après 5 minutes de reprises.
+          otlp_grpc/tempo:
+            endpoint: tempo:4317
+            tls: { insecure: true }
+            sending_queue: { queue_size: 200 }
+            retry_on_failure: { max_elapsed_time: 5m }
         service:
           telemetry:
             metrics:
@@ -134,12 +171,69 @@ services:
                     exporter:
                       prometheus: { host: 0.0.0.0, port: 8888 }
           pipelines:
-            traces: { receivers: [otlp], processors: [memory_limiter, batch], exporters: [debug] }
+            traces: { receivers: [otlp], processors: [memory_limiter, batch], exporters: [debug, otlp_grpc/tempo] }
             metrics: { receivers: [otlp], processors: [memory_limiter, batch], exporters: [debug] }
     ports:
       - "127.0.0.1:${OTLP_PORT_GRPC:-4317}:4317"
       - "127.0.0.1:${OTLP_PORT_HTTP:-4318}:4318"
+    depends_on: [tempo]
     mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 128
+
+  # ── Production : entrée des traces venues de l'instance applicative, par le réseau PRIVÉ (profil `acheminement`) ──
+  # Seul port de la supervision ouvert hors de 127.0.0.1 : OTLP/HTTP sur l'adresse privée, TLS 1.3 MUTUEL. Le réseau
+  # privé n'est pas chiffré par lui-même : TLS chiffre, le certificat client (signé par l'autorité privée TRACES_AC_PEM,
+  # dont seul l'agent de l'instance applicative détient un certificat) authentifie l'émetteur ; sans lui, la poignée de
+  # main échoue. Ce service ne fait que terminer TLS et relayer au collecteur ci-dessus.
+  # EXCEPTION au durcissement : pas de lecture seule. Le récepteur ne lit l'autorité des clients que dans un FICHIER
+  # (`client_ca_file` ; pas de variante en ligne dans le collecteur 0.165.0), l'image n'a pas de shell pour l'écrire, et
+  # Compose ne dépose un secret issu de l'environnement que dans un conteneur accessible en écriture (constaté).
+  # Certificat et clé du serveur, eux, restent dans l'environnement (`cert_pem`, `key_pem`).
+  entree-traces:
+    profiles: ["acheminement"]
+    image: otel/opentelemetry-collector:0.165.0
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    command: ["--config=env:CONFIGURATION"]
+    secrets:
+      - source: traces_ac
+        target: /run/secrets/traces-ac.pem
+    environment:
+      TRACES_ENTREE_CERT_PEM: ${TRACES_ENTREE_CERT_PEM:-}
+      TRACES_ENTREE_CLE_PEM: ${TRACES_ENTREE_CLE_PEM:-}
+      CONFIGURATION: |
+        receivers:
+          otlp:
+            protocols:
+              http:
+                endpoint: 0.0.0.0:4318
+                tls:
+                  min_version: "1.3"
+                  cert_pem: $${env:TRACES_ENTREE_CERT_PEM}
+                  key_pem: $${env:TRACES_ENTREE_CLE_PEM}
+                  client_ca_file: /run/secrets/traces-ac.pem
+        processors:
+          memory_limiter: { check_interval: 5s, limit_mib: 96 }
+        exporters:
+          otlp_grpc/collecteur:
+            endpoint: collecteur:4317
+            tls: { insecure: true }
+            sending_queue: { queue_size: 100 }
+            retry_on_failure: { max_elapsed_time: 2m }
+        service:
+          telemetry:
+            metrics: { level: none }
+          pipelines:
+            traces: { receivers: [otlp], processors: [memory_limiter], exporters: [otlp_grpc/collecteur] }
+    ports:
+      - "${ADRESSE_PRIVEE_SUPERVISION:-127.0.0.1}:${TRACES_PORT_ENTREE:-4319}:4318"
+    depends_on: [collecteur]
+    mem_limit: 128m
     cpus: 0.5
     pids_limit: 128
 
@@ -169,4 +263,11 @@ services:
 volumes:
   prometheus_donnees:
   grafana_donnees:
+  tempo_donnees:
+
+secrets:
+  # Autorité de certification PRIVÉE des traces (certificat public, PEM) : fournie par l'environnement, jamais par un
+  # fichier de l'hôte. Inutilisée hors du profil `acheminement`.
+  traces_ac:
+    environment: TRACES_AC_PEM
 

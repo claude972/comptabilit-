@@ -59,8 +59,9 @@ Changer de modèle = modifier `src/modeles.ts`, refaire l'évaluation, ré-index
 | `simule` | le fournisseur est le SIMULATEUR. Ne peut **jamais** devenir `connecte`, même avec une preuve forgée. |
 
 `connecte` atteste que le service répond. Il ne dit **rien** de la qualité du modèle sur les tâches métier.
-La preuve (`PreuveConnexionIa`) est à conserver par l'intégrateur et à repasser au constructeur (`preuveConnexion`) ;
-elle est réévaluée à chaque lecture du statut (autre URL de base → `configure_non_verifie`).
+La preuve (`PreuveConnexionIa`) est à conserver par l'intégrateur et à repasser au constructeur (`preuveConnexion`) ou
+à `retenirPreuve()` ; elle est réévaluée à chaque lecture du statut (autre URL de base → `configure_non_verifie`).
+Dans l'application, elle est persistée et relue de la base : voir 10.8.
 
 ## 4. Garde-fous (tous vérifiés par code et testés)
 
@@ -128,7 +129,10 @@ Aucune tâche ne doit être confiée au modèle avant la fin de cette procédure
 2. Mise à jour du registre des traitements et de l'information des cabinets.
 3. Création du jeton AI Endpoints par une personne habilitée ; `IA_OVH_ENDPOINT` et `IA_OVH_JETON` dans le coffre de
    secrets (jamais dans le dépôt). `creerFournisseurOvhDepuisEnv` renvoie `null` tant que l'un manque.
-4. `verifierConnexion()` : le statut doit passer à `connecte`. Sinon lire `raisons` (points O9 à O12).
+4. Vérification par l'éditeur : `node scripts/editeur.mjs ia-verifier --appel-reel` (deux appels RÉELS : une complétion
+   de quelques jetons, un vecteur). Le résultat est enregistré dans `verifications_connexion_ia` ; le statut passe à
+   `connecte` dans l'API et le worker en moins d'une minute s'ils ont la même configuration. Sinon lire les raisons
+   affichées (points O9 à O12). La preuve vaut `IA_PREUVE_VALIDITE_JOURS` jours (30 par défaut) : voir 10.8.
 5. Relevé des tarifs sur le catalogue, daté, passé en `TarifsIa`.
 6. **Évaluation sur corpus métier réel**, par tâche, avec `evaluer(tache, jeu, fournisseurReel)` sur un corpus constitué
    et annoté par des professionnels, sur des données autorisées. Fixer par tâche un seuil d'exactitude et un taux de
@@ -276,9 +280,27 @@ historique) ; « Proposer un classement » sur la page d'une pièce ; « Expliqu
   qu'il laisse de côté (ils restent dans `sources`). L'assistant d'un dossier peut donc atteindre ce plafond en silence
   (balance de 40 comptes, par exemple) ; l'assistant de portefeuille l'évite par un décompte par dossier (10.9).
 
-- **Preuve de connexion non persistée.** `verifierConnexion()` n'est appelée par aucune route et sa preuve n'a pas de
-  table : avec un jeton configuré, le statut reste `configure_non_verifie` et aucun modèle n'est sollicité. Pour activer,
-  il faudra une route réservée aux gestionnaires et un stockage de la preuve partagé entre l'API et le worker.
+- **Preuve de connexion persistée (2026-11-19), jamais produite par un appel réel.** Table `verifications_connexion_ia`
+  (migration 0041), SANS `cabinet_id` : la passerelle est un service de l'éditeur, commun à tous les cabinets. L'API et
+  le worker la LISENT ; ni l'un ni l'autre ne peut y écrire (droits en base, testés). Une ligne ne contient ni prompt ni
+  réponse : date, résultat (`connecte`, `refusee`, `echec`), URL de base et hôte, adresses appelées, modèles renvoyés,
+  dimension, empreinte de la configuration (SHA-256 de l'URL de base, des modèles figés et d'un condensé du jeton), fin
+  de validité. Ajout seul.
+  - **Qui vérifie** : l'éditeur, par `node scripts/editeur.mjs ia-verifier --appel-reel` (rôle d'administration).
+    L'opération émet un appel réel — un coût et un flux sortant : il n'existe AUCUNE route pour la déclencher, ni pour un
+    cabinet ni pour un gestionnaire. `GET /v1/ia` (lecture) rend `verification` : état de la preuve, date, fin de
+    validité, ce qu'elle atteste, et pourquoi le statut n'est pas `connecte`.
+  - **Statut** : `connecte` exige que la ligne la PLUS RÉCENTE pour l'empreinte de la configuration courante soit
+    `connecte`, non périmée, et repasse `evaluerStatutIa` (hôte officiel en https, modèles figés, dimension). Changer
+    l'URL, le jeton ou un modèle figé change l'empreinte : retour à `configure_non_verifie`. Une vérification en échec
+    ou refusée invalide la preuve précédente. Rien de ce que porte la ligne n'est cru sur parole (lignes forgées testées).
+  - **Péremption, pas de revérification automatique** : au bout de `IA_PREUVE_VALIDITE_JOURS` jours (30 par défaut,
+    90 au plus) la preuve est périmée ; le statut revient à `configure_non_verifie` et plus aucune tâche ne sollicite le
+    modèle, jusqu'à une nouvelle vérification EXPLICITE. Aucun appel n'est émis sans avoir été demandé.
+  - **Simulateur** : jamais de ligne écrite, statut `simule` quoi que contienne la table.
+  - **Non vérifié** : la commande n'a jamais été lancée avec un jeton réel (il n'en existe pas). Le chemin
+    « preuve valide → les tâches passent par le fournisseur » est prouvé avec un faux fournisseur injecté dans un test :
+    c'est le câblage qui est prouvé, pas la connexion.
 - **Niveau « lecture » et historique.** La politique `acces_dossier` de `echanges_assistant` n'admet l'écriture qu'à
   partir du niveau `collaboration` : à ce niveau, la réponse est rendue (`echangeEnregistre: false`) mais l'échange
   n'est pas conservé.

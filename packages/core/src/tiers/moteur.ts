@@ -9,6 +9,7 @@
 import type { Decimal } from 'decimal.js';
 import type { LigneEcriture } from '../controles/types.js';
 import { ecartEnJours, estDateIso } from '../dates.js';
+import { determinerSensPiece, sirenDePartie } from '../facture/sens.js';
 import { sirenDeTvaFr, validerSiren, validerSiret, validerTvaIntracomFr } from '../identifiants.js';
 import { ZERO, dec, estChaineDecimale, versChaine } from '../montant.js';
 import { normaliserReference } from '../rapprochement/rapprocher.js';
@@ -108,7 +109,11 @@ function refEcriture(t: LigneTiers): RefEcriture {
   };
 }
 
-interface IdentitePiece { cle: string; nom: string | null; nomNormalise: string | null; siren: string | null; tva: string | null; identifiants: IdentifiantTiers[]; documentIds: string[] }
+interface IdentitePiece {
+  cle: string; nom: string | null; nomNormalise: string | null; siren: string | null; tva: string | null; identifiants: IdentifiantTiers[]; documentIds: string[];
+  /** Côtés sous lesquels ce tiers apparaît sur les pièces : fournisseur (émetteur d'un achat), client (destinataire d'une vente). */
+  cotes: Set<'fournisseur' | 'client'>;
+}
 
 const compact = (v: string | null): string | null => (typeof v === 'string' && v.trim() !== '' ? v.replace(/[\s.]/g, '').toUpperCase() : null);
 
@@ -133,7 +138,7 @@ export function suivreTiersEtFactures(demande: DemandeTiersFactures): ResultatTi
   const DA = demande.dateAppreciation;
   const reserves: string[] = [
     'Aide à la révision : rien n’est comptabilisé ni lettré ici ; le logiciel de production comptable reste la référence.',
-    'Le destinataire d’une facture n’est pas extrait des pièces : le client d’une facture de vente n’est jamais identifié par la pièce.',
+    'Le client d’une pièce de vente n’est identifié par la pièce que si son destinataire y a été lu de façon sûre ; à défaut, le lien avec l’écriture reste à confirmer par une personne.',
   ];
   const aRevoir: DecisionARevoir[] = [];
   const euro = demande.deviseDossier === 'EUR';
@@ -230,46 +235,74 @@ export function suivreTiersEtFactures(demande: DemandeTiersFactures): ResultatTi
     const siren = sirenDePiece(piece);
     let sens: FicheFacture['sens'] = piece.nature === 'facture_achat' ? 'achat' : piece.nature === 'facture_vente' ? 'vente' : 'indetermine';
     if (piece.nature === 'avoir' && siren && sirenDossier) sens = siren === sirenDossier ? 'vente' : 'achat';
+    const destinataire = { nom: piece.destinataireNom ?? null, siren: piece.destinataireSiren ?? null, siret: piece.destinataireSiret ?? null, tva: piece.destinataireTva ?? null };
+    const lu = determinerSensPiece({ emetteur: { siren: piece.emetteurSiren, siret: piece.emetteurSiret, tva: piece.emetteurTva }, destinataire, sirenDossier: demande.sirenDossier });
+    // Avoir : à défaut de déduction par l'émetteur, le destinataire peut désigner le dossier ; une contradiction laisse le sens indéterminé.
+    if (piece.nature === 'avoir') {
+      if (lu.incoherence) sens = 'indetermine';
+      else if (sens === 'indetermine' && lu.sens !== 'indetermine') sens = lu.sens;
+    }
     let identite: IdentitePiece | null = null;
     let motifTiers: string | null = null;
-    if (sens === 'vente') motifTiers = 'Le destinataire n’est pas extrait des pièces : le client ne peut pas être identifié par la pièce.';
-    else if (sens === 'indetermine') motifTiers = 'Sens de l’avoir (achat ou vente) non déterminable : émetteur ou SIREN du dossier inconnu.';
+    /** Enregistre le tiers lu sur la pièce (émetteur d'un achat, destinataire d'une vente) ; null si rien ne l'identifie. */
+    const identifier = (partie: { nom: string | null; siren: string | null; siret: string | null; tva: string | null }, sirenValide: string | null, cote: 'fournisseur' | 'client'): IdentitePiece | null => {
+      const tva = compact(partie.tva);
+      const nomNormalise = normaliserNomTiers(partie.nom);
+      const cle = sirenValide ? `siren:${sirenValide}` : tva && /^[A-Z]{2}[0-9A-Z]{2,13}$/.test(tva) && !tva.startsWith('FR') ? `tva:${tva}` : nomNormalise ? `nom:${nomNormalise}` : null;
+      if (cle === null) return null;
+      const id = identites.get(cle) ?? { cle, nom: partie.nom, nomNormalise, siren: sirenValide, tva: null, identifiants: [], documentIds: [], cotes: new Set<'fournisseur' | 'client'>() };
+      identites.set(cle, id);
+      id.nom ??= partie.nom;
+      id.nomNormalise ??= nomNormalise;
+      id.documentIds.push(piece.documentId);
+      id.cotes.add(cote);
+      const ajouter = (nature: IdentifiantTiers['nature'], valeur: string | null) => {
+        if (!valeur) return;
+        const existant = id.identifiants.find((i) => i.nature === nature && i.valeur === valeur);
+        if (existant) existant.documentIds.push(piece.documentId);
+        else id.identifiants.push({ nature, valeur, origine: 'piece', documentIds: [piece.documentId] });
+      };
+      ajouter('siren', sirenValide);
+      const siret = compact(partie.siret);
+      ajouter('siret', siret && validerSiret(siret).valide ? siret : null);
+      ajouter('tva', tva);
+      ajouter('nom', partie.nom?.trim() || null);
+      if (tva) id.tva ??= tva;
+      return id;
+    };
+    let tvaTiers: string | null = null;
+    if (sens === 'vente') {
+      // Vente : le tiers est le DESTINATAIRE. Il n'est retenu que si rien, sur la pièce, ne contredit le sens.
+      const sirenDestinataire = sirenDePartie(destinataire);
+      if (lu.incoherence) motifTiers = `${lu.motif} Le client n’est pas identifié par la pièce.`;
+      else if (siren && sirenDossier && siren !== sirenDossier) motifTiers = 'L’émetteur lu sur la pièce n’est pas le dossier : la pièce est peut-être une facture d’achat mal qualifiée. Le client n’est pas identifié par la pièce.';
+      else if (sirenDestinataire && sirenDossier && sirenDestinataire === sirenDossier) motifTiers = 'Le destinataire lu sur la pièce est le dossier lui-même : la pièce est peut-être une facture d’achat mal qualifiée. Le client n’est pas identifié par la pièce.';
+      else {
+        identite = identifier(destinataire, sirenDestinataire, 'client');
+        tvaTiers = compact(destinataire.tva);
+        if (identite === null) motifTiers = 'Le destinataire n’a pas été lu de façon sûre sur la pièce (ni SIREN, ni numéro de TVA, ni nom) : le client ne peut pas être identifié par la pièce.';
+      }
+    } else if (sens === 'indetermine') motifTiers = lu.incoherence ? `Sens de l’avoir (achat ou vente) non déterminable. ${lu.motif}` : 'Sens de l’avoir (achat ou vente) non déterminable : émetteur ou SIREN du dossier inconnu.';
     else if (siren && sirenDossier && siren === sirenDossier) motifTiers = 'L’émetteur lu sur la pièce est le dossier lui-même : la pièce est peut-être une facture de vente mal qualifiée.';
     else {
-      const tva = compact(piece.emetteurTva);
-      const nomNormalise = normaliserNomTiers(piece.emetteurNom);
-      const cle = siren ? `siren:${siren}` : tva && /^[A-Z]{2}[0-9A-Z]{2,13}$/.test(tva) && !tva.startsWith('FR') ? `tva:${tva}` : nomNormalise ? `nom:${nomNormalise}` : null;
-      if (cle === null) motifTiers = 'Émetteur non lu sur la pièce (ni SIREN, ni numéro de TVA, ni nom).';
-      else {
-        identite = identites.get(cle) ?? { cle, nom: piece.emetteurNom, nomNormalise, siren, tva: null, identifiants: [], documentIds: [] };
-        identites.set(cle, identite);
-        identite.nom ??= piece.emetteurNom;
-        identite.nomNormalise ??= nomNormalise;
-        identite.documentIds.push(piece.documentId);
-        const ajouter = (nature: IdentifiantTiers['nature'], valeur: string | null) => {
-          if (!valeur) return;
-          const existant = identite!.identifiants.find((i) => i.nature === nature && i.valeur === valeur);
-          if (existant) existant.documentIds.push(piece.documentId);
-          else identite!.identifiants.push({ nature, valeur, origine: 'piece', documentIds: [piece.documentId] });
-        };
-        ajouter('siren', siren);
-        const siret = compact(piece.emetteurSiret);
-        ajouter('siret', siret && validerSiret(siret).valide ? siret : null);
-        ajouter('tva', tva);
-        ajouter('nom', piece.emetteurNom?.trim() || null);
-        if (tva) identite.tva ??= tva;
-      }
+      identite = identifier({ nom: piece.emetteurNom, siren: piece.emetteurSiren, siret: piece.emetteurSiret, tva: piece.emetteurTva }, siren, 'fournisseur');
+      tvaTiers = compact(piece.emetteurTva);
+      if (identite === null) motifTiers = 'Émetteur non lu sur la pièce (ni SIREN, ni numéro de TVA, ni nom).';
     }
     const montant = montantAbsolu(piece.totalTtc);
     const fiche: FicheFacture = {
       id: piece.documentId, nomFichier: piece.nomFichier, versionPiece: piece.versionPiece, versionExtraction: piece.versionExtraction, statutExtraction: piece.statutExtraction, type, sens,
       numero: piece.numero, dateEmission: piece.dateEmission, dateEcheance: piece.dateEcheance, totalHt: piece.totalHt, totalTva: piece.totalTva, totalTtc: piece.totalTtc,
       montant: montant ? versChaine(montant) : null, devise: piece.devise,
-      tiersPiece: identite ? { cle: identite.cle, nom: identite.nom, siren: identite.siren, tva: compact(piece.emetteurTva) } : null, motifTiers, tiersCle: null,
+      tiersPiece: identite ? { cle: identite.cle, nom: identite.nom, siren: identite.siren, tva: tvaTiers } : null,
+      roleTiersPiece: identite ? (sens === 'vente' ? 'destinataire' : 'emetteur') : null, sensLu: lu.sens, motifSensLu: lu.motif, motifTiers, tiersCle: null,
       comptabilisation: { statut: 'non_recherche', motif: null, ecriture: null, criteres: null, propositions: [] },
       imputations: [], propositionsImputation: [], imputeSur: [], montantRegle: null, resteDu: null, etat: 'non_determinable', motifEtat: null, echue: null, joursDeRetard: null, suspicions: [], reserves: [], preuves: [],
     };
     if (piece.statutExtraction === 'projet') fiche.reserves.push('Extraction non validée par un réviseur : les champs lus sur la pièce sont un projet.');
+    if (piece.nature !== 'avoir' && lu.sens !== 'indetermine' && lu.sens !== sens) {
+      fiche.reserves.push(`La pièce est qualifiée « ${sens === 'vente' ? 'facture de vente' : 'facture d’achat'} » mais ses identifiants indiquent ${lu.sens === 'vente' ? 'une vente' : 'un achat'} : ${lu.motif}`);
+    }
     if (piece.devise === null) fiche.reserves.push('Devise non lue sur la pièce : la pièce est traitée dans la devise du dossier.');
     travaux.push({ piece, fiche, identite, montant, numero: normaliserReference(piece.numero), ligne: null, forts: [] });
   }
@@ -299,7 +332,8 @@ export function suivreTiersEtFactures(demande: DemandeTiersFactures): ResultatTi
     if (effectifs.has(id.cle) || !id.nomNormalise) continue;
     const candidats = (parNom.get(id.nomNormalise) ?? [])
       .map((c) => comptables.get(c)!.fiche)
-      .filter((f) => f.type !== 'client' && !infirmesTiers.has(`${f.cle}\u0001${id.cle}`))
+      // Un émetteur d'achat ne se propose pas sur un compte purement client, ni un destinataire de vente sur un compte purement fournisseur.
+      .filter((f) => (f.type === 'mixte' || f.type === 'indetermine' || id.cotes.has(f.type)) && !infirmesTiers.has(`${f.cle}\u0001${id.cle}`))
       .sort((a, b) => a.cle.localeCompare(b.cle));
     if (candidats.length === 0) continue;
     proposes.set(id.cle, candidats.map((c) => c.cle));
@@ -653,7 +687,7 @@ export function suivreTiersEtFactures(demande: DemandeTiersFactures): ResultatTi
     const lignes = [...new Map(ws.flatMap((w) => (w.ligne ? [w.ligne] : (candidatsDe.get(w.fiche.id) ?? []).map((x) => x.t))).map((t) => [t.l.id, t])).values()];
     suspicions.set(cle, {
       cle, type: 'pieces_multiples', tiers: premier.identite?.cle ?? null, reference: premier.fiche.numero, montant: versChaine(premier.montant!), ecritures: lignes.map(refEcriture), documentIds: ids,
-      explication: `${ws.length} pièces distinctes portent la même facture (même ${premier.identite ? 'émetteur' : 'sens, émetteur non déterminable'}, même numéro, même montant). Ce ne sont ni un doublon binaire (fichiers différents) ni des versions d’une même pièce : si chacune est comptabilisée, la facture l’est deux fois.`,
+      explication: `${ws.length} pièces distinctes portent la même facture (même ${premier.identite ? (premier.fiche.roleTiersPiece === 'destinataire' ? 'destinataire' : 'émetteur') : 'sens, émetteur non déterminable'}, même numéro, même montant). Ce ne sont ni un doublon binaire (fichiers différents) ni des versions d’une même pièce : si chacune est comptabilisée, la facture l’est deux fois.`,
       statut: statutSuspicion(cle),
     });
   }
@@ -666,7 +700,7 @@ export function suivreTiersEtFactures(demande: DemandeTiersFactures): ResultatTi
   for (const id of identites.values()) {
     if (effectifs.has(id.cle)) continue;
     fiches.push({
-      cle: `piece:${id.cle}`, origine: 'piece', type: 'fournisseur', nom: id.nom ?? id.cle, compteAuxiliaire: null, comptesGeneraux: [], sansAuxiliaire: false, libelles: [], identifiants: id.identifiants, tiersPieces: [],
+      cle: `piece:${id.cle}`, origine: 'piece', type: id.cotes.size === 2 ? 'mixte' : id.cotes.has('client') ? 'client' : 'fournisseur', nom: id.nom ?? id.cle, compteAuxiliaire: null, comptesGeneraux: [], sansAuxiliaire: false, libelles: [], identifiants: id.identifiants, tiersPieces: [],
       homonymes: [], totalDebit: null, totalCredit: null, solde: null, nbLignes: 0, nbEcritures: 0, pieces: [],
     });
   }

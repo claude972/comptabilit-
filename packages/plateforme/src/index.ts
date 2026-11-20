@@ -12,4 +12,5 @@ export * from './jeu-sauvegarde.js';
 export * from './agregation-bancaire.js';
 export * from './web-push.js';
 export * from './notifications-poussees.js';
+export * from './rotation-secrets.js';
 export * from './simulateur-poussees.js';

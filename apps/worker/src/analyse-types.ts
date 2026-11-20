@@ -3,7 +3,7 @@
  * Ce module ne charge AUCUN lecteur de fichier : le parent peut l'importer sans faire entrer pdf.js ni le lecteur XML
  * dans son propre processus.
  */
-import type { ChampsFacture, PageTexte } from '@comtaple/core';
+import type { ChampsFacture, LigneFec, PageTexte, ProfilCsvBanque, RapportFec, RapportReleve } from '@comtaple/core';
 
 /** Types de pièce dont le décodage a lieu dans l'enfant. Les images ne sont décodées que par le service OCR. */
 export type TypePieceDecodee = 'application/pdf' | 'application/xml';
@@ -26,7 +26,40 @@ export interface ResultatTexte {
 }
 
 /** En-tête de la demande transmise à l'enfant (les octets du fichier suivent, sans être interprétés par le parent). */
-export type DemandeAnalyse = { op: 'piece'; type: TypePieceDecodee } | { op: 'texte' };
+export type DemandeAnalyse =
+  | { op: 'piece'; type: TypePieceDecodee }
+  | { op: 'texte' }
+  | { op: 'releve'; profilCsv: ProfilCsvBanque | null; profilInvalide: boolean }
+  | { op: 'fec'; exerciceDebut: string; exerciceFin: string; nomFichier: string | null };
+
+/** Taille maximale de l'en-tête d'une demande (un profil de colonnes CSV tient très largement dedans). */
+export const ENTETE_MAX_OCTETS = 65_536;
+
+/**
+ * Résultat de la lecture d'un relevé bancaire (camt.053, OFX, CSV, document d'agrégation) par l'enfant. Les refus qui
+ * tiennent au FORMAT (non reconnu, colonnes CSV à confirmer) sont des résultats, pas des échecs de l'enfant.
+ */
+export type ResultatReleve =
+  | { etat: 'lu'; encodage: string; rapport: RapportReleve; profil: ProfilCsvBanque | null; origineProfil: 'confirme' | 'propose_automatiquement' | null; raisons: string[] }
+  | { etat: 'format_inconnu'; format: string }
+  | { etat: 'profil_invalide'; format: string }
+  | { etat: 'profil_a_confirmer'; format: string; raisons: string[] };
+
+/**
+ * Nombre maximal de mouvements acceptés dans un relevé lu par l'enfant. Mesure (docs/architecture.md) : un mouvement
+ * pèse 0,38 à 0,42 Ko dans le résultat JSON sur les jeux synthétiques (libellés courts), et jusqu'à 1 Ko environ avec
+ * des libellés et références à leur longueur maximale ; 200 000 mouvements tiennent donc dans la borne de sortie par
+ * défaut des relevés (192 Mo), soit plusieurs années d'un compte très actif. Au-delà, le relevé est à scinder.
+ */
+export const MOUVEMENTS_MAX_RELEVE = 200_000;
+
+/**
+ * FEC : l'enfant renvoie les lignes normalisées par LOTS, chacun dans une trame (4 octets de longueur puis JSON), et
+ * termine par le rapport. Un lot est émis dès qu'il atteint ce nombre de lignes ou cette taille approximative.
+ */
+export const LIGNES_PAR_LOT_FEC = 500;
+export const OCTETS_PAR_LOT_FEC = 1024 * 1024;
+export type TrameFec = { t: 'lignes'; lignes: LigneFec[] } | { t: 'rapport'; rapport: RapportFec };
 
 /** Nombre minimal de caractères utiles pour considérer qu'une couche texte PDF existe réellement. */
 export const SEUIL_COUCHE_TEXTE = 40;

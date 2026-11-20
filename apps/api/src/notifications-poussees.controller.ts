@@ -14,6 +14,8 @@ const abonnement = z.object({
   keys: z.object({ p256dh: z.string().regex(/^[A-Za-z0-9_-]{80,100}$/), auth: z.string().regex(/^[A-Za-z0-9_-]{16,32}$/) }),
   agentUtilisateur: z.string().max(600).optional(),
 });
+/** Renouvellement par le navigateur : le nouvel abonnement, et l'EMPREINTE (SHA-256) du point d'accès qu'il remplace — jamais l'ancienne adresse. */
+const remplacement = abonnement.extend({ ancienneEmpreinte: z.string().regex(/^[0-9a-f]{64}$/).nullable().optional() });
 const preference = z.object({ active: z.boolean() });
 
 interface LigneAppareil {
@@ -93,7 +95,31 @@ export class NotificationsPousseesController {
   @ApiBody({ schema: schemaOpenApi(abonnement) })
   async abonner(@AccesCourant() acces: Acces, @Body() corps: unknown) {
     if (this.poussees.statut === 'non_configure') throw new ServiceUnavailableException({ message: NON_ACTIVE, code: 'poussees_non_configurees' });
-    const d = valider(abonnement, corps);
+    return this.enregistrer(acces, valider(abonnement, corps), null);
+  }
+
+  @Post('abonnements/remplacement')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Remplacer l’abonnement de cet appareil après son renouvellement par le navigateur',
+    description:
+      'Appelée par le service worker (événement « pushsubscriptionchange ») ou par l’écran (« Réactiver »), avec la session de la personne. « ancienneEmpreinte » est le SHA-256 du point d’accès remplacé — l’ancienne adresse n’est jamais transmise. ' +
+      'ATOMIQUE : dans une seule transaction, l’ancien abonnement DE L’APPELANT dans ce cabinet est retiré (s’il existe) et le nouveau enregistré ; en cas de refus du nouveau (point d’accès non admis, clés invalides, trop d’appareils), rien n’est retiré. ' +
+      'L’abonnement d’une autre personne n’est jamais retiré sur la foi d’une empreinte : « ancienRetire » vaut alors faux et seul le nouvel abonnement est enregistré. Rejouable. Mêmes contrôles et mêmes refus que l’abonnement. ' +
+      'Cet événement est peu fiable selon les navigateurs (disponibilité limitée d’après MDN) : sans lui, l’ancien abonnement est retiré au premier refus du service de notification et l’écran propose de réactiver.',
+  })
+  @ApiBody({ schema: schemaOpenApi(remplacement) })
+  async remplacer(@AccesCourant() acces: Acces, @Body() corps: unknown) {
+    const { ancienneEmpreinte, ...d } = valider(remplacement, corps);
+    return this.enregistrer(acces, d, ancienneEmpreinte ?? null);
+  }
+
+  /**
+   * Enregistre l'abonnement d'un appareil ; avec `ancienneEmpreinte`, retire d'abord, DANS LA MÊME TRANSACTION, l'ancien
+   * abonnement de l'appelant pour cet appareil (renouvellement). Tout refus annule l'ensemble.
+   */
+  private async enregistrer(acces: Acces, d: z.infer<typeof abonnement>, ancienneEmpreinte: string | null) {
+    if (this.poussees.statut === 'non_configure') throw new ServiceUnavailableException({ message: NON_ACTIVE, code: 'poussees_non_configurees' });
     const destination = verifierPointAcces(d.endpoint, this.poussees.origineSimulateur ?? undefined);
     // Le motif est donné, jamais l'adresse soumise.
     if (!destination.ok) throw new BadRequestException({ message: 'Point d’accès refusé : ce n’est pas l’adresse d’un service de notification connu.', code: 'point_acces_refuse', motif: destination.motif });
@@ -103,6 +129,16 @@ export class NotificationsPousseesController {
     const secrets = chiffrerAbonnement(this.poussees, { endpoint: destination.url, p256dh: d.keys.p256dh, auth: d.keys.auth }, associeAbonnement(acces.cabinetId, acces.utilisateurId, empreinte));
     const agent = reduireAgentUtilisateur(d.agentUtilisateur);
     return this.bd.avecContexte(acces, async (tx) => {
+      // Renouvellement : l'ancien abonnement n'est retiré que s'il est CELUI DE L'APPELANT, dans ce cabinet (le filtre
+      // explicite double la politique de la base). Une empreinte ne suffit jamais à retirer l'abonnement d'autrui.
+      let ancienRetire = false;
+      if (ancienneEmpreinte !== null && ancienneEmpreinte !== empreinte) {
+        const r = await tx.execute(sql`delete from abonnements_pousses where empreinte_point_acces = ${ancienneEmpreinte} and utilisateur_id = ${acces.utilisateurId}::uuid and cabinet_id = ${acces.cabinetId}::uuid returning id, service`);
+        for (const ancien of r.rows as Array<{ id: string; service: string }>) {
+          ancienRetire = true;
+          await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'notification_poussee.appareil_retire', cibleType: 'abonnement_pousse', cibleId: ancien.id, details: { service: ancien.service, par: 'navigateur', motif: 'renouvellement' } });
+        }
+      }
       let id: string;
       try {
         // Point de reprise : un refus de la fonction (trop d'appareils) ne doit pas condamner la transaction.
@@ -113,9 +149,9 @@ export class NotificationsPousseesController {
         }
         throw e;
       }
-      await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'notification_poussee.appareil_abonne', cibleType: 'abonnement_pousse', cibleId: id, details: { service: destination.service, agent } });
+      await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'notification_poussee.appareil_abonne', cibleType: 'abonnement_pousse', cibleId: id, details: { service: destination.service, agent, ...(ancienneEmpreinte !== null ? { renouvellement: true, ancienRetire } : {}) } });
       const [a] = (await tx.execute(sql`select id, service, agent, cree_le as "creeLe", dernier_succes_le as "dernierSuccesLe", empreinte_point_acces as empreinte from abonnements_pousses where id = ${id}::uuid`)).rows as unknown as LigneAppareil[];
-      return this.presenter(a!);
+      return ancienneEmpreinte !== null ? { ...this.presenter(a!), ancienRetire } : this.presenter(a!);
     });
   }
 

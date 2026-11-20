@@ -4,7 +4,8 @@ Aide à la révision, par dossier et par exercice. Rien n'est comptabilisé ni l
 reste la référence. Tout ce que le moteur déduit est un PROJET tant qu'une personne habilitée ne l'a pas confirmé.
 Aucune règle de ce document n'a été validée par un expert-comptable (voir « Validations attendues »).
 
-Code : moteur `packages/core/src/tiers/` (`suivreTiersEtFactures`, pur, 36 tests) ; API `apps/api/src/tiers.controller.ts` ;
+Code : moteur `packages/core/src/tiers/` (`suivreTiersEtFactures`, pur, 47 tests) ; destinataire et sens de la pièce
+`packages/core/src/facture/` (`texte.ts`, `xml.ts`, `sens.ts`, 32 tests dans `destinataire.test.ts`) ; API `apps/api/src/tiers.controller.ts` ;
 écran `apps/web/src/app/(app)/dossiers/[id]/tiers/page.tsx` ; tables `liens_tiers`, `liens_factures` (migration 0037).
 
 ## Ce qui est stocké, ce qui est recalculé
@@ -29,13 +30,16 @@ n'est plus appliquée et apparaît dans « Décisions à revoir » avec son moti
   411, 413, 416 (clients). Type : client, fournisseur, ou mixte si le même compte auxiliaire sert des deux côtés. Les
   lignes d'un compte collectif SANS compte auxiliaire sont regroupées par compte général et signalées « détail par tiers
   indisponible ». Solde = Σ débit − Σ crédit des lignes du lot.
-- Tiers de pièce : l'émetteur lu sur une facture d'ACHAT. Clé, par ordre : SIREN valide (lu, ou tiré d'un SIRET ou d'un
-  numéro de TVA français valides), sinon numéro de TVA étranger, sinon nom normalisé. Le destinataire n'est pas extrait des
-  pièces : le client d'une facture de VENTE n'est jamais identifié par la pièce.
+- Tiers de pièce : l'ÉMETTEUR lu sur une pièce d'achat, le DESTINATAIRE lu sur une pièce de vente (`roleTiersPiece`). Clé,
+  par ordre : SIREN valide (lu, ou tiré d'un SIRET ou d'un numéro de TVA français valides), sinon numéro de TVA étranger,
+  sinon nom normalisé. Sans destinataire lu de façon sûre, le client d'une vente n'est pas identifié par la pièce.
+- Pour une vente, le destinataire n'est PAS retenu si la pièce contredit le sens : émetteur lu différent du dossier,
+  destinataire égal au dossier, ou dossier lu des deux côtés. Le motif est affiché (`motifTiers`) et le lien reste à confirmer.
 - Rattachement automatique : uniquement par identifiant fort — un SIREN valide (clé de Luhn) présent dans le numéro ou le
   libellé du compte auxiliaire et égal à celui de la pièce.
 - Sinon : PROPOSITION quand le nom normalisé de l'émetteur (sans accents, casse, ponctuation ni forme juridique) est
-  identique à celui d'un compte auxiliaire fournisseur. Plusieurs comptes de même nom = homonymes : tous listés, aucun
+  identique à celui d'un compte auxiliaire du même côté (fournisseur pour un émetteur d'achat, client pour un destinataire
+  de vente ; un compte mixte convient aux deux). Plusieurs comptes de même nom = homonymes : tous listés, aucun
   retenu, jamais fusionnés. Pas de rapprochement approximatif (inclusion, distance).
 - Une personne confirme (niveau collaboration) ou infirme avec motif (niveau révision). La décision vaut pour le dossier.
 
@@ -56,9 +60,58 @@ Candidates : lignes de la nature attendue, du bon côté (achat → fournisseurs
 
 - **Apparié** (déterministe) : une seule écriture réunit référence + date concordante + tiers identifié ou proposé.
 - **Ambigu** : plusieurs écritures les réunissent, ou plusieurs pièces revendiquent la même écriture → aucune n'est retenue.
-- **À confirmer** : montant égal et référence ou tiers concordant, mais pas tout (cas de toutes les ventes).
+- **À confirmer** : montant égal et référence ou tiers concordant, mais pas tout (cas d'une vente dont le destinataire
+  n'a pas été lu ou est contredit par la pièce).
+- Les ventes suivent exactement les mêmes exigences que les achats, avec le destinataire pour tiers.
 - **Non trouvé / non recherché** : avec le motif (TTC non lu, devise autre que l'euro, aucune écriture…).
 - Une personne confirme (collaboration) ou infirme avec motif (révision) ; un lien confirmé l'emporte.
+
+## Destinataire d'une facture et sens de la pièce
+
+**Factures structurées (Factur-X / CII, UBL).** L'acheteur (groupe BG-7 de la norme EN 16931) est lu aux emplacements
+normalisés ; la source, sa version et sa date de vérification sont dans `SOURCE_FACTURE_ACHETEUR` (`facture/xml.ts`).
+
+| Champ | CII, sous `ram:ApplicableHeaderTradeAgreement/ram:BuyerTradeParty` | UBL 2.1, sous `cac:AccountingCustomerParty/cac:Party` |
+|---|---|---|
+| Nom (BT-44) | `ram:Name` | `cac:PartyLegalEntity/cbc:RegistrationName`, à défaut `cac:PartyName/cbc:Name` (BT-45) |
+| SIREN, SIRET (BT-47, BT-46) | `ram:SpecifiedLegalOrganization/ram:ID`, `ram:GlobalID` | `cac:PartyLegalEntity/cbc:CompanyID`, `cac:PartyIdentification/cbc:ID` |
+| N° de TVA (BT-48) | `ram:SpecifiedTaxRegistration/ram:ID[@schemeID='VA']` | `cac:PartyTaxScheme/cbc:CompanyID` si `cac:TaxScheme/cbc:ID` = VAT |
+| Pays (BT-55) | `ram:PostalTradeAddress/ram:CountryID` | `cac:PostalAddress/cac:Country/cbc:IdentificationCode` |
+
+Un identifiant n'est pris pour un SIREN ou un SIRET que si son attribut `schemeID` le déclare (0002, 0009) : sans schéma,
+il n'est pas interprété. Vérifié en ligne le 2026-11-19 sur les règles et exemples du dépôt de validation CEN/TC 434
+(version 1.3.17), Peppol BIS Billing 3.0 et les listes de codes de la Commission européenne (version 18). Non consultés :
+le texte de la norme (payant), le dossier Factur-X (formulaire), les spécifications externes de la DGFiP (site en
+maintenance ce jour-là : non vérifiées en ligne).
+
+**Factures en texte (couche texte PDF, OCR).** Règles internes, prudentes ; chaque champ porte sa page, sa ligne et sa boîte.
+
+- Un bloc de destinataire s'ouvre sur un repère de FACTURATION en début de ligne : « Client », « Client facturé »,
+  « Destinataire », « Acheteur » (seuls ou suivis de « : »), « Facturé à », « Facturé et livré à », « Adressé à »,
+  « Adresse de facturation ». Il couvre le repère et les cinq lignes suivantes de la même page au plus, et se ferme sur
+  un repère d'émetteur ou sur le début du corps (« Facture », « Date », « Désignation », « Total »…).
+- Nom : le texte qui suit le repère sur sa ligne, sinon la ligne suivante, si c'est un nom plausible (ni adresse, ni
+  téléphone, ni identifiant).
+- Identifiants : SIRET, SIREN (ou RCS), numéro de TVA français, numéro de TVA d'un autre État membre après une étiquette
+  de TVA, lus DANS le bloc ; ou sur une ligne dont l'étiquette les attribue au client (« SIRET client », « N° TVA du
+  client »), où qu'elle soit. Un tel identifiant n'est plus jamais proposé pour l'émetteur.
+- La seule position d'un identifiant sur la page ne suffit jamais.
+
+Abstention (champ vide, motif dans `destinataireAbstention`) : aucun repère ; seul un repère de LIVRAISON (« Livré à »,
+« Adresse de livraison » : le lieu livré n'est pas nécessairement le client facturé) ; aucun identifiant lisible dans le
+bloc ; plusieurs identifiants désignant des entités différentes (deux blocs contradictoires, deux SIREN) ; identifiant
+unique de la pièce (aucun identifiant d'émetteur distinct n'a été lu) ; identifiant du bloc égal à celui de l'émetteur.
+Dans les deux derniers cas et celui des identifiants multiples, rien n'est deviné ; le nom seul peut subsister.
+
+Correction apportée au passage : les repères terminés par « à » (« Facturé à », « Livré à ») n'ouvraient pas la zone
+client de l'extraction de l'émetteur (frontière de mot non reconnue après une lettre accentuée) ; un identifiant du
+client placé sous « Facturé à » pouvait donc être compté parmi les candidats de l'émetteur. Ils l'ouvrent désormais.
+
+**Sens de la pièce** (`determinerSensPiece`, pur) : émetteur = dossier → vente ; destinataire = dossier → achat ; aucun
+des deux → indéterminé, avec le motif ; les deux, ou une partie portant deux SIREN → incohérence signalée. Seuls des SIREN
+à la clé correcte sont comparés (lus, ou tirés d'un SIRET ou d'une TVA française valides) ; le nom n'est jamais un critère.
+Le moteur des tiers garde la nature qualifiée par la personne pour une facture (`sens`) et expose à côté le sens lu
+(`sensLu`, `motifSensLu`) ; une contradiction donne une réserve sur la fiche. Pour un avoir, le sens vient des identifiants.
 
 ## Règlements, avoirs, reste dû
 
@@ -108,8 +161,10 @@ Pages de 50 (mouvements : 100). Un déposant ou un autre cabinet reçoit 404.
 
 ## Limites
 
-- Destinataire non extrait : ventes jamais appariées d'office ; avoirs dont le sens n'est déductible que si le SIREN du
-  dossier et celui de l'émetteur sont connus.
+- Destinataire : lu seulement dans les cas décrits plus haut ; une facture en colonnes (émetteur et client côte à côte
+  sur les mêmes lignes) ou sans repère explicite donne une abstention, donc une vente « à confirmer ». Une correction
+  manuelle des champs d'une pièce ne porte pas encore sur le destinataire. Les extractions antérieures n'ont pas de
+  destinataire tant que la pièce n'est pas réanalysée.
 - Euro seulement : une pièce dans une autre devise n'est pas traitée, et c'est dit. Devise non lue : traitée dans la
   devise du dossier, avec une réserve affichée.
 - Aucune tolérance de montant (escompte, arrondi, retenue) : ces cas passent par une confirmation humaine.
@@ -127,7 +182,8 @@ Pages de 50 (mouvements : 100). Un déposant ou un autre cabinet reçoit 404.
 - Tolérance de 31 jours entre date de pièce et date d'écriture ; longueur minimale de 5 caractères d'un numéro cherché
   dans un libellé.
 - Règle « un lien est déterministe si le tiers n'est que proposé par son nom, dès lors que référence, montant et date
-  concordent ».
+  concordent » — elle vaut désormais aussi pour le client d'une vente, lu comme destinataire.
+- Repères de destinataire retenus dans le texte d'une facture, et refus de « Livré à » comme repère du client facturé.
 - Lecture du lettrage (groupe soldé à plusieurs factures = toutes réglées) et convention de répartition chronologique.
 - Définition de l'échéance « échue » et choix de la clôture comme date d'appréciation par défaut.
 - Critères de la suspicion de double comptabilisation.

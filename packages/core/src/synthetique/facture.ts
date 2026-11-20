@@ -14,6 +14,14 @@ export interface OptionsTexteFactureSynthetique {
   qualite?: 'nette' | 'ocr_degrade' | 'insuffisante' | 'illisible';
   /** Texte libre ajouté en pied de page (ex. tentative d'injection d'instructions). */
   texteParasite?: string;
+  /**
+   * Présentation du client sur la pièce (défaut : `client`) :
+   *  - client : bloc « Client : » avec nom, SIRET et adresse ;
+   *  - facture_a : « Facturé à NOM », SIREN et numéro de TVA du client ;
+   *  - livraison_seule : seul un bloc « Livré à : » (l'extraction doit s'abstenir) ;
+   *  - absent : aucun bloc client.
+   */
+  client?: 'client' | 'facture_a' | 'livraison_seule' | 'absent';
 }
 
 export interface AttenduFactureSynthetique {
@@ -25,6 +33,11 @@ export interface AttenduFactureSynthetique {
   emetteurSiren: string | null;
   emetteurSiret: string | null;
   emetteurTva: string | null;
+  destinataireNom: string | null;
+  destinataireSiren: string | null;
+  destinataireSiret: string | null;
+  destinataireTva: string | null;
+  destinatairePays: string | null;
   totalHt: string | null;
   totalTva: string | null;
   totalTtc: string | null;
@@ -62,6 +75,10 @@ export function genererTexteFactureSynthetique(options: OptionsTexteFactureSynth
   const tva = `FR${String(cle).padStart(2, '0')}${siren}`;
   const sirenClient = avecCleLuhn(String(alea.entier(10_000_000, 99_999_999)));
   const siretClient = avecCleLuhn(`${sirenClient}0001`);
+  const cleClient = (12 + 3 * (Number(sirenClient) % 97)) % 97;
+  const tvaClient = `FR${String(cleClient).padStart(2, '0')}${sirenClient}`;
+  const nomClient = 'SOCIETE CLIENTE FICTIVE SAS';
+  const client = options.client ?? 'client';
   const nom = `ATELIER FICTIF ${String(alea.entier(1, 9999)).padStart(4, '0')} SARL`;
   const numero = `${type === 'avoir' ? 'AV' : 'FA'}-2026-${String(alea.entier(1, 9999)).padStart(4, '0')}`;
   const emission = isoDepuisJours(joursDepuisEpoque('2026-01-01') + alea.entier(0, 300));
@@ -80,7 +97,7 @@ export function genererTexteFactureSynthetique(options: OptionsTexteFactureSynth
     const bruit = ['~~ #@ l1l1 O0O0 ¤¤ %%', 'FACTVRE ??? n. ---', 'T0TAL ,,,, ;;;; ##', '|||| //// \\\\ ====', ...pied].join('\n');
     return {
       pages: [{ page: 1, texte: bruit }],
-      attendu: { typeDocument: 'inconnu', numero: null, dateEmission: null, dateEcheance: null, emetteurNom: null, emetteurSiren: null, emetteurSiret: null, emetteurTva: null, totalHt: null, totalTva: null, totalTtc: null, devise: null, ventilationTva: [] },
+      attendu: { typeDocument: 'inconnu', numero: null, dateEmission: null, dateEcheance: null, emetteurNom: null, emetteurSiren: null, emetteurSiret: null, emetteurTva: null, destinataireNom: null, destinataireSiren: null, destinataireSiret: null, destinataireTva: null, destinatairePays: null, totalHt: null, totalTva: null, totalTtc: null, devise: null, ventilationTva: [] },
       description: 'Pièce illisible : bruit d’OCR, aucun champ exploitable.',
     };
   }
@@ -88,7 +105,7 @@ export function genererTexteFactureSynthetique(options: OptionsTexteFactureSynth
     const texte = ['FACTURE', 'Merci de votre confiance.', `Total TTC : ${montantFr(ttc)} €`, ...pied].join('\n');
     return {
       pages: [{ page: 1, texte }],
-      attendu: { typeDocument: 'facture', numero: null, dateEmission: null, dateEcheance: null, emetteurNom: null, emetteurSiren: null, emetteurSiret: null, emetteurTva: null, totalHt: null, totalTva: null, totalTtc: ttc.toFixed(2), devise: 'EUR', ventilationTva: [] },
+      attendu: { typeDocument: 'facture', numero: null, dateEmission: null, dateEcheance: null, emetteurNom: null, emetteurSiren: null, emetteurSiret: null, emetteurTva: null, destinataireNom: null, destinataireSiren: null, destinataireSiret: null, destinataireTva: null, destinatairePays: null, totalHt: null, totalTva: null, totalTtc: ttc.toFixed(2), devise: 'EUR', ventilationTva: [] },
       description: 'Pièce insuffisante : ni numéro, ni date, ni émetteur identifiable, ni total HT.',
     };
   }
@@ -102,11 +119,13 @@ export function genererTexteFactureSynthetique(options: OptionsTexteFactureSynth
     `SIRET : ${degrade ? ocr(espace(siret)) : espace(siret)} - RCS Paris ${espace(siren)}`,
     `N° TVA intracommunautaire : ${tva.slice(0, 2)} ${tva.slice(2, 4)} ${tva.slice(4)}`,
     '',
-    'Client :',
-    'SOCIETE CLIENTE FICTIVE SAS',
-    `SIRET : ${espace(siretClient)}`,
-    '3 avenue du Test - 69000 Lyon',
-    '',
+    ...(client === 'client'
+      ? ['Client :', nomClient, `SIRET : ${espace(siretClient)}`, '3 avenue du Test - 69000 Lyon', '']
+      : client === 'facture_a'
+        ? [`Facturé à ${nomClient}`, '3 avenue du Test - 69000 Lyon', `SIREN : ${espace(sirenClient)}`, `N° TVA : ${tvaClient}`, '']
+        : client === 'livraison_seule'
+          ? ['Livré à :', nomClient, `SIRET : ${espace(siretClient)}`, '3 avenue du Test - 69000 Lyon', '']
+          : []),
     titre,
     type === 'avoir' ? `Date de l'avoir : ${dateFr(emission)}` : `Date de facture : ${dateFr(emission)}`,
     ...(type === 'avoir' ? [] : [`Date d'échéance : ${dateFr(echeance)}`]),
@@ -134,6 +153,11 @@ export function genererTexteFactureSynthetique(options: OptionsTexteFactureSynth
       emetteurSiren: siren,
       emetteurSiret: degrade && /[01]/.test(siret) ? null : siret,
       emetteurTva: tva,
+      destinataireNom: client === 'client' || client === 'facture_a' ? nomClient : null,
+      destinataireSiren: client === 'facture_a' ? sirenClient : null,
+      destinataireSiret: client === 'client' ? siretClient : null,
+      destinataireTva: client === 'facture_a' ? tvaClient : null,
+      destinatairePays: null,
       totalHt: ht.toFixed(2),
       totalTva: totalTva.toFixed(2),
       totalTtc: ttcAltere ? null : ttc.toFixed(2),

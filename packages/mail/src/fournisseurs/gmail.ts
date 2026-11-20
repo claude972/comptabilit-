@@ -4,6 +4,7 @@
  */
 import { ErreurCurseurExpire, ErreurOAuth, ErreurProtocole } from '../erreurs.js';
 import { extraireAdresses } from '../extrait.js';
+import { assainirNomPiece, LIMITES_MESSAGE } from '../pieces.js';
 import {
   appelerPointJeton,
   normaliserScopes,
@@ -62,11 +63,17 @@ interface Collecte {
   texte: string | null;
   html: string | null;
   pieces: PieceJointeBrute[];
+  /** Nombre de parties déjà visitées (borne LIMITES_MESSAGE.parties). */
+  parties: number;
 }
 
-/** Parcourt l'arbre MIME : premier text/plain, premier text/html, et toutes les parties portant un nom de fichier. */
+/**
+ * Parcourt l'arbre des parties tel que Gmail le rend en JSON (le décodage MIME lui-même est fait par Google) : premier
+ * text/plain, premier text/html, et les parties portant un nom de fichier. Parcours borné en profondeur, en nombre de
+ * parties et en nombre de pièces : au-delà, le reste du message est ignoré.
+ */
 function parcourir(partie: Record<string, unknown>, collecte: Collecte, profondeur = 0): void {
-  if (profondeur > 20) return;
+  if (profondeur > LIMITES_MESSAGE.profondeurParties || ++collecte.parties > LIMITES_MESSAGE.parties) return;
   const type = (chaine(partie['mimeType']) ?? '').toLowerCase();
   const nom = chaine(partie['filename']) ?? '';
   const corps = (typeof partie['body'] === 'object' && partie['body'] !== null ? partie['body'] : {}) as Record<string, unknown>;
@@ -74,12 +81,12 @@ function parcourir(partie: Record<string, unknown>, collecte: Collecte, profonde
     const idPartie = chaine(partie['partId']);
     const idTelechargement = chaine(corps['attachmentId']);
     const donnees = chaine(corps['data']);
-    if (idPartie !== null && (idTelechargement !== null || donnees !== null)) {
+    if (idPartie !== null && (idTelechargement !== null || donnees !== null) && collecte.pieces.length < LIMITES_MESSAGE.pieces) {
       collecte.pieces.push({
         // `partId` est stable pour un message donné ; `attachmentId` peut changer d'un appel à l'autre.
         id: idPartie,
         reference: idTelechargement !== null ? `id:${idTelechargement}` : `donnees:${donnees ?? ''}`,
-        nom,
+        nom: assainirNomPiece(nom),
         typeMime: type,
         taille: typeof corps['size'] === 'number' ? corps['size'] : 0,
         enLigne: /^\s*inline\b/i.test(enTete(partie, 'content-disposition') ?? ''),
@@ -254,7 +261,7 @@ export function creerFournisseurGmail(configuration: ConfigurationGmail): Fourni
       exigerSucces(reponse, 'users.messages.get');
       const corps = await lireJson(reponse);
       const charge = (typeof corps['payload'] === 'object' && corps['payload'] !== null ? corps['payload'] : {}) as Record<string, unknown>;
-      const collecte: Collecte = { texte: null, html: null, pieces: [] };
+      const collecte: Collecte = { texte: null, html: null, pieces: [], parties: 0 };
       parcourir(charge, collecte);
       const dateInterne = Number(chaine(corps['internalDate']) ?? Number.NaN);
       if (Number.isNaN(dateInterne)) throw new ErreurProtocole('internalDate absent du message Gmail.');

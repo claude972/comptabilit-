@@ -28,6 +28,18 @@
  *   node scripts/editeur.mjs fin-de-contrat-objets <cabinetId>
  *       SIMULATION uniquement : liste les objets du stockage sous les préfixes du cabinet. La suppression réelle des objets
  *       n'est pas branchée dans cet outil (fonction objetsFinDeContrat, jamais exercée contre un stockage réel).
+ *   node scripts/editeur.mjs secrets-rechiffrer [--cabinet=<cabinetId>] [--limite=<nombre de lignes>] [--appliquer]
+ *       Rotation de JETONS_CLE_CHIFFREMENT : rechiffre sous le secret COURANT les jetons de la collecte par mail et les
+ *       abonnements aux notifications poussées encore chiffrés avec un secret de JETONS_CLES_ANCIENNES (lus dans
+ *       l'environnement). SIMULATION sans « --appliquer ». Une ligne par transaction, vérifiée après écriture ; rejouable ;
+ *       une ligne illisible est signalée, jamais écrasée. Ne modifie AUCUNE configuration : l'ancien secret se retire à la
+ *       main, quand le compte rendu annonce zéro ligne restante. Retour arrière : relancer avec les deux secrets inversés.
+ *   node scripts/editeur.mjs ia-etat
+ *       Lecture seule : dernières vérifications de connexion de la passerelle IA (aucun appel sortant).
+ *   node scripts/editeur.mjs ia-verifier --appel-reel
+ *       ÉMET DEUX APPELS RÉELS au fournisseur d'IA (IA_OVH_ENDPOINT, IA_OVH_JETON de l'environnement) : un coût et un flux
+ *       sortant. Enregistre le résultat ; « connecté » seulement sur l'hôte officiel avec les modèles figés. Sans
+ *       « --appel-reel » : rien n'est appelé. Valable IA_PREUVE_VALIDITE_JOURS jours (30 par défaut), jamais relancée seule.
  *   node scripts/editeur.mjs sources
  *   node scripts/editeur.mjs surveiller "<émetteur>" "<libellé>" <url https d'un domaine officiel>
  *   node scripts/editeur.mjs evolutions [a_qualifier|verifiee|ecartee]
@@ -176,6 +188,56 @@ try {
       console.log(`SIMULATION : ${r.cles.length} objet(s) sous ${r.prefixes.join(' et ')} (empreinte de la liste : ${r.empreinteListeCles}). Rien n’a été supprimé.`);
       for (const k of r.cles.slice(0, 20)) console.log(`  ${k}`);
       if (r.cles.length > 20) console.log(`  … et ${r.cles.length - 20} autre(s)`);
+      break;
+    }
+    case 'secrets-rechiffrer': {
+      const option = (nom) => args.find((x) => x.startsWith(`--${nom}=`))?.slice(nom.length + 3);
+      const inconnus = args.filter((x) => x !== '--appliquer' && !x.startsWith('--cabinet=') && !x.startsWith('--limite='));
+      if (inconnus.length) exiger(99, 'secrets-rechiffrer [--cabinet=<cabinetId>] [--limite=<nombre>] [--appliquer]');
+      const { rechiffrerSecrets } = await import('../packages/plateforme/dist/rotation-secrets.js');
+      const appliquer = args.includes('--appliquer');
+      // Les secrets viennent de l'environnement et ne sont jamais affichés : seuls des identifiants de clé le sont.
+      const r = await rechiffrerSecrets(client, { JETONS_CLE_CHIFFREMENT: process.env.JETONS_CLE_CHIFFREMENT ?? '', JETONS_CLES_ANCIENNES: process.env.JETONS_CLES_ANCIENNES ?? '' }, {
+        appliquer, cabinetId: option('cabinet'), limite: option('limite') === undefined ? undefined : Number(option('limite')),
+      });
+      console.log(`Clés courantes : jetons mail ${r.clesCourantes.jetonsMail}, abonnements poussés ${r.clesCourantes.abonnementsPousses} ; ${r.anciensSecretsConfigures} ancien(s) secret(s) configuré(s) en déchiffrement.`);
+      console.table(r.tables.map((t) => ({ table: t.table, lignes: t.lignes, 'déjà sous la clé courante': t.dejaSousCleCourante, [appliquer ? 'rechiffrées' : 'à rechiffrer']: appliquer ? t.rechiffrees : t.restantes, restantes: t.restantes, illisibles: t.illisibles.length, 'échecs de vérification': t.echecsVerification.length })));
+      for (const t of r.tables) {
+        for (const i of t.illisibles) console.log(`ILLISIBLE (non modifiée) : ${t.table} ${i.id}, clé ${i.idCle || 'inconnue'} — aucun secret configuré ne la déchiffre.`);
+        for (const id of t.echecsVerification) console.log(`VÉRIFICATION EN ÉCHEC (écriture annulée, ancien chiffré intact) : ${t.table} ${id}`);
+      }
+      if (r.demandesOauthEnCours) console.log(`${r.demandesOauthEnCours} demande(s) de connexion mail en cours : non rechiffrées (quelques minutes de vie), à relancer par leurs auteurs après la bascule.`);
+      if (!appliquer) console.log('SIMULATION : rien n’a été modifié. Ajouter « --appliquer » pour rechiffrer.');
+      else if (r.interrompu) console.log('Passage INTERROMPU par « --limite » : relancer la commande pour reprendre (les lignes déjà rechiffrées ne sont pas refaites).');
+      console.log(
+        r.ancienSecretRetirable
+          ? `Plus aucune ligne${option('cabinet') ? ' de ce cabinet' : ''} ne dépend d’un ancien secret${appliquer ? '' : ' (constat de la simulation)'}. L’outil ne retire rien : c’est à l’exploitant de vider JETONS_CLES_ANCIENNES puis de relancer API et worker${option('cabinet') ? ' — après un passage SANS « --cabinet »' : ''}.`
+          : 'NE PAS retirer l’ancien secret de JETONS_CLES_ANCIENNES : des lignes en dépendent encore (restantes, illisibles ou en échec).',
+      );
+      break;
+    }
+    case 'ia-etat': {
+      const { dernieresVerificationsIa } = await import('../packages/plateforme/dist/ia.js');
+      const lignes = await dernieresVerificationsIa(client, 10);
+      if (!lignes.length) console.log('Aucune vérification de connexion enregistrée : le statut ne peut pas être « connecté ».');
+      else console.table(lignes.map((v) => ({ 'vérifiée le': v.verifieeLe, résultat: v.resultat, hôte: v.hote, langage: v.modeleLangage ?? '', vecteurs: v.modeleEmbeddings ?? '', dimensions: v.dimensionsEmbeddings ?? '', 'valide jusqu’au': v.valideJusquAu, configuration: v.empreinteConfiguration.slice(0, 12) })));
+      console.log('Lecture seule, aucun appel sortant. La preuve retenue par l’API et le worker est la plus récente pour LEUR configuration, si elle est « connecte » et non périmée.');
+      break;
+    }
+    case 'ia-verifier': {
+      if (!args.includes('--appel-reel') || args.length !== 1) {
+        console.error('Cette commande ÉMET DEUX APPELS RÉELS au fournisseur d’IA (un coût, un flux sortant). Pour la lancer : node scripts/editeur.mjs ia-verifier --appel-reel');
+        process.exitCode = 2;
+        break;
+      }
+      const { verifierConnexionIaConfiguree } = await import('../packages/plateforme/dist/ia.js');
+      const jours = process.env.IA_PREUVE_VALIDITE_JOURS ? Number(process.env.IA_PREUVE_VALIDITE_JOURS) : undefined;
+      const r = await verifierConnexionIaConfiguree(client, { IA_OVH_ENDPOINT: process.env.IA_OVH_ENDPOINT, IA_OVH_JETON: process.env.IA_OVH_JETON, IA_PREUVE_VALIDITE_JOURS: jours });
+      console.log(`Statut : ${r.statut}${r.raisons.length ? ` — ${r.raisons.join(' ')}` : ''}`);
+      if (!r.enregistree) console.log('Rien n’a été enregistré (aucun fournisseur configuré : IA_OVH_ENDPOINT et IA_OVH_JETON sont requis ; aucun appel n’a été émis).');
+      else if (r.resultat === 'connecte') console.log(`Preuve enregistrée : hôte ${r.verification.hote}, valable jusqu’au ${r.verification.valideJusquAu}. L’API et le worker la prennent en compte en moins d’une minute s’ils ont la MÊME configuration. « Connecté » atteste que le service répond, pas la qualité du modèle.`);
+      else console.log(`Vérification ${r.resultat === 'echec' ? 'en ÉCHEC' : 'REFUSÉE'} : enregistrée comme telle. Toute preuve antérieure de cette configuration est désormais sans effet ; le statut reste « configuré, non vérifié ».`);
+      if (r.resultat !== 'connecte') process.exitCode = 1;
       break;
     }
     case 'sources':

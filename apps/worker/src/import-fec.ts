@@ -1,17 +1,29 @@
-import { analyserFec, type LigneFec } from '@comtaple/core';
+import type { LigneFec } from '@comtaple/core';
 import { and, eq, inArray, journaliser, ne, schema as s, sql } from '@comtaple/db';
 import type { TacheImportFec } from '@comtaple/plateforme';
+import { analyserFecIsole, type CauseEchec, motifEchecFec } from './analyse-isolee.js';
 import type { Contexte } from './contexte.js';
 
 const TAILLE_LOT = 1000;
 
 /** Levée quand l'utilisateur a annulé l'import pendant son exécution. */
 class ImportAnnule extends Error {}
+/** Levée quand l'enfant d'analyse n'a pas abouti (borne dépassée, plantage, sortie invalide) : la transaction est abandonnée. */
+class AnalyseInterrompue extends Error {
+  constructor(readonly raison: CauseEchec) {
+    super(`analyse isolée interrompue : ${raison}`);
+  }
+}
 
 /**
  * Import d'un FEC ou d'une extraction de travail : lecture en flux, normalisation, rapport ligne par ligne.
  * Idempotent : relancer la tâche remplace les lignes de CE lot sans jamais dupliquer.
  * L'original reste intact dans le stockage ; seules les lignes normalisées sont en base.
+ *
+ * ISOLEMENT : ce processus ne DÉCODE pas le fichier. Les octets passent du stockage à un processus enfant borné
+ * (`analyse-isolee.ts`), qui renvoie les lignes normalisées par lots, validés par schéma, avec contre-pression : la
+ * mémoire du worker ne porte qu'un lot à la fois. Un enfant qui plante, boucle ou dépasse ses bornes met le lot en échec
+ * avec un motif en français, sans nouvel essai automatique ; aucune ligne n'est conservée (transaction abandonnée).
  */
 export async function importerFec(c: Contexte, t: TacheImportFec): Promise<void> {
   const ctx = { cabinetId: t.cabinetId };
@@ -79,15 +91,24 @@ export async function importerFec(c: Contexte, t: TacheImportFec): Promise<void>
           if (etat === 'annule') throw new ImportAnnule();
         }
       };
-      const rapport = await analyserFec(flux as AsyncIterable<Uint8Array>, {
-        exerciceDebut: exercice.debut,
-        exerciceFin: exercice.fin,
-        ...(nomFichier ? { nomFichier } : {}),
-        surLigne: async (ligne) => {
-          tampon.push(ligne);
-          if (tampon.length >= TAILLE_LOT) await vider();
+      const analyse = await analyserFecIsole(
+        flux as AsyncIterable<Uint8Array>,
+        {
+          exerciceDebut: exercice.debut,
+          exerciceFin: exercice.fin,
+          nomFichier: nomFichier ?? null,
+          // Les lots de l'enfant sont redécoupés ligne à ligne : insertions et points de progression inchangés.
+          surLot: async (lignes) => {
+            for (const ligne of lignes) {
+              tampon.push(ligne);
+              if (tampon.length >= TAILLE_LOT) await vider();
+            }
+          },
         },
-      });
+        { dureeMaxMs: c.cfg.ANALYSE_FEC_DUREE_MAX_MS, tasMaxMo: c.cfg.ANALYSE_TAS_MAX_MO, memoireMaxMo: c.cfg.ANALYSE_MEMOIRE_MAX_MO, ...c.analyseFec },
+      );
+      if (!analyse.ok) throw new AnalyseInterrompue(analyse.cause);
+      const rapport = analyse.valeur;
       await vider();
 
       let executionId: string | null = null;
@@ -158,6 +179,21 @@ export async function importerFec(c: Contexte, t: TacheImportFec): Promise<void>
     void rapport;
   } catch (e) {
     if (e instanceof ImportAnnule) return; // annulation demandée : statut déjà « annule », rien à signaler comme échec
+    if (e instanceof AnalyseInterrompue) {
+      // Le motif technique va au journal du worker, jamais à l'utilisateur. Pas de nouvel essai : le même fichier
+      // dépasserait les mêmes bornes ; l'utilisateur peut relancer l'import (statut « echec » repris par la prise en charge).
+      console.error(`[fec] analyse isolée interrompue pour le lot ${lot.id} : ${e.raison}`);
+      const motif = motifEchecFec(e.raison);
+      await c.bd.avecContexte(ctx, async (tx) => {
+        const [maj] = await tx
+          .update(s.lotsImport)
+          .set({ statut: 'echec', progression: 0, rapport: { nomFichier, lisible: false, motif }, termineLe: sql`now()` })
+          .where(and(eq(s.lotsImport.id, lot.id), ne(s.lotsImport.statut, 'annule')))
+          .returning({ id: s.lotsImport.id });
+        if (maj) await journaliser(tx, { cabinetId: t.cabinetId, acteurType: 'systeme', action: 'import.fec.echec', cibleType: 'lot_import', cibleId: lot.id, entiteId: lot.entiteId, details: { motif } });
+      });
+      return;
+    }
     await c.bd.avecContexte(ctx, (tx) =>
       tx
         .update(s.lotsImport)

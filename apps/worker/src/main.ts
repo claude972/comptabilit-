@@ -9,7 +9,7 @@ import { executerControlesExecution } from './controles.js';
 import { genererDossierRevision } from './dossier-revision.js';
 import { importerFec } from './import-fec.js';
 import { planifierMail, traiterTacheMail } from './mail.js';
-import { livrerPoussee, releverEnvoisPousses } from './poussees.js';
+import { entretenirAbonnementsPousses, livrerPoussee, releverEnvoisPousses } from './poussees.js';
 import { rattraper } from './rattrapage.js';
 import { genererRestitution } from './restitution.js';
 import { genererRestitutionCabinet } from './restitution-cabinet.js';
@@ -124,6 +124,16 @@ const minuteriePoussees =
             .catch((e) => console.error(`notifications poussées : relevé en échec : ${e.message}`)),
         cfg.PUSH_PERIODE_RELEVE_S * 1000,
       );
+// Entretien des abonnements (membres dont l'accès est arrivé à son terme, abonnements inactifs trop longtemps) : une
+// fois peu après le démarrage, puis toutes les heures. Écritures en base seulement, aucun appel sortant.
+const entretienPoussees = () =>
+  void entretenirAbonnementsPousses(c)
+    .then((b) => {
+      if (b.appartenanceInactive || b.inactivite) console.log(`notifications poussées : entretien — ${b.appartenanceInactive} abonnement(s) retiré(s) (appartenance inactive), ${b.inactivite} (inactivité de plus de ${cfg.PUSH_INACTIVITE_MAX_JOURS} jours)`);
+    })
+    .catch((e) => console.error(`notifications poussées : entretien en échec : ${e.message}`));
+setTimeout(entretienPoussees, 30_000).unref();
+const minuterieEntretienPoussees = setInterval(entretienPoussees, 3600_000);
 console.log(`Notifications poussées : ${poussees.statut === 'non_configure' ? 'non configurées (aucun abonnement accepté, aucun envoi)' : poussees.statut === 'simule' ? 'SIMULATEUR de test (aucun service réel contacté)' : 'configurées, non vérifiées sur un appareil réel'}.`);
 
 // Veille réglementaire : une passe par jour sur les sources officielles surveillées.
@@ -149,6 +159,7 @@ console.log(`Worker Comtaple démarré (files : documents, comptabilite, exports
 async function arreter() {
   clearInterval(minuterie);
   if (minuteriePoussees) clearInterval(minuteriePoussees);
+  clearInterval(minuterieEntretienPoussees);
   await Promise.all(workers.map((w) => w.close()));
   await c.taches.fermer();
   await c.bd.fermer();

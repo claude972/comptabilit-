@@ -168,6 +168,15 @@ export class PasserelleIa {
   }
 
   /**
+   * Remplace la preuve retenue par celle que l'intégrateur a relue de son stockage (ou `null` : aucune preuve valable).
+   * La preuve est RÉÉVALUÉE à chaque lecture du statut (hôte officiel, modèles figés, dimension) : en retenir une ne
+   * suffit jamais à obtenir `connecte`, et un simulateur reste `simule` quoi qu'on lui présente.
+   */
+  retenirPreuve(preuve: PreuveConnexionIa | null): void {
+    this.#preuve = preuve;
+  }
+
+  /**
    * Fait un appel minimal de complétion et un d'embeddings, puis réévalue le statut. `connecte` n'est obtenu
    * que si les deux réussissent sur l'hôte officiel avec les modèles figés. La preuve renvoyée est à conserver
    * par l'intégrateur et à repasser au constructeur (`preuveConnexion`).

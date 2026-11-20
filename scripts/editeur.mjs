@@ -34,6 +34,12 @@
  *       l'environnement). SIMULATION sans « --appliquer ». Une ligne par transaction, vérifiée après écriture ; rejouable ;
  *       une ligne illisible est signalée, jamais écrasée. Ne modifie AUCUNE configuration : l'ancien secret se retire à la
  *       main, quand le compte rendu annonce zéro ligne restante. Retour arrière : relancer avec les deux secrets inversés.
+ *   node scripts/editeur.mjs vapid-retirer-abonnements [--cabinet=<cabinetId>] [--limite=<nombre>] [--appliquer]
+ *       Après une rotation des clés VAPID (PUSH_VAPID_CLE_PUBLIQUE de l'environnement = clé COURANTE) : retire les abonnements aux
+ *       notifications poussées dont l'empreinte de clé VAPID enregistrée est connue et DIFFÉRENTE de la courante (ils ne peuvent plus
+ *       rien recevoir ; chaque appareil se réactive). Ne retire JAMAIS un abonnement qui correspond ni un abonnement d'empreinte
+ *       inconnue (antérieur à la migration 0048), et AUCUN autre objet. SIMULATION sans « --appliquer » ; une transaction par
+ *       abonnement, journalisée ; idempotente. Refusée sans clé publique courante. Aucun appel sortant.
  *   node scripts/editeur.mjs ia-etat
  *       Lecture seule : dernières vérifications de connexion de la passerelle IA (aucun appel sortant).
  *   node scripts/editeur.mjs ia-verifier --appel-reel
@@ -214,6 +220,25 @@ try {
           ? `Plus aucune ligne${option('cabinet') ? ' de ce cabinet' : ''} ne dépend d’un ancien secret${appliquer ? '' : ' (constat de la simulation)'}. L’outil ne retire rien : c’est à l’exploitant de vider JETONS_CLES_ANCIENNES puis de relancer API et worker${option('cabinet') ? ' — après un passage SANS « --cabinet »' : ''}.`
           : 'NE PAS retirer l’ancien secret de JETONS_CLES_ANCIENNES : des lignes en dépendent encore (restantes, illisibles ou en échec).',
       );
+      break;
+    }
+    case 'vapid-retirer-abonnements': {
+      const option = (nom) => args.find((x) => x.startsWith(`--${nom}=`))?.slice(nom.length + 3);
+      const inconnus = args.filter((x) => x !== '--appliquer' && !x.startsWith('--cabinet=') && !x.startsWith('--limite='));
+      if (inconnus.length) exiger(99, 'vapid-retirer-abonnements [--cabinet=<cabinetId>] [--limite=<nombre>] [--appliquer]');
+      const { retirerAbonnementsVapidObsoletes } = await import('../packages/plateforme/dist/rotation-vapid.js');
+      const appliquer = args.includes('--appliquer');
+      const r = await retirerAbonnementsVapidObsoletes(client, { PUSH_VAPID_CLE_PUBLIQUE: process.env.PUSH_VAPID_CLE_PUBLIQUE ?? '' }, {
+        appliquer, cabinetId: option('cabinet'), limite: option('limite') === undefined ? undefined : Number(option('limite')),
+      });
+      console.log(`Empreinte de la clé VAPID courante : ${r.empreinteCourante}… (SHA-256 de la clé publique).`);
+      console.table([{ 'abonnements examinés': r.abonnements, 'correspondent (conservés)': r.correspondants, 'empreinte inconnue (conservés)': r.empreinteInconnue, [appliquer ? 'retirés' : 'à retirer']: appliquer ? r.retires : r.obsoletes, 'restants obsolètes': r.restantsObsoletes }]);
+      if (r.parCabinet.length) console.table(r.parCabinet.map((c) => ({ cabinet: c.cabinetId, 'abonnements obsolètes': c.obsoletes })));
+      for (const c of r.concernes) console.log(`${appliquer ? 'RETIRÉ' : 'À RETIRER'} : abonnement ${c.id} (cabinet ${c.cabinetId}, service ${c.service})`);
+      if (r.empreinteInconnue) console.log(`${r.empreinteInconnue} abonnement(s) d'empreinte inconnue (antérieurs à la migration 0048) : non touchés ; leurs appareils se réactiveront au premier refus du service de notification ou par « Réactiver ».`);
+      if (!appliquer) console.log('SIMULATION : rien n’a été modifié. Ajouter « --appliquer » pour retirer.');
+      else if (r.interrompu) console.log('Passage INTERROMPU par « --limite » : relancer la commande pour reprendre.');
+      console.log('Aucun autre objet n’est supprimé (notifications, préférences, file d’envoi, cabinets, personnes) ; chaque retrait est inscrit au journal d’audit du cabinet.');
       break;
     }
     case 'ia-etat': {

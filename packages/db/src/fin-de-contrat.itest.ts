@@ -121,8 +121,12 @@ const VALEURS: Record<string, (c: Cabinet | null) => unknown> = {
   'lignes_reprise_immobilisations.sha256': () => createHash('sha256').update(alea()).digest('hex'),
   'lignes_reprise_immobilisations.statut': () => 'rejetee',
   'lignes_reprise_immobilisations.motif': () => 'Ligne d’essai rejetée',
+  // Réglage de la tolérance de montant (D-096) : valeur dans les bornes, motif non vide.
+  'reglages_tiers_factures.tolerance_montant': () => '5.00',
+  'reglages_tiers_factures.motif': () => 'Réglage d’essai',
   // Notifications poussées : formes contrôlées par la base (empreinte hexadécimale, enveloppe chiffrée, type).
   'abonnements_pousses.empreinte_point_acces': () => createHash('sha256').update(alea()).digest('hex'),
+  'abonnements_pousses.empreinte_cle_vapid': () => createHash('sha256').update(alea()).digest('hex'),
   'abonnements_pousses.service': () => 'fcm',
   'abonnements_pousses.secrets_chiffres': () => 'a1.p-essai.aaaa.bbbb.cccc',
   'abonnements_pousses.agent': () => 'Chrome sur Android',

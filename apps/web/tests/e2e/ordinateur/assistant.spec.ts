@@ -288,4 +288,35 @@ test.describe('administration : état et mesures de l’IA', () => {
       await alice.context().close();
     }
   });
+
+  test('preuve valide : temps restant dit ; « expire bientôt » alerte sans aucun bouton ; rien à signaler tant qu’aucune preuve n’existe', async ({ browser }) => {
+    // AFFICHAGE seulement (simulateur) : le calcul du temps restant et la notification sont prouvés par les tests unitaires, de base et d'API.
+    const alice = await (await browser.newContext({ storageState: etatDe('alice') })).newPage();
+    const erreurs = surveiller(alice);
+    try {
+      await simulateur('ia', { preuve: 'valide' });
+      await alice.goto('http://localhost:3000/administration/ia');
+      await expect(alice.getByTestId('expiration-preuve')).toHaveAttribute('data-expire-bientot', 'non');
+      await expect(alice.getByTestId('jours-restants')).toHaveText('22 jour(s)');
+      await expect(alice.getByTestId('alerte-expiration-preuve')).toHaveCount(0);
+
+      await simulateur('ia', { preuve: 'expire_bientot' });
+      await alice.goto('http://localhost:3000/administration/ia');
+      await expect(alice.getByTestId('expiration-preuve')).toHaveAttribute('data-expire-bientot', 'oui');
+      await expect(alice.getByTestId('jours-restants')).toHaveText('3 jour(s)');
+      await expect(alice.getByTestId('alerte-expiration-preuve')).toContainText('La preuve de connexion expire bientôt.');
+      await expect(alice.getByTestId('alerte-expiration-preuve')).toContainText('ni automatique ni déclenchable depuis cet écran');
+      await expect(alice.getByRole('main').getByRole('button')).toHaveCount(0);
+
+      for (const preuve of ['absente', 'perimee', 'sans_fournisseur']) {
+        await simulateur('ia', { preuve: preuve === 'sans_fournisseur' ? 'sans_fournisseur' : preuve });
+        await alice.goto('http://localhost:3000/administration/ia');
+        await expect(alice.getByTestId('expiration-preuve'), preuve).toHaveCount(0);
+      }
+      expect(erreurs).toEqual([]);
+    } finally {
+      await simulateur('ia', { preuve: 'sans_fournisseur' });
+      await alice.context().close();
+    }
+  });
 });

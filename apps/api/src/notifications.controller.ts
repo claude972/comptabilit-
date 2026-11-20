@@ -63,6 +63,12 @@ export function presenterNotification(n: LigneNotification): { titre: string; me
       return { titre: 'La préparation de l’archive de restitution a échoué', message: `Demandez un nouvel export${dossier}.`, lien: n.entiteId ? `/dossiers/${n.entiteId}/restitution` : null };
     case 'restitution_cabinet.prete':
       return { titre: 'L’archive de restitution du cabinet est prête', message: 'Elle peut être téléchargée par vous seul.', lien: '/administration/restitution' };
+    case 'ia.preuve_expire_bientot':
+      return {
+        titre: 'La preuve de connexion de la passerelle IA expire bientôt',
+        message: `Elle expire dans ${texte(n.donnees.joursRestants)} jour(s), le ${texte(n.donnees.expireLe, 10)}. Passé ce délai, l’assistant et les tâches d’IA reviendront « sans IA » jusqu’à une nouvelle vérification par l’éditeur. Aucune action n’est demandée au cabinet.`,
+        lien: '/administration/ia',
+      };
     case 'restitution_cabinet.echec':
       return { titre: 'La préparation de l’archive de restitution du cabinet a échoué', message: 'Demandez une nouvelle restitution.', lien: '/administration/restitution' };
     default:
@@ -77,6 +83,7 @@ export const FAMILLES_NOTIFICATION = [
   { famille: 'imports', prefixes: ['import'], libelle: 'Imports terminés ou en échec' },
   { famille: 'constats', prefixes: ['constat'], libelle: 'Constats de révision qui me sont affectés' },
   { famille: 'restitutions', prefixes: ['restitution', 'restitution_cabinet'], libelle: 'Archives de restitution prêtes ou en échec' },
+  { famille: 'ia', prefixes: ['ia'], libelle: 'Passerelle IA : preuve de connexion bientôt périmée (administrateurs et associés)' },
 ] as const;
 const lot = z.object({ ids: z.array(z.string().uuid()).min(1).max(200), action: z.enum(['lire', 'archiver', 'desarchiver']) });
 const preference = z.object({ famille: z.enum(FAMILLES_NOTIFICATION.map((f) => f.famille) as [string, ...string[]]), active: z.boolean() });
@@ -216,7 +223,7 @@ export class NotificationsController {
     return this.bd.avecContexte(acces, async (tx) => {
       const lignes = (await tx.execute(sql`select famille, active from preferences_notification where utilisateur_id = ${acces.utilisateurId}::uuid`)).rows as Array<{ famille: string; active: boolean }>;
       const inactives = new Set(lignes.filter((l) => !l.active).map((l) => l.famille));
-      return { envoiExterne: this.envoiExterne, familles: FAMILLES_NOTIFICATION.map((f) => ({ famille: f.famille, libelle: f.libelle, active: !f.prefixes.some((p) => inactives.has(p)) })) };
+      return { envoiExterne: this.envoiExterne, familles: FAMILLES_NOTIFICATION.filter((f) => f.famille !== 'ia' || acces.role === 'administrateur' || acces.role === 'associe').map((f) => ({ famille: f.famille, libelle: f.libelle, active: !f.prefixes.some((p) => inactives.has(p)) })) };
     });
   }
 

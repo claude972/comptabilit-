@@ -3,7 +3,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { ChoixExercice } from '@/components/dossier';
 import { ErreurAcces } from '@/components/erreurs';
-import { DecisionLienFacture, DecisionLienTiers, DecisionSuspicion } from '@/components/tiers/actions';
+import { DecisionLienFacture, DecisionLienTiers, DecisionSuspicion, ReglageTolerance } from '@/components/tiers/actions';
 import { Alerte, Carte, Etiquette, Libelle, Liste, Saisie, SousTitre, Tableau } from '@/components/ui/base';
 import { Bouton } from '@/components/ui/bouton';
 import { formaterDate, formaterMontant } from '@/lib/montants';
@@ -11,14 +11,14 @@ import { type Resultat, tenter } from '@/lib/serveur/api';
 import { estUuid, parametre } from '@/lib/serveur/donnees';
 import { contexteDossier, contexteExercice } from '@/lib/serveur/dossier';
 import {
-  type CandidatEcriture, clePieceEnClair, criteresEnClair, type EnteteTiers, type EtatFacture, LIBELLE_COMPTABILISATION, LIBELLE_ETAT, LIBELLE_MODE, LIBELLE_NATURE_IMPUTATION, LIBELLE_SUSPICION, LIBELLE_TYPE_TIERS,
-  type Pagination, type PropositionTiers, type RefEcriture, type ReponseATraiter, type ReponseFacture, type ReponseFactures, type ReponseFicheTiers, type ReponseTiers, type ResumeFacture, type Suspicion, TON_ETAT,
+  type CandidatEcriture, clePieceEnClair, criteresEnClair, type EnteteTiers, type EtatFacture, LIBELLE_ABSTENTION_GROUPE, LIBELLE_COMPTABILISATION, LIBELLE_ETAT, LIBELLE_ORIGINE_TOLERANCE, LIBELLE_MODE, LIBELLE_NATURE_IMPUTATION, LIBELLE_SUSPICION, LIBELLE_TYPE_TIERS,
+  type Pagination, type PropositionTiers, type RefEcriture, type ReponseATraiter, type ReponseFacture, type ReponseFactures, type ReponseFicheTiers, type ReponseReglagesTolerance, type ReponseTiers, type ResumeFacture, type Suspicion, TON_ETAT,
 } from '@/lib/tiers';
 import { auMoins } from '@/lib/types-api';
 
 export const metadata: Metadata = { title: 'Tiers et factures' };
 
-const VUES = ['tiers', 'fiche', 'echeancier', 'facture', 'a-traiter'] as const;
+const VUES = ['tiers', 'fiche', 'echeancier', 'facture', 'a-traiter', 'reglages'] as const;
 type Vue = (typeof VUES)[number];
 const ETATS = Object.keys(LIBELLE_ETAT) as EtatFacture[];
 
@@ -66,6 +66,10 @@ function Entete({ e }: { e: EnteteTiers }) {
           Aucune donnée comptable importée pour cet exercice : aucun tiers comptable, aucun appariement, aucun règlement ne peut être établi. Importez des écritures dans l’onglet Comptabilité.
         </Alerte>
       ) : null}
+      <p className="text-sm" data-testid="tolerance-en-vigueur">
+        Tolérance de montant : <strong>{formaterMontant(e.tolerance.montant)}</strong> ({LIBELLE_ORIGINE_TOLERANCE[e.tolerance.origine]}).{' '}
+        {e.tolerance.origine === 'defaut' ? 'Les montants doivent être strictement égaux.' : 'Un écart dans cette limite n’est jamais appliqué : il est seulement proposé, avec son montant, à confirmer.'}
+      </p>
       {e.piecesEcartees.auDelaDuPlafond > 0 ? <Alerte ton="attention">{e.piecesEcartees.auDelaDuPlafond} pièce(s) ne sont pas suivies dans ce calcul (plafond atteint).</Alerte> : null}
     </div>
   );
@@ -244,12 +248,14 @@ export default async function PageTiers({ params, searchParams }: { params: Prom
       ? await tenter<ReponseFactures>(`${api}/factures?page=${page}${etat && etat in LIBELLE_ETAT ? `&etat=${etat}` : ''}${q ? `&q=${encodeURIComponent(q)}` : ''}${tiersFiltre ? `&tiers=${encodeURIComponent(tiersFiltre)}` : ''}${suffixeDate}`)
       : null;
   const detail = vue === 'facture' && estUuid(factureId) ? await tenter<ReponseFacture>(`${api}/factures/${factureId}${date ? `?date=${date}` : ''}`) : null;
+  const reglages = vue === 'reglages' ? await tenter<ReponseReglagesTolerance>(`v1/dossiers/${id}/tiers-factures/reglages`) : null;
   const aTraiter = vue === 'a-traiter' ? await tenter<ReponseATraiter>(`${api}/tiers-factures/a-traiter${date ? `?date=${date}` : ''}`) : null;
 
   const sections: Array<{ vue: Vue; libelle: string }> = [
     { vue: 'tiers', libelle: 'Tiers' },
     { vue: 'echeancier', libelle: 'Échéancier des factures' },
     { vue: 'a-traiter', libelle: 'À confirmer et suspicions' },
+    { vue: 'reglages', libelle: 'Réglages' },
   ];
   const sectionCourante: Vue = vue === 'fiche' ? 'tiers' : vue === 'facture' ? 'echeancier' : vue;
 
@@ -673,7 +679,15 @@ export default async function PageTiers({ params, searchParams }: { params: Prom
                               <strong>{LIBELLE_NATURE_IMPUTATION[p.nature]}</strong> — {ecritureEnClair(p.ecriture)}
                             </p>
                             <p className="text-sm text-texte-doux">
-                              {p.critere === 'montant_exact' ? 'Même montant que le reste dû, sans référence à la facture.' : p.critere === 'avoir_meme_tiers' ? 'Avoir du même tiers, non lettré.' : 'Écriture citant plusieurs factures sans en égaler la somme.'}
+                              {p.critere === 'montant_exact'
+                                ? 'Même montant que le reste dû, sans référence à la facture.'
+                                : p.critere === 'avoir_meme_tiers'
+                                  ? 'Avoir du même tiers, non lettré.'
+                                  : p.critere === 'ecart_tolere'
+                                    ? `Écart de ${formaterMontant(p.ecart ?? null)} avec le reste dû, dans la tolérance réglée de ${formaterMontant(p.tolerance ?? null)} (règlement ${p.ecart?.startsWith('-') ? 'inférieur' : 'supérieur'} au reste dû). Proposition seulement : confirmée, elle laisse l’écart visible dans le reste dû.`
+                                    : p.critere === 'reglement_groupe_probable'
+                                      ? `Règlement groupé probable : son montant égale la somme exacte du reste dû de ${p.groupeDocumentIds?.length ?? 'plusieurs'} factures ouvertes de ce tiers. À confirmer facture par facture.`
+                                      : 'Écriture citant plusieurs factures sans en égaler la somme.'}
                               {p.ambigue ? ' Plusieurs rapprochements sont possibles : aucun n’est retenu.' : ''}
                             </p>
                             <DecisionLienFacture exerciceId={exercice.id} documentId={f.id} type="imputation" cible={p.ecriture.cle} quoi={`écriture ${p.ecriture.journalCode} ${p.ecriture.ecritureNum}`} peutConfirmer={collaboration} peutInfirmer={revision} />
@@ -718,6 +732,42 @@ export default async function PageTiers({ params, searchParams }: { params: Prom
           })()
         : null}
 
+      {reglages ? <Refus r={reglages} id={id} /> : null}
+      {reglages?.ok ? (
+        <section className="space-y-4" aria-labelledby="titre-reglages" data-testid="reglages-tolerance">
+          <h2 id="titre-reglages" className="text-lg font-semibold">
+            Tolérance de montant de l’appariement facture ↔ règlement
+          </h2>
+          <p className="text-sm text-texte-doux">{reglages.donnees.note}</p>
+          <p data-testid="tolerance-courante">
+            En vigueur : <strong>{formaterMontant(reglages.donnees.enVigueur.montant)}</strong> ({LIBELLE_ORIGINE_TOLERANCE[reglages.donnees.enVigueur.origine]}).
+          </p>
+          {revision ? (
+            <ReglageTolerance dossierId={id} actuelle={reglages.donnees.enVigueur.origine === 'defaut' ? '0.00' : reglages.donnees.enVigueur.montant} maximum={reglages.donnees.maximum} />
+          ) : (
+            <Alerte ton="neutre">Régler la tolérance est réservé au niveau « révision » sur ce dossier.</Alerte>
+          )}
+          {[
+            { titre: 'Historique du dossier', lignes: reglages.donnees.historiqueDossier },
+            { titre: 'Historique du cabinet', lignes: reglages.donnees.historiqueCabinet },
+          ].map((h) => (
+            <div key={h.titre} className="space-y-1">
+              <h3 className="font-semibold">{h.titre}</h3>
+              {h.lignes.length === 0 ? (
+                <p className="text-texte-doux">Aucun réglage.</p>
+              ) : (
+                <ul className="list-disc pl-5">
+                  {h.lignes.map((l) => (
+                    <li key={l.id} className={coupe}>
+                      {formaterMontant(l.toleranceMontant)} — {formaterDate(l.creeLe)} — {l.auteur} — {l.motif}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+        </section>
+      ) : null}
       {aTraiter ? <Refus r={aTraiter} id={id} /> : null}
       {aTraiter?.ok ? (
         <section aria-labelledby="titre-a-traiter" className="space-y-4">
@@ -785,6 +835,44 @@ export default async function PageTiers({ params, searchParams }: { params: Prom
               ))}
             </ul>
           )}
+          <h3 className="font-semibold">Règlements groupés probables ({aTraiter.donnees.totaux.reglementsGroupesProbables})</h3>
+          {aTraiter.donnees.reglementsGroupesProbables.length === 0 ? (
+            <p className="text-texte-doux">Aucun règlement groupé probable.</p>
+          ) : (
+            <ul className="space-y-2" data-testid="reglements-groupes">
+              {aTraiter.donnees.reglementsGroupesProbables.map((g) => (
+                <li key={g.ecriture.ligneId} className="space-y-1 rounded-lg border border-bordure p-3">
+                  <p className={coupe}>
+                    <strong>Règlement groupé probable</strong> <Etiquette ton="attention">À confirmer</Etiquette> — {ecritureEnClair(g.ecriture)}
+                  </p>
+                  <p className="text-sm text-texte-doux">{g.explication}</p>
+                  <ul className="list-disc pl-5">
+                    {g.factures.map((f) => (
+                      <li key={f.documentId} className={coupe}>
+                        <Link href={lienFacture(f.documentId)} prefetch={false}>
+                          Facture {f.numero ?? '(numéro non lu)'}
+                        </Link>{' '}
+                        — reste dû {formaterMontant(f.resteDu)}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-sm">Somme exacte : {formaterMontant(g.somme)}. Rien n’est lettré ni imputé : ouvrez chaque facture pour confirmer ce règlement.</p>
+                </li>
+              ))}
+            </ul>
+          )}
+          {aTraiter.donnees.abstentionsReglementsGroupes.length > 0 ? (
+            <div className="space-y-1" data-testid="abstentions-groupes">
+              <h4 className="font-medium">Règlements non lettrés sans proposition de groupe ({aTraiter.donnees.totaux.abstentionsReglementsGroupes})</h4>
+              <ul className="list-disc pl-5">
+                {aTraiter.donnees.abstentionsReglementsGroupes.map((a) => (
+                  <li key={a.ecriture.ligneId} className={coupe}>
+                    {ecritureEnClair(a.ecriture)} — {LIBELLE_ABSTENTION_GROUPE[a.motif]}.
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           {aTraiter.donnees.decisionsARevoir.length > 0 ? (
             <Alerte ton="attention" titre={`Décisions à revoir (${aTraiter.donnees.totaux.decisionsARevoir})`} data-testid="decisions-a-revoir">
               <p>Ces décisions ne sont plus appliquées : la pièce, son extraction ou les écritures ont changé depuis.</p>

@@ -2,7 +2,7 @@ import type { AccesBd } from '@comtaple/db';
 import type { EvenementAuditIa, FournisseurIa } from '@comtaple/ia';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { assemblerIa, creerIa, empreinteConfigurationIa, JournalIaBd, jugerVerificationIa, lireTarifsIa, type VerificationIa } from './ia.js';
+import { ALERTE_PREUVE_IA_JOURS, assemblerIa, creerIa, empreinteConfigurationIa, evaluerExpirationPreuveIa, JournalIaBd, jugerVerificationIa, lireTarifsIa, type VerificationIa } from './ia.js';
 
 /** Base factice : enregistre les lignes qu'on lui demande d'insérer (aucune base réelle dans ce test unitaire). */
 function fausseBd() {
@@ -167,5 +167,52 @@ describe('preuve de connexion persistée : jugement d’une ligne relue de la ba
     await sans.rafraichirPreuve();
     expect(sans.statut().statut).toBe('non_connecte');
     expect(requetes).toEqual([]);
+  });
+});
+
+describe('alerte d’expiration de la preuve (D-096) : calcul déterministe, sans appel', () => {
+  const FIN = '2026-12-10T09:00:00.000Z';
+  const J = 86_400_000;
+  const fin = Date.parse(FIN);
+  it('temps restant exact, jours arrondis au supérieur, borne du seuil comprise', () => {
+    expect(evaluerExpirationPreuveIa(FIN, fin - 8 * J, 7)).toMatchObject({ restantMs: 8 * J, restantJours: 8, expireBientot: false, seuilJours: 7, expireLe: FIN });
+    expect(evaluerExpirationPreuveIa(FIN, fin - 7 * J - 1, 7).expireBientot).toBe(false); // une milliseconde au-delà du seuil
+    expect(evaluerExpirationPreuveIa(FIN, fin - 7 * J, 7)).toMatchObject({ restantJours: 7, expireBientot: true }); // la borne est comprise
+    expect(evaluerExpirationPreuveIa(FIN, fin - 23 * 3_600_000, 7)).toMatchObject({ restantJours: 1, expireBientot: true }); // jamais « 0 jour » tant que la preuve vaut
+    expect(evaluerExpirationPreuveIa(FIN, fin - 1, 7)).toMatchObject({ restantJours: 1, expireBientot: true });
+  });
+  it('échue ou datée de la fin : pas « expire bientôt » (c’est « périmée », autre état), 0 jour', () => {
+    expect(evaluerExpirationPreuveIa(FIN, fin, 7)).toMatchObject({ restantMs: 0, restantJours: 0, expireBientot: false });
+    expect(evaluerExpirationPreuveIa(FIN, fin + J, 7)).toMatchObject({ restantMs: -J, restantJours: 0, expireBientot: false });
+  });
+  it('seuil paramétrable et borné ; entrées invalides refusées', () => {
+    expect(evaluerExpirationPreuveIa(FIN, fin - 20 * J, 30).expireBientot).toBe(true);
+    expect(evaluerExpirationPreuveIa(FIN, fin - 20 * J, 1).expireBientot).toBe(false);
+    for (const seuil of [0, -1, 91, 1.5, Number.NaN]) expect(() => evaluerExpirationPreuveIa(FIN, fin, seuil)).toThrow(/Seuil/);
+    expect(() => evaluerExpirationPreuveIa('pas une date', fin, 7)).toThrow(/Date invalide/);
+    expect(ALERTE_PREUVE_IA_JOURS).toBe(7);
+  });
+  it('jugement : seule une preuve VALIDE porte un temps restant ; ni absente, ni périmée, ni autre configuration, ni simulateur', () => {
+    const URL_BASE = 'https://oai.endpoints.kepler.ai.cloud.ovh.net/v1';
+    const fournisseur = { nature: 'reel' as const, urlBase: URL_BASE };
+    const E = empreinteConfigurationIa({ urlBase: URL_BASE, jeton: 'jeton-fictif-de-test' });
+    const ligne = (p: Partial<VerificationIa> = {}): VerificationIa => ({
+      id: 'v-alerte', verifieeLe: '2026-11-10T09:00:00.000Z', resultat: 'connecte', raisons: [], urlBase: URL_BASE, hote: 'oai.endpoints.kepler.ai.cloud.ovh.net', urlsAppelees: [`${URL_BASE}/chat/completions`, `${URL_BASE}/embeddings`],
+      modeleLangage: 'Mistral-Small-3.2-24B-Instruct-2506', modeleEmbeddings: 'bge-m3', dimensionsEmbeddings: 1024, reponseSimulateur: false, empreinteConfiguration: E, valideJusquAu: '2026-12-10T09:00:00.000Z', ...p,
+    });
+    const juger = (courante: VerificationIa | null, quand: string, seuil?: number) => jugerVerificationIa(fournisseur, E, courante, null, new Date(quand), 30, seuil);
+    // Valide le 2026-11-19 (21 jours restants) : pas encore ; le 2026-12-03 09:00 (7 jours) : bientôt ; le 2026-12-09 : 1 jour.
+    expect(juger(ligne(), '2026-11-19T09:00:00.000Z').vue).toMatchObject({ etat: 'valide', verificationId: 'v-alerte', expiration: { restantJours: 21, expireBientot: false, seuilJours: 7 } });
+    expect(juger(ligne(), '2026-12-03T09:00:00.000Z').vue.expiration).toMatchObject({ restantJours: 7, expireBientot: true });
+    expect(juger(ligne(), '2026-12-09T09:00:01.000Z').vue.expiration).toMatchObject({ restantJours: 1, expireBientot: true });
+    expect(juger(ligne(), '2026-11-19T09:00:00.000Z', 30).vue.expiration!.expireBientot).toBe(true); // seuil paramétrable
+    // La borne la plus courte (durée de configuration) commande le temps restant.
+    expect(jugerVerificationIa(fournisseur, E, ligne({ valideJusquAu: '2027-03-01T00:00:00.000Z' }), null, new Date('2026-11-19T09:00:00.000Z'), 30).vue.expiration).toMatchObject({ restantJours: 21 });
+    // Aucune preuve valide : rien à signaler.
+    for (const [courante, quand] of [[null, '2026-12-05T09:00:00.000Z'], [ligne({ resultat: 'echec' }), '2026-12-05T09:00:00.000Z'], [ligne(), '2026-12-10T09:00:00.000Z'], [ligne(), '2027-01-01T00:00:00.000Z'], [ligne({ empreinteConfiguration: 'f'.repeat(64) }), '2026-12-05T09:00:00.000Z']] as const) {
+      const v = juger(courante, quand).vue;
+      expect(v.expiration, `${v.etat}`).toBeNull();
+      expect(v.verificationId).toBeNull();
+    }
   });
 });

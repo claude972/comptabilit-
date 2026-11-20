@@ -249,7 +249,7 @@ const pousseesInitial = (): Poussees => ({ statut: 'non_configure', appareils: [
 let poussees: Poussees = pousseesInitial();
 // Écran d'administration de l'IA : état de la preuve de connexion AFFICHÉ, pilotable par /__test/ia. Ce n'est qu'un
 // affichage : ce simulateur n'appelle aucun modèle et ne « connecte » rien, quel que soit l'état choisi ici.
-type PreuveIaSimulee = 'sans_fournisseur' | 'absente' | 'valide' | 'perimee' | 'autre_configuration' | 'non_concluante';
+type PreuveIaSimulee = 'sans_fournisseur' | 'absente' | 'valide' | 'expire_bientot' | 'perimee' | 'autre_configuration' | 'non_concluante';
 let preuveIa: PreuveIaSimulee = 'sans_fournisseur';
 const DETAILS_POUSSEES = {
   non_configure: 'Les notifications poussées ne sont pas activées sur ce service.',
@@ -651,6 +651,8 @@ async function routerV1(r: Requete): Promise<unknown> {
     if (imports !== undefined) return imports;
     const destinataire = routerDestinataire(r, a);
     if (destinataire !== undefined || r.res.writableEnded) return destinataire;
+    const reglagesTiers = routerReglagesTiers(r, a);
+    if (reglagesTiers !== undefined) return reglagesTiers;
     const tiers = routerTiers(r, a);
     if (tiers !== undefined) return tiers;
     const ajouts = routerSuite(r, a);
@@ -2109,8 +2111,16 @@ const TIERS_DOC = {
   f1: 'dddddddd-0000-4000-8000-000000000001', f2: 'dddddddd-0000-4000-8000-000000000002', double: 'dddddddd-0000-4000-8000-000000000003', sansEcheance: 'dddddddd-0000-4000-8000-000000000004',
   vente: 'dddddddd-0000-4000-8000-000000000005',
 } as const;
-interface TiersSim { decisionsTiers: DecisionTiers[]; decisionsFactures: Array<DecisionFacture & { motif: string | null; auteur: string; creeLe: string }> }
-let tiersSim: TiersSim = { decisionsTiers: [], decisionsFactures: [] };
+interface ReglageTiersSim { id: string; portee: 'dossier' | 'cabinet'; toleranceMontant: string; motif: string; creeLe: string; auteur: string }
+interface TiersSim {
+  decisionsTiers: DecisionTiers[];
+  decisionsFactures: Array<DecisionFacture & { motif: string | null; auteur: string; creeLe: string }>;
+  /** Jeu fictif utilisé : « standard » (écrans existants) ou « reglements » (tolérance de montant et règlement groupé, D-096). */
+  jeu: 'standard' | 'reglements';
+  reglages: ReglageTiersSim[];
+}
+const tiersSimInitial = (): TiersSim => ({ decisionsTiers: [], decisionsFactures: [], jeu: 'standard', reglages: [] });
+let tiersSim: TiersSim = tiersSimInitial();
 const TIERS_JEU = (() => {
   const lignes: LigneEcriture[] = [];
   const compteurs: Record<string, number> = {};
@@ -2153,6 +2163,52 @@ const TIERS_JEU = (() => {
   ];
   return { lignes, pieces };
 })();
+
+/** Jeu D-096 : un règlement groupé non lettré (400,40 = 100,10 + 300,30, sans autre combinaison) et un règlement inférieur de 5,00 au reste dû d'une facture. */
+const TIERS_JEU_REGLEMENTS = (() => {
+  const lignes: LigneEcriture[] = [];
+  const compteurs: Record<string, number> = {};
+  const ecrire = (journal: string, date: string, piece: string, lib: string, ls: Array<{ compte: string; aux?: [string, string]; debit?: string; credit?: string }>) => {
+    compteurs[journal] = (compteurs[journal] ?? 0) + 1;
+    const num = `${journal}${String(compteurs[journal]).padStart(4, '0')}`;
+    for (const l of ls) {
+      lignes.push({
+        id: `reglements-${lignes.length + 1}`, numeroLigne: lignes.length + 2, journalCode: journal, journalLib: journal, ecritureNum: num, ecritureDate: date, compteNum: l.compte, compteLib: `Compte ${l.compte}`, compAuxNum: l.aux?.[0] ?? null,
+        compAuxLib: l.aux?.[1] ?? null, pieceRef: piece, pieceDate: date, ecritureLib: lib, debit: l.debit ?? '0.00', credit: l.credit ?? '0.00', ecritureLet: null, dateLet: null, validDate: date, montantDevise: null, idevise: null,
+      });
+    }
+  };
+  const CODE: [string, string] = [`F${TIERS_SIREN.code}`, 'Fournitures du Centre (fictif)'];
+  const DUPONT: [string, string] = [`F${TIERS_SIREN.dupont}`, 'Dupont Matériaux'];
+  const achat = (aux: [string, string], date: string, piece: string, ttc: string) => ecrire('ACH', date, piece, `Facture ${aux[1]}`, [{ compte: '606100', debit: ttc }, { compte: '401000', aux, credit: ttc }]);
+  achat(CODE, '2025-03-01', 'G-001', '100.10');
+  achat(CODE, '2025-03-02', 'G-002', '200.20');
+  achat(CODE, '2025-03-03', 'G-003', '300.30');
+  ecrire('BQ', '2025-04-05', 'VIR', 'Virement groupé fournisseur', [{ compte: '401000', aux: CODE, debit: '400.40' }, { compte: '512000', credit: '400.40' }]);
+  achat(DUPONT, '2025-03-10', 'E-2025-1', '1200.00');
+  ecrire('BQ', '2025-04-06', 'VIR', 'Virement Dupont', [{ compte: '401000', aux: DUPONT, debit: '1195.00' }, { compte: '512000', credit: '1195.00' }]);
+  const piece = (documentId: string, nomFichier: string, p: Partial<PieceFacture>): PieceFacture => ({
+    documentId, nomFichier, versionPiece: 1, versionExtraction: 1, nature: 'facture_achat', statutExtraction: 'projet', typeDocument: 'facture', numero: null, dateEmission: null, dateEcheance: null, emetteurNom: 'Fournitures du Centre',
+    emetteurSiren: TIERS_SIREN.code, emetteurSiret: null, emetteurTva: null, totalHt: null, totalTva: null, totalTtc: null, devise: 'EUR', ...p,
+  });
+  const doc = (n: number) => `dddddddd-0000-4000-8000-0000000001${String(n).padStart(2, '0')}`;
+  const pieces: PieceFacture[] = [
+    piece(doc(1), 'facture-g-001.pdf', { numero: 'G-001', dateEmission: '2025-03-01', totalTtc: '100.10' }),
+    piece(doc(2), 'facture-g-002.pdf', { numero: 'G-002', dateEmission: '2025-03-02', totalTtc: '200.20' }),
+    piece(doc(3), 'facture-g-003.pdf', { numero: 'G-003', dateEmission: '2025-03-03', totalTtc: '300.30' }),
+    piece(doc(4), 'facture-e-001.pdf', { numero: 'E-2025-1', dateEmission: '2025-03-10', totalTtc: '1200.00', emetteurNom: 'DUPONT MATERIAUX SARL', emetteurSiren: TIERS_SIREN.dupont }),
+  ];
+  return { lignes, pieces };
+})();
+const jeuTiers = () => (tiersSim.jeu === 'reglements' ? TIERS_JEU_REGLEMENTS : TIERS_JEU);
+/** Tolérance en vigueur pour un dossier : la ligne la plus récente du dossier, sinon du cabinet, sinon 0.00 (aucune tolérance). */
+function toleranceSimulee(): { montant: string; origine: 'dossier' | 'cabinet' | 'defaut' } {
+  const plusRecente = (portee: 'dossier' | 'cabinet') => [...tiersSim.reglages].reverse().find((x) => x.portee === portee);
+  const d = plusRecente('dossier');
+  if (d) return { montant: d.toleranceMontant, origine: 'dossier' };
+  const c = plusRecente('cabinet');
+  return c ? { montant: c.toleranceMontant, origine: 'cabinet' } : { montant: '0.00', origine: 'defaut' };
+}
 
 
 // ───────────── Destinataire des pièces et réanalyse explicite (D-091) ─────────────
@@ -2349,6 +2405,35 @@ function routerDestinataire(r: Requete, a: Acces): unknown {
   return undefined;
 }
 
+/** Réglage de la tolérance de montant (D-096), calqué sur reglages-tiers.controller.ts : ajout seul, motif obligatoire, niveau révision. */
+function routerReglagesTiers(r: Requete, a: Acces): unknown {
+  const { methode: m, segments: s } = r;
+  const dossier = s[0] === 'dossiers' && s[2] === 'tiers-factures' && s[3] === 'reglages' && s.length === 4;
+  const cabinet = s[0] === 'cabinet' && s[1] === 'tiers-factures' && s[2] === 'reglages' && s.length === 3;
+  if (!dossier && !cabinet) return undefined;
+  const portee = dossier ? 'dossier' : 'cabinet';
+  const historique = (p: 'dossier' | 'cabinet') => [...tiersSim.reglages].filter((x) => x.portee === p).reverse().map((x) => ({ id: x.id, toleranceMontant: x.toleranceMontant, motif: x.motif, creeLe: x.creeLe, auteur: x.auteur }));
+  const maximum = '1000.00';
+  if (dossier) {
+    const id = exigerUuid(s[1]);
+    exigerNiveau(a, id, m === 'GET' ? 'lecture' : 'revision');
+  } else if (!['administrateur', 'associe'].includes(a.role)) throw new ErreurHttp(403, 'Réservé aux administrateurs et associés du cabinet');
+  if (m === 'GET') {
+    const t = toleranceSimulee();
+    const dernier = historique(portee)[0];
+    const enVigueur = { montant: t.montant, origine: t.origine, reglage: dernier ? { id: dernier.id, creeLe: dernier.creeLe, reglePar: a.utilisateurId, motif: dernier.motif } : null };
+    return dossier ? { dossierId: s[1], enVigueur, maximum, historiqueDossier: historique('dossier'), historiqueCabinet: historique('cabinet'), note: 'Valeur par défaut : 0.00, c’est-à-dire AUCUNE tolérance ; jamais appliquée sans réglage explicite.' } : { enVigueur, maximum, historique: historique('cabinet') };
+  }
+  if (m !== 'PUT') return undefined;
+  const d = r.json();
+  if (typeof d.toleranceMontant !== 'string' || !/^\d{1,4}(\.\d{1,2})?$/.test(d.toleranceMontant)) throw invalide('toleranceMontant', 'Montant invalide : « 5 » ou « 5.00 »');
+  if (Number(d.toleranceMontant) > Number(maximum)) throw invalide('toleranceMontant', `La tolérance ne peut pas dépasser ${maximum}.`);
+  if (typeof d.motif !== 'string' || !d.motif.trim()) throw invalide('motif', 'Motif obligatoire');
+  tiersSim.reglages.push({ id: randomUUID(), portee, toleranceMontant: Number(d.toleranceMontant).toFixed(2), motif: d.motif.trim(), creeLe: instant(), auteur: a.nom });
+  tracerAudit(a, 'tiers_factures.tolerance_reglee', dossier ? 'entite' : 'cabinet', dossier ? s[1]! : a.cabinetId, dossier ? s[1]! : null, { portee, apres: Number(d.toleranceMontant).toFixed(2) });
+  return { enVigueur: toleranceSimulee() };
+}
+
 function routerTiers(r: Requete, a: Acces): unknown {
   const { methode: m, segments: s } = r;
   if (s[0] !== 'exercices' || !['tiers', 'factures', 'tiers-factures', 'suspicions'].includes(s[2] ?? '')) return undefined;
@@ -2361,13 +2446,14 @@ function routerTiers(r: Requete, a: Acces): unknown {
   const avecDonnees = id === DEMO.exDupain2025;
   const calculer = () =>
     suivreTiersEtFactures({
-      lignes: avecDonnees ? TIERS_JEU.lignes : [], exercice: { debut: exercice.debut, fin: exercice.fin }, dateAppreciation: dateBrute ?? exercice.fin, origineDateAppreciation: dateBrute === undefined ? 'cloture_exercice' : 'fournie',
-      deviseDossier: 'EUR', sirenDossier: null, pieces: avecDonnees ? TIERS_JEU.pieces : [], rapprochementsValides: [], decisionsTiers: tiersSim.decisionsTiers, decisionsFactures: avecDonnees ? tiersSim.decisionsFactures : [],
+      lignes: avecDonnees ? jeuTiers().lignes : [], exercice: { debut: exercice.debut, fin: exercice.fin }, dateAppreciation: dateBrute ?? exercice.fin, origineDateAppreciation: dateBrute === undefined ? 'cloture_exercice' : 'fournie',
+      deviseDossier: 'EUR', sirenDossier: null, pieces: avecDonnees ? jeuTiers().pieces : [], rapprochementsValides: [], decisionsTiers: tiersSim.decisionsTiers, decisionsFactures: avecDonnees ? tiersSim.decisionsFactures : [],
+      parametres: { toleranceMontant: toleranceSimulee().montant },
     });
   const res = calculer();
   const entete = {
     niveau, exercice: { id, entiteId: exercice.entiteId, debut: exercice.debut, fin: exercice.fin, versionDonnees: exercice.versionDonnees }, donnees: avecDonnees ? { lotImportId: 'lot-tiers', version: 1, statutDonnees: 'travail_avant_cloture' } : null,
-    dateAppreciation: res.dateAppreciation, origineDateAppreciation: res.origineDateAppreciation, devise: 'EUR', nature: 'aide_a_la_revision', reserves: res.reserves, piecesEcartees: { horsExercice: 0, extractionRejetee: 0, sansExtraction: 0, auDelaDuPlafond: 0 },
+    dateAppreciation: res.dateAppreciation, origineDateAppreciation: res.origineDateAppreciation, devise: 'EUR', nature: 'aide_a_la_revision', tolerance: toleranceSimulee(), reserves: res.reserves, piecesEcartees: { horsExercice: 0, extractionRejetee: 0, sansExtraction: 0, auDelaDuPlafond: 0 },
   };
   const pageBrute = r.query.get('page');
   if (pageBrute !== null && !/^[1-9]\d{0,5}$/.test(pageBrute)) throw new ErreurHttp(400, 'Page invalide');
@@ -2443,9 +2529,9 @@ function routerTiers(r: Requete, a: Acces): unknown {
     const reglements = res.factures.filter((f) => f.propositionsImputation.length > 0);
     return {
       ...entete,
-      totaux: { propositionsTiers: res.propositionsTiers.length, liensAConfirmer: liens.length, reglementsProposes: reglements.length, suspicions: res.suspicions.length, suspicionsAExaminer: res.suspicions.filter((x) => x.statut === 'a_examiner').length, decisionsARevoir: res.decisionsARevoir.length },
+      totaux: { propositionsTiers: res.propositionsTiers.length, liensAConfirmer: liens.length, reglementsProposes: reglements.length, reglementsGroupesProbables: res.reglementsGroupes.length, abstentionsReglementsGroupes: res.abstentionsReglementsGroupes.length, suspicions: res.suspicions.length, suspicionsAExaminer: res.suspicions.filter((x) => x.statut === 'a_examiner').length, decisionsARevoir: res.decisionsARevoir.length },
       propositionsTiers: res.propositionsTiers, liensAConfirmer: liens.map((f) => ({ ...resume(f), motif: f.comptabilisation.motif, propositions: f.comptabilisation.propositions })),
-      reglementsProposes: reglements.map((f) => ({ ...resume(f), propositions: f.propositionsImputation })), suspicions: res.suspicions, decisionsARevoir: res.decisionsARevoir,
+      reglementsProposes: reglements.map((f) => ({ ...resume(f), propositions: f.propositionsImputation })), reglementsGroupesProbables: res.reglementsGroupes, abstentionsReglementsGroupes: res.abstentionsReglementsGroupes, suspicions: res.suspicions, decisionsARevoir: res.decisionsARevoir,
     };
   }
   if (m !== 'PUT') return undefined;
@@ -2486,7 +2572,7 @@ function routerTiers(r: Requete, a: Acces): unknown {
     } else {
       const f = res.factures.find((x) => x.id === documentId);
       if (!f) throw new ErreurHttp(404, 'Facture introuvable : la pièce n’est pas suivie sur cet exercice');
-      if (!TIERS_JEU.lignes.some((l) => cleEcriture(l) === d.cible && /^(401|411)/.test(l.compteNum))) throw new ErreurHttp(404, 'Écriture introuvable dans les données actuelles, ou sans ligne de compte de tiers');
+      if (!jeuTiers().lignes.some((l) => cleEcriture(l) === d.cible && /^(401|411)/.test(l.compteNum))) throw new ErreurHttp(404, 'Écriture introuvable dans les données actuelles, ou sans ligne de compte de tiers');
       if (type === 'imputation' && decision === 'confirme' && !f.comptabilisation.ecriture) throw new ErreurHttp(409, 'L’écriture qui comptabilise cette facture n’est pas établie : confirmez-la d’abord');
       if (i >= 0) tiersSim.decisionsFactures.splice(i, 1);
       tiersSim.decisionsFactures.push({ type, objet: documentId, cible: d.cible, decision, montant: null, versionExtraction: f.versionExtraction, motif, auteur: a.nom, creeLe: instant() });
@@ -3449,7 +3535,14 @@ function routerSuite(r: Requete, a: Acces): unknown {
       absente: { etat: nonVerifie('Aucun appel réel réussi n’a été constaté.'), verification: { etat: 'absente', detail: 'Aucune vérification de connexion n’a été faite pour la configuration courante.', verifieeLe: null, valideJusquAu: null, atteste: null, validiteJours: 30 } },
       valide: {
         etat: { statut: 'connecte', raisons: [], message: 'IA connectée : les réponses sont rédigées par un modèle à partir des sources citées, et restent à vérifier. Les calculs proviennent du moteur.', modeleSollicite: true },
-        verification: { etat: 'valide', detail: 'Connexion vérifiée le 2026-11-10, valable jusqu’au 2026-12-10.', verifieeLe: '2026-11-10T09:30:00.000Z', valideJusquAu: '2026-12-10T09:30:00.000Z', atteste, validiteJours: 30 },
+        verification: { etat: 'valide', detail: 'Connexion vérifiée le 2026-11-10, valable jusqu’au 2026-12-10.', verifieeLe: '2026-11-10T09:30:00.000Z', valideJusquAu: '2026-12-10T09:30:00.000Z', atteste, validiteJours: 30, expiration: { seuilJours: 7, expireLe: '2026-12-10T09:30:00.000Z', restantMs: 22 * 86_400_000, restantJours: 22, expireBientot: false } },
+      },
+      expire_bientot: {
+        etat: { statut: 'connecte', raisons: [], message: 'IA connectée : les réponses sont rédigées par un modèle à partir des sources citées, et restent à vérifier. Les calculs proviennent du moteur.', modeleSollicite: true },
+        verification: {
+          etat: 'valide', detail: 'Connexion vérifiée le 2026-10-19, valable jusqu’au 2026-11-21.', verifieeLe: '2026-10-19T09:30:00.000Z', valideJusquAu: '2026-11-21T09:30:00.000Z', atteste, validiteJours: 33,
+          expiration: { seuilJours: 7, expireLe: '2026-11-21T09:30:00.000Z', restantMs: 3 * 86_400_000 - 1000, restantJours: 3, expireBientot: true },
+        },
       },
       perimee: {
         etat: nonVerifie('La vérification du 2026-09-01 est périmée (validité : 30 jours) : une nouvelle vérification par l’éditeur est nécessaire.'),
@@ -3825,7 +3918,7 @@ const serveur = http.createServer(async (req, res) => {
       // Routes de pilotage des tests : absentes de l'API réelle.
       if (methode === 'POST' && segments[1] === 'reinitialiser') {
         suite = suiteInitiale();
-        tiersSim = { decisionsTiers: [], decisionsFactures: [] };
+        tiersSim = tiersSimInitial();
         destSim = { lots: [], pieces: [], lectures: new Map(), sirenDossier: '123456782' };
         ENTITES = structuredClone(ENTITES_INITIALES);
         HABILITATIONS = structuredClone(HABILITATIONS_INITIALES);
@@ -3919,7 +4012,7 @@ const serveur = http.createServer(async (req, res) => {
         // Pilotage de l'AFFICHAGE de l'état de la passerelle IA (aucun modèle n'est appelé, rien n'est connecté).
         if (methode === 'POST') {
           const d = json();
-          if (['sans_fournisseur', 'absente', 'valide', 'perimee', 'autre_configuration', 'non_concluante'].includes(d.preuve)) preuveIa = d.preuve as PreuveIaSimulee;
+          if (['sans_fournisseur', 'absente', 'valide', 'expire_bientot', 'perimee', 'autre_configuration', 'non_concluante'].includes(d.preuve)) preuveIa = d.preuve as PreuveIaSimulee;
         }
         resultat = { preuve: preuveIa };
       } else if (segments[1] === 'poussees') {
@@ -3950,6 +4043,12 @@ const serveur = http.createServer(async (req, res) => {
       } else if (methode === 'GET' && segments[1] === 'suite') {
         // Lecture de l'état des écrans ajoutés (règles, inventaire, missions, conseils, veille, restitutions, membres).
         resultat = { regles: suite.regles, ecritures: suite.ecritures, missions: suite.missions, lettres: suite.lettres, travaux: suite.travaux, baremes: suite.baremes, conseils: suite.conseils, evenements: suite.evenements, suivis: suite.suivis, restitutions: suite.restitutions, echangesAssistant: suite.echangesAssistant, echangesPortefeuille: suite.echangesPortefeuille, suggestionsEcartees: suite.suggestionsEcartees, membres: [...suite.membres.entries()], habilitations: HABILITATIONS, campagnes: suite.campagnes, lots: etat.lots.map((l) => ({ id: l.id, entiteId: l.entiteId, type: l.type, statut: l.statut, actif: l.actif, campagneId: l.campagneId ?? null, motifAnnulation: l.motifAnnulation ?? null, statutAvantAnnulation: l.statutAvantAnnulation ?? null })), coutHoraire: suite.coutsHoraires.get(DEMO.cabinetA)?.coutHoraireInterneHt ?? null };
+      } else if (methode === 'POST' && segments[1] === 'tiers-jeu') {
+        // Pilotage : bascule entre le jeu standard et le jeu « reglements » (tolérance de montant, règlement groupé).
+        const d = json();
+        if (d.jeu !== 'standard' && d.jeu !== 'reglements') throw invalide('jeu', 'standard ou reglements');
+        tiersSim.jeu = d.jeu;
+        resultat = { jeu: tiersSim.jeu };
       } else if (methode === 'GET' && segments[1] === 'tiers') {
         // Décisions enregistrées par les écrans « Tiers et factures ».
         resultat = tiersSim;

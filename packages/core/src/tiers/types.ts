@@ -20,6 +20,16 @@ export interface ParametresTiersFactures {
   toleranceDateJours: number;
   /** Longueur minimale d'un numéro de facture pour le rechercher DANS un libellé (au-dessous : égalité stricte seulement). */
   longueurMinReference: number;
+  /**
+   * Tolérance de montant (D-096), en montant EXACT (chaîne décimale, ≥ 0). Défaut « 0.00 » : aucune tolérance, jamais
+   * appliquée sans réglage explicite. Elle ne sert qu'à PROPOSER, pour confirmation humaine, un règlement dont l'écart
+   * avec le reste dû est inférieur ou égal à cette valeur ; elle ne lettre rien et n'impute rien d'elle-même.
+   */
+  toleranceMontant: ChaineDecimale;
+  /** Nombre maximal de factures ouvertes d'un même tiers combinées pour proposer un règlement groupé (D-096). */
+  groupeTailleMax: number;
+  /** Nombre maximal de factures ouvertes d'un même tiers examinées pour un règlement groupé ; au-delà : abstention. */
+  groupeCandidatesMax: number;
 }
 
 export const PARAMETRES_TIERS_FACTURES_PAR_DEFAUT: ParametresTiersFactures = {
@@ -29,7 +39,13 @@ export const PARAMETRES_TIERS_FACTURES_PAR_DEFAUT: ParametresTiersFactures = {
   prefixesContrepartie: ['2', '6', '7'],
   toleranceDateJours: 31,
   longueurMinReference: 5,
+  toleranceMontant: '0.00',
+  groupeTailleMax: 6,
+  groupeCandidatesMax: 24,
 };
+
+/** Plafond du réglage d'une tolérance de montant (garde-fou contre une tolérance qui rendrait toute proposition possible). */
+export const TOLERANCE_MONTANT_MAX = '1000.00';
 
 /** Pièce (facture ou avoir) telle que lue par l'extraction en vigueur de sa version courante. */
 export interface PieceFacture {
@@ -225,10 +241,36 @@ export interface Imputation {
 export interface PropositionImputation {
   ecriture: RefEcriture;
   nature: 'reglement' | 'avoir' | 'autre';
-  critere: 'montant_exact' | 'avoir_meme_tiers' | 'reference_multiple';
+  critere: 'montant_exact' | 'avoir_meme_tiers' | 'reference_multiple' | 'ecart_tolere' | 'reglement_groupe_probable';
   /** Vrai si la même écriture est proposée pour plusieurs factures, ou plusieurs écritures pour cette facture. */
   ambigue: boolean;
   avoirDocumentId: string | null;
+  /**
+   * `ecart_tolere` : écart (règlement − reste dû, signé) ACCEPTÉ comme simple suggestion « à confirmer », et tolérance
+   * réglée qui l'a permis. Toujours affichés ; jamais appliqués d'eux-mêmes. Absents pour les autres critères.
+   */
+  ecart?: ChaineDecimale | null;
+  tolerance?: ChaineDecimale | null;
+  /** `reglement_groupe_probable` : identifiants des pièces du groupe (dont celle-ci), triés. */
+  groupeDocumentIds?: string[];
+}
+
+/** Règlement bancaire non lettré dont le montant égale la somme EXACTE de plusieurs factures ouvertes du même tiers. */
+export interface ReglementGroupeProbable {
+  ecriture: RefEcriture;
+  /** Toujours « à confirmer » : une personne confirme chaque facture par l'imputation existante ; rien n'est appliqué seul. */
+  statut: 'a_confirmer';
+  factures: Array<{ documentId: string; numero: string | null; resteDu: ChaineDecimale }>;
+  somme: ChaineDecimale;
+  explication: string;
+}
+
+/** Règlement non lettré pour lequel aucune combinaison unique n'a pu être proposée (abstention motivée). */
+export interface AbstentionReglementGroupe {
+  ecriture: RefEcriture;
+  motif: 'combinaisons_equivalentes' | 'facture_unique_equivalente' | 'trop_de_factures_ouvertes' | 'montant_non_decimal_2';
+  nbCombinaisons: number | null;
+  explication: string;
 }
 
 export type EtatFacture =
@@ -321,6 +363,9 @@ export interface ResultatTiersFactures {
   tiers: FicheTiers[];
   propositionsTiers: PropositionTiers[];
   factures: FicheFacture[];
+  /** Règlements groupés probables (D-096), à confirmer par une personne : jamais comptés dans les restes dus. */
+  reglementsGroupes: ReglementGroupeProbable[];
+  abstentionsReglementsGroupes: AbstentionReglementGroupe[];
   suspicions: SuspicionDoubleComptabilisation[];
   decisionsARevoir: DecisionARevoir[];
   /** Limites qui s'appliquent à l'ensemble du résultat. */

@@ -454,7 +454,8 @@
                       "pieces",
                       "imports",
                       "constats",
-                      "restitutions"
+                      "restitutions",
+                      "ia"
                     ]
                   },
                   "active": {
@@ -7388,7 +7389,7 @@
     },
     "/v1/ia": {
       "get": {
-        "description": "Statut : non_connecte, configure_non_verifie, connecte (appel réel vérifié sur l’hôte officiel) ou simule (tests). « verification » décrit la PREUVE de connexion persistée : son état (sans_objet, absente, valide, perimee, autre_configuration, non_concluante, non_conforme), sa date, sa fin de validité et ce qu’elle atteste (hôte, modèles renvoyés, dimension des vecteurs — ni prompt ni réponse). « connecte » exige une preuve valide, non périmée, établie pour la configuration courante ; sinon le statut est « configure_non_verifie » et AUCUNE tâche ne sollicite le modèle. La vérification émet un appel réel : elle est faite par l’éditeur (commande d’exploitation), il n’existe AUCUNE route pour la déclencher, et rien ne la relance automatiquement. Les mesures viennent des traces sans contenu (table en ajout seul) et distinguent toujours les natures « reel », « simulateur » et « sans_ia » : un appel au simulateur n’est jamais compté comme un appel réel. Le coût est une estimation (jetons × tarif configuré et daté), nulle si aucun tarif n’est configuré.",
+        "description": "Statut : non_connecte, configure_non_verifie, connecte (appel réel vérifié sur l’hôte officiel) ou simule (tests). « verification » décrit la PREUVE de connexion persistée : son état (sans_objet, absente, valide, perimee, autre_configuration, non_concluante, non_conforme), sa date, sa fin de validité, ce qu’elle atteste (hôte, modèles renvoyés, dimension des vecteurs — ni prompt ni réponse) et « expiration » : temps restant avant sa péremption, calculé sans aucun appel, avec l’état « expire bientôt » (seuil IA_PREUVE_ALERTE_JOURS, 7 jours par défaut) — null tant qu’aucune preuve valide n’existe. « connecte » exige une preuve valide, non périmée, établie pour la configuration courante ; sinon le statut est « configure_non_verifie » et AUCUNE tâche ne sollicite le modèle. La vérification émet un appel réel : elle est faite par l’éditeur (commande d’exploitation), il n’existe AUCUNE route pour la déclencher, et rien ne la relance automatiquement. Les mesures viennent des traces sans contenu (table en ajout seul) et distinguent toujours les natures « reel », « simulateur » et « sans_ia » : un appel au simulateur n’est jamais compté comme un appel réel. Le coût est une estimation (jetons × tarif configuré et daté), nulle si aucun tarif n’est configuré.",
         "operationId": "AssistantController_etatIa",
         "parameters": [],
         "responses": {
@@ -8095,6 +8096,156 @@
           }
         ],
         "summary": "Statuer sur une suspicion de double comptabilisation (niveau révision) : confirmée, écartée (motif requis) ou décision retirée",
+        "tags": [
+          "Tiers, factures et règlements (aide à la révision)"
+        ]
+      }
+    },
+    "/v1/dossiers/{id}/tiers-factures/reglages": {
+      "get": {
+        "description": "La tolérance ne sert qu’à PROPOSER, avec son écart toujours affiché, un règlement non lettré dont le montant diffère du reste dû d’au plus cette valeur : la proposition reste « à confirmer » par une personne habilitée. Elle ne lettre rien, n’impute rien et ne change aucun reste dû d’elle-même. Valeur par défaut : 0.00, c’est-à-dire AUCUNE tolérance ; jamais appliquée sans réglage explicite. Chaque réglage est une ligne ajoutée (auteur, date, motif) : aucun n’est modifié ni supprimé. Lecture : niveau « lecture » sur le dossier. Le réglage du dossier l’emporte sur celui du cabinet.",
+        "operationId": "ReglagesTiersController_lire",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Tolérance de montant de l’appariement facture ↔ règlement en vigueur pour le dossier (et son historique)",
+        "tags": [
+          "Tiers, factures et règlements (aide à la révision)"
+        ]
+      },
+      "put": {
+        "description": "La tolérance ne sert qu’à PROPOSER, avec son écart toujours affiché, un règlement non lettré dont le montant diffère du reste dû d’au plus cette valeur : la proposition reste « à confirmer » par une personne habilitée. Elle ne lettre rien, n’impute rien et ne change aucun reste dû d’elle-même. Valeur par défaut : 0.00, c’est-à-dire AUCUNE tolérance ; jamais appliquée sans réglage explicite. Chaque réglage est une ligne ajoutée (auteur, date, motif) : aucun n’est modifié ni supprimé. Pour revenir à « aucune tolérance », régler 0.00 : c’est une nouvelle ligne, l’historique est conservé.",
+        "operationId": "ReglagesTiersController_regler",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "toleranceMontant": {
+                    "type": "string",
+                    "pattern": "^\\d{1,4}(\\.\\d{1,2})?$"
+                  },
+                  "motif": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "toleranceMontant",
+                  "motif"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Régler la tolérance de montant pour un dossier (niveau « révision », motif obligatoire)",
+        "tags": [
+          "Tiers, factures et règlements (aide à la révision)"
+        ]
+      }
+    },
+    "/v1/cabinet/tiers-factures/reglages": {
+      "get": {
+        "description": "La tolérance ne sert qu’à PROPOSER, avec son écart toujours affiché, un règlement non lettré dont le montant diffère du reste dû d’au plus cette valeur : la proposition reste « à confirmer » par une personne habilitée. Elle ne lettre rien, n’impute rien et ne change aucun reste dû d’elle-même. Valeur par défaut : 0.00, c’est-à-dire AUCUNE tolérance ; jamais appliquée sans réglage explicite. Chaque réglage est une ligne ajoutée (auteur, date, motif) : aucun n’est modifié ni supprimé.",
+        "operationId": "ReglagesTiersController_lireCabinet",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Tolérance de montant par défaut du cabinet (administrateurs et associés)",
+        "tags": [
+          "Tiers, factures et règlements (aide à la révision)"
+        ]
+      },
+      "put": {
+        "description": "La tolérance ne sert qu’à PROPOSER, avec son écart toujours affiché, un règlement non lettré dont le montant diffère du reste dû d’au plus cette valeur : la proposition reste « à confirmer » par une personne habilitée. Elle ne lettre rien, n’impute rien et ne change aucun reste dû d’elle-même. Valeur par défaut : 0.00, c’est-à-dire AUCUNE tolérance ; jamais appliquée sans réglage explicite. Chaque réglage est une ligne ajoutée (auteur, date, motif) : aucun n’est modifié ni supprimé. Elle vaut pour tous les dossiers du cabinet qui n’ont pas leur propre réglage.",
+        "operationId": "ReglagesTiersController_reglerCabinet",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "toleranceMontant": {
+                    "type": "string",
+                    "pattern": "^\\d{1,4}(\\.\\d{1,2})?$"
+                  },
+                  "motif": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "toleranceMontant",
+                  "motif"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Régler la tolérance de montant par défaut du cabinet (administrateurs et associés, motif obligatoire)",
         "tags": [
           "Tiers, factures et règlements (aide à la révision)"
         ]

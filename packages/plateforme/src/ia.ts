@@ -141,6 +141,31 @@ export class JournalIaBd implements JournalAuditIa {
 
 /** Durée de validité par défaut d'une vérification, en jours (`IA_PREUVE_VALIDITE_JOURS`). */
 export const VALIDITE_PREUVE_IA_JOURS = 30;
+/** Seuil par défaut de l'alerte « expire bientôt », en jours avant la péremption (`IA_PREUVE_ALERTE_JOURS`). */
+export const ALERTE_PREUVE_IA_JOURS = 7;
+
+/**
+ * Temps restant avant la péremption de la preuve et état « expire bientôt » (D-096). Calcul DÉTERMINISTE, sans aucun
+ * appel : il ne dépend que de la date de fin de validité, de l'instant donné et du seuil.
+ *  - `restantMs` : fin de validité − maintenant (toujours > 0 ici : une preuve échue est « périmée », pas « expire bientôt ») ;
+ *  - `restantJours` : jours entiers restants, ARRONDIS À L'ENTIER SUPÉRIEUR (23 h restantes = 1 jour : jamais « 0 jour » tant que la preuve vaut) ;
+ *  - `expireBientot` : vrai si `restantMs` ≤ seuil (la borne est comprise).
+ */
+export interface ExpirationPreuveIa {
+  seuilJours: number;
+  expireLe: string;
+  restantMs: number;
+  restantJours: number;
+  expireBientot: boolean;
+}
+export function evaluerExpirationPreuveIa(valideJusquAu: string | number, maintenant: Date | number, seuilJours: number): ExpirationPreuveIa {
+  if (!(Number.isInteger(seuilJours) && seuilJours >= 1 && seuilJours <= 90)) throw new Error('Seuil d’alerte invalide (1 à 90 jours).');
+  const fin = typeof valideJusquAu === 'number' ? valideJusquAu : Date.parse(valideJusquAu);
+  const t = typeof maintenant === 'number' ? maintenant : maintenant.getTime();
+  if (!Number.isFinite(fin) || !Number.isFinite(t)) throw new Error('Date invalide.');
+  const restantMs = fin - t;
+  return { seuilJours, expireLe: new Date(fin).toISOString(), restantMs, restantJours: Math.max(0, Math.ceil(restantMs / 86_400_000)), expireBientot: restantMs > 0 && restantMs <= seuilJours * 86_400_000 };
+}
 
 /**
  * Empreinte de la configuration vérifiée : URL de base, modèles figés, dimension des vecteurs et empreinte du jeton.
@@ -183,6 +208,13 @@ export interface VuePreuveIa {
   /** Ce que la vérification atteste (hôte, modèles renvoyés, dimension) ; null sans vérification pour cette configuration. */
   atteste: { hote: string; modeleLangage: string | null; modeleEmbeddings: string | null; dimensionsEmbeddings: number | null } | null;
   validiteJours: number;
+  /** Identifiant de la vérification jugée (nul si aucune preuve valide) : sert de clé à l'alerte, une seule fois par preuve. */
+  verificationId: string | null;
+  /**
+   * Temps restant avant la péremption ; renseigné SEULEMENT pour une preuve valide (aucune preuve, périmée ou autre
+   * configuration : rien à signaler, null).
+   */
+  expiration: ExpirationPreuveIa | null;
 }
 
 const texteOuNull = (v: unknown): string | null => (typeof v === 'string' ? v : null);
@@ -231,10 +263,11 @@ export function jugerVerificationIa(
   derniereAutre: VerificationIa | null,
   maintenant: Date,
   validiteJours: number,
+  alerteJours: number = ALERTE_PREUVE_IA_JOURS,
 ): { preuve: PreuveConnexionIa | null; vue: VuePreuveIa } {
   const sans = (etat: EtatPreuveIa, detail: string, v: VerificationIa | null = null): { preuve: null; vue: VuePreuveIa } => ({
     preuve: null,
-    vue: { etat, detail, verifieeLe: v?.verifieeLe ?? null, valideJusquAu: v?.valideJusquAu ?? null, atteste: v ? { hote: v.hote, modeleLangage: v.modeleLangage, modeleEmbeddings: v.modeleEmbeddings, dimensionsEmbeddings: v.dimensionsEmbeddings } : null, validiteJours },
+    vue: { etat, detail, verifieeLe: v?.verifieeLe ?? null, valideJusquAu: v?.valideJusquAu ?? null, atteste: v ? { hote: v.hote, modeleLangage: v.modeleLangage, modeleEmbeddings: v.modeleEmbeddings, dimensionsEmbeddings: v.dimensionsEmbeddings } : null, validiteJours, verificationId: null, expiration: null },
   });
   if (courante === null || empreinteCourante === null || courante.empreinteConfiguration !== empreinteCourante) {
     return derniereAutre
@@ -255,7 +288,11 @@ export function jugerVerificationIa(
   if (jugement.statut !== 'connecte') return sans('non_conforme', `La vérification enregistrée n’est pas conforme : ${jugement.raisons.join(' ')}`, courante);
   return {
     preuve,
-    vue: { etat: 'valide', detail: `Connexion vérifiée le ${courante.verifieeLe.slice(0, 10)}, valable jusqu’au ${new Date(fin).toISOString().slice(0, 10)}.`, verifieeLe: courante.verifieeLe, valideJusquAu: new Date(fin).toISOString(), atteste: { hote: courante.hote, modeleLangage: courante.modeleLangage, modeleEmbeddings: courante.modeleEmbeddings, dimensionsEmbeddings: courante.dimensionsEmbeddings }, validiteJours },
+    vue: {
+      etat: 'valide', detail: `Connexion vérifiée le ${courante.verifieeLe.slice(0, 10)}, valable jusqu’au ${new Date(fin).toISOString().slice(0, 10)}.`, verifieeLe: courante.verifieeLe, valideJusquAu: new Date(fin).toISOString(),
+      atteste: { hote: courante.hote, modeleLangage: courante.modeleLangage, modeleEmbeddings: courante.modeleEmbeddings, dimensionsEmbeddings: courante.dimensionsEmbeddings }, validiteJours,
+      verificationId: courante.id, expiration: evaluerExpirationPreuveIa(fin, t, alerteJours),
+    },
   };
 }
 
@@ -347,6 +384,8 @@ export interface OptionsPreuveIa {
   /** Empreinte de la configuration courante ; `null` (tests sans configuration) : aucune preuve ne peut correspondre. */
   empreinteConfiguration?: string | null;
   validiteJours?: number;
+  /** Seuil de l'alerte « expire bientôt », en jours (7 par défaut). */
+  alerteJours?: number;
   maintenant?: () => Date;
   /** Âge maximal, en millisecondes, de la lecture en cache de la table avant une relecture en arrière-plan. */
   fraicheurMs?: number;
@@ -384,6 +423,7 @@ export function assemblerIa(bd: AccesBd, fournisseur: FournisseurIa | null, tari
   const sansFournisseur = fournisseur === null ? passerelle : new PasserelleIa({ fournisseur: null, journal, tarifs: null });
   const empreinte = options.empreinteConfiguration ?? null;
   const validiteJours = options.validiteJours ?? VALIDITE_PREUVE_IA_JOURS;
+  const alerteJours = options.alerteJours ?? ALERTE_PREUVE_IA_JOURS;
   const maintenant = options.maintenant ?? (() => new Date());
   const fraicheurMs = options.fraicheurMs ?? 30_000;
   // Une preuve n'a de sens que pour un fournisseur RÉEL : sans fournisseur ou avec le simulateur, la table n'est jamais lue.
@@ -395,7 +435,7 @@ export function assemblerIa(bd: AccesBd, fournisseur: FournisseurIa | null, tari
   /** Réévalue à CHAQUE appel (la péremption dépend de l'heure) et remet à la passerelle la seule preuve encore valable. */
   const juger = (): VuePreuveIa | null => {
     if (!avecPreuve || fournisseur === null) return null;
-    const j = jugerVerificationIa(fournisseur, empreinte, lues.courante, lues.derniereAutre, maintenant(), validiteJours);
+    const j = jugerVerificationIa(fournisseur, empreinte, lues.courante, lues.derniereAutre, maintenant(), validiteJours, alerteJours);
     passerelle.retenirPreuve(j.preuve);
     return j.vue;
   };
@@ -433,11 +473,12 @@ export function assemblerIa(bd: AccesBd, fournisseur: FournisseurIa | null, tari
 }
 
 /** Passerelle IA de l'application, à partir de la configuration. Aujourd'hui : aucun jeton, donc `non_connecte`. */
-export function creerIa(cfg: Pick<Config, 'IA_OVH_ENDPOINT' | 'IA_OVH_JETON' | 'IA_TARIFS'> & Partial<Pick<Config, 'IA_PREUVE_VALIDITE_JOURS'>>, bd: AccesBd): ServicesIa {
+export function creerIa(cfg: Pick<Config, 'IA_OVH_ENDPOINT' | 'IA_OVH_JETON' | 'IA_TARIFS'> & Partial<Pick<Config, 'IA_PREUVE_VALIDITE_JOURS' | 'IA_PREUVE_ALERTE_JOURS'>>, bd: AccesBd): ServicesIa {
   const fournisseur = creerFournisseurOvhDepuisEnv({ IA_OVH_ENDPOINT: cfg.IA_OVH_ENDPOINT, IA_OVH_JETON: cfg.IA_OVH_JETON });
   const ia = assemblerIa(bd, fournisseur, lireTarifsIa(cfg), {
     empreinteConfiguration: fournisseur ? empreinteConfigurationIa({ urlBase: fournisseur.urlBase ?? '', jeton: cfg.IA_OVH_JETON.trim() }) : null,
     validiteJours: cfg.IA_PREUVE_VALIDITE_JOURS ?? VALIDITE_PREUVE_IA_JOURS,
+    alerteJours: cfg.IA_PREUVE_ALERTE_JOURS ?? ALERTE_PREUVE_IA_JOURS,
   });
   // Première lecture de la preuve dès le démarrage (sans fournisseur : aucune lecture).
   void ia.rafraichirPreuve();

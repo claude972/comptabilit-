@@ -13,4 +13,5 @@ export * from './agregation-bancaire.js';
 export * from './web-push.js';
 export * from './notifications-poussees.js';
 export * from './rotation-secrets.js';
+export * from './rotation-vapid.js';
 export * from './simulateur-poussees.js';

@@ -131,6 +131,8 @@ export async function genererRestitution(c: Contexte, t: TacheRestitution): Prom
       executions: tableauJson(lire('executionsRapprochement', s.executionsRapprochement)),
       rapprochements: tableauJson(lire('rapprochements', s.rapprochements)),
     }));
+    // Historique des réglages de la tolérance de montant du DOSSIER (ajout seul, motif et auteur) ; celui du cabinet est dans la restitution du cabinet.
+    await archive.ajouterFragments('donnees/tolerance-tiers-factures.json', tableauJson(lire('reglagesTiersFactures', s.reglagesTiersFactures, eq(s.reglagesTiersFactures.dossierId, e))));
     await archive.ajouterFragments('donnees/regles-cabinet.json', tableauJson(lire('reglesCabinet', s.reglesCabinet, or(isNull(s.reglesCabinet.entiteId), eq(s.reglesCabinet.entiteId, e)))));
     await archive.ajouterFragments('donnees/journal-audit.json', tableauJson(lire('evenementsAudit', s.journalAudit, eq(s.journalAudit.entiteId, e))));
 

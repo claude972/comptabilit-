@@ -2,6 +2,7 @@ import { creerAccesBd, urlBd } from '@comtaple/db';
 import { chargerEnvLocal } from '@comtaple/db/env';
 import { arreterTraces, connecteursMail, creerIa, demarrerTraces, Metriques, connexionRedis, FILES, Files, lireConfig, notificationsPoussees, Stockage, tracerTravail } from '@comtaple/plateforme';
 import { Worker, type Job } from 'bullmq';
+import { signalerExpirationPreuveIa } from './alerte-ia.js';
 import { analyserDocument } from './analyse-document.js';
 import { executerRapprochement, importerReleve } from './banque.js';
 import type { Contexte } from './contexte.js';
@@ -137,6 +138,17 @@ setTimeout(entretienPoussees, 30_000).unref();
 const minuterieEntretienPoussees = setInterval(entretienPoussees, 3600_000);
 console.log(`Notifications poussées : ${poussees.statut === 'non_configure' ? 'non configurées (aucun abonnement accepté, aucun envoi)' : poussees.statut === 'simule' ? 'SIMULATEUR de test (aucun service réel contacté)' : 'configurées, non vérifiées sur un appareil réel'}.`);
 
+// Alerte d'expiration de la preuve de connexion IA (D-096) : lecture seule de la preuve persistée, AUCUN appel à l'IA ni
+// dépense ; une fois peu après le démarrage, puis toutes les heures. Sans preuve valide proche de sa fin : rien à signaler.
+const alerteIa = () =>
+  void signalerExpirationPreuveIa(c)
+    .then((b) => {
+      if (b.notifications) console.log(`passerelle IA : preuve de connexion expirant dans ${b.joursRestants} jour(s), ${b.notifications} notification(s) interne(s) créée(s)`);
+    })
+    .catch((e) => console.error(`passerelle IA : alerte d'expiration en échec : ${e.message}`));
+setTimeout(alerteIa, 45_000).unref();
+const minuterieAlerteIa = setInterval(alerteIa, 3600_000);
+
 // Veille réglementaire : une passe par jour sur les sources officielles surveillées.
 await c.taches.comptabilite.upsertJobScheduler('veille-quotidienne', { every: 24 * 3600 * 1000 }, { name: 'veille', data: {} });
 
@@ -161,6 +173,7 @@ async function arreter() {
   clearInterval(minuterie);
   if (minuteriePoussees) clearInterval(minuteriePoussees);
   clearInterval(minuterieEntretienPoussees);
+  clearInterval(minuterieAlerteIa);
   await Promise.all(workers.map((w) => w.close()));
   await c.taches.fermer();
   await c.bd.fermer();

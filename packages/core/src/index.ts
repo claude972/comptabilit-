@@ -125,10 +125,10 @@ export { MENTION_PROJET, SOURCES_FISCALES } from './etats/sources-fiscales.js';
 // 16. tiers, factures et avoirs suivis, échéances et règlements — aide à la révision, recalculée à la lecture
 export { estDateIso } from './dates.js';
 export { cleEcriture, normaliserNomTiers, suivreTiersEtFactures } from './tiers/moteur.js';
-export { PARAMETRES_TIERS_FACTURES_PAR_DEFAUT } from './tiers/types.js';
+export { PARAMETRES_TIERS_FACTURES_PAR_DEFAUT, TOLERANCE_MONTANT_MAX } from './tiers/types.js';
 export type {
-  BanqueImputation, CandidatEcriture, CriteresAppariement, DecisionARevoir, DecisionFacture, DecisionTiers, DemandeTiersFactures, EtatFacture, FicheFacture, FicheTiers, IdentifiantTiers, Imputation,
-  ParametresTiersFactures, PieceFacture, PropositionImputation, PropositionTiers, RapprochementValide, RefEcriture, ResultatTiersFactures, SuspicionDoubleComptabilisation, TypeTiers,
+  AbstentionReglementGroupe, BanqueImputation, CandidatEcriture, CriteresAppariement, DecisionARevoir, DecisionFacture, DecisionTiers, DemandeTiersFactures, EtatFacture, FicheFacture, FicheTiers, IdentifiantTiers, Imputation,
+  ParametresTiersFactures, PieceFacture, PropositionImputation, PropositionTiers, RapprochementValide, ReglementGroupeProbable, RefEcriture, ResultatTiersFactures, SuspicionDoubleComptabilisation, TypeTiers,
 } from './tiers/types.js';
 
 // Amélioration contrôlée : suggestions déterministes tirées des décisions de revue d'un cabinet.

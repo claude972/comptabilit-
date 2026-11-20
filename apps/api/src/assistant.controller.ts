@@ -152,7 +152,7 @@ export class AssistantController {
   @ApiOperation({
     summary: 'État RÉEL de la passerelle IA, modèles figés, prompts versionnés et — pour les gestionnaires — mesures',
     description:
-      'Statut : non_connecte, configure_non_verifie, connecte (appel réel vérifié sur l’hôte officiel) ou simule (tests). « verification » décrit la PREUVE de connexion persistée : son état (sans_objet, absente, valide, perimee, autre_configuration, non_concluante, non_conforme), sa date, sa fin de validité et ce qu’elle atteste (hôte, modèles renvoyés, dimension des vecteurs — ni prompt ni réponse). ' +
+      'Statut : non_connecte, configure_non_verifie, connecte (appel réel vérifié sur l’hôte officiel) ou simule (tests). « verification » décrit la PREUVE de connexion persistée : son état (sans_objet, absente, valide, perimee, autre_configuration, non_concluante, non_conforme), sa date, sa fin de validité, ce qu’elle atteste (hôte, modèles renvoyés, dimension des vecteurs — ni prompt ni réponse) et « expiration » : temps restant avant sa péremption, calculé sans aucun appel, avec l’état « expire bientôt » (seuil IA_PREUVE_ALERTE_JOURS, 7 jours par défaut) — null tant qu’aucune preuve valide n’existe. ' +
       '« connecte » exige une preuve valide, non périmée, établie pour la configuration courante ; sinon le statut est « configure_non_verifie » et AUCUNE tâche ne sollicite le modèle. La vérification émet un appel réel : elle est faite par l’éditeur (commande d’exploitation), il n’existe AUCUNE route pour la déclencher, et rien ne la relance automatiquement. Les mesures viennent des traces sans contenu (table en ajout seul) et distinguent toujours les natures « reel », « simulateur » et « sans_ia » : un appel au simulateur n’est jamais compté comme un appel réel. Le coût est une estimation (jetons × tarif configuré et daté), nulle si aucun tarif n’est configuré.',
   })
   async etatIa(@AccesCourant() acces: Acces) {
@@ -169,6 +169,8 @@ export class AssistantController {
           valideJusquAu: null,
           atteste: null,
           validiteJours: null,
+          verificationId: null,
+          expiration: null,
         }),
         declenchement: 'La vérification émet un appel réel au fournisseur : elle est faite par l’éditeur du service, sur demande explicite. Elle n’est ni automatique ni déclenchable depuis cet écran.',
       },

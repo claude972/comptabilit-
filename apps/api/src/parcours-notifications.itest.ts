@@ -173,6 +173,8 @@ describe('notifications d’import, de constat affecté, et préférences', () =
     const p = (await api('remi', 'GET', '/v1/notifications/preferences')).json;
     expect(p.envoiExterne).toBe(false);
     expect(p.familles.map((f: any) => [f.famille, f.active])).toEqual([['regles', true], ['pieces', true], ['imports', true], ['constats', true], ['restitutions', true]]);
+    // La famille « ia » (alerte d'expiration de la preuve de la passerelle IA, D-097) n'est proposée qu'aux administrateurs et associés.
+    expect(((await api('alice', 'GET', '/v1/notifications/preferences')).json.familles as Array<{ famille: string; active: boolean }>).map((f) => f.famille)).toEqual(['regles', 'pieces', 'imports', 'constats', 'restitutions', 'ia']);
     expect((await api('remi', 'PUT', '/v1/notifications/preferences', { famille: 'inconnue', active: false })).statut).toBe(400);
     expect((await api('remi', 'PUT', '/v1/notifications/preferences', { famille: 'constats', active: 'non' })).statut).toBe(400);
     expect((await api('remi', 'PUT', '/v1/notifications/preferences', { famille: 'constats', active: false })).json).toMatchObject({ famille: 'constats', active: false });

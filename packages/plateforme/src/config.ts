@@ -36,6 +36,12 @@ const schema = z.object({
    */
   IA_PREUVE_VALIDITE_JOURS: z.coerce.number().int().min(1).max(90).default(30),
   /**
+   * Seuil de l'état « expire bientôt » de la preuve de connexion, en jours avant sa péremption (7 par défaut). Sert à
+   * l'affichage (écran IA, `GET v1/ia`) et à UNE notification interne aux gestionnaires par preuve ; ne déclenche aucun
+   * appel à l'IA, aucune dépense, aucune vérification.
+   */
+  IA_PREUVE_ALERTE_JOURS: z.coerce.number().int().min(1).max(90).default(7),
+  /**
    * Tarifs IA DATÉS pour l'estimation de coût, en JSON : { relevesLe, devise, source, parMillionDeJetons: { <modèle>: { entree, sortie } } }.
    * Vide (défaut) = aucun coût estimé. Le code n'embarque aucun tarif (voir packages/ia/docs/passerelle.md).
    */

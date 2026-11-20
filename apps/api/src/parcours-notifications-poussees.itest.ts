@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { urlBd } from '@comtaple/db';
 import { DEMO } from '@comtaple/db/amorcer';
 import { ouvrirEssai } from '@comtaple/db/provisionnement';
-import { type AbonnementSimule, connexionRedis, demarrerSimulateurPoussees, Files, genererClesVapid, type SimulateurPoussees } from '@comtaple/plateforme';
+import { type AbonnementSimule, connexionRedis, demarrerSimulateurPoussees, empreinteCleVapid, Files, genererClesVapid, retirerAbonnementsVapidObsoletes, type SimulateurPoussees } from '@comtaple/plateforme';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { API as API_NORMALE, attendre, jetons, ouvrirSessions, pdfTexte, sha } from './essais/outils.js';
@@ -477,5 +477,93 @@ describe('envoi par le worker, déclenché par un événement réel', () => {
     // Tout ce que le simulateur a reçu appartient à l'ensemble fermé des charges utiles.
     for (const m of sim.messages) expect(m.clair).toMatch(/^\{"v":1,"t":"(notification|plusieurs|complement|reponse)","i":"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"\}$/);
     expect(sim.refus).toEqual([]);
+  });
+});
+
+describe('rotation des clés VAPID : retrait en masse des abonnements devenus inutilisables (D-096)', () => {
+  const comptes = async () =>
+    Object.fromEntries(
+      await Promise.all(
+        ['notifications', 'preferences_notification', 'envois_pousses', 'appartenances', 'habilitations_dossier', 'documents', 'entites'].map(async (t) => [t, Number((await editeur.query(`select count(*) as n from ${t} where cabinet_id = $1`, [cabinet])).rows[0].n)] as const),
+      ),
+    );
+  const empreintes = async () => (await editeur.query('select id, empreinte_cle_vapid from abonnements_pousses where cabinet_id = $1 order by cree_le, id', [cabinet])).rows as Array<{ id: string; empreinte_cle_vapid: string | null }>;
+
+  it('l’abonnement enregistre l’empreinte de la clé VAPID COURANTE du serveur ; réabonné, il est mis à jour', async () => {
+    appareils.remi = sim.abonner(vapid.publique);
+    appareils.rotation2 = sim.abonner(vapid.publique);
+    const a = await api('remi', 'POST', '/v1/notifications/poussees/abonnements', corpsAbonnement(appareils.remi));
+    const b = await api('chloe', 'POST', '/v1/notifications/poussees/abonnements', corpsAbonnement(appareils.rotation2));
+    expect(a.statut, a.texte).toBe(201);
+    expect(b.statut, b.texte).toBe(201);
+    const attendue = empreinteCleVapid(vapid.publique);
+    expect(attendue).toMatch(/^[0-9a-f]{64}$/);
+    for (const l of await empreintes()) expect(l.empreinte_cle_vapid, l.id).toBe(attendue);
+    // L'empreinte n'est jamais exposée par l'API : ni dans la liste, ni dans la réponse d'abonnement.
+    expect(a.texte).not.toContain(attendue);
+    expect(JSON.stringify((await api('remi', 'GET', '/v1/notifications/poussees/abonnements')).json)).not.toContain(attendue);
+  });
+
+  it('rotation simulée : simulation sans écriture ; clé courante = rien à retirer ; avec la NOUVELLE clé, seuls les abonnements d’empreinte connue et différente sont retirés — ni les autres objets, ni les abonnements d’empreinte inconnue', async () => {
+    const avant = await empreintes();
+    expect(avant.length).toBeGreaterThanOrEqual(4);
+    // Un abonnement d'empreinte INCONNUE (antérieur à la migration 0048) : jamais retiré par l'outil.
+    const inconnu = avant[0]!.id;
+    await editeur.query('update abonnements_pousses set empreinte_cle_vapid = null where id = $1', [inconnu]);
+    const aRetirer = avant.filter((l) => l.id !== inconnu).map((l) => l.id).sort();
+    const objetsAvant = await comptes();
+
+    // 1. Sans clé courante : refusé, rien n'est touché (jamais « tout diffère »).
+    await expect(retirerAbonnementsVapidObsoletes(editeur, { PUSH_VAPID_CLE_PUBLIQUE: '' }, { appliquer: true, cabinetId: cabinet })).rejects.toThrow(/PUSH_VAPID_CLE_PUBLIQUE est vide/);
+    await expect(retirerAbonnementsVapidObsoletes(editeur, { PUSH_VAPID_CLE_PUBLIQUE: vapid.publique }, { appliquer: true, cabinetId: 'pas-un-uuid' })).rejects.toThrow(/Identifiant de cabinet invalide/);
+    expect(await empreintes()).toHaveLength(avant.length);
+
+    // 2. Clé courante inchangée : tout correspond (ou est inconnu) → rien à retirer, même en appliquant.
+    const sansRotation = await retirerAbonnementsVapidObsoletes(editeur, { PUSH_VAPID_CLE_PUBLIQUE: vapid.publique }, { appliquer: true, cabinetId: cabinet });
+    expect(sansRotation).toMatchObject({ simulation: false, obsoletes: 0, retires: 0, correspondants: aRetirer.length, empreinteInconnue: 1 });
+    expect(await empreintes()).toHaveLength(avant.length);
+
+    // 3. Rotation : nouvelle paire de clés. SIMULATION par défaut : rien n'est écrit, le rapport dit ce qui serait retiré.
+    const nouvelle = genererClesVapid();
+    const simulation = await retirerAbonnementsVapidObsoletes(editeur, { PUSH_VAPID_CLE_PUBLIQUE: nouvelle.publique }, { cabinetId: cabinet });
+    expect(simulation).toMatchObject({ simulation: true, correspondants: 0, empreinteInconnue: 1, obsoletes: aRetirer.length, retires: 0, restantsObsoletes: aRetirer.length, interrompu: false });
+    expect(simulation.concernes.map((c) => c.id).sort()).toEqual(aRetirer);
+    expect(simulation.empreinteCourante).toBe(empreinteCleVapid(nouvelle.publique).slice(0, 12));
+    expect(await empreintes()).toHaveLength(avant.length);
+    expect(await comptes()).toEqual(objetsAvant);
+    const journalAvant = Number((await editeur.query(`select count(*) as n from journal_audit where cabinet_id = $1 and details->>'motif' = 'rotation_cles_vapid'`, [cabinet])).rows[0].n);
+    expect(journalAvant).toBe(0);
+
+    // 4. Application bornée par « limite » : un seul retrait, passage interrompu, reprise sans doublon.
+    const premier = await retirerAbonnementsVapidObsoletes(editeur, { PUSH_VAPID_CLE_PUBLIQUE: nouvelle.publique }, { appliquer: true, cabinetId: cabinet, limite: 1 });
+    expect(premier).toMatchObject({ simulation: false, retires: 1, interrompu: true, restantsObsoletes: aRetirer.length - 1 });
+    const suite = await retirerAbonnementsVapidObsoletes(editeur, { PUSH_VAPID_CLE_PUBLIQUE: nouvelle.publique }, { appliquer: true, cabinetId: cabinet });
+    expect(suite).toMatchObject({ retires: aRetirer.length - 1, interrompu: false, restantsObsoletes: 0 });
+    expect([...premier.concernes, ...suite.concernes].map((c) => c.id).sort()).toEqual(aRetirer);
+    // Rejouée : rien à faire (idempotente).
+    const rejeu = await retirerAbonnementsVapidObsoletes(editeur, { PUSH_VAPID_CLE_PUBLIQUE: nouvelle.publique }, { appliquer: true, cabinetId: cabinet });
+    expect(rejeu).toMatchObject({ obsoletes: 0, retires: 0, empreinteInconnue: 1 });
+
+    // 5. Seul l'abonnement d'empreinte inconnue reste ; AUCUN autre objet n'a été supprimé ou modifié.
+    expect((await empreintes()).map((l) => l.id)).toEqual([inconnu]);
+    expect(await comptes()).toEqual(objetsAvant);
+    // Chaque retrait est journalisé au journal du cabinet, sans point d'accès ni clé ; la chaîne du journal reste intègre.
+    const retraits = (await editeur.query(`select cible_id, acteur_type, details from journal_audit where cabinet_id = $1 and details->>'motif' = 'rotation_cles_vapid' order by id`, [cabinet])).rows;
+    expect(retraits.map((r) => r.cible_id).sort()).toEqual(aRetirer);
+    expect(retraits.every((r) => r.acteur_type === 'systeme' && r.details.par === 'editeur' && r.details.service === 'simulateur')).toBe(true);
+    const brut = JSON.stringify(retraits);
+    for (const secret of ['127.0.0.1', vapid.publique, nouvelle.publique, appareils.remi!.endpoint, appareils.remi!.keys.auth]) expect(brut.includes(secret), secret.slice(0, 10)).toBe(false);
+    expect((await editeur.query('select journal_audit_verifier($1)::text as r', [cabinet])).rows[0].r).toBeNull();
+  });
+
+  it('après le retrait : les personnes dont l’appareil a été retiré n’en voient plus ; seul l’abonnement d’empreinte inconnue subsiste', async () => {
+    for (const qui of ['remi', 'chloe']) expect((await api(qui, 'GET', '/v1/notifications/poussees/abonnements')).json.appareils, qui).toEqual([]);
+    const restants = await lignesAbonnements();
+    expect(restants).toHaveLength(1);
+    expect((await empreintes()).map((l) => l.empreinte_cle_vapid)).toEqual([null]);
+    // Se réabonner (« Réactiver ») avec la clé courante du serveur enregistre l'empreinte de la clé COURANTE du serveur de l'essai.
+    appareils.reactive = sim.abonner(vapid.publique);
+    expect((await api('remi', 'POST', '/v1/notifications/poussees/abonnements', corpsAbonnement(appareils.reactive))).statut).toBe(201);
+    expect((await empreintes()).map((l) => l.empreinte_cle_vapid).sort()).toEqual([null, empreinteCleVapid(vapid.publique)].sort());
   });
 });

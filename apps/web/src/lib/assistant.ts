@@ -108,6 +108,8 @@ export interface VerificationIa {
   valideJusquAu: string | null;
   atteste: { hote: string; modeleLangage: string | null; modeleEmbeddings: string | null; dimensionsEmbeddings: number | null } | null;
   validiteJours: number | null;
+  /** Temps restant avant la péremption (preuve valide seulement) et état « expire bientôt » ; calculé sans aucun appel. */
+  expiration?: { seuilJours: number; expireLe: string; restantMs: number; restantJours: number; expireBientot: boolean } | null;
   /** Qui peut vérifier, et comment : jamais depuis l'écran. */
   declenchement: string;
 }

@@ -4,9 +4,9 @@ Aide à la révision, par dossier et par exercice. Rien n'est comptabilisé ni l
 reste la référence. Tout ce que le moteur déduit est un PROJET tant qu'une personne habilitée ne l'a pas confirmé.
 Aucune règle de ce document n'a été validée par un expert-comptable (voir « Validations attendues »).
 
-Code : moteur `packages/core/src/tiers/` (`suivreTiersEtFactures`, pur, 47 tests) ; destinataire et sens de la pièce
+Code : moteur `packages/core/src/tiers/` (`suivreTiersEtFactures`, pur, 67 tests) ; destinataire et sens de la pièce
 `packages/core/src/facture/` (`texte.ts`, `xml.ts`, `sens.ts`, 32 tests dans `destinataire.test.ts`) ; API `apps/api/src/tiers.controller.ts` ;
-écran `apps/web/src/app/(app)/dossiers/[id]/tiers/page.tsx` ; tables `liens_tiers`, `liens_factures` (migration 0037).
+écran `apps/web/src/app/(app)/dossiers/[id]/tiers/page.tsx` ; tables `liens_tiers`, `liens_factures` (migration 0037) et `reglages_tiers_factures` (migration 0048, réglage de la tolérance de montant, ajout seul) ; réglages : `apps/api/src/reglages-tiers.controller.ts`.
 
 ## Ce qui est stocké, ce qui est recalculé
 
@@ -18,7 +18,7 @@ Code : moteur `packages/core/src/tiers/` (`suivreTiersEtFactures`, pur, 47 tests
 | Décision humaine sur un tiers (confirme / infirme) | Oui : `liens_tiers`, par dossier | Seule information que les données ne portent pas |
 | Décision humaine sur une facture (écriture, règlement, suspicion) | Oui : `liens_factures`, par exercice, avec la version de l'extraction et des données | Idem |
 
-La table `factures` (créée au lot initial, jamais alimentée par aucun code) n'est ni utilisée ni modifiée.
+La table `factures` (créée au lot initial, jamais alimentée par aucun code) est **OBSOLÈTE** (D-096) : vide, non référencée, ni utilisée ni modifiée, et NON supprimée. Un test (`packages/db/src/factures-obsolete.test.ts`) échoue si du code l'alimente ou la lit ; un contrôle de base (`factures-obsolete.itest.ts`) vérifie qu'elle est vide et non référencée.
 
 Invalidation : une décision est rattachée à l'identifiant de la pièce (donc à sa VERSION, D-031) et à la version de son
 extraction. Nouvelle version de la pièce, correction des champs extraits, écriture disparue après un réimport : la décision
@@ -123,7 +123,9 @@ Le moteur des tiers garde la nature qualifiée par la personne pour une facture 
    somme ; sinon c'est une proposition. Plusieurs factures confirmées sur une même ligne sans montant saisi : répartition
    par ordre chronologique, marquée comme convention.
 3. PROPOSITIONS (jamais comptées) : règlement non lettré du même tiers de montant égal au reste dû ; avoir non lettré du
-   même tiers d'un montant au plus égal au reste dû.
+   même tiers d'un montant au plus égal au reste dû ; et, SEULEMENT si une tolérance de montant a été réglée (ci-dessous),
+   règlement non lettré dont l'écart avec le reste dû est non nul et au plus égal à cette tolérance ; règlement groupé probable
+   (ci-dessous).
 4. Preuve bancaire : un règlement porte « rapprochement bancaire validé » quand la ligne de banque de son écriture figure
    dans un rapprochement VALIDÉ par un réviseur sur le lot actif (D-019). Une proposition de rapprochement ne compte pas.
 
@@ -132,6 +134,29 @@ Le moteur des tiers garde la nature qualifiée par la personne pour une facture 
 imputé, non imputé. Une écriture postérieure à la date d'appréciation est listée mais non comptée. Échue = échéance
 strictement antérieure à la date d'appréciation. Échéance non lue : jamais inventée ; sans règlement, l'état est « non
 déterminable ». Sans écriture identifiée : « non déterminable », reste dû inconnu.
+
+### Tolérance de montant (D-096)
+
+- **Par défaut : 0.00, aucune tolérance** : les montants doivent être strictement égaux. Elle n'est JAMAIS appliquée sans réglage explicite.
+- Réglage : par cabinet (administrateurs et associés, `PUT v1/cabinet/tiers-factures/reglages`) ou par dossier (niveau « révision »,
+  `PUT v1/dossiers/:id/tiers-factures/reglages`, qui l'emporte sur le cabinet), avec motif obligatoire ; onglet « Réglages » du dossier.
+  Montant EXACT (au plus deux décimales, jamais de flottant), de 0 à 1 000,00 (borne proposée). Ajout seul : chaque réglage est une
+  ligne (auteur, date, motif), l'historique est consultable, rien n'est modifié ni supprimé ; revenir à « aucune tolérance » = régler 0.00.
+- Effet : un règlement NON LETTRÉ de la nature « règlement » dont l'écart avec le reste dû d'une facture est non nul et au plus égal à la
+  tolérance est PROPOSÉ (`ecart_tolere`), avec l'écart signé (règlement − reste dû) et la tolérance réglée, TOUJOURS affichés ; plusieurs
+  candidates : proposition ambiguë. Il n'est jamais compté, jamais imputé, jamais lettré. Un règlement lettré, un règlement qui cite le
+  numéro de la facture et un avoir ne sont pas concernés. Le lien pièce ↔ écriture de comptabilisation reste à montant strictement égal.
+- Confirmée par une personne (niveau « collaboration »), la proposition impute le montant RÉEL du règlement : l'écart reste visible (reste dû
+  ou trop-perçu) ; le logiciel de production reste la référence pour l'écriture d'écart.
+
+### Règlement groupé non lettré probable (D-096)
+
+Un règlement non lettré (écriture de trésorerie, antérieure ou égale à la date d'appréciation) dont le montant égale la SOMME EXACTE du reste dû de
+2 à 6 factures ouvertes du même tiers (même compte, mêmes tiers) est proposé comme « règlement groupé probable » (`reglement_groupe_probable`),
+à confirmer facture par facture par une personne ; une fois toutes confirmées, la même écriture règle chacune. Recherche déterministe (factures
+triées par date puis identifiant, sous-ensembles de taille bornée, arrêt à la deuxième solution), sans tolérance. **Abstention** (aucune proposition,
+motif affiché dans « À confirmer et suspicions ») : plusieurs combinaisons équivalentes ; une facture seule explique aussi le montant ; plus de 24
+factures ouvertes pour ce tiers ; montant non exprimé au centime. Une facture infirmée pour ce règlement en est écartée.
 
 ## Suspicion de double comptabilisation
 
@@ -156,6 +181,9 @@ ou écartée avec motif. Statuer ne choisit jamais l'écriture à la place de la
 | `PUT exercices/:id/tiers/liens` | confirmer : collaboration ; infirmer, retirer : révision |
 | `PUT exercices/:id/factures/:documentId/liens` | idem |
 | `PUT exercices/:id/suspicions` | révision |
+| `GET dossiers/:id/tiers-factures/reglages` | lecture |
+| `PUT dossiers/:id/tiers-factures/reglages` (tolérance de montant du dossier) | révision |
+| `GET`, `PUT cabinet/tiers-factures/reglages` (tolérance du cabinet) | administrateurs et associés |
 
 Pages de 50 (mouvements : 100). Un déposant ou un autre cabinet reçoit 404.
 
@@ -185,8 +213,8 @@ Pages de 50 (mouvements : 100). Un déposant ou un autre cabinet reçoit 404.
   voir la section suivante (D-091).
 - Euro seulement : une pièce dans une autre devise n'est pas traitée, et c'est dit. Devise non lue : traitée dans la
   devise du dossier, avec une réserve affichée.
-- Aucune tolérance de montant (escompte, arrondi, retenue) : ces cas passent par une confirmation humaine.
-- Pas de recherche combinatoire d'un règlement groupé non lettré et sans référence.
+- Tolérance de montant : nulle tant qu'un réglage explicite n'existe pas (escompte, arrondi, retenue : confirmation humaine) ; elle ne porte que sur l'appariement facture ↔ règlement, jamais sur le lien pièce ↔ écriture ; plafond de réglage 1 000,00 ; valeurs proposées, non validées.
+- Règlement groupé non lettré : proposé seulement (2 à 6 factures, 24 candidates au plus, somme exacte) ; au-delà, plusieurs combinaisons équivalentes ou une explication plus simple : abstention.
 - Un règlement présent en banque mais pas encore comptabilisé n'est pas vu (le rapprochement porte sur des écritures).
 - Calcul immédiat à chaque lecture : plafonds de 300 000 lignes (`API_LIGNES_MAX_CALCUL`) et 5 000 pièces (`API_PIECES_MAX_TIERS`) par exercice, comptés AVANT toute lecture ; au-delà, refus 409 motivé (jamais un résultat partiel : l'ancien « plafond de pièces avec réserve » est supprimé) ; pas de chemin en flux (D-093).
 - Pièces retenues : nature facture d'achat, facture de vente ou avoir, version courante, extraction non rejetée, rattachées
@@ -196,6 +224,7 @@ Pages de 50 (mouvements : 100). Un déposant ou un autre cabinet reçoit 404.
 
 ## Validations attendues d'un expert-comptable
 
+- Bornes de la tolérance de montant (plafond de réglage de 1 000,00) et traitement d'un règlement confirmé avec écart (reste dû ou trop-perçu, aucune écriture d'écart) ; bornes du règlement groupé (6 factures, 24 candidates, abstention si une facture seule explique le montant).
 - Liste des comptes de tiers (401, 403, 404, 405 ; 411, 413, 416) et qualification des natures de lignes.
 - Tolérance de 31 jours entre date de pièce et date d'écriture ; longueur minimale de 5 caractères d'un numéro cherché
   dans un libellé.

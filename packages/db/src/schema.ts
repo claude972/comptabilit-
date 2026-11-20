@@ -606,7 +606,7 @@ export const mouvementsLots = pgTable(
   (t) => [uniqueIndex('mouvements_lots_unique').on(t.mouvementId, t.lotImportId), index('mouvements_lots_lot').on(t.lotImportId)],
 );
 
-/** Factures, avoirs, échéances : alimenté par les extractions validées. */
+/** OBSOLÈTE (D-096) : jamais alimentée, non supprimée ; les factures sont recalculées à la lecture (D-077). Ne pas l'alimenter : un test l'interdit. */
 export const factures = pgTable('factures', {
   id: id(),
   cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
@@ -1592,6 +1592,30 @@ export const liensFactures = pgTable(
   (t) => [uniqueIndex('liens_factures_unique').on(t.exerciceId, t.type, t.objet, t.cible), index('liens_factures_dossier').on(t.entiteId)],
 );
 
+// ───────────────────────────── Réglage de la tolérance de montant des tiers et factures (D-096) ─────────────────────────────
+
+/**
+ * Réglage de la tolérance de montant de l'appariement facture ↔ règlement : par cabinet (`dossier_id` nul) ou par dossier
+ * (qui l'emporte). AJOUT SEUL : chaque modification est une nouvelle ligne avec son motif et son auteur, le réglage en vigueur
+ * est la ligne la plus récente de sa portée ; rien n'est modifié ni supprimé. Sans ligne, la tolérance est 0 : jamais
+ * appliquée sans réglage explicite. Le montant est exact (numeric) ; la tolérance ne sert qu'à PROPOSER un rapprochement
+ * « à confirmer », jamais à lettrer ni à imputer d'office. `dossier_id` (et non `entite_id`) pour que la politique
+ * générique par dossier, qui refuse un dossier nul, ne s'applique pas : les politiques propres sont dans la migration 0048.
+ */
+export const reglagesTiersFactures = pgTable(
+  'reglages_tiers_factures',
+  {
+    id: id(),
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    dossierId: uuid('dossier_id').references(() => entites.id),
+    toleranceMontant: montant('tolerance_montant').notNull(),
+    motif: text('motif').notNull(),
+    reglePar: uuid('regle_par').notNull().references(() => utilisateurs.id),
+    creeLe: creeLe(),
+  },
+  (t) => [index('reglages_tiers_factures_portee').on(t.cabinetId, t.dossierId, t.creeLe)],
+);
+
 // ───────────────────────────── Réanalyse explicite du destinataire (D-091) ─────────────────────────────
 
 /**
@@ -1699,6 +1723,13 @@ export const abonnementsPousses = pgTable(
      * sert à retirer un abonnement resté inactif trop longtemps (PUSH_INACTIVITE_MAX_JOURS, migration 0042).
      */
     confirmeLe: horodatage('confirme_le').notNull().defaultNow(),
+    /**
+     * SHA-256 (hexadécimal) de la clé publique VAPID du serveur AU MOMENT de l'abonnement (migration 0048, D-096). Sert au
+     * retrait en masse après une rotation des clés VAPID : un abonnement dont l'empreinte diffère de celle de la
+     * configuration courante ne peut plus recevoir d'envoi. Nul pour un abonnement antérieur à la migration (inconnue :
+     * jamais retiré par l'outil).
+     */
+    empreinteCleVapid: text('empreinte_cle_vapid'),
   },
   (t) => [uniqueIndex('abonnements_pousses_appareil').on(t.cabinetId, t.utilisateurId, t.empreintePointAcces), index('abonnements_pousses_empreinte').on(t.empreintePointAcces)],
 );

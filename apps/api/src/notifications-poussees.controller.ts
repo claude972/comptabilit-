@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { PHRASES_POUSSEES, reduireAgentUtilisateur, SERVICES_NOTIFICATION, verifierPointAcces } from '@comtaple/core';
 import { type AccesBd, journaliser, sql } from '@comtaple/db';
-import { associeAbonnement, chiffrerAbonnement, clesAbonnementValides, empreintePointAcces, type EtatPoussees } from '@comtaple/plateforme';
+import { associeAbonnement, chiffrerAbonnement, clesAbonnementValides, empreinteCleVapid, empreintePointAcces, type EtatPoussees } from '@comtaple/plateforme';
 import { type Acces, AccesCourant, exigerUuid } from './acces.js';
 import { BD, POUSSEES } from './jetons.js';
 import { schemaOpenApi, valider } from './validation.js';
@@ -142,7 +142,7 @@ export class NotificationsPousseesController {
       let id: string;
       try {
         // Point de reprise : un refus de la fonction (trop d'appareils) ne doit pas condamner la transaction.
-        id = await tx.transaction(async (sp) => ((await sp.execute(sql`select abonnement_pousse_enregistrer(${empreinte}, ${destination.service}, ${secrets}, ${agent}) as id`)).rows[0] as { id: string }).id);
+        id = await tx.transaction(async (sp) => ((await sp.execute(sql`select abonnement_pousse_enregistrer(${empreinte}, ${destination.service}, ${secrets}, ${agent}, ${empreinteCleVapid(this.poussees.clePublique ?? '')}) as id`)).rows[0] as { id: string }).id);
       } catch (e) {
         if (/trop d'appareils/.test(String((e as { cause?: { message?: string }; message?: string }).cause?.message ?? (e as Error).message))) {
           throw new ConflictException({ message: 'Dix appareils sont déjà abonnés pour ce compte : retirez-en un avant d’en ajouter.', code: 'trop_d_appareils' });

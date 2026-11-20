@@ -248,6 +248,67 @@ test.describe('tiers et factures — réviseur', () => {
   });
 });
 
+test.describe('tiers et factures — tolérance de montant et règlement groupé (D-096)', () => {
+  test.describe('réviseur', () => {
+    test.use({ storageState: etatDe('remi') });
+
+    test('sans réglage aucune tolérance ; le règlement groupé est PROPOSÉ à confirmer ; une tolérance réglée propose un écart affiché, sans rien appliquer', async ({ page }) => {
+      const erreurs = surveiller(page);
+      await simulateur('tiers-jeu', { jeu: 'reglements' });
+      await page.goto(`${onglet}?vue=a-traiter`);
+      await expect(page.getByTestId('tolerance-en-vigueur')).toContainText('aucun réglage : aucune tolérance');
+      await expect(page.getByTestId('tolerance-en-vigueur')).toContainText('strictement égaux');
+      // Règlement groupé : 400,40 = G-001 + G-003, aucune autre combinaison ; proposé seulement.
+      const groupe = page.getByTestId('reglements-groupes').locator('li').first();
+      await expect(groupe).toContainText('Règlement groupé probable');
+      await expect(groupe).toContainText('À confirmer');
+      await expect(groupe).toContainText('Facture G-001');
+      await expect(groupe).toContainText('Facture G-003');
+      await expect(groupe).not.toContainText('Facture G-002');
+      await expect(groupe).toContainText('Rien n’est lettré ni imputé');
+      // Aucune proposition d'écart sans tolérance réglée.
+      await expect(page.getByText('E-2025-1')).toHaveCount(0);
+
+      // Réglage explicite de la tolérance (niveau révision, motif obligatoire).
+      await sections(page).getByRole('link', { name: 'Réglages' }).click();
+      const bouton = page.getByRole('button', { name: 'Enregistrer la tolérance' });
+      await expect(bouton).toBeDisabled();
+      await page.getByLabel(/Tolérance de montant, en euros/).fill('5');
+      await expect(bouton).toBeDisabled(); // motif obligatoire
+      await page.getByLabel('Motif (obligatoire)').fill('Escomptes de règlement habituels du fournisseur');
+      await bouton.click();
+      await expect(page.getByTestId('tolerance-courante')).toContainText('5,00');
+      await expect(page.getByTestId('tolerance-courante')).toContainText('réglage du dossier');
+      await expect(page.getByTestId('reglages-tolerance')).toContainText('Escomptes de règlement habituels du fournisseur');
+
+      // L'écart est proposé, affiché, à confirmer ; la facture n'est ni réglée ni imputée.
+      await page.goto(`${onglet}?vue=echeancier`);
+      await ligneFacture(page, 'E-2025-1').getByRole('link').first().click();
+      const propositions = page.getByTestId('propositions-imputation');
+      await expect(propositions).toContainText('Écart de −5,00');
+      await expect(propositions).toContainText('dans la tolérance réglée de 5,00');
+      await expect(propositions).toContainText('Proposition seulement');
+      await expect(page.getByTestId('detail-facture')).toContainText('Règlements proposés, à confirmer (non comptés)');
+      await expect(page.getByTestId('reste-du')).toHaveText(`1${F}200,00`);
+      expect((await decisions()).decisionsFactures).toEqual([]);
+      expect(erreurs).toEqual([]);
+    });
+  });
+
+  test.describe('collaboratrice', () => {
+    test.use({ storageState: etatDe('chloe') });
+
+    test('ne peut pas régler la tolérance : écran en lecture, route refusée', async ({ page }) => {
+      await page.goto(`${onglet}?vue=reglages`);
+      await expect(page.getByTestId('tolerance-courante')).toContainText('aucun réglage : aucune tolérance');
+      await expect(page.getByText('Régler la tolérance est réservé au niveau « révision » sur ce dossier.')).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Enregistrer la tolérance' })).toHaveCount(0);
+      expect(await statutBff(page, 'PUT', `v1/dossiers/${ID.dupain}/tiers-factures/reglages`, { toleranceMontant: '5.00', motif: 'x' })).toBe(403);
+      expect(await statutBff(page, 'PUT', 'v1/cabinet/tiers-factures/reglages', { toleranceMontant: '5.00', motif: 'x' })).toBe(403);
+    });
+  });
+});
+
 test.describe('tiers et factures — déposant', () => {
   test.use({ storageState: etatDe('client') });
 

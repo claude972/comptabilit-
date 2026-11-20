@@ -297,6 +297,10 @@ historique) ; « Proposer un classement » sur la page d'une pièce ; « Expliqu
   - **Péremption, pas de revérification automatique** : au bout de `IA_PREUVE_VALIDITE_JOURS` jours (30 par défaut,
     90 au plus) la preuve est périmée ; le statut revient à `configure_non_verifie` et plus aucune tâche ne sollicite le
     modèle, jusqu'à une nouvelle vérification EXPLICITE. Aucun appel n'est émis sans avoir été demandé.
+  - **Alerte d'expiration (D-097)** : `evaluerExpirationPreuveIa` (paquet plateforme) calcule, sans aucun appel, le temps restant
+    avant la péremption d'une preuve VALIDE (jours arrondis au supérieur) et l'état « expire bientôt » (`IA_PREUVE_ALERTE_JOURS`,
+    7 jours par défaut). Affichage : `GET v1/ia` (`verification.expiration`) et écran IA ; une notification interne par gestionnaire
+    et par preuve, émise par le worker (lecture seule de la preuve, aucun appel à l'IA). Aucune preuve valide : rien à signaler.
   - **Simulateur** : jamais de ligne écrite, statut `simule` quoi que contienne la table.
   - **Non vérifié** : la commande n'a jamais été lancée avec un jeton réel (il n'en existe pas). Le chemin
     « preuve valide → les tâches passent par le fournisseur » est prouvé avec un faux fournisseur injecté dans un test :

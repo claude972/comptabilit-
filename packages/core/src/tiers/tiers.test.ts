@@ -611,3 +611,177 @@ describe('D-091 : correction ou lecture du destinataire après une décision hum
   });
 });
 const SIREN_MARTIN_D91 = '552100554';
+
+// ── D-096 : tolérances de montant et règlements groupés ──
+describe('D-096 : tolérance de montant (jamais par défaut, toujours une suggestion à confirmer)', () => {
+  const D96 = { decisionsTiers: [LIEN_DUPONT] };
+  const ach = (piece: string, date: string, ttc: string) => achat('FDUPONT', 'Dupont Matériaux', piece, date, ttc);
+  const pc = (numero: string, ttc: string, date: string) => piece({ numero, totalTtc: ttc, dateEmission: date, dateEcheance: null });
+  // Règlement de 1 195,00 pour une facture de 1 200,00 (escompte de 5,00), sans citer le numéro.
+  const base = [...ach('FA-2025-0042', '2025-03-10', '1200.00'), ...paiement('FDUPONT', 'D', '2025-04-05', '1195.00', { libelle: 'Virement' })];
+
+  it('défaut : aucune tolérance, aucune proposition d’écart', () => {
+    const r = suivre(base, [pc('FA-2025-0042', '1200.00', '2025-03-10')], D96);
+    expect(r.parametres.toleranceMontant).toBe('0.00');
+    expect(r.factures[0]!.propositionsImputation).toEqual([]);
+    expect(r.factures[0]).toMatchObject({ etat: 'non_determinable', resteDu: '1200.00', montantRegle: '0.00' });
+  });
+
+  it('tolérance réglée : l’écart est PROPOSÉ avec son montant et la tolérance, jamais compté ni imputé', () => {
+    const r = suivre(base, [pc('FA-2025-0042', '1200.00', '2025-03-10')], { ...D96, parametres: { toleranceMontant: '5.00' } });
+    const f = r.factures[0]!;
+    expect(f.propositionsImputation).toEqual([expect.objectContaining({ critere: 'ecart_tolere', ecart: '-5.00', tolerance: '5.00', ambigue: false })]);
+    expect(f.imputations).toEqual([]);
+    expect(f.montantRegle).toBe('0.00');
+    expect(f.resteDu).toBe('1200.00');
+    expect(r.reserves.join(' ')).toMatch(/Tolérance de montant réglée à 5\.00/);
+  });
+
+  it('hors tolérance : rien (écart de 5,01 pour 5,00), exact au centime près ; trop-perçu symétrique signé', () => {
+    const hors = suivre([...ach('FA-2025-0042', '2025-03-10', '1200.00'), ...paiement('FDUPONT', 'D', '2025-04-05', '1194.99', { libelle: 'V' })], [pc('FA-2025-0042', '1200.00', '2025-03-10')], { ...D96, parametres: { toleranceMontant: '5.00' } });
+    expect(hors.factures[0]!.propositionsImputation).toEqual([]);
+    const plus = suivre([...ach('FA-2025-0042', '2025-03-10', '1200.00'), ...paiement('FDUPONT', 'D', '2025-04-05', '1203.50', { libelle: 'V' })], [pc('FA-2025-0042', '1200.00', '2025-03-10')], { ...D96, parametres: { toleranceMontant: '5.00' } });
+    expect(plus.factures[0]!.propositionsImputation).toEqual([expect.objectContaining({ critere: 'ecart_tolere', ecart: '3.50' })]);
+  });
+
+  it('montants exacts : aucun flottant (0,1 + 0,2), tolérance de 0,30 acceptée sur un écart de 0,30', () => {
+    const l = [...ach('FA-2025-0042', '2025-03-10', '100.10'), ...paiement('FDUPONT', 'D', '2025-04-05', '99.80', { libelle: 'V' })];
+    const r = suivre(l, [pc('FA-2025-0042', '100.10', '2025-03-10')], { ...D96, parametres: { toleranceMontant: '0.30' } });
+    expect(r.factures[0]!.propositionsImputation).toEqual([expect.objectContaining({ critere: 'ecart_tolere', ecart: '-0.30' })]);
+    const r2 = suivre(l, [pc('FA-2025-0042', '100.10', '2025-03-10')], { ...D96, parametres: { toleranceMontant: '0.29' } });
+    expect(r2.factures[0]!.propositionsImputation).toEqual([]);
+  });
+
+  it('une confirmation humaine impute le règlement tel quel : l’écart reste visible (reste dû), il n’est jamais effacé', () => {
+    const pieces = [pc('FA-2025-0042', '1200.00', '2025-03-10')];
+    const parametres = { toleranceMontant: '5.00' };
+    const f = suivre(base, pieces, { ...D96, parametres }).factures[0]!;
+    const cible = f.propositionsImputation[0]!.ecriture.cle;
+    const g = suivre(base, [{ ...pieces[0]!, documentId: f.id }], { ...D96, parametres, decisionsFactures: [{ type: 'imputation', objet: f.id, cible, decision: 'confirme', versionExtraction: 1 }] }).factures[0]!;
+    expect(g).toMatchObject({ etat: 'partiellement_reglee', montantRegle: '1195.00', resteDu: '5.00' });
+  });
+
+  it('un règlement lettré, ou citant le numéro, ou un avoir, n’est jamais concerné par la tolérance', () => {
+    const lettre = [...achat('FDUPONT', 'D', 'FA-2025-0042', '2025-03-10', '1200.00', { lettre: 'a' }), ...paiement('FDUPONT', 'D', '2025-04-05', '1195.00', { lettre: 'a' })];
+    const r = suivre(lettre, [pc('FA-2025-0042', '1200.00', '2025-03-10')], { ...D96, parametres: { toleranceMontant: '50.00' } });
+    expect(r.factures[0]!.propositionsImputation).toEqual([]);
+    expect(r.factures[0]!.imputations[0]!.mode).toBe('lettrage');
+    const avoir = [...ach('FA-2025-0042', '2025-03-10', '1200.00'), ...avoirAchat('FDUPONT', 'D', 'AV-1', '2025-04-01', '1198.00')];
+    const r2 = suivre(avoir, [pc('FA-2025-0042', '1200.00', '2025-03-10')], { ...D96, parametres: { toleranceMontant: '5.00' } });
+    expect(r2.factures[0]!.propositionsImputation.every((x) => x.critere !== 'ecart_tolere')).toBe(true);
+  });
+
+  it('tolérance invalide, négative ou supérieure au plafond : refus explicite', () => {
+    for (const toleranceMontant of ['-1.00', 'abc', '1000.01', '1,5']) {
+      expect(() => suivre(base, [], { parametres: { toleranceMontant } })).toThrow(/Tolérance de montant invalide/);
+    }
+    expect(() => suivre(base, [], { parametres: { toleranceMontant: '1000.00' } })).not.toThrow();
+  });
+
+  it('deux factures proches pour un seul règlement : proposition marquée ambiguë', () => {
+    const l = [...ach('FA-A', '2025-03-10', '1200.00'), ...ach('FA-B', '2025-03-11', '1198.00'), ...paiement('FDUPONT', 'D', '2025-04-05', '1197.00', { libelle: 'V' })];
+    const r = suivre(l, [pc('FA-A', '1200.00', '2025-03-10'), pc('FA-B', '1198.00', '2025-03-11')], { ...D96, parametres: { toleranceMontant: '5.00' } });
+    expect(r.factures.every((f) => f.propositionsImputation.length === 1 && f.propositionsImputation[0]!.ambigue)).toBe(true);
+  });
+});
+
+describe('D-096 : règlement groupé probable (proposition seulement, abstention si équivoque)', () => {
+  const D96 = { decisionsTiers: [LIEN_DUPONT] };
+  const pc = (numero: string, ttc: string, date: string) => piece({ numero, totalTtc: ttc, dateEmission: date, dateEcheance: null });
+  const trois = [
+    ...achat('FDUPONT', 'Dupont Matériaux', 'FA-1', '2025-03-01', '100.10'),
+    ...achat('FDUPONT', 'Dupont Matériaux', 'FA-2', '2025-03-02', '200.20'),
+    ...achat('FDUPONT', 'Dupont Matériaux', 'FA-3', '2025-03-03', '300.30'),
+  ];
+  const piecesTrois = [pc('FA-1', '100.10', '2025-03-01'), pc('FA-2', '200.20', '2025-03-02'), pc('FA-3', '300.30', '2025-03-03')];
+
+  it('somme exacte de deux factures : règlement groupé probable, chaque facture porte la proposition, rien n’est compté', () => {
+    const l = [...trois, ...paiement('FDUPONT', 'D', '2025-04-05', '400.40', { libelle: 'Virement groupé' })];
+    const r = suivre(l, piecesTrois, D96);
+    expect(r.reglementsGroupes).toHaveLength(1);
+    expect(r.reglementsGroupes[0]).toMatchObject({ statut: 'a_confirmer', somme: '400.40' });
+    expect(r.reglementsGroupes[0]!.factures.map((f) => f.numero)).toEqual(['FA-1', 'FA-3']);
+    const propos = r.factures.map((f) => f.propositionsImputation.map((x) => x.critere));
+    expect(propos).toEqual([['reglement_groupe_probable'], [], ['reglement_groupe_probable']]);
+    expect(r.factures.every((f) => f.imputations.length === 0 && f.montantRegle === '0.00')).toBe(true);
+    expect(r.factures[0]!.propositionsImputation[0]!.groupeDocumentIds).toHaveLength(2);
+  });
+
+  it('confirmée facture par facture par une personne, la même écriture règle les deux factures', () => {
+    const l = [...trois, ...paiement('FDUPONT', 'D', '2025-04-05', '400.40', { libelle: 'Virement groupé' })];
+    const r = suivre(l, piecesTrois, D96);
+    const cible = r.reglementsGroupes[0]!.ecriture.cle;
+    const decisionsFactures = r.reglementsGroupes[0]!.factures.map((f) => ({ type: 'imputation' as const, objet: f.documentId, cible, decision: 'confirme' as const, versionExtraction: 1 }));
+    const g = suivre(l, r.factures.map((f) => piecesTrois.find((p) => p.documentId === f.id)!), { ...D96, decisionsFactures });
+    expect(g.factures.map((f) => f.etat)).toEqual(['reglee', 'non_determinable', 'reglee']);
+    expect(g.reglementsGroupes).toEqual([]);
+  });
+
+  it('plusieurs combinaisons équivalentes : abstention, aucune proposition', () => {
+    const l = [
+      ...achat('FDUPONT', 'D', 'FA-1', '2025-03-01', '100.00'), ...achat('FDUPONT', 'D', 'FA-2', '2025-03-02', '200.00'),
+      ...achat('FDUPONT', 'D', 'FA-3', '2025-03-03', '150.00'), ...achat('FDUPONT', 'D', 'FA-4', '2025-03-04', '150.00'),
+      ...paiement('FDUPONT', 'D', '2025-04-05', '300.00', { libelle: 'V' }),
+    ];
+    const r = suivre(l, [pc('FA-1', '100.00', '2025-03-01'), pc('FA-2', '200.00', '2025-03-02'), pc('FA-3', '150.00', '2025-03-03'), pc('FA-4', '150.00', '2025-03-04')], D96);
+    expect(r.reglementsGroupes).toEqual([]);
+    expect(r.abstentionsReglementsGroupes).toEqual([expect.objectContaining({ motif: 'combinaisons_equivalentes' })]);
+    expect(r.factures.every((f) => f.propositionsImputation.length === 0)).toBe(true);
+  });
+
+  it('une facture seule explique aussi le montant : abstention (l’explication simple prime, proposition exacte habituelle)', () => {
+    const l = [...trois, ...achat('FDUPONT', 'D', 'FA-4', '2025-03-04', '300.30'), ...paiement('FDUPONT', 'D', '2025-04-05', '300.30', { libelle: 'V' })];
+    const r = suivre(l, [...piecesTrois, pc('FA-4', '300.30', '2025-03-04')], D96);
+    expect(r.reglementsGroupes).toEqual([]);
+    expect(r.abstentionsReglementsGroupes[0]).toMatchObject({ motif: 'facture_unique_equivalente' });
+  });
+
+  it('aucune combinaison : rien ; somme à un centime : rien (aucune tolérance pour les groupes)', () => {
+    const l = [...trois, ...paiement('FDUPONT', 'D', '2025-04-05', '400.41', { libelle: 'V' })];
+    const r = suivre(l, piecesTrois, { ...D96, parametres: { toleranceMontant: '5.00' } });
+    expect(r.reglementsGroupes).toEqual([]);
+    expect(r.abstentionsReglementsGroupes).toEqual([]);
+  });
+
+  it('un règlement lettré, ou d’un autre tiers, n’est jamais proposé ; un règlement qui cite une facture est traité par la référence', () => {
+    const autre = [...trois, ...paiement('FAUTRE', 'Autre fournisseur', '2025-04-05', '400.40', { libelle: 'V' })];
+    expect(suivre(autre, piecesTrois, D96).reglementsGroupes).toEqual([]);
+    const lettre = [...trois, ...paiement('FDUPONT', 'D', '2025-04-05', '400.40', { lettre: 'Z' })];
+    expect(suivre(lettre, piecesTrois, D96).reglementsGroupes).toEqual([]);
+  });
+
+  it('postérieur à la date d’appréciation : non proposé ; infirmé pour une facture : cette facture est écartée du groupe', () => {
+    const l = [...trois, ...paiement('FDUPONT', 'D', '2025-04-05', '400.40', { libelle: 'V' })];
+    expect(suivre(l, piecesTrois, { ...D96, dateAppreciation: '2025-04-01' }).reglementsGroupes).toEqual([]);
+    const r = suivre(l, piecesTrois, D96);
+    const cible = r.reglementsGroupes[0]!.ecriture.cle;
+    const g = suivre(l, piecesTrois, { ...D96, decisionsFactures: [{ type: 'imputation', objet: r.reglementsGroupes[0]!.factures[0]!.documentId, cible, decision: 'infirme', versionExtraction: 1 }] });
+    expect(g.reglementsGroupes).toEqual([]);
+  });
+
+  it('taille bornée : six factures proposées, sept non ; au-delà de 24 factures ouvertes : abstention', () => {
+    const six = Array.from({ length: 6 }, (_, i) => ({ n: `F${i + 1}`, m: String(10 * (i + 1)) + '.00', d: `2025-03-0${i + 1}` }));
+    const ls = six.flatMap((x) => achat('FDUPONT', 'D', x.n, x.d, x.m));
+    const ps = six.map((x) => pc(x.n, x.m, x.d));
+    const total = '210.00';
+    const ok = suivre([...ls, ...paiement('FDUPONT', 'D', '2025-04-05', total, { libelle: 'V' })], ps, D96);
+    expect(ok.reglementsGroupes[0]!.factures).toHaveLength(6);
+    const sept = [...six, { n: 'F7', m: '70.00', d: '2025-03-07' }];
+    const l7 = sept.flatMap((x) => achat('FDUPONT', 'D', x.n, x.d, x.m));
+    const ko = suivre([...l7, ...paiement('FDUPONT', 'D', '2025-04-05', '280.00', { libelle: 'V' })], sept.map((x) => pc(x.n, x.m, x.d)), D96);
+    // 280 = 70+60+50+40+30+20+10 (7 factures) mais aussi 70+60+50+40+30+20+10 seul : aucune combinaison de 6 au plus
+    expect(ko.reglementsGroupes).toEqual([]);
+    const nombreux = Array.from({ length: 25 }, (_, i) => ({ n: `N${i}`, m: `${100 + i}.00`, d: '2025-03-01' }));
+    const ln = nombreux.flatMap((x) => achat('FDUPONT', 'D', x.n, x.d, x.m));
+    const abst = suivre([...ln, ...paiement('FDUPONT', 'D', '2025-04-05', '201.00', { libelle: 'V' })], nombreux.map((x) => pc(x.n, x.m, x.d)), D96);
+    expect(abst.abstentionsReglementsGroupes).toEqual([expect.objectContaining({ motif: 'trop_de_factures_ouvertes' })]);
+    expect(abst.reglementsGroupes).toEqual([]);
+  });
+
+  it('déterministe : l’ordre des lignes et des pièces fournies ne change rien', () => {
+    const l = [...trois, ...paiement('FDUPONT', 'D', '2025-04-05', '400.40', { libelle: 'V' })];
+    const a = suivre(l, piecesTrois, D96);
+    const b = suivre([...l].reverse(), [...piecesTrois].reverse(), D96);
+    expect(b.reglementsGroupes).toEqual(a.reglementsGroupes);
+  });
+});

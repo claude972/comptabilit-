@@ -4,7 +4,9 @@
  * Rien n'est stocké ici : le référentiel des tiers, les fiches de factures, les règlements identifiés et les restes dus
  * sont RECALCULÉS à chaque lecture à partir des écritures du lot actif, des extractions en vigueur des pièces, des
  * rapprochements bancaires validés et des décisions humaines enregistrées. Ils ne peuvent donc pas diverger des écritures.
- * Les montants sont des décimaux exacts ; un appariement exige l'égalité stricte des montants (aucune tolérance).
+ * Les montants sont des décimaux exacts ; un appariement exige l'égalité stricte des montants. Seule exception, jamais par
+ * défaut (D-096) : une tolérance de montant EXPLICITEMENT réglée permet de PROPOSER un règlement voisin, avec son écart
+ * affiché, à confirmer par une personne ; une combinaison de factures à somme exacte est proposée de même.
  */
 import type { Decimal } from 'decimal.js';
 import type { LigneEcriture } from '../controles/types.js';
@@ -16,7 +18,7 @@ import { normaliserReference } from '../rapprochement/rapprocher.js';
 import {
   type BanqueImputation, type CandidatEcriture, type CriteresAppariement, type DecisionARevoir, type DemandeTiersFactures, type FicheFacture, type FicheTiers,
   type IdentifiantTiers, type Imputation, PARAMETRES_TIERS_FACTURES_PAR_DEFAUT, type ParametresTiersFactures, type PieceFacture, type PropositionTiers, type RefEcriture,
-  type ResultatTiersFactures, type SuspicionDoubleComptabilisation, type TypeTiers,
+  type AbstentionReglementGroupe, type ReglementGroupeProbable, type ResultatTiersFactures, type SuspicionDoubleComptabilisation, TOLERANCE_MONTANT_MAX, type TypeTiers,
 } from './types.js';
 
 const FORMES_JURIDIQUES = new Set([
@@ -135,12 +137,19 @@ function montantAbsolu(v: string | null): Decimal | null {
 export function suivreTiersEtFactures(demande: DemandeTiersFactures): ResultatTiersFactures {
   const p: ParametresTiersFactures = { ...PARAMETRES_TIERS_FACTURES_PAR_DEFAUT, ...(demande.parametres ?? {}) };
   if (!estDateIso(demande.dateAppreciation)) throw new Error('Date d’appréciation invalide : AAAA-MM-JJ attendue.');
+  if (!estChaineDecimale(p.toleranceMontant) || dec(p.toleranceMontant).isNegative() || dec(p.toleranceMontant).greaterThan(TOLERANCE_MONTANT_MAX)) {
+    throw new Error(`Tolérance de montant invalide : un montant décimal entre 0 et ${TOLERANCE_MONTANT_MAX} est attendu.`);
+  }
+  const TOL = dec(p.toleranceMontant);
   const DA = demande.dateAppreciation;
   const reserves: string[] = [
     'Aide à la révision : rien n’est comptabilisé ni lettré ici ; le logiciel de production comptable reste la référence.',
     'Le client d’une pièce de vente n’est identifié par la pièce que si son destinataire y a été lu de façon sûre ; à défaut, le lien avec l’écriture reste à confirmer par une personne.',
   ];
+  if (TOL.greaterThan(0)) reserves.push(`Tolérance de montant réglée à ${versChaine(TOL)} : un règlement non lettré dont l'écart avec le reste dû ne dépasse pas cette valeur est seulement PROPOSÉ, avec son écart, à confirmer par une personne ; rien n'est lettré ni imputé d'office.`);
   const aRevoir: DecisionARevoir[] = [];
+  const reglementsGroupes: ReglementGroupeProbable[] = [];
+  const abstentionsGroupes: AbstentionReglementGroupe[] = [];
   const euro = demande.deviseDossier === 'EUR';
   if (!euro) reserves.push(`Devise du dossier ${demande.deviseDossier} : seul l’euro est traité ; aucune facture n’est suivie.`);
 
@@ -560,6 +569,12 @@ export function suivreTiersEtFactures(demande: DemandeTiersFactures): ResultatTi
   }
   // Soldes par facture.
   const regle = (w: Travail): Decimal => w.fiche.imputations.reduce((s, i) => (i.comptee && i.montant !== null ? s.plus(dec(i.montant)) : s), ZERO);
+  /** Écart signé (règlement − reste dû) si, et seulement si, une tolérance est réglée (> 0) et que l'écart non nul y tient ; sinon null. */
+  const ecartTolere = (R: LigneTiers, reste: Decimal): Decimal | null => {
+    if (!TOL.greaterThan(0) || R.nature !== 'reglement') return null;
+    const ecart = R.abs.minus(reste);
+    return !ecart.isZero() && ecart.abs().lessThanOrEqualTo(TOL) ? ecart : null;
+  };
   // 6c. Propositions d'imputation (jamais comptées) : règlement de même montant que le reste dû, avoir du même tiers.
   for (const [poste, lignes] of libres) {
     const factures = facturesApp.filter((w) => w.ligne!.poste === poste && w.ligne!.l.ecritureLet === null);
@@ -569,16 +584,83 @@ export function suivreTiersEtFactures(demande: DemandeTiersFactures): ResultatTi
       const reste = w.montant!.minus(regle(w));
       if (!reste.greaterThan(0)) continue;
       const infirmes = new Set(decisionsDe(w.fiche.id, 'imputation').filter((d) => d.decision === 'infirme').map((d) => d.cible));
-      const retenus = lignes.filter((R) => !infirmes.has(R.cleE) && (R.nature === 'avoir' ? R.abs.lessThanOrEqualTo(reste) : R.abs.equals(reste)));
+      const retenus = lignes.filter((R) => !infirmes.has(R.cleE) && (R.nature === 'avoir' ? R.abs.lessThanOrEqualTo(reste) : R.abs.equals(reste) || ecartTolere(R, reste) !== null));
       parFacture.set(w.fiche.id, retenus);
       for (const R of retenus) usage.set(R.l.id, (usage.get(R.l.id) ?? 0) + 1);
     }
     for (const w of factures) {
       const retenus = parFacture.get(w.fiche.id) ?? [];
       for (const R of retenus) {
+        const reste = w.montant!.minus(regle(w));
+        const ecart = R.nature === 'avoir' || R.abs.equals(reste) ? null : ecartTolere(R, reste);
         w.fiche.propositionsImputation.push({
-          ecriture: refEcriture(R), nature: natureImputation(R), critere: R.nature === 'avoir' ? 'avoir_meme_tiers' : 'montant_exact', ambigue: retenus.length > 1 || (usage.get(R.l.id) ?? 0) > 1, avoirDocumentId: null,
+          ecriture: refEcriture(R), nature: natureImputation(R), critere: R.nature === 'avoir' ? 'avoir_meme_tiers' : ecart !== null ? 'ecart_tolere' : 'montant_exact',
+          ambigue: retenus.length > 1 || (usage.get(R.l.id) ?? 0) > 1, avoirDocumentId: null,
+          ...(ecart !== null ? { ecart: versChaine(ecart), tolerance: versChaine(TOL) } : {}),
         });
+      }
+    }
+  }
+  // 6d. Règlements groupés probables (D-096) : un règlement non lettré dont le montant égale la somme EXACTE du reste dû de
+  // plusieurs factures ouvertes du même poste (même compte, même tiers). Recherche déterministe et bornée ; abstention si
+  // plusieurs combinaisons équivalentes ou si une facture seule explique aussi le montant. Jamais appliqué : proposition.
+  for (const [poste, lignes] of libres) {
+    const ouvertes = facturesApp
+      .filter((w) => w.ligne!.poste === poste && w.ligne!.l.ecritureLet === null && w.montant!.minus(regle(w)).greaterThan(0))
+      .sort((a, b) => (a.fiche.dateEmission ?? '').localeCompare(b.fiche.dateEmission ?? '') || a.fiche.id.localeCompare(b.fiche.id));
+    if (ouvertes.length < 2) continue;
+    for (const R of [...lignes].sort((a, b) => a.cleE.localeCompare(b.cleE) || a.l.numeroLigne - b.l.numeroLigne)) {
+      if (R.nature !== 'reglement' || R.l.ecritureDate > DA) continue;
+      const infirmesDe = (w: Travail) => new Set(decisionsDe(w.fiche.id, 'imputation').filter((d) => d.decision === 'infirme').map((d) => d.cible));
+      const candidates = ouvertes.filter((w) => !infirmesDe(w).has(R.cleE));
+      if (candidates.length < 2) continue;
+      if (candidates.length > p.groupeCandidatesMax) {
+        abstentionsGroupes.push({ ecriture: refEcriture(R), motif: 'trop_de_factures_ouvertes', nbCombinaisons: null, explication: `${candidates.length} factures ouvertes pour ce tiers (maximum examiné : ${p.groupeCandidatesMax}) : aucune combinaison n'est cherchée.` });
+        continue;
+      }
+      const restes = candidates.map((w) => w.montant!.minus(regle(w)));
+      const cents = restes.map((r) => r.times(100));
+      const cible = R.abs.times(100);
+      if (!cible.isInteger() || cents.some((c) => !c.isInteger())) {
+        abstentionsGroupes.push({ ecriture: refEcriture(R), motif: 'montant_non_decimal_2', nbCombinaisons: null, explication: 'Un montant n\'est pas exprimé au centime : aucune combinaison n\'est cherchée.' });
+        continue;
+      }
+      const c = cents.map((x) => x.toNumber());
+      const but = cible.toNumber();
+      if (!Number.isSafeInteger(but) || c.some((x) => !Number.isSafeInteger(x))) continue;
+      if (restes.some((r) => r.equals(R.abs))) {
+        abstentionsGroupes.push({ ecriture: refEcriture(R), motif: 'facture_unique_equivalente', nbCombinaisons: null, explication: 'Une facture ouverte seule a un reste dû égal à ce règlement : le règlement groupé n\'est pas proposé.' });
+        continue;
+      }
+      // Énumération déterministe (ordre chronologique des factures), bornée par la taille maximale du groupe ; on s'arrête à 2 solutions.
+      const solutions: number[][] = [];
+      const parcours = (debut: number, somme: number, choisis: number[]) => {
+        if (solutions.length > 1) return;
+        if (somme === but && choisis.length >= 2) { solutions.push([...choisis]); return; }
+        if (somme >= but || choisis.length >= p.groupeTailleMax) return;
+        for (let i = debut; i < c.length && solutions.length < 2; i++) {
+          if (somme + c[i]! > but) continue;
+          choisis.push(i);
+          parcours(i + 1, somme + c[i]!, choisis);
+          choisis.pop();
+        }
+      };
+      parcours(0, 0, []);
+      if (solutions.length === 0) continue;
+      if (solutions.length > 1) {
+        abstentionsGroupes.push({ ecriture: refEcriture(R), motif: 'combinaisons_equivalentes', nbCombinaisons: null, explication: 'Plusieurs combinaisons de factures ouvertes de ce tiers donnent exactement ce montant : aucune n\'est proposée, une personne tranche.' });
+        continue;
+      }
+      const membres = solutions[0]!.map((i) => candidates[i]!);
+      const ids = membres.map((w) => w.fiche.id).sort();
+      reglementsGroupes.push({
+        ecriture: refEcriture(R), statut: 'a_confirmer',
+        factures: membres.map((w) => ({ documentId: w.fiche.id, numero: w.fiche.numero, resteDu: versChaine(w.montant!.minus(regle(w))) })),
+        somme: versChaine(R.abs),
+        explication: `Le montant de ce règlement égale exactement la somme du reste dû de ${membres.length} factures ouvertes de ce tiers, et aucune autre combinaison n'y correspond. Probable seulement : à confirmer facture par facture par une personne habilitée ; rien n'est lettré ni imputé.`,
+      });
+      for (const w of membres) {
+        w.fiche.propositionsImputation.push({ ecriture: refEcriture(R), nature: 'reglement', critere: 'reglement_groupe_probable', ambigue: false, avoirDocumentId: null, groupeDocumentIds: ids });
       }
     }
   }
@@ -723,6 +805,8 @@ export function suivreTiersEtFactures(demande: DemandeTiersFactures): ResultatTi
     tiers: fiches,
     propositionsTiers,
     factures: travaux.map((w) => w.fiche),
+    reglementsGroupes,
+    abstentionsReglementsGroupes: abstentionsGroupes,
     suspicions: listeSuspicions,
     decisionsARevoir: aRevoir,
     reserves,

@@ -23,6 +23,7 @@ import type { Config } from '@comtaple/plateforme';
 import { z } from 'zod';
 import { type Acces, AccesCourant, auMoins, exigerNiveau, exigerUuid, type Niveau } from './acces.js';
 import { BD, CONFIG } from './jetons.js';
+import { toleranceEnVigueur, type ToleranceEnVigueur } from './reglages-tiers.js';
 import { avecCalcul, type Budget, chargerLignes, refusVolume, ApiRefusVolume } from './plafonds.js';
 import { schemaOpenApi, valider } from './validation.js';
 
@@ -71,6 +72,7 @@ interface Contexte {
   lignes: LigneEcriture[];
   resultat: ResultatTiersFactures;
   piecesEcartees: { horsExercice: number; extractionRejetee: number; sansExtraction: number; auDelaDuPlafond: number };
+  tolerance: ToleranceEnVigueur;
   entete: Record<string, unknown>;
 }
 
@@ -166,14 +168,16 @@ export class TiersController {
     }));
 
     const dateAppreciation = dateBrute ?? exercice.fin;
+    // Tolérance de montant (D-096) : réglage explicite du dossier ou du cabinet ; sans réglage, 0.00 (aucune tolérance).
+    const tolerance = await toleranceEnVigueur(tx, entite.cabinetId, entite.id);
     const resultat = suivreTiersEtFactures({
       lignes, exercice: { debut: exercice.debut, fin: exercice.fin }, dateAppreciation, origineDateAppreciation: dateBrute === undefined ? 'cloture_exercice' : 'fournie', deviseDossier: entite.devise, sirenDossier: entite.siren,
-      pieces, rapprochementsValides, decisionsTiers, decisionsFactures,
+      pieces, rapprochementsValides, decisionsTiers, decisionsFactures, parametres: { toleranceMontant: tolerance.montant },
     });
     const reserves = [...resultat.reserves];
     if (!lot) reserves.push('Aucune donnée comptable importée pour cet exercice : aucun tiers comptable, aucun appariement, aucun règlement ne peut être établi.');
     return {
-      exercice, entite, niveau, lot: lot ?? null, lignes, resultat, piecesEcartees,
+      exercice, entite, niveau, lot: lot ?? null, lignes, resultat, piecesEcartees, tolerance,
       entete: {
         niveau,
         exercice: { id: exercice.id, entiteId: entite.id, debut: exercice.debut, fin: exercice.fin, versionDonnees: exercice.versionDonnees },
@@ -182,6 +186,7 @@ export class TiersController {
         origineDateAppreciation: resultat.origineDateAppreciation,
         devise: resultat.devise,
         nature: 'aide_a_la_revision',
+        tolerance: { montant: tolerance.montant, origine: tolerance.origine },
         reserves,
         piecesEcartees,
       },
@@ -351,12 +356,14 @@ export class TiersController {
       return {
         ...c.entete,
         totaux: {
-          propositionsTiers: r.propositionsTiers.length, liensAConfirmer: liens.length, reglementsProposes: reglements.length, suspicions: r.suspicions.length,
+          propositionsTiers: r.propositionsTiers.length, liensAConfirmer: liens.length, reglementsProposes: reglements.length, reglementsGroupesProbables: r.reglementsGroupes.length, abstentionsReglementsGroupes: r.abstentionsReglementsGroupes.length, suspicions: r.suspicions.length,
           suspicionsAExaminer: r.suspicions.filter((x) => x.statut === 'a_examiner').length, decisionsARevoir: r.decisionsARevoir.length,
         },
         propositionsTiers: r.propositionsTiers.slice(0, PLAFOND),
         liensAConfirmer: liens.slice(0, PLAFOND).map((f) => ({ ...this.resumeFacture(f, (f.tiersCle && noms.get(f.tiersCle)) || null), motif: f.comptabilisation.motif, propositions: f.comptabilisation.propositions })),
         reglementsProposes: reglements.slice(0, PLAFOND).map((f) => ({ ...this.resumeFacture(f, (f.tiersCle && noms.get(f.tiersCle)) || null), propositions: f.propositionsImputation })),
+        reglementsGroupesProbables: r.reglementsGroupes.slice(0, PLAFOND),
+        abstentionsReglementsGroupes: r.abstentionsReglementsGroupes.slice(0, PLAFOND),
         suspicions: r.suspicions.slice(0, PLAFOND),
         decisionsARevoir: r.decisionsARevoir.slice(0, PLAFOND),
       };

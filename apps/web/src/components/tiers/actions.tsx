@@ -130,3 +130,38 @@ export function DecisionSuspicion({ exerciceId, cle, quoi, statut }: { exerciceI
     />
   );
 }
+
+/** Réglage de la tolérance de montant d'un dossier (`PUT v1/dossiers/:id/tiers-factures/reglages`), niveau révision, motif obligatoire. */
+export function ReglageTolerance({ dossierId, actuelle, maximum }: { dossierId: string; actuelle: string; maximum: string }) {
+  const appel = useAppel();
+  const [montant, setMontant] = useState(actuelle);
+  const [motif, setMotif] = useState('');
+  const idMontant = useId();
+  const idMotif = useId();
+  const valide = /^\d{1,4}(\.\d{1,2})?$/.test(montant) && motif.trim() !== '';
+  return (
+    <form
+      className="space-y-3"
+      aria-label="Régler la tolérance de montant du dossier"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (valide) void appel.executer(`v1/dossiers/${dossierId}/tiers-factures/reglages`, { method: 'PUT', json: { toleranceMontant: montant, motif: motif.trim() } }, 'Tolérance enregistrée pour ce dossier.');
+      }}
+    >
+      <div className="flex flex-wrap items-end gap-3">
+        <div>
+          <Libelle htmlFor={idMontant}>Tolérance de montant, en euros (0 = aucune ; au plus {maximum})</Libelle>
+          <Saisie id={idMontant} inputMode="decimal" value={montant} onChange={(e) => setMontant(e.target.value)} className="w-40 min-w-0" />
+        </div>
+        <div className="min-w-0 flex-1 basis-60">
+          <Libelle htmlFor={idMotif}>Motif (obligatoire)</Libelle>
+          <Saisie id={idMotif} value={motif} maxLength={2000} onChange={(e) => setMotif(e.target.value)} className="w-full min-w-0" />
+        </div>
+        <Bouton type="submit" variante="secondaire" disabled={appel.occupe || !valide}>
+          Enregistrer la tolérance
+        </Bouton>
+      </div>
+      <Retours erreur={appel.erreur} succes={appel.succes} />
+    </form>
+  );
+}

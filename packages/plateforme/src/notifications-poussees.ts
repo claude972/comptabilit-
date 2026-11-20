@@ -207,3 +207,10 @@ export async function envoyerNotificationPoussee(etat: EtatPoussees, abonnement:
   if (s === 429 || s >= 500) return { issue: 'temporaire', statut: s };
   return { issue: 'refuse', statut: s };
 }
+
+/**
+ * Empreinte (SHA-256 hexadécimal) de la clé publique VAPID : enregistrée avec chaque abonnement (migration 0048) pour que
+ * l'outil de l'éditeur reconnaisse, après une rotation des clés, les abonnements faits avec une autre paire de clés.
+ * La clé publique n'est pas un secret ; l'empreinte ne permet de retrouver aucune clé privée.
+ */
+export const empreinteCleVapid = (clePublique: string): string => createHash('sha256').update(clePublique.trim(), 'utf8').digest('hex');

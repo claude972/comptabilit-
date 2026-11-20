@@ -119,6 +119,8 @@ export async function genererRestitutionCabinet(c: Contexte, t: TacheRestitution
       if (nom === 'entites') conditions.push(sql`${tb.id} = any(${tableauInclus}::uuid[])` as never);
       if (colonnes.entiteId) conditions.push(dansPerimetre(tb.entiteId) as never);
       if (colonnes.dossierAffecteId) conditions.push(dansPerimetre(tb.dossierAffecteId) as never);
+      // Réglage de tolérance des tiers et factures : cabinet (dossier nul) ou dossier DU PÉRIMÈTRE seulement.
+      if (colonnes.dossierId) conditions.push(dansPerimetre(tb.dossierId) as never);
       if (nom === 'fichiers') {
         // Uniquement les fichiers référencés par une pièce, un import ou une reprise d'immobilisations d'un dossier du périmètre.
         conditions.push(sql`${tb.id} in (

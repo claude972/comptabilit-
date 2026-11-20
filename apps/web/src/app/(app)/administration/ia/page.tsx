@@ -88,6 +88,19 @@ export default async function PageAdministrationIa() {
                 ) : null}
               </dl>
             ) : null}
+            {ia.verification.expiration ? (
+              <div className="space-y-1" data-testid="expiration-preuve" data-expire-bientot={ia.verification.expiration.expireBientot ? 'oui' : 'non'}>
+                <p className="text-sm">
+                  Temps restant avant la péremption de la preuve : <strong data-testid="jours-restants">{ia.verification.expiration.restantJours} jour(s)</strong> (seuil d’alerte : {ia.verification.expiration.seuilJours} jours).
+                </p>
+                {ia.verification.expiration.expireBientot ? (
+                  <Alerte ton="attention" data-testid="alerte-expiration-preuve">
+                    <strong>La preuve de connexion expire bientôt.</strong> Passé ce délai, le statut reviendra à « configuré, non vérifié » et les tâches rendront leurs résultats sans IA. Une nouvelle vérification est une opération
+                    explicite de l’éditeur, qui émet des appels réels : elle n’est ni automatique ni déclenchable depuis cet écran. Les administrateurs et associés reçoivent une notification interne, une seule fois par preuve.
+                  </Alerte>
+                ) : null}
+              </div>
+            ) : null}
             {ia.statut !== 'connecte' && ia.verification.etat !== 'sans_objet' ? (
               <p className="text-sm" data-testid="consequence-verification">
                 Tant que la connexion n’est pas vérifiée, aucun modèle n’est sollicité : les tâches rendent leurs résultats sans IA.

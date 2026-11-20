@@ -73,8 +73,8 @@ const vider = async () => {
   for (const e of empreintes) await admin.query('delete from verifications_connexion_ia where empreinte_configuration = $1', [e]);
 };
 /** Assemble la passerelle comme le fait `creerIa`, sur le fournisseur donné, et relit la preuve en base. */
-async function assembler(fournisseur: FournisseurIa | null, options: { bd?: AccesBd; empreinte?: string | null; maintenant?: () => Date; validiteJours?: number } = {}) {
-  const ia = assemblerIa(options.bd ?? app, fournisseur, null, { empreinteConfiguration: options.empreinte === undefined ? EMPREINTE : options.empreinte, fraicheurMs: 0, ...(options.maintenant ? { maintenant: options.maintenant } : {}), ...(options.validiteJours ? { validiteJours: options.validiteJours } : {}) });
+async function assembler(fournisseur: FournisseurIa | null, options: { bd?: AccesBd; empreinte?: string | null; maintenant?: () => Date; validiteJours?: number; alerteJours?: number } = {}) {
+  const ia = assemblerIa(options.bd ?? app, fournisseur, null, { empreinteConfiguration: options.empreinte === undefined ? EMPREINTE : options.empreinte, fraicheurMs: 0, ...(options.maintenant ? { maintenant: options.maintenant } : {}), ...(options.validiteJours ? { validiteJours: options.validiteJours } : {}), ...(options.alerteJours ? { alerteJours: options.alerteJours } : {}) });
   await ia.rafraichirPreuve();
   return ia;
 }
@@ -100,7 +100,7 @@ describe('état réel : aucune IA configurée', () => {
   it('pile normale : « non_connecte », rien à vérifier, et AUCUNE route ne déclenche une vérification', async () => {
     const r = await fetch(`${API}/v1/ia`, { headers: { authorization: `Bearer ${jetons.alice}` } });
     const etat = (await r.json()) as any;
-    expect(etat).toMatchObject({ statut: 'non_connecte', modeleSollicite: false, verification: { etat: 'sans_objet', verifieeLe: null, valideJusquAu: null, atteste: null } });
+    expect(etat).toMatchObject({ statut: 'non_connecte', modeleSollicite: false, verification: { etat: 'sans_objet', verifieeLe: null, valideJusquAu: null, atteste: null, verificationId: null, expiration: null } });
     expect(etat.verification.declenchement).toContain('ni automatique ni déclenchable');
     for (const [methode, chemin] of [['POST', '/v1/ia'], ['POST', '/v1/ia/verification'], ['PUT', '/v1/ia/verification'], ['POST', '/v1/ia/verifier'], ['GET', '/v1/ia/verification']] as const) {
       const essai = await fetch(`${API}${chemin}`, { method: methode, headers: { authorization: `Bearer ${jetons.alice}`, 'content-type': 'application/json' }, ...(methode === 'GET' ? {} : { body: '{}' }) });
@@ -366,5 +366,32 @@ describe('droits en base : lecture pour l’API et le worker, écriture pour per
     expect(await lignes()).toHaveLength(1);
     // Ajout seul, même pour le rôle d'administration : une vérification ne se modifie pas, elle se refait.
     await expect(admin.query(`update verifications_connexion_ia set valide_jusqu_au = valide_jusqu_au + interval '1 day' where id = $1`, [id])).rejects.toThrow(/ajout seul/);
+  });
+});
+
+describe('alerte d’expiration (D-096) : temps restant lu de la base, calculé sans appel, « expire bientôt » seulement pour une preuve valide', () => {
+  it('preuve valide de 30 jours vérifiée il y a 20 jours : 10 jours restants, pas encore ; à 7 jours : « expire bientôt » ; seuil paramétrable ; aucun appel sortant', async () => {
+    const { fournisseur, completer, vectoriser } = fauxFournisseurOfficiel();
+    const id = await injecter({ verifieeLe: new Date(Date.UTC(2026, 10, 1, 9)).toISOString() }); // valable jusqu'au 2026-12-01 09:00 UTC
+    const a = async (jour: number, heure: number, alerteJours?: number) => (await assembler(fournisseur, { maintenant: () => new Date(Date.UTC(2026, 10, jour, heure)), ...(alerteJours ? { alerteJours } : {}) })).preuve();
+    expect(await a(21, 9)).toMatchObject({ etat: 'valide', verificationId: id, expiration: { restantJours: 10, expireBientot: false, seuilJours: 7, expireLe: '2026-12-01T09:00:00.000Z' } });
+    expect((await a(24, 9))!.expiration).toMatchObject({ restantJours: 7, expireBientot: true }); // la borne du seuil est comprise
+    expect((await a(24, 9, 5))!.expiration).toMatchObject({ restantJours: 7, expireBientot: false }); // seuil réglé à 5 jours
+    expect((await a(24, 9, 30))!.expiration).toMatchObject({ restantJours: 7, expireBientot: true });
+    expect((await a(30, 10))!.expiration).toMatchObject({ restantJours: 1, expireBientot: true }); // 23 h restantes : « 1 jour », jamais 0
+    expect(await a(31, 9)).toMatchObject({ etat: 'perimee', expiration: null, verificationId: null }); // à la fin exacte : périmée, plus « expire bientôt »
+    expect(completer).not.toHaveBeenCalled();
+    expect(vectoriser).not.toHaveBeenCalled();
+  });
+
+  it('aucune preuve, preuve d’une autre configuration, vérification en échec : expiration nulle, rien à signaler', async () => {
+    const { fournisseur } = fauxFournisseurOfficiel();
+    const vue = async () => (await assembler(fournisseur)).preuve()!;
+    expect(await vue()).toMatchObject({ etat: 'absente', expiration: null, verificationId: null });
+    await injecter({ empreinte: empreinteConfigurationIa({ urlBase: URL_BASE_OVH, jeton: `${JETON}-autre` }) });
+    expect(await vue()).toMatchObject({ etat: 'autre_configuration', expiration: null });
+    await vider();
+    await injecter({ resultat: 'echec' });
+    expect(await vue()).toMatchObject({ etat: 'non_concluante', expiration: null });
   });
 });

@@ -14,16 +14,47 @@ export const COMPTES = {
   bruno: 'bruno.admin@cabinet-b.test',
 } as const;
 
+/** Jetons émis par `ouvrirSessions` (et leur date) : permet de les renouveler avant leur expiration (5 min côté Keycloak). */
+const emis: Record<string, { jeton: string; le: number }> = {};
+const DUREE_MAX_JETON_MS = 150_000;
+let renouvellement: Promise<void> | null = null;
+
+async function obtenirJeton(email: string): Promise<string> {
+  const r = await fetch(`${process.env.OIDC_ISSUER}/protocol/openid-connect/token`, {
+    method: 'POST',
+    body: new URLSearchParams({ grant_type: 'password', client_id: 'comtaple-tests', username: email, password: process.env.DEV_MDP_UTILISATEURS!, scope: 'openid' }),
+  });
+  const d = (await r.json()) as { access_token?: string };
+  if (!d.access_token) throw new Error(`Jeton non obtenu pour ${email}`);
+  return d.access_token;
+}
+
 export async function ouvrirSessions(): Promise<void> {
   for (const [cle, email] of Object.entries(COMPTES)) {
-    const r = await fetch(`${process.env.OIDC_ISSUER}/protocol/openid-connect/token`, {
-      method: 'POST',
-      body: new URLSearchParams({ grant_type: 'password', client_id: 'comtaple-tests', username: email, password: process.env.DEV_MDP_UTILISATEURS!, scope: 'openid' }),
-    });
-    const d = (await r.json()) as { access_token?: string };
-    if (!d.access_token) throw new Error(`Jeton non obtenu pour ${email}`);
-    jetons[cle] = d.access_token;
+    jetons[cle] = await obtenirJeton(email);
+    emis[cle] = { jeton: jetons[cle]!, le: Date.now() };
   }
+}
+
+/**
+ * Un fichier d'essai peut durer plus longtemps que le jeton (gros imports sur une machine chargée : 401 en milieu de fichier).
+ * Les jetons émis par `ouvrirSessions` sont renouvelés avant d'expirer ; un jeton posé à la main par un essai n'est jamais touché.
+ */
+async function jetonsAJour(): Promise<void> {
+  const perimes = Object.entries(emis).filter(([cle, e]) => jetons[cle] === e.jeton && Date.now() - e.le > DUREE_MAX_JETON_MS);
+  if (perimes.length === 0) return;
+  renouvellement ??= (async () => {
+    try {
+      for (const [cle] of perimes) {
+        const jeton = await obtenirJeton(COMPTES[cle as keyof typeof COMPTES]);
+        if (jetons[cle] === emis[cle]!.jeton) jetons[cle] = jeton;
+        emis[cle] = { jeton, le: Date.now() };
+      }
+    } finally {
+      renouvellement = null;
+    }
+  })();
+  await renouvellement;
 }
 
 /** Cabinet à préciser pour un compte membre de plusieurs cabinets (en-tête X-Cabinet-Id) ; null pour revenir au cas général. */
@@ -39,6 +70,7 @@ export function api(qui: string, methode: string, chemin: string, corps?: unknow
 
 /** Même appel que `api`, sur une autre API (par exemple une seconde pile lancée avec un environnement dédié). */
 export async function apiSur(base: string, qui: string, methode: string, chemin: string, corps?: unknown): Promise<{ statut: number; json: any; brut: Buffer }> {
+  await jetonsAJour();
   const binaire = Buffer.isBuffer(corps);
   const r = await fetch(`${base}${chemin}`, {
     method: methode,
@@ -119,6 +151,7 @@ export function pdfTexte(lignes: string[], sel = ''): Buffer {
 
 /** Appel dans un cabinet EXPLICITE (en-tête X-Cabinet-Id propre à l'appel) : sûr pour des appels simultanés sur plusieurs cabinets. */
 export async function apiCabinet(qui: string, cabinetId: string, methode: string, chemin: string, corps?: unknown): Promise<{ statut: number; json: any; brut: Buffer; ms: number }> {
+  await jetonsAJour();
   const binaire = Buffer.isBuffer(corps);
   const debut = performance.now();
   const r = await fetch(`${API}${chemin}`, {

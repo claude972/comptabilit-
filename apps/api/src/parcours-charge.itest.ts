@@ -104,14 +104,41 @@ describe('dépôts simultanés : 12 sessions dans 3 cabinets', () => {
   it('le MÊME fichier déposé par six sessions en même temps dans un dossier : un seul document, six réceptions, aucune erreur', async () => {
     const c = cabs[0]!;
     const pdf = pdfTexte(['Facture identique', `Course ${SEL}`, 'Total TTC : 10,00 €'], `${SEL}-course`);
-    const qui = ['alice', 'remi', 'chloe', 'client', 'alice', 'remi'];
-    const res = await Promise.all(qui.map((q, i) => deposerCabinet(q, c.id, c.dossier, pdf, {}, `identique-${i}.pdf`)));
+    // Une session = un téléversement. Une même personne qui rouvre le même fichier pendant que son dépôt est encore ouvert
+    // REPREND ce dépôt (reprise idempotente, par conception : `POST /v1/televersements`), elle n'en crée pas un second ;
+    // six sessions distinctes exigent donc six personnes ou des dépôts successifs. Quatre identités en même temps, puis
+    // deux de plus (alice, remi) en même temps entre elles, une fois leur premier dépôt clos : six téléversements distincts.
+    const vague = (qui: string[], depart: number) => Promise.all(qui.map((q, i) => deposerCabinet(q, c.id, c.dossier, pdf, {}, `identique-${depart + i}.pdf`)));
+    const premiere = await vague(['alice', 'remi', 'chloe', 'client'], 0);
+    const seconde = await vague(['alice', 'remi'], 4);
+    const res = [...premiere, ...seconde];
     expect(res.map((r) => r.fin?.statut)).toEqual(Array(6).fill(200));
+    expect(new Set(res.map((r) => r.fin!.json.id)).size).toBe(6); // six téléversements distincts
     const ids = new Set(res.map((r) => r.fin!.json.documentId));
     expect(ids.size).toBe(1);
     const n = (await editeur.query(`select count(distinct d.id)::int as docs, count(r.id)::int as receptions from documents d left join receptions r on r.document_id = d.id where d.id = $1`, [[...ids][0]])).rows[0];
     expect(n).toEqual({ docs: 1, receptions: 6 });
     expect(res.filter((r) => r.fin!.json.doublonBinaire === false)).toHaveLength(1); // une seule première réception
+  });
+
+  it('la MÊME personne qui rouvre le même fichier pendant que son dépôt est ouvert reprend ce dépôt : une seule réception par téléversement, jamais de réception perdue', async () => {
+    const c = cabs[0]!;
+    const pdf = pdfTexte(['Facture identique bis', `Reprise ${SEL}`, 'Total TTC : 11,00 €'], `${SEL}-reprise`);
+    // Alice, remi, alice, remi, chloe, client, tous en même temps. Selon l'instant, la seconde ouverture d'alice voit ou non
+    // le premier dépôt encore ouvert : on n'attend donc pas un nombre fixe, mais l'invariant (une réception exactement par
+    // téléversement distinct, une même personne ne dépassant jamais ses clôtures) et l'absence d'erreur.
+    const res = await Promise.all(['alice', 'remi', 'alice', 'remi', 'chloe', 'client'].map((q, i) => deposerCabinet(q, c.id, c.dossier, pdf, {}, `reprise-${i}.pdf`)));
+    expect(res.map((r) => r.fin?.statut)).toEqual(Array(6).fill(200));
+    const sessions = new Set(res.map((r) => r.fin!.json.id as string));
+    expect(sessions.size).toBeGreaterThanOrEqual(4);
+    expect(sessions.size).toBeLessThanOrEqual(6);
+    const ids = new Set(res.map((r) => r.fin!.json.documentId));
+    expect(ids.size).toBe(1);
+    const n = (await editeur.query(`select count(distinct d.id)::int as docs, count(r.id)::int as receptions from documents d left join receptions r on r.document_id = d.id where d.id = $1`, [[...ids][0]])).rows[0];
+    expect(n).toEqual({ docs: 1, receptions: sessions.size });
+    const parTele = (await editeur.query(`select count(*)::int as n from receptions r where r.document_id = $1 and r.provenance->>'televersementId' = any($2::text[])`, [[...ids][0], [...sessions]])).rows[0].n;
+    expect(parTele).toBe(sessions.size); // une réception, ni plus ni moins, par téléversement
+    expect(res.filter((r) => r.fin!.json.doublonBinaire === false)).toHaveLength(1);
   });
 });
 

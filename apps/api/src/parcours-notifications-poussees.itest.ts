@@ -274,7 +274,8 @@ describe('envoi par le worker, déclenché par un événement réel', () => {
     const interne = (await api('client', 'GET', '/v1/notifications')).json.notifications[0];
     expect(interne).toMatchObject({ type: 'document.complement_demande', lien: `/depots/${documentId}` });
     expect(interne.message).toContain(NOM);
-    const [envoi] = await lignesEnvois(DEMO.client);
+    // Le simulateur reçoit le message AVANT que le worker n'inscrive l'issue de l'envoi : on attend l'inscription (sinon course, vue en passe complète).
+    const [envoi] = await attendre(() => lignesEnvois(DEMO.client), (l) => l.length >= 1 && l[0].issue !== null, 30_000);
     expect(envoi).toMatchObject({ type: 'document.complement_demande', nombre: 1, issue: 'distribue', appareils: 1 });
     // Charge utile EXACTE déchiffrée par le simulateur : version, type générique, identifiant opaque (celui de l'envoi).
     expect(m.clair).toBe(`{"v":1,"t":"complement","i":"${envoi.id}"}`);

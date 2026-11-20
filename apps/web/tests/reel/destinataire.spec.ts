@@ -128,7 +128,10 @@ test('préparation : dossier neuf (SIREN = émetteur des ventes), deux factures 
     await expect(chloe.getByTestId('liste-envois').getByRole('listitem').filter({ hasText: nom })).toContainText('Reçu', { timeout: 60_000 });
   }
   for (const nom of [P1, P2]) {
-    await chloe.goto(`/dossiers/${dossier}`);
+    // Firefox interrompt parfois une navigation lancée juste après un envoi (NS_BINDING_ABORTED, vu en CI) : on la reprend.
+    await expect(async () => {
+      await chloe.goto(`/dossiers/${dossier}`);
+    }).toPass({ timeout: 30_000, intervals: [1_000] });
     await chloe.getByRole('link', { name: nom }).click();
     await chloe.waitForURL(/\/pieces\/[0-9a-f-]{36}/);
     ids[nom] = /\/pieces\/([0-9a-f-]{36})/.exec(chloe.url())![1]!;

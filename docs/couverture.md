@@ -181,4 +181,58 @@ Le territoire fiscal est une donnée explicite du dossier. Hors métropole, ou t
 | 9 | Pièce contenant des instructions malveillantes | Testé : restituée comme donnée par l'assistant sans IA ; avec un modèle SIMULÉ jouant un modèle manipulé, les garde-fous refusent et tracent. Aucun modèle réel n'a lu de pièce |
 | 10 | Restauration après incident | Testé en local : base, stockage objet et Keycloak restaurés dans des instances isolées et vérifiés ; limites dans `deploiement.md` |
 
+### Matrice des dix parcours : preuve existante et lacune (P3, D-101, 2026-11-20)
+
+| # | Preuve automatisée (fichier : essai) | Navigateur | Lacune réelle restante |
+|---|---|---|---|
+| 1 | `parcours.itest.ts` (parcours 1 et 1 bis : dépôt, réception après vérification, OCR réel, correction, validation) ; **`parcours-recette-dix.itest.ts` (NOUVEAU : la chaîne complète photo → réception → OCR → correction tracée → validation → import et contrôles → dossier de révision dont l'inventaire porte la pièce avec l'empreinte de l'original)** | Émulation mobile : `tests/reel/parcours-reel.spec.ts` (photo → « Reçu » → OCR → champs), `e2e/mobile/deposer.spec.ts` (simulateur) | Appareil photo, appareil et Safari réels : **`recette-appareils.md` (jamais jouée)**. Photo synthétique rendue par un navigateur, pas une vraie photo |
+| 2 | `parcours-mail.itest.ts` (« parcours 2 » : mail → pièce → doublon entre canaux dans les deux sens → traitement) | `e2e/ordinateur/messagerie.spec.ts` | **Simulateur de messagerie seulement** : aucune boîte réelle (externe : applications OAuth). Non comblable ici |
+| 3 | `parcours.itest.ts` (parcours 3 et 4) ; **`parcours-gros-imports.itest.ts` (NOUVEAU : FEC de 100 645 et 251 888 lignes, trois FEC de 100 000 lignes simultanés, relevés de 40 000 mouvements, fichier corrompu ou tronqué, taille au-delà de la limite)** | `e2e/ordinateur/imports.spec.ts`, `reel/*` | Fichiers réels de logiciels comptables (externe) ; plus de 500 000 lignes : seul le moteur a été mesuré (1 060 006) |
+| 4 | `parcours.itest.ts` (nouvelle version du FEC : travaux « à revoir »), `parcours-versions.itest.ts` (nouvelle version d'une pièce : validation invalidée, original conservé) | `e2e/ordinateur/versions.spec.ts` | — |
+| 5 | `parcours.itest.ts` (reprise au décalage, rejeu, empreinte fausse) ; **`parcours-dependances.itest.ts` (NOUVEAU : coupure RÉELLE du stockage objet et de Redis pendant le dépôt, reprise sur la même séance)** | `e2e/mobile/deposer.spec.ts` (coupure, 409, hors connexion : simulateur) | Coupure réseau d'un vrai téléphone : `recette-appareils.md` T6/T7 (jamais jouée) |
+| 6 | `parcours-mail.itest.ts` (« parcours 6 » : notification répétée, falsifiée, manquée rattrapée) | — | **Simulateur** seulement |
+| 7 | `parcours-mail.itest.ts` (« parcours 7 » : jeton révoqué, connexion « revoque », aucune boucle) | `e2e/ordinateur/messagerie.spec.ts` | **Simulateur** seulement |
+| 8 | `parcours.itest.ts` (cloisonnement), `parcours-administration.itest.ts`, `packages/db/isolation.itest.ts` (RLS) ; **`parcours-droits-matrice.itest.ts` (NOUVEAU : 28 fonctions × 11 profils sur deux cabinets neufs, multi-cabinet, habilitation par dossier, expiration)** ; **`parcours-charge.itest.ts` (NOUVEAU : isolation sous charge, par l'API et par la base)** | `reel/parcours-reel.spec.ts` (cloisonnement dans l'interface) | Test d'intrusion indépendant (externe) |
+| 9 | `parcours.itest.ts` (parcours 9 : injection sans effet, EICAR en quarantaine, type refusé), `parcours-assistant*.itest.ts`, `preuve-ia.itest.ts` | `e2e/ordinateur/assistant.spec.ts` | Aucun modèle réel n'a lu de pièce (externe) |
+| 10 | `scripts/essai-restauration.sh`, `essai-restauration-chiffree.sh`, `essai-restauration-keycloak.sh` (base, objets et Keycloak restaurés dans des instances isolées, vérifiés) ; **non rejoué à cette passe** (copie de ≈ 8 Go) | — | **Reste de P4** : restauration chronométrée, hors poste de développement, depuis des sauvegardes chiffrées ; ce n'est pas un essai vitest, aucune suite automatisée ne le rejoue |
+
+### Matrice profils et droits (P3, D-101)
+
+Rejouée par `parcours-droits-matrice.itest.ts` sur DEUX cabinets neufs (appartenances d'essai désactivées à la fin ; aucun cabinet existant touché). Cases : A = atteint la logique métier ; 403 = refus d'habilitation ; 404 = refus qui ne révèle pas l'existence. **Aucune case ne donne 5xx.**
+
+| Fonction (niveau minimal) | Déposant « dépôt » | Support « lecture » | Collab. sans habilitation sur le dossier | Collaborateur « collaboration » | Réviseur « révision » | Administrateur « validation » | Étranger au cabinet | Appartenance expirée | Client en lecture | Collab. « lecture » | Associé |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Lire le dossier, lister les pièces, rechercher (dépôt) | A | A | 404 | A | A | A | 403 | 403 | A | A | A |
+| Lire une pièce (dépôt ; le déposant : les siennes seules) | 404 | A | 404 | A | A | A | 403 | 403 | A | A | A |
+| Ouvrir un dépôt (dépôt ; support en lecture seule) | A | 403 | 404 | A | A | A | 403 | 403 | A | A | A |
+| Revue des contrôles, états, tiers (lecture) | 404 | A | 404 | A | A | A | 403 | 403 | A | A | A |
+| Corriger l'extraction, créer un exercice, prendre en charge un constat, demander le dossier de révision (collaboration) | 404 ou 403 | 403 | 404 | A | A | A | 403 | 403 | 403 | 403 | A |
+| Valider une pièce, conclure un constat avec motif (révision) | 404 | 403 | 404 | 403 | A | A | 403 | 403 | 403 | 403 | A |
+| Poser une question à l'assistant (lecture) | 403 | 403 | 404 | A | A | A | 403 | 403 | A | A | A |
+| Restitution du dossier (validation) | 403 | 403 | 404 | 403 | 403 | A | 403 | 403 | 403 | 403 | A |
+| Créer / modifier un dossier, habiliter, membres du cabinet, journal d'audit, indicateurs du cabinet, abonnement détaillé, connexions de messagerie, périmètre de restitution (gestionnaire) | 403 | 403 | 403 | 403 | 403 | A | 403 | 403 | 403 | 403 | A |
+| Règles du cabinet (membres du cabinet, hors clients) | 403 | A | A | A | A | A | 403 | 403 | 403 | A | A |
+| Notifications (tout membre) | A | A | A | A | A | A | 403 | 403 | A | A | A |
+
+Prouvé en plus : sans jeton ou jeton falsifié, 401 pour chacune des 28 fonctions ; compte membre de plusieurs cabinets sans en-tête : 400, avec en-tête : seul ce cabinet, et les identifiants d'un autre cabinet sont **404** (jamais 403 ni 200) pour neuf routes de lecture et d’écriture ; en-tête de cabinet inventé : 403 ; habilitation retirée sur un dossier sans toucher au dossier voisin du même cabinet ; appartenance expirée pendant l'essai : accès fermé immédiatement. **Constat à arbitrer (R36) :** un « client en lecture » habilité au niveau « lecture » lit la revue des contrôles, les états, les tiers et peut interroger l'assistant ; c'est la politique actuelle (plafond du rôle : « dépôt » ou « lecture »), non une anomalie de code ; décision produit à prendre.
+
+### Erreurs, dépendances indisponibles, reprise (P3, D-101)
+
+| Dépendance | Panne jouée | Comportement prouvé | Fichier d'essai |
+|---|---|---|---|
+| Redis (files) | Relais TCP coupé puis rétabli, API réelle | Clôture d'un dépôt 200 en 20 à 40 ms, pièce « reçue » ; démarrage de traitement : 503 explicite en 6 ms ; reprise sans redémarrage. **Défaut corrigé : la requête restait pendue indéfiniment** | `parcours-dependances.itest.ts` |
+| Stockage objet (S3) | Idem | Morceau et lecture d'un original : 503 nommé en 80 à 120 ms, aucun octet compté, reprise sur la même séance ; **défaut corrigé : 500 muet** | idem |
+| Fournisseur d'identité | Adresse d'émetteur injoignable | 503 « Service d'identité indisponible » en 9 ms ; **défaut corrigé : 401 « jeton invalide »** | idem |
+| Base de données | Relais TCP coupé puis rétabli | 503 explicite, API vivante, reprise sans redémarrage, `GET /v1/sante` en erreur ; **défaut corrigé : l'API s'arrêtait** | idem |
+| Antivirus | Port fermé, service muet, réponse incompréhensible, service revenu | Pièce « reçue » avec motif, tâche retentée ; jamais « sain » par défaut ; facultatif : « non_analyse » consigné | `apps/worker/src/dependances.itest.ts` |
+| OCR | Injoignable, HTTP 500, JSON illisible, service revenu | Motif « OCR indisponible … », rien d'inventé ; reprise lit la pièce | idem |
+| Stockage objet vu du worker | Lecture en échec | Pièce repassée « reçue » avec motif (**défaut corrigé : « en analyse » sans fin**), reprise réussie | idem |
+| Worker | SIGKILL pendant un import de 251 888 lignes | Aucune ligne partielle ; **défaut corrigé : lot « en cours » jamais repris** ; reprise en 84 s, lignes exactes | `parcours-reprise-worker.itest.ts`, `verrou-traitement.itest.ts`, `rattrapage.itest.ts` |
+
+Non jouée : coupure réelle de Keycloak, de ClamAV ou de l'OCR de la PILE normale (aucun service de la pile n'a été arrêté : le contexte d'essai pointe vers un port fermé ou un relais), arrêt brutal d'un worker pendant contrôles, rapprochement, export ou restitution, panne de disque.
+
+### Charge concurrente et gros imports (P3, D-101)
+
+Mesures et budgets : `rapport-de-tests.md`, section « Charge concurrente et gros imports ». Essais : `parcours-charge.itest.ts` (3 cabinets neufs × 4 identités, 12 sessions simultanées), `parcours-gros-imports.itest.ts`. **Défauts corrigés :** deux dépôts identiques simultanés créaient 5 documents au lieu d'un ; deux imports de FEC identiques simultanés ou deux créations d'exercices chevauchants donnaient un 500.
+
 Environnements réellement utilisés : Chromium (ordinateur et émulation Pixel 7) et WebKit (ordinateur et émulation iPhone 15, parcours sur pile réelle seulement) sur macOS. WebKit est le moteur de Safari, pas Safari. Firefox ne peut pas être lancé par l'agent de développement sur le poste (D-059) : sa suite est exécutée, et réussie, par l'intégration continue (D-063). Aucun appareil réel, aucun lecteur d'écran.

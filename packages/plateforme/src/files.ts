@@ -75,8 +75,21 @@ export interface TachePoussee {
 /** Nombre maximal de tentatives de livraison d'une notification poussée (erreurs temporaires rejouées, délai doublé à chaque fois). */
 export const TENTATIVES_POUSSEE = 5;
 
-export function connexionRedis(url: string): ConnectionOptions {
-  return new Redis(url, { maxRetriesPerRequest: null }) as unknown as ConnectionOptions;
+/**
+ * Connexion à Redis. Pour un PRODUCTEUR de tâches qui répond à une requête (l'API), `echecRapide` désactive la file hors
+ * ligne d'ioredis : sans cela, une commande émise pendant une panne attend indéfiniment le retour de Redis (requête pendue,
+ * commandes accumulées en mémoire, rejouées en double au retour). Un consommateur (worker BullMQ) doit garder le défaut.
+ */
+export function connexionRedis(url: string, options: { echecRapide?: boolean } = {}): ConnectionOptions {
+  return new Redis(url, { maxRetriesPerRequest: null, ...(options.echecRapide ? { enableOfflineQueue: false } : {}) }) as unknown as ConnectionOptions;
+}
+
+/** Mise en file impossible dans le délai : Redis (file des travaux) injoignable. Le travail n'est PAS perdu : voir le rattrapage du worker. */
+export class FileIndisponible extends Error {
+  constructor(detail: string) {
+    super(`Service de files de travaux indisponible (${detail}).`);
+    this.name = 'FileIndisponible';
+  }
 }
 
 const OPTIONS = {
@@ -92,7 +105,10 @@ export class Files {
   readonly exports: Queue;
   readonly mail: Queue;
   readonly pousses: Queue;
-  constructor(connexion: ConnectionOptions, prefixe = 'bull') {
+  /** Délai maximal d'une mise en file ; absent : pas de limite (worker). L'API le borne pour ne jamais laisser une requête pendue. */
+  private readonly delaiMiseEnFileMs: number | null;
+  constructor(connexion: ConnectionOptions, prefixe = 'bull', delaiMiseEnFileMs: number | null = null) {
+    this.delaiMiseEnFileMs = delaiMiseEnFileMs;
     const options = { connection: connexion, defaultJobOptions: OPTIONS, prefix: prefixe };
     this.documents = new Queue(FILES.documents, options);
     this.comptabilite = new Queue(FILES.comptabilite, options);
@@ -106,7 +122,24 @@ export class Files {
    * travail et sans toucher à son identifiant. Sans trace en cours : mise en file strictement identique à avant.
    */
   private ajouter(file: Queue, nom: string, t: object, options: JobsOptions = {}) {
-    return tracerMiseEnFile(file.name, nom, t, (metadonnees) => file.add(nom, t, metadonnees ? { ...options, telemetry: { metadata: metadonnees } } : options));
+    return tracerMiseEnFile(file.name, nom, t, async (metadonnees) => {
+      const ajout = () => file.add(nom, t, metadonnees ? { ...options, telemetry: { metadata: metadonnees } } : options);
+      const delai = this.delaiMiseEnFileMs;
+      if (delai === null) return ajout();
+      let minuterie: NodeJS.Timeout | undefined;
+      const limite = new Promise<never>((_, rejeter) => {
+        minuterie = setTimeout(() => rejeter(new FileIndisponible(`aucune réponse en ${delai} ms`)), delai);
+      });
+      try {
+        // Connexion en cours d'établissement (démarrage) : attendue dans la limite du délai ; Redis absent : échec explicite.
+        return await Promise.race([file.waitUntilReady().then(ajout), limite]);
+      } catch (e) {
+        if (e instanceof FileIndisponible) throw e;
+        throw new FileIndisponible(e instanceof Error ? e.message : 'erreur inconnue');
+      } finally {
+        clearTimeout(minuterie);
+      }
+    });
   }
   // L'identifiant de tâche rend la mise en file idempotente (une relance ne crée pas de doublon en attente).
   analyserDocument(t: TacheAnalyseDocument) {

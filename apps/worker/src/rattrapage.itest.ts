@@ -71,6 +71,22 @@ describe('rattrapage des traitements en attente', () => {
     expect((await c.taches.exports.getJobs(['waiting', 'delayed', 'prioritized'])).filter((j) => j.data.restitutionId === restitutionId)).toHaveLength(1);
   });
 
+  it('D-101 : un import resté « en cours » depuis longtemps (worker mort, file perdue) est remis en file ; un import récent en cours ne l\u2019est pas', async () => {
+    const ancien = randomUUID();
+    const recentEnCours = randomUUID();
+    try {
+      await admin.query(`insert into lots_import (id, cabinet_id, entite_id, type, statut, cle_idempotence, cree_le) values ($1, $2, $3, 'fec', 'en_cours', $4, now() - interval '40 minutes')`, [ancien, DEMO.cabinetB, DEMO.leroy, `essai-rattrapage:${ancien}`]);
+      await admin.query(`insert into lots_import (id, cabinet_id, entite_id, type, statut, cle_idempotence) values ($1, $2, $3, 'fec', 'en_cours', $4)`, [recentEnCours, DEMO.cabinetB, DEMO.leroy, `essai-rattrapage:${recentEnCours}`]);
+      const bilan = await rattraper(c);
+      expect(bilan.traitements.import_fec).toBeGreaterThanOrEqual(1);
+      const ids = (await c.taches.comptabilite.getJobs(['waiting', 'delayed', 'prioritized'])).filter((j) => j.name === 'importer-fec').map((j) => j.data.lotImportId);
+      expect(ids).toContain(ancien);
+      expect(ids).not.toContain(recentEnCours);
+    } finally {
+      await admin.query('delete from lots_import where id = any($1)', [[ancien, recentEnCours]]);
+    }
+  });
+
   it('le rôle du worker ne peut appeler que ses fonctions de rattrapage, qui ne renvoient que des identifiants', async () => {
     const r = await c.bd.pool.query('select * from worker_traitements_en_attente(10, 5)');
     for (const ligne of r.rows) expect(Object.keys(ligne).sort()).toEqual(['cabinet_id', 'identifiant', 'nature']);

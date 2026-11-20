@@ -106,6 +106,7 @@ Résultats de la dernière exécution : [docs/rapport-de-tests.md](docs/rapport-
 - [Catalogue des indicateurs](docs/catalogue-indicateurs.md)
 - [API (OpenAPI)](docs/openapi.json) — aussi servie par l'API sur `/docs`
 - [Rapport de tests](docs/rapport-de-tests.md)
+- [Recette sur appareils réels, Safari et lecteurs d'écran (préparée, jamais jouée)](docs/recette-appareils.md)
 - [Déploiement, sauvegarde et restauration](docs/deploiement.md)
 - [Guide d'exploitation (mise en service, sauvegardes, incidents, rotation des secrets)](docs/exploitation.md)
 - [Matrice des exigences du cahier des charges (exigence, implémentation, preuve, reste)](docs/exigences.md)

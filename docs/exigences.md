@@ -160,8 +160,11 @@ Lecture des colonnes :
 | Sauvegardes, restauration, RPO/RTO, reprise | Scripts, essais isolés, `exploitation.md` | Essais | RPO/RTO : objectifs proposés, non mesurés en cible |
 | Fonctionnement dégradé sans IA | Aucune fonction ne dépend de l'IA ; replis étiquetés | Tests | — |
 | Jeux synthétiques et exigences de recette | `packages/core/src/synthetique`, recettes | Tests | — |
-| Dix parcours de bout en bout | Voir `couverture.md` | Tests | Parcours 2, 6, 7 : **simulés** |
-| Navigateurs / émulations / appareils distingués | `rapport-de-tests.md` | — | Appareils réels **(externe)** |
+| Dix parcours de bout en bout | Matrice parcours × preuve × lacune dans `couverture.md` (P3, D-101) ; parcours 1 enchaîné de bout en bout (`parcours-recette-dix.itest.ts`) | Tests | Parcours 2, 6, 7 : **simulés** (boîte réelle externe) ; parcours 10 : essai de restauration existant, non rejoué à la passe P3 (reste de P4) ; parcours 1 et 5 sur appareil réel : `recette-appareils.md` **jamais jouée** |
+| Navigateurs / émulations / appareils distingués | `rapport-de-tests.md` ; procédure pas à pas et fiche de résultat vierge pour téléphone réel, Safari, VoiceOver et NVDA : `recette-appareils.md` (**préparée, jamais jouée**) | — | Appareils réels, Safari lui-même, lecteurs d'écran **(externe : personne et appareils)** |
+| Profils et droits : refus attendus prouvés | Matrice 28 fonctions × 11 profils sur deux cabinets neufs, multi-cabinet, habilitation par dossier, expiration (D-101) | `parcours-droits-matrice.itest.ts` | Politique d'un « client en lecture » à arbitrer (R36) ; test d'intrusion indépendant **(externe)** |
+| Erreurs, dépendances indisponibles, reprise, messages d'échec explicites | 503 nommés (files, stockage, base, identité), bassin PostgreSQL non fatal, pièce jamais « en analyse » sans fin, reprise d'un import après arrêt brutal du worker (D-101, migration 0049) | `parcours-dependances.itest.ts`, `dependances.itest.ts`, `parcours-reprise-worker.itest.ts` | Pas de redondance ; pannes de la pile normale elle-même non jouées ; arrêt brutal pendant contrôles / exports non mesuré |
+| Charge concurrente multi-utilisateur et multi-cabinet, gros imports avec budgets | Verrous consultatifs sur les clôtures identiques et la création d'exercices ; budgets mesurés (D-101) | `parcours-charge.itest.ts`, `parcours-gros-imports.itest.ts` | 12 sessions et 4 identités seulement ; une API et un worker ; mesures non transposables à la cible **(externe)** |
 
 ## §19 — Livrables
 

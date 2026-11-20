@@ -3,6 +3,7 @@ import { and, eq, inArray, journaliser, ne, schema as s, sql } from '@comtaple/d
 import type { TacheImportFec } from '@comtaple/plateforme';
 import { analyserFecIsole, type CauseEchec, isolementDepuisConfig, motifEchecFec } from './analyse-isolee.js';
 import type { Contexte } from './contexte.js';
+import { avecVerrouTraitement } from './verrou-traitement.js';
 
 const TAILLE_LOT = 1000;
 
@@ -26,6 +27,12 @@ class AnalyseInterrompue extends Error {
  * avec un motif en français, sans nouvel essai automatique ; aucune ligne n'est conservée (transaction abandonnée).
  */
 export async function importerFec(c: Contexte, t: TacheImportFec): Promise<void> {
+  // Un worker VIVANT qui traite déjà ce lot garde le verrou : cette tâche (en double) s'efface. Si le worker est mort, le
+  // verrou a disparu avec sa session et le lot resté « en cours » est repris ici.
+  await avecVerrouTraitement(c, `import:${t.lotImportId}`, () => importerFecVerrouille(c, t));
+}
+
+async function importerFecVerrouille(c: Contexte, t: TacheImportFec): Promise<void> {
   const ctx = { cabinetId: t.cabinetId };
   const init = await c.bd.avecContexte(ctx, async (tx) => {
     const [lot] = await tx.select().from(s.lotsImport).where(eq(s.lotsImport.id, t.lotImportId));
@@ -35,7 +42,7 @@ export async function importerFec(c: Contexte, t: TacheImportFec): Promise<void>
     const [exercice] = await tx.select().from(s.exercices).where(eq(s.exercices.id, lot.exerciceId));
     if (!fichier || !exercice) return null;
     // Prise en charge ATOMIQUE : si une autre tâche traite déjà ce lot (tâche en double après un rattrapage), on s'efface.
-    const [pris] = await tx.update(s.lotsImport).set({ statut: 'en_cours', progression: 0 }).where(and(eq(s.lotsImport.id, lot.id), inArray(s.lotsImport.statut, ['en_attente', 'echec']))).returning({ id: s.lotsImport.id });
+    const [pris] = await tx.update(s.lotsImport).set({ statut: 'en_cours', progression: 0 }).where(and(eq(s.lotsImport.id, lot.id), inArray(s.lotsImport.statut, ['en_attente', 'echec', 'en_cours']))).returning({ id: s.lotsImport.id });
     if (!pris) return null;
     return { lot, fichier, exercice };
   });

@@ -267,6 +267,8 @@ export class AdministrationController {
     const d = valider(exercice, corps);
     return this.bd.avecContexte(acces, async (tx) => {
       await exigerNiveau(tx, id, 'collaboration');
+      // Deux créations simultanées sur le même dossier se suivent (sinon les deux passent le contrôle de chevauchement).
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`exercice:${id}`}, 0))`);
       const chevauche = await tx.execute(sql`select 1 from exercices where entite_id = ${id}::uuid and debut <= ${d.fin}::date and fin >= ${d.debut}::date limit 1`);
       if (chevauche.rows.length) throw new ConflictException('Cet exercice chevauche un exercice existant du dossier');
       const [ex] = await tx.insert(s.exercices).values({ cabinetId: acces.cabinetId, entiteId: id, debut: d.debut, fin: d.fin }).returning();

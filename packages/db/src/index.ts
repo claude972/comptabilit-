@@ -45,7 +45,11 @@ export interface AccesBd {
 }
 
 export function creerAccesBd(url: string, options: { max?: number } = {}): AccesBd {
-  const pool = new pg.Pool({ connectionString: url, max: options.max ?? 10 });
+  // Délai d'obtention d'une connexion : sans lui, une base qui ne répond plus (partition réseau) fait attendre indéfiniment
+  // chaque requête. Erreur d'une connexion INACTIVE (redémarrage, coupure) : consignée, jamais fatale pour le processus
+  // (sans écouteur, `pg` la relance comme exception non interceptée et arrête l'API ou le worker).
+  const pool = new pg.Pool({ connectionString: url, max: options.max ?? 10, connectionTimeoutMillis: 30_000 });
+  pool.on('error', (e) => console.error(`[bd] connexion inactive perdue : ${e.message}`));
   const db = drizzle(pool, { schema });
   return {
     pool,

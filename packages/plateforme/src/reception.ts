@@ -4,7 +4,7 @@
  * - un binaire déjà présent dans le dossier donne une nouvelle occurrence de réception (doublon binaire),
  *   sans nouveau document : c'est ce qui détecte un doublon ENTRE canaux.
  */
-import { and, eq, journaliser, schema as s, type Tx } from '@comtaple/db';
+import { and, eq, journaliser, schema as s, sql, type Tx } from '@comtaple/db';
 
 type Fichier = typeof s.fichiers.$inferSelect;
 
@@ -13,6 +13,10 @@ export async function assurerFichierOriginal(
   tx: Tx,
   p: { cabinetId: string; sha256: string; taille: number; typeMimeDeclare: string | null; cleStockage: string },
 ): Promise<Fichier> {
+  // Sérialise les clôtures SIMULTANÉES du même contenu dans le même cabinet (verrou tenu jusqu'à la fin de la transaction) :
+  // sans lui, deux dépôts identiques en même temps ne voient pas l'un l'autre (lecture avant écriture) et créent chacun un
+  // document ou un lot d'import (doublon constaté en essai de charge), ou échouent sur une contrainte d'unicité.
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`fichier:${p.cabinetId}:${p.sha256}`}, 0))`);
   const [existant] = await tx
     .select()
     .from(s.fichiers)

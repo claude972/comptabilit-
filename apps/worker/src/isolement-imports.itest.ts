@@ -406,7 +406,9 @@ describe('chaînes complètes importerReleve et importerFec — PostgreSQL réel
     ]) await admin.query(requete, [cabinet]).catch(() => undefined);
     await c.bd.fermer();
     await admin.end();
-  });
+    // Délai porté à 120 s : `lignes_ecriture` n'a pas d'index sur `cabinet_id` seul, et ces suppressions la parcourent entièrement
+    // (4,7 s pour 3,7 millions de lignes, plusieurs fois) ; avec 10 s, le crochet échouait dès que les essais de charge (D-101) avaient grossi la table.
+  }, 120_000);
 
   it('relevé sain (camt.053, 2 000 mouvements) : mêmes données en base que la lecture directe ; réimport sans doublon', async () => {
     const r = releve('camt.053', 2000, 21);

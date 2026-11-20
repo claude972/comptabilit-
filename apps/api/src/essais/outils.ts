@@ -116,3 +116,49 @@ export function pdfTexte(lignes: string[], sel = ''): Buffer {
   return Buffer.from(corps, 'latin1');
 }
 
+
+/** Appel dans un cabinet EXPLICITE (en-tête X-Cabinet-Id propre à l'appel) : sûr pour des appels simultanés sur plusieurs cabinets. */
+export async function apiCabinet(qui: string, cabinetId: string, methode: string, chemin: string, corps?: unknown): Promise<{ statut: number; json: any; brut: Buffer; ms: number }> {
+  const binaire = Buffer.isBuffer(corps);
+  const debut = performance.now();
+  const r = await fetch(`${API}${chemin}`, {
+    method: methode,
+    headers: {
+      ...(qui ? { authorization: `Bearer ${jetons[qui]}` } : {}),
+      'x-cabinet-id': cabinetId,
+      ...(corps !== undefined ? { 'content-type': binaire ? 'application/octet-stream' : 'application/json' } : {}),
+    },
+    body: corps === undefined ? undefined : binaire ? new Uint8Array(corps as Buffer) : JSON.stringify(corps),
+  });
+  const brut = Buffer.from(await r.arrayBuffer());
+  const ms = performance.now() - debut;
+  let json: any = null;
+  try {
+    json = JSON.parse(brut.toString('utf8'));
+  } catch {
+    /* réponse binaire */
+  }
+  return { statut: r.status, json, brut, ms };
+}
+
+/** Dépôt par morceaux dans un cabinet explicite ; renvoie aussi la durée de chaque étape (ouverture, morceaux, clôture). */
+export async function deposerCabinet(qui: string, cabinetId: string, entiteId: string, contenu: Buffer, extra: Record<string, unknown> = {}, nomFichier = 'piece.pdf') {
+  const o = await apiCabinet(qui, cabinetId, 'POST', '/v1/televersements', { entiteId, nomFichier, taille: contenu.length, sha256: sha(contenu), canal: 'ordinateur', ...extra });
+  if (o.statut !== 201) return { ouverture: o, fin: null as null | Awaited<ReturnType<typeof apiCabinet>>, msMorceaux: 0 };
+  let decalage: number = o.json.octetsRecus;
+  const t = performance.now();
+  while (decalage < contenu.length) {
+    const m = await apiCabinet(qui, cabinetId, 'PUT', `/v1/televersements/${o.json.id}/morceaux?decalage=${decalage}`, contenu.subarray(decalage, decalage + o.json.tailleMorceau));
+    if (m.statut !== 200) return { ouverture: o, fin: m, msMorceaux: performance.now() - t };
+    decalage = m.json.octetsRecus;
+  }
+  const msMorceaux = performance.now() - t;
+  return { ouverture: o, fin: await apiCabinet(qui, cabinetId, 'POST', `/v1/televersements/${o.json.id}/terminer`), msMorceaux };
+}
+
+/** Percentile (méthode du rang le plus proche) d'une série de durées. */
+export function percentile(valeurs: number[], p: number): number {
+  if (valeurs.length === 0) return 0;
+  const t = [...valeurs].sort((a, b) => a - b);
+  return t[Math.min(t.length - 1, Math.max(0, Math.ceil((p / 100) * t.length) - 1))]!;
+}

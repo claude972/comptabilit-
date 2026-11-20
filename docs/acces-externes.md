@@ -18,7 +18,7 @@ Liste courte des seuls obstacles que le développement local ne peut pas lever ;
 6. **Accès de services** (lignes 2 à 5 et 11) — applications OAuth Google et Microsoft, jeton OVHcloud (IA et infrastructure), API Légifrance.
 7. **Corpus réel autorisé** (ligne 6) — pièces et FEC réels, pour mesurer l'extraction et l'OCR.
 8. **Validations professionnelles et juridiques** (lignes 7, 8, 12, 13) — contrôles, états, indicateurs, **durées de conservation et délai de grâce (mécanisme prêt, valeurs non validées : D-099)**, documents RGPD, grille tarifaire.
-9. **Appareils réels et Safari** — essais sur téléphone et sur Safari lui-même, hors de portée d'un poste de développement.
+9. **Appareils réels, Safari et lecteurs d'écran** — essais sur téléphone, sur Safari lui-même, avec VoiceOver et NVDA, hors de portée d'un poste de développement. La procédure pas à pas, les critères d'acceptation et la fiche de résultat vierge sont PRÉPARÉS dans `recette-appareils.md` (D-101) ; elle n'a JAMAIS été jouée. Il manque une personne, des appareils et une adresse HTTPS d'essai joignable depuis eux.
 
 | # | Action attendue | Qui | Ce qui en dépend | État du code |
 |---|---|---|---|---|

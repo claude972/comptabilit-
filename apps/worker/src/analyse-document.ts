@@ -36,7 +36,30 @@ export async function analyserDocument(c: Contexte, t: TacheAnalyseDocument): Pr
   });
   if (!charge) return;
   const { doc, fichier } = charge;
+  try {
+    await analyserCharge(c, t, ctx, doc, fichier);
+  } catch (e) {
+    // Panne d'une dépendance (stockage, base, antivirus obligatoire…) : la pièce ne reste pas « en analyse » sans explication.
+    // Elle repasse « reçue » avec un motif lisible ; la tâche est retentée par la file puis par le rattrapage périodique.
+    await c.bd
+      .avecContexte(ctx, (tx) =>
+        tx
+          .update(s.documents)
+          .set({ statut: 'recu', motifStatut: 'Analyse interrompue (service momentanément indisponible) : nouvelle tentative automatique', majLe: sql`now()` })
+          .where(and(eq(s.documents.id, doc.id), eq(s.documents.statut, 'en_analyse'))),
+      )
+      .catch(() => undefined); // base elle-même indisponible : le rattrapage reprend les pièces restées « en analyse »
+    throw e;
+  }
+}
 
+async function analyserCharge(
+  c: Contexte,
+  t: TacheAnalyseDocument,
+  ctx: { cabinetId: string },
+  doc: typeof s.documents.$inferSelect,
+  fichier: typeof s.fichiers.$inferSelect,
+): Promise<void> {
   const contenu = await c.stockage.lire(fichier.cleStockage, c.cfg.TAILLE_MAX_PIECE);
   const type = detecterType(contenu);
 

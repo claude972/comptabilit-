@@ -7,13 +7,14 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
   SetMetadata,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { type AccesBd, and, eq, journaliser, schema as s, sql, type Tx } from '@comtaple/db';
 import type { Config } from '@comtaple/plateforme';
-import { createRemoteJWKSet, jwtVerify } from 'jose';
+import { createRemoteJWKSet, errors as erreursJose, jwtVerify } from 'jose';
 import { BD, CONFIG } from './jetons.js';
 
 export type RoleCabinet = (typeof s.roleCabinet.enumValues)[number];
@@ -71,7 +72,12 @@ export class GardeAcces implements CanActivate {
       sujet = payload.sub;
       if (payload.email_verified === true && typeof payload.email === 'string') emailAtteste = payload.email;
       if (typeof payload.name === 'string') nomJeton = payload.name;
-    } catch {
+    } catch (e) {
+      // Une panne du fournisseur d'identité (clés injoignables, délai dépassé) n'est pas un jeton invalide : message distinct,
+      // et le jeton n'est de toute façon jamais accepté sans vérification.
+      if (e instanceof erreursJose.JWKSTimeout || !(e instanceof erreursJose.JOSEError)) {
+        throw new ServiceUnavailableException('Service d’identité indisponible : la session ne peut pas être vérifiée pour le moment. Réessayez dans quelques instants.');
+      }
       throw new UnauthorizedException('Jeton invalide ou expiré');
     }
 

@@ -49,7 +49,7 @@ import { TiersController } from './tiers.controller.js';
         return st;
       },
     },
-    { provide: TACHES, inject: [CONFIG], useFactory: (cfg: ReturnType<typeof lireConfig>) => new Files(connexionRedis(cfg.REDIS_URL), cfg.FILES_PREFIXE) },
+    { provide: TACHES, inject: [CONFIG], useFactory: (cfg: ReturnType<typeof lireConfig>) => new Files(connexionRedis(cfg.REDIS_URL, { echecRapide: true }), cfg.FILES_PREFIXE, 3_000) },
     { provide: MAIL, inject: [CONFIG], useFactory: (cfg: ReturnType<typeof lireConfig>) => connecteursMail(cfg) },
     { provide: AGREGATION, inject: [CONFIG], useFactory: (cfg: ReturnType<typeof lireConfig>) => agregationBancaire(cfg) },
     // Notifications poussées : sans clés VAPID, « non_configure » — aucun abonnement accepté, aucun envoi.

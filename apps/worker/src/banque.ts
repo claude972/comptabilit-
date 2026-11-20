@@ -14,6 +14,7 @@ import { and, asc, eq, gte, inArray, journaliser, lte, schema as s, sql, type Tx
 import { lignesDuLot, type TacheImportReleve, type TacheRapprochement } from '@comtaple/plateforme';
 import { isolementDepuisConfig, lireReleveIsole, motifEchecReleve, type OptionsAnalyse } from './analyse-isolee.js';
 import type { Contexte } from './contexte.js';
+import { avecVerrouTraitement } from './verrou-traitement.js';
 import { preparerSourceDuLot } from './source-lignes.js';
 
 /** Comptes de banque rapprochés (les mêmes que la valeur par défaut du moteur). */
@@ -30,6 +31,11 @@ const PREFIXES_BANQUE = ['512'];
  * en échec avec un motif en français ; le fichier d'origine n'est jamais modifié et les autres imports continuent.
  */
 export async function importerReleve(c: Contexte, t: TacheImportReleve): Promise<void> {
+  // Voir `avecVerrouTraitement` : un worker vivant garde le lot ; un lot laissé « en cours » par un worker mort est repris.
+  await avecVerrouTraitement(c, `import:${t.lotImportId}`, () => importerReleveVerrouille(c, t));
+}
+
+async function importerReleveVerrouille(c: Contexte, t: TacheImportReleve): Promise<void> {
   const ctx = { cabinetId: t.cabinetId };
   const init = await c.bd.avecContexte(ctx, async (tx) => {
     const [lot] = await tx.select().from(s.lotsImport).where(eq(s.lotsImport.id, t.lotImportId));
@@ -38,7 +44,7 @@ export async function importerReleve(c: Contexte, t: TacheImportReleve): Promise
     const [fichier] = await tx.select().from(s.fichiers).where(eq(s.fichiers.id, lot.fichierId));
     if (!fichier) return null;
     // Prise en charge atomique (voir l'import comptable) : une tâche en double ne retraite pas un lot déjà pris ou terminé.
-    const [pris] = await tx.update(s.lotsImport).set({ statut: 'en_cours', progression: 0 }).where(and(eq(s.lotsImport.id, lot.id), inArray(s.lotsImport.statut, ['en_attente', 'echec']))).returning({ id: s.lotsImport.id });
+    const [pris] = await tx.update(s.lotsImport).set({ statut: 'en_cours', progression: 0 }).where(and(eq(s.lotsImport.id, lot.id), inArray(s.lotsImport.statut, ['en_attente', 'echec', 'en_cours']))).returning({ id: s.lotsImport.id });
     if (!pris) return null;
     return { lot, fichier };
   });

@@ -666,3 +666,107 @@ describe.skipIf(!IMAGE_ANALYSE_PRESENTE)('équivalence processus / conteneur —
     console.log(`[mesure] PDF 1 page : processus ${(await mesurer({})).toFixed(0)} ms, conteneur ${(await mesurer(conteneurReel())).toFixed(0)} ms (médiane de 15)`);
   }, 300_000);
 });
+
+// ── Confinement avec le VRAI runtime de l'image d'analyse (Node 24) et les VRAIS arguments de l'enfant ──────────
+// Les sondes sont des scripts Node passés par `-e` : même image, mêmes options de sécurité, même protocole de sortie
+// (un document JSON). Les arguments de Node sont ceux de l'enfant réel (`argumentsEnfant`), sauf le fichier de démarrage.
+describe.skipIf(!IMAGE_ANALYSE_PRESENTE)('confinement — runtime Node réel de l’image d’analyse', () => {
+  const ENTETE_NODE = `const fs=require('fs');const os=require('os');const sortie=(o)=>process.stdout.write(JSON.stringify(o));const essai=(f)=>{try{f();return 'ok'}catch(e){return String(e.code||e.name)}};`;
+  const nodeReel = (script: string, extra: Partial<OptionsAnalyse> = {}, drapeaux: string[] = [], permission = false): Promise<Awaited<ReturnType<typeof executerEnfant>>> =>
+    executerEnfant(
+      { entete: { op: 'texte' }, corps: Buffer.alloc(0), schema: schemaLibre },
+      {
+        isolation: 'conteneur',
+        conteneur: {
+          ...base(),
+          image: IMAGE_ANALYSE,
+          essai: {
+            entrypoint: 'node',
+            commande: [
+              ...drapeaux,
+              ...(permission ? ['--permission', '--allow-fs-read=/app/apps/worker/dist', '--allow-fs-read=/app/node_modules', '--allow-fs-read=/app/packages/core', '--disallow-code-generation-from-strings'] : []),
+              '-e',
+              `${ENTETE_NODE}${script}`,
+            ],
+          },
+        },
+        dureeMaxMs: 30_000,
+        memoireMaxMo: 256,
+        ...extra,
+      },
+    );
+
+  it('réseau coupé, racine en lecture seule, non root, sans capacité, sans variable du worker, sans fichier de l’hôte', async () => {
+    process.env.COMTAPLE_JETON_SECRET_ESSAI = 'ne-doit-jamais-etre-visible';
+    let issue;
+    try {
+      issue = await nodeReel(`(async()=>{
+        const st=fs.readFileSync('/proc/self/status','utf8');const champ=(n)=>(st.split('\\n').find(l=>l.startsWith(n+':'))||'').split(':')[1].trim();
+        const net=require('net');
+        const tcp=await new Promise((r)=>{const s=net.connect(80,'1.1.1.1');s.on('error',e=>r(e.code));s.setTimeout(3000,()=>{s.destroy();r('delai')});s.on('connect',()=>{s.destroy();r('ok')})});
+        const dns=await new Promise((r)=>require('dns').lookup('example.com',(e)=>r(e?e.code:'ok')));
+        sortie({uid:process.getuid(),gid:process.getgid(),capeff:champ('CapEff'),capbnd:champ('CapBnd'),nonewprivs:champ('NoNewPrivs'),seccomp:champ('Seccomp'),
+          env:Object.keys(process.env).sort(),interfaces:Object.keys(os.networkInterfaces()),tcp,dns,
+          ecrit_etc:essai(()=>fs.writeFileSync('/etc/essai','x')),ecrit_app:essai(()=>fs.writeFileSync('/app/essai','x')),ecrit_tmp:essai(()=>fs.writeFileSync('/tmp/ok','x')),
+          socket:['/var/run/docker.sock','/run/docker.sock'].filter(p=>fs.existsSync(p)),hote:['/Volumes','/Users','/host','/mnt/host'].filter(p=>fs.existsSync(p)),
+          montages:fs.readFileSync('/proc/self/mountinfo','utf8').split('\\n').filter(l=>/docker\\.sock|\\/Users|\\/Volumes|virtiofs/.test(l)),
+          secret:process.env.COMTAPLE_JETON_SECRET_ESSAI??null});})();`);
+    } finally {
+      delete process.env.COMTAPLE_JETON_SECRET_ESSAI;
+    }
+    expect(issue.ok, JSON.stringify(issue)).toBe(true);
+    if (!issue.ok) return;
+    const r = issue.valeur as Record<string, unknown>;
+    expect([r.uid, r.gid]).toEqual([65532, 65532]);
+    expect(r.capeff).toBe('0000000000000000');
+    expect(r.capbnd).toBe('0000000000000000');
+    expect(r.nonewprivs).toBe('1');
+    expect(r.seccomp).toBe('2');
+    expect(r.secret).toBeNull();
+    expect((r.env as string[]).filter((v) => !/^(PATH|HOSTNAME|NODE_VERSION|YARN_VERSION|NODE_ENV|HOME)$/.test(v))).toEqual([]);
+    expect(r.interfaces).toEqual(['lo']);
+    expect(r.tcp).not.toBe('ok');
+    expect(r.dns).not.toBe('ok');
+    expect(r.ecrit_etc).toBe('EROFS');
+    expect(r.ecrit_app).toBe('EROFS');
+    expect(r.ecrit_tmp).toBe('ok');
+    expect(r.socket).toEqual([]);
+    expect(r.hote).toEqual([]);
+    expect(r.montages).toEqual([]);
+  });
+
+  it('le modèle de permissions de Node (--permission) fonctionne DANS le conteneur : lecture limitée, aucune écriture, aucun processus, aucune fabrication de code', async () => {
+    const issue = await nodeReel(
+      `
+      const lire=(f)=>essai(()=>fs.readFileSync(f));
+      sortie({passwd:lire('/etc/passwd'),proc:lire('/proc/self/status'),env_proc:lire('/proc/self/environ'),code:lire('/app/apps/worker/dist/analyse-enfant.js'),
+        ecrit_tmp:essai(()=>fs.writeFileSync('/tmp/a','x')),spawn:essai(()=>require('child_process').execSync('id')),
+        eval:essai(()=>eval('1')),fonction:essai(()=>new Function('return 1')()),
+        a_lecture:process.permission.has('fs.read','/etc/passwd'),a_ecriture:process.permission.has('fs.write','/tmp')});`,
+      {},
+      [],
+      true,
+    );
+    expect(issue.ok, JSON.stringify(issue)).toBe(true);
+    if (!issue.ok) return;
+    const v = issue.valeur as Record<string, unknown>;
+    expect(v).toMatchObject({ passwd: 'ERR_ACCESS_DENIED', proc: 'ERR_ACCESS_DENIED', env_proc: 'ERR_ACCESS_DENIED', code: 'ok', ecrit_tmp: 'ERR_ACCESS_DENIED', spawn: 'ERR_ACCESS_DENIED', a_lecture: false, a_ecriture: false });
+    expect(v.eval).not.toBe('ok');
+    expect(v.fonction).not.toBe('ok');
+  });
+
+  it('tas de Node dépassé (--max-old-space-size) : cause « memoire » ; mémoire du conteneur dépassée (OOM du noyau) : cause « memoire »', async () => {
+    const fuite = 'const b=[];for(;;)b.push(Buffer.alloc(8<<20,1).toString("latin1")+Math.random());';
+    // tas plafonné bien sous la mémoire du conteneur : Node s'arrête lui-même (« heap out of memory »)
+    expect(await nodeReel(fuite, { memoireMaxMo: 512, dureeMaxMs: 60_000 }, ['--max-old-space-size=64'])).toMatchObject({ ok: false, cause: 'memoire' });
+    // tas non plafonné par Node, conteneur à 128 Mo : arrêt par le noyau
+    expect(await nodeReel(fuite.replace('b.push(Buffer.alloc(8<<20,1).toString("latin1")+Math.random())', 'b.push(Buffer.alloc(8<<20,1))'), { memoireMaxMo: 128, dureeMaxMs: 60_000 }, ['--max-old-space-size=4096'])).toMatchObject({ ok: false, cause: 'memoire' });
+  }, 120_000);
+
+  it('délai et sortie bornée : cause « delai » (boucle infinie), cause « sortie_trop_grande » (sortie sans fin)', async () => {
+    const t = Date.now();
+    expect(await nodeReel('for(;;);', { dureeMaxMs: 2_000 })).toMatchObject({ ok: false, cause: 'delai' });
+    expect(Date.now() - t).toBeLessThan(15_000);
+    expect(await nodeReel('const m=Buffer.alloc(1<<20,120);for(let i=0;i<64;i++)process.stdout.write(m);', { sortieMaxOctets: 1024 * 1024 })).toMatchObject({ ok: false, cause: 'sortie_trop_grande' });
+  }, 60_000);
+});

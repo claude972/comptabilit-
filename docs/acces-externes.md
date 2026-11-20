@@ -44,3 +44,5 @@ Liste courte des seuls obstacles que le développement local ne peut pas lever ;
 | 19 | Faire lire BOI-BIC-AMT-20-20-50 (coefficients majorés ou diminués de certains biens d'équipement) et valider les règles d'amortissement | Expert-comptable habilité | Gestion des coefficients particuliers (aujourd'hui : abstention) | Document non lu ; règles « non validées par un professionnel » |
 
 Aucune dépense n'a été engagée et aucun compte externe n'a été créé.
+
+**Règle : accès externe ou simple dépendance de build (D-098 bis).** Sont de VRAIS accès ou validations externes (à consigner dans le tableau ci-dessus, à la charge de l'utilisateur) : tout compte, droit, service tiers, dépense, `docker login`, `docker push`, transmission de données du cabinet. Est une SIMPLE dépendance de build : le téléchargement anonyme d'une image publique officielle (ex. `node`, `docker` sur Docker Hub), sans compte ni paiement ni donnée de l'application, autorisé par l'utilisateur le 2026-11-20 sous conditions : digest figé dans le Dockerfile, comparé à une source publique, consigné. Jamais de contournement d'erreur de certificat ni de miroir non officiel.

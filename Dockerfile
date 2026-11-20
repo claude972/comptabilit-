@@ -6,7 +6,7 @@
 #   docker build --target analyse -t comtaple-analyse:dev .     (image d'analyse isolée, D-098 ; jamais téléchargée à l'exécution)
 #   docker build --target lanceur -t comtaple-lanceur:dev .     (lanceur restreint des conteneurs d'analyse, D-098)
 # Aucun secret n'entre dans les images : toute la configuration vient de l'environnement à l'exécution.
-FROM node:24.22.3-bookworm-slim AS base
+FROM node:24.22.3-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS base
 ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH CI=1 NODE_ENV=production
 RUN corepack enable
 WORKDIR /app
@@ -46,7 +46,7 @@ CMD ["node", "apps/worker/dist/main.js"]
 # ── Worker + client docker, pour le mode `ANALYSE_ISOLATION=conteneur` (D-098) ──
 # Le client docker pilote le LANCEUR restreint (DOCKER_HOST = socket du lanceur), jamais le socket du moteur. Variante facultative :
 # l'image `worker` ci-dessus reste celle du mode par défaut. Le client est copié depuis l'image officielle du client (étiquette figée).
-FROM docker:29.10.0-cli AS client-docker
+FROM docker:29.10.0-cli@sha256:34507eb5069d8be82c95dd3b6987d4250fd5fee49b82e2509b7d7a7030740d6d AS client-docker
 FROM worker AS worker-conteneurs
 COPY --from=client-docker /usr/local/bin/docker /usr/local/bin/docker
 
@@ -60,7 +60,7 @@ FROM serveur AS analyse-contenu
 COPY scripts/preparer-image-analyse.mjs /preparer/preparer-image-analyse.mjs
 RUN node /preparer/preparer-image-analyse.mjs /app /analyse && chmod -R a+rX,go-w /analyse
 
-FROM node:24.22.3-bookworm-slim AS analyse
+FROM node:24.22.3-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS analyse
 ENV NODE_ENV=production
 COPY --from=analyse-contenu /analyse /app
 WORKDIR /app
@@ -70,7 +70,7 @@ ENTRYPOINT ["node"]
 CMD ["--permission", "--allow-fs-read=/app/apps/worker/dist", "--allow-fs-read=/app/apps/worker/node_modules", "--allow-fs-read=/app/apps/worker/package.json", "--allow-fs-read=/app/node_modules", "--allow-fs-read=/app/packages/core", "--disallow-code-generation-from-strings", "/app/apps/worker/dist/analyse-enfant.js"]
 
 # ── Lanceur restreint des conteneurs d'analyse (D-098) : un seul fichier, aucune dépendance ──
-FROM node:24.22.3-bookworm-slim AS lanceur
+FROM node:24.22.3-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS lanceur
 ENV NODE_ENV=production
 COPY scripts/lanceur-analyse.mjs /app/lanceur.mjs
 RUN mkdir -p /run/lanceur && chown 65532:1000 /run/lanceur && chmod 2770 /run/lanceur

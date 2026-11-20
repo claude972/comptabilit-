@@ -23,6 +23,30 @@
     "./ancre-journal": {
       "types": "./dist/ancre-journal.d.ts",
       "default": "./dist/ancre-journal.js"
+    },
+    "./durees-conservation": {
+      "types": "./dist/durees-conservation.d.ts",
+      "default": "./dist/durees-conservation.js"
+    },
+    "./simulation-conservation": {
+      "types": "./dist/simulation-conservation.d.ts",
+      "default": "./dist/simulation-conservation.js"
+    },
+    "./objets-fin-de-contrat": {
+      "types": "./dist/objets-fin-de-contrat.d.ts",
+      "default": "./dist/objets-fin-de-contrat.js"
+    },
+    "./comptes-fin-de-contrat": {
+      "types": "./dist/comptes-fin-de-contrat.d.ts",
+      "default": "./dist/comptes-fin-de-contrat.js"
+    },
+    "./migrer": {
+      "types": "./dist/migrer.d.ts",
+      "default": "./dist/migrer.js"
+    },
+    "./base-jetable": {
+      "types": "./dist/base-jetable.d.ts",
+      "default": "./dist/base-jetable.js"
     }
   },
   "scripts": {

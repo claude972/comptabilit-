@@ -166,7 +166,9 @@ function valeur(c: Colonne, cabinet: Cabinet | null): unknown {
       return '2025-01-01';
     case 'timestamptz':
     case 'timestamp':
-      return new Date();
+      // Une heure dans le passé : l'horloge de l'hôte et celle de la VM de la base peuvent différer de plusieurs
+      // millisecondes ; une valeur « maintenant » côté hôte pouvait paraître POSTÉRIEURE à la restitution créée par la base.
+      return new Date(Date.now() - 3_600_000);
     case 'jsonb':
     case 'json':
       return '{}';
@@ -262,7 +264,9 @@ const pret = async (nom: string) => {
   await restituer(c);
   return c;
 };
-const confirmer = (c: Cabinet): ParametresFinDeContrat => ({ cabinetId: c.id, confirmation: { cabinetId: c.id, nom: c.nom }, appliquer: true });
+/** Référence de validation des durées, FICTIVE : exigée par la procédure (pré-condition « durees_validees »), sans valeur juridique. */
+const REF = 'AVIS-ESSAI-0001';
+const confirmer = (c: Cabinet): ParametresFinDeContrat => ({ cabinetId: c.id, confirmation: { cabinetId: c.id, nom: c.nom }, appliquer: true, dureesValidees: REF });
 
 // ───────────────────────────── Empreintes ─────────────────────────────
 
@@ -434,8 +438,8 @@ describe('inventaire et simulation', () => {
   it('simulation par défaut : plan complet, AUCUNE ligne et AUCUN objet ne change (empreintes de toute la base)', async () => {
     const avant = await empreinteBase();
     const objetsAvant = stockage.etat();
-    const r = await finDeContrat(admin, { cabinetId: c.id }); // ni « appliquer », ni confirmation
-    const avecConfirmation = await finDeContrat(admin, { cabinetId: c.id, confirmation: { cabinetId: c.id, nom: c.nom } });
+    const r = await finDeContrat(admin, { cabinetId: c.id, dureesValidees: REF }); // ni « appliquer », ni confirmation
+    const avecConfirmation = await finDeContrat(admin, { cabinetId: c.id, confirmation: { cabinetId: c.id, nom: c.nom }, dureesValidees: REF });
     const objets = await objetsFinDeContrat(admin, stockage, { cabinetId: c.id });
     expect(await empreinteBase()).toEqual(avant);
     expect(stockage.etat()).toBe(objetsAvant);
@@ -445,7 +449,7 @@ describe('inventaire et simulation', () => {
     expect(r.plan.preconditions.filter((x) => !x.satisfaite).map((x) => x.code)).toEqual(['confirmation']);
     expect(r.plan.executable).toBe(false);
     expect(avecConfirmation.plan.executable).toBe(true);
-    expect(avecConfirmation.plan.preconditions.map((x) => x.code)).toEqual(['couverture_politique', 'registre_disponible', 'abonnement_resilie', 'restitution_a_jour', 'journal_integre', 'aucune_obligation_de_conservation', 'confirmation']);
+    expect(avecConfirmation.plan.preconditions.map((x) => x.code)).toEqual(['couverture_politique', 'registre_disponible', 'abonnement_resilie', 'restitution_a_jour', 'journal_integre', 'aucune_obligation_de_conservation', 'confirmation', 'durees_validees']);
     expect(r.plan.restitution).toMatchObject({ sha256: EMPREINTE_ARCHIVE(c) });
     expect(r.plan.sauvegardes).toBe(LIMITE_SAUVEGARDES);
     // Ce qui serait supprimé, anonymisé, conservé — et dans quel ordre.
@@ -499,7 +503,7 @@ describe('pré-conditions : chacune, manquante, entraîne un refus motivé et ne
     expect((await admin.query('select count(*)::int as n from fins_de_contrat where cabinet_id = $1', [c.id])).rows[0].n).toBe(0);
     return r.plan;
   }
-  const executable = async () => (await finDeContrat(admin, { cabinetId: c.id, confirmation: { cabinetId: c.id, nom: c.nom } })).plan.executable;
+  const executable = async () => (await finDeContrat(admin, { cabinetId: c.id, confirmation: { cabinetId: c.id, nom: c.nom }, dureesValidees: REF })).plan.executable;
 
   it('abonnement : non résilié, ou résilié depuis moins longtemps que le délai de grâce (paramétrable)', async () => {
     c = await pret('Refus');
@@ -524,10 +528,10 @@ describe('pré-conditions : chacune, manquante, entraîne un refus motivé et ne
   });
 
   it('confirmation : absente, nom inexact, ou identifiant d’un autre cabinet', async () => {
-    await refus({ cabinetId: c.id, appliquer: true }, 'confirmation', /non fournie/);
-    await refus({ cabinetId: c.id, appliquer: true, confirmation: { cabinetId: c.id, nom: c.nom.toUpperCase() } }, 'confirmation', /ne correspond pas exactement/);
-    await refus({ cabinetId: c.id, appliquer: true, confirmation: { cabinetId: c.id, nom: `${c.nom} ` } }, 'confirmation', /ne correspond pas exactement/);
-    await refus({ cabinetId: c.id, appliquer: true, confirmation: { cabinetId: DEMO.cabinetA, nom: c.nom } }, 'confirmation', /ne correspond pas exactement/);
+    await refus({ cabinetId: c.id, appliquer: true, dureesValidees: REF }, 'confirmation', /non fournie/);
+    await refus({ cabinetId: c.id, appliquer: true, dureesValidees: REF, confirmation: { cabinetId: c.id, nom: c.nom.toUpperCase() } }, 'confirmation', /ne correspond pas exactement/);
+    await refus({ cabinetId: c.id, appliquer: true, dureesValidees: REF, confirmation: { cabinetId: c.id, nom: `${c.nom} ` } }, 'confirmation', /ne correspond pas exactement/);
+    await refus({ cabinetId: c.id, appliquer: true, dureesValidees: REF, confirmation: { cabinetId: DEMO.cabinetA, nom: c.nom } }, 'confirmation', /ne correspond pas exactement/);
   });
 
   it('obligation de conservation en cours sur une catégorie à supprimer', async () => {
@@ -629,7 +633,7 @@ describe('exécution complète, sur la base d’essai uniquement', () => {
     await deposerObjets(stockage, temoin);
     avantCabinet = await empreinteCabinet(c.id);
     avantHors = await empreinteHors(c.id);
-    plan = (await finDeContrat(admin, { cabinetId: c.id, confirmation: { cabinetId: c.id, nom: c.nom } })).plan;
+    plan = (await finDeContrat(admin, { cabinetId: c.id, confirmation: { cabinetId: c.id, nom: c.nom }, dureesValidees: REF })).plan;
     expect(plan.executable).toBe(true);
 
     let n = 0;
@@ -668,7 +672,7 @@ describe('exécution complète, sur la base d’essai uniquement', () => {
     ).rejects.toThrow(/Les données ont changé pendant l’exécution ; tout est annulé|ligne\(s\) après exécution/);
     expect(await empreinteCabinet(c.id)).toEqual(avantCabinet);
     // La reprise est possible : le plan est le même qu'avant les interruptions.
-    const repris = (await finDeContrat(admin, { cabinetId: c.id, confirmation: { cabinetId: c.id, nom: c.nom } })).plan;
+    const repris = (await finDeContrat(admin, { cabinetId: c.id, confirmation: { cabinetId: c.id, nom: c.nom }, dureesValidees: REF })).plan;
     expect(repris.executable).toBe(true);
     expect(repris.etapes).toEqual(plan.etapes);
   });
@@ -735,7 +739,10 @@ describe('exécution complète, sur la base d’essai uniquement', () => {
     });
     expect(pv.executeLe).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
     expect(pv.politique.statut).toMatch(/non arrêtée/);
-    expect(pv.reserves.join(' ')).toMatch(/PROPOSÉES, non arrêtées/);
+    expect(pv.reserves.join(' ')).toMatch(/DÉCLARÉE par l’éditeur, ce procès-verbal n’en atteste pas la réalité/);
+    // Les durées employées sont celles de la PROPOSITION NON VALIDÉE ; la référence fournie est consignée, jamais présumée.
+    expect(pv.dureesConservation).toMatchObject({ reference: REF, statut: 'PROPOSITION NON VALIDÉE', source: 'defaut' });
+    expect(pv.dureesConservation.empreinte).toMatch(/^[0-9a-f]{64}$/);
     // Décomptes avant/après par catégorie et par table, pour TOUTES les tables.
     expect(pv.categories.map((x) => x.code)).toEqual(POLITIQUE_FIN_DE_CONTRAT.categories.map((x) => x.code));
     expect(pv.categories.flatMap((x) => x.tables.map((t) => t.table)).sort()).toEqual(tablesCabinet);

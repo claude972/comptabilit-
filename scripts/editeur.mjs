@@ -20,14 +20,33 @@
  *   node scripts/editeur.mjs journal-anomalie <cabinetId> <premièreLigne> <dernièreLigne> "<cause>"   (irréversible)
  *   node scripts/editeur.mjs notifications-retention [jours avant archivage=30] [jours avant suppression=180] [--appliquer]
  *       SIMULATION sans « --appliquer ». Avec : archive les notifications lues anciennes, SUPPRIME les archivées anciennes (irréversible).
- *   node scripts/editeur.mjs fin-de-contrat <cabinetId> [--grace=<jours, 90 par défaut>] [--nom="<nom exact du cabinet>"] [--pv=<fichier.json>] [--appliquer]
+ *   node scripts/editeur.mjs fin-de-contrat <cabinetId> [--grace=<jours>] [--durees=<fichier.json>] [--durees-validees=<référence>] [--nom="<nom exact du cabinet>"] [--pv=<fichier.json>] [--appliquer]
  *       SIMULATION sans « --appliquer » : inventaire par catégorie, pré-conditions, plan ordonné ; RIEN n'est modifié.
- *       Avec « --appliquer » ET « --nom » (nom exact) : SUPPRIME les données du cabinet (IRRÉVERSIBLE), en une transaction,
- *       si toutes les pré-conditions sont réunies ; conserve le journal d'audit et la facturation ; écrit le procès-verbal.
- *       Durées PROPOSÉES, non arrêtées (docs/conservation.md). Les sauvegardes ne sont pas purgées.
- *   node scripts/editeur.mjs fin-de-contrat-objets <cabinetId>
- *       SIMULATION uniquement : liste les objets du stockage sous les préfixes du cabinet. La suppression réelle des objets
- *       n'est pas branchée dans cet outil (fonction objetsFinDeContrat, jamais exercée contre un stockage réel).
+ *       Avec « --appliquer », « --nom » (nom exact) ET « --durees-validees=<référence de la validation des durées> » : SUPPRIME les
+ *       données du cabinet (IRRÉVERSIBLE), en une transaction, si toutes les pré-conditions sont réunies ; conserve le journal
+ *       d'audit et la facturation ; écrit le procès-verbal. Les durées viennent du fichier « --durees » ou, à défaut, de la
+ *       PROPOSITION NON VALIDÉE du code : sans « --durees-validees », l'exécution réelle est REFUSÉE ; la référence, la version
+ *       et l'empreinte du jeu de durées sont inscrites au journal du cabinet et au procès-verbal. Les sauvegardes ne sont pas purgées.
+ *   node scripts/editeur.mjs durees-defauts
+ *       Affiche (JSON) la PROPOSITION NON VALIDÉE de durées de conservation : modèle à copier, adapter et faire valider.
+ *   node scripts/editeur.mjs durees-verifier <fichier.json>
+ *       Valide un jeu de durées contre la politique de fin de contrat (structure, catégories, bornes) ; affiche son empreinte.
+ *       Ne dit rien de la validité JURIDIQUE des durées.
+ *   node scripts/editeur.mjs conservation-simuler <cabinetId> [--durees=<fichier.json>] [--grace=<jours>]
+ *       SIMULATION (lecture seule) : pour le cabinet, table par table, ce qui serait supprimé, anonymisé ou conservé, et à quelle échéance.
+ *   node scripts/editeur.mjs journal-fin-de-vie <cabinetId> [--durees=<fichier.json>]
+ *       SIMULATION (lecture seule) de la fin de vie du journal du cabinet : échéances, données personnelles présentes dans les lignes,
+ *       fiches désignées, plan de scellement. Le journal n'est jamais réécrit ni purgé.
+ *   node scripts/editeur.mjs comptes-fin-de-contrat <cabinetId> [--durees=<fichier.json>] [--plan=<fichier.json>]
+ *       SIMULATION (lecture seule), À LANCER AVANT l'exécution de la fin de contrat : comptes qui ne devraient plus exister (aucune autre
+ *       appartenance), avec dates de désactivation et de suppression, devenir de la fiche. « --plan » enregistre le plan.
+ *       L'exécution contre un fournisseur d'identité n'existe que pour un royaume d'ESSAI créé par un test.
+ *   node scripts/editeur.mjs fiches-orphelines
+ *       SIMULATION (lecture seule) : fiches « utilisateurs » sans aucune appartenance et ce qu'on en ferait. Aucune exécution ici.
+ *   node scripts/editeur.mjs fin-de-contrat-objets <cabinetId> [--nom="<nom exact>"] [--durees-validees=<référence>] [--rapport=<fichier.jsonl>] [--appliquer]
+ *       SIMULATION sans « --appliquer » : liste les objets du stockage sous les préfixes du cabinet. Avec « --appliquer » : refusé sauf
+ *       sur un stockage d'ESSAI versionné, déclaré par STOCKAGE_ESSAI_BUCKET_DECLARE (comtaple-essai-…, distinct de S3_BUCKET) ;
+ *       jamais sur le bucket des données. Aucun code ne supprime d'objet dans le bucket des données.
  *   node scripts/editeur.mjs secrets-rechiffrer [--cabinet=<cabinetId>] [--limite=<nombre de lignes>] [--appliquer]
  *       Rotation de JETONS_CLE_CHIFFREMENT : rechiffre sous le secret COURANT les jetons de la collecte par mail et les
  *       abonnements aux notifications poussées encore chiffrés avec un secret de JETONS_CLES_ANCIENNES (lus dans
@@ -63,6 +82,7 @@ const pg = require('pg');
 const { urlBd } = await import('../packages/db/dist/index.js');
 const { chargerEnvLocal } = await import('../packages/db/dist/env.js');
 const p = await import('../packages/db/dist/provisionnement.js');
+const { chargerParametres, PARAMETRES_PROPOSES, validerParametres, empreinteParametres } = await import('../packages/db/dist/durees-conservation.js');
 
 chargerEnvLocal();
 const [commande, ...args] = process.argv.slice(2);
@@ -153,13 +173,16 @@ try {
       break;
     }
     case 'fin-de-contrat': {
-      exiger(1, 'fin-de-contrat <cabinetId> [--grace=<jours>] [--nom="<nom exact>"] [--pv=<fichier.json>] [--appliquer]');
+      exiger(1, 'fin-de-contrat <cabinetId> [--grace=<jours>] [--durees=<fichier>] [--durees-validees=<référence>] [--nom="<nom exact>"] [--pv=<fichier.json>] [--appliquer]');
       const option = (nom) => args.find((x) => x.startsWith(`--${nom}=`))?.slice(nom.length + 3);
       const appliquer = args.includes('--appliquer');
       const nom = option('nom');
+      const chargees = chargerParametres(p.POLITIQUE_FIN_DE_CONTRAT.categories, option('durees'));
       const afficher = (plan) => {
         console.log(`Cabinet : ${plan.inventaire.cabinet.nom} (${plan.inventaire.cabinet.id}) — politique ${plan.inventaire.politique.version} (${plan.inventaire.politique.statut})`);
-        console.table(plan.inventaire.categories.map((c) => ({ catégorie: c.code, devenir: c.devenir, lignes: c.lignes, 'durée proposée (non arrêtée)': c.conservation?.duree ?? '' })));
+        console.log(`Durées de conservation : jeu ${plan.parametres.version}, statut « ${plan.parametres.statut} », source ${plan.parametres.source}, empreinte ${plan.parametres.empreinte.slice(0, 16)}…`);
+        if (plan.parametres.statut === 'PROPOSITION NON VALIDÉE') console.log('  PROPOSITION NON VALIDÉE : aucune valeur juridique ; l’exécution réelle exige --durees-validees=<référence de la validation>.');
+        console.table(plan.inventaire.categories.map((c) => ({ catégorie: c.code, devenir: c.devenir, lignes: c.lignes, 'durée (proposée, non arrêtée)': c.conservation?.duree ?? '' })));
         if (plan.inventaire.tablesSansCategorie.length) console.log(`TABLES SANS CATÉGORIE : ${plan.inventaire.tablesSansCategorie.join(', ')}`);
         console.table(plan.preconditions.map((x) => ({ 'pré-condition': x.libelle, satisfaite: x.satisfaite ? 'oui' : 'NON', détail: x.detail })));
         console.table(plan.etapes.map((e) => ({ rang: e.rang, opération: e.operation, table: e.table ?? '', lignes: e.lignes, détail: e.detail })));
@@ -169,14 +192,14 @@ try {
         console.log(plan.sauvegardes);
       };
       try {
-        const r = await p.finDeContrat(client, { cabinetId: args[0], delaiGraceJours: option('grace') === undefined ? undefined : Number(option('grace')), confirmation: nom === undefined ? undefined : { cabinetId: args[0], nom }, appliquer });
+        const r = await p.finDeContrat(client, { cabinetId: args[0], delaiGraceJours: option('grace') === undefined ? undefined : Number(option('grace')), confirmation: nom === undefined ? undefined : { cabinetId: args[0], nom }, appliquer, parametres: chargees, dureesValidees: option('durees-validees') });
         afficher(r.plan);
-        if (r.simulation) console.log(`SIMULATION : rien n’a été modifié. ${r.plan.executable ? 'Toutes les pré-conditions sont réunies.' : 'Exécution IMPOSSIBLE en l’état (voir les pré-conditions).'} Pour exécuter : --nom="<nom exact>" --appliquer (IRRÉVERSIBLE).`);
+        if (r.simulation) console.log(`SIMULATION : rien n’a été modifié. ${r.plan.executable ? 'Toutes les pré-conditions sont réunies.' : 'Exécution IMPOSSIBLE en l’état (voir les pré-conditions).'} Pour exécuter : --nom="<nom exact>" --durees-validees="<référence>" --appliquer (IRRÉVERSIBLE).`);
         else {
           const fichier = option('pv') ?? `proces-verbal-fin-de-contrat-${args[0]}.json`;
           (await import('node:fs')).writeFileSync(fichier, `${p.jsonCanonique(r.procesVerbal)}\n`, { mode: 0o600 });
           console.log(`Fin de contrat EXÉCUTÉE (irréversible). Procès-verbal : ${fichier}, empreinte ${r.procesVerbal.empreinte} (également au registre fins_de_contrat).`);
-          console.log('Restent à faire, hors de cet outil : la suppression des objets du stockage, la désactivation des comptes du fournisseur d’identité. Les sauvegardes ne sont pas purgées.');
+          console.log('Restent à faire, hors de cet outil : la suppression des objets du stockage, la désactivation des comptes du fournisseur d’identité (plan à établir AVANT : comptes-fin-de-contrat), les fiches orphelines. Les sauvegardes ne sont pas purgées.');
         }
       } catch (e) {
         if (e.name !== 'RefusFinDeContrat') throw e;
@@ -185,11 +208,84 @@ try {
       }
       break;
     }
+    case 'durees-defauts':
+      console.error('PROPOSITION NON VALIDÉE : modèle à adapter et à faire valider (avocat, DPO) ; aucune valeur n’a de portée juridique.');
+      console.log(JSON.stringify(PARAMETRES_PROPOSES, null, 2));
+      break;
+    case 'durees-verifier': {
+      exiger(1, 'durees-verifier <fichier.json>');
+      const c = chargerParametres(p.POLITIQUE_FIN_DE_CONTRAT.categories, args[0]);
+      console.log(`Jeu de durées conforme à la structure : version ${c.parametres.version}, statut « ${c.parametres.statut} », empreinte ${c.empreinte}.`);
+      console.log(c.nonValide ? 'PROPOSITION NON VALIDÉE : l’exécution réelle exigera --durees-validees=<référence>.' : `Validation déclarée : ${c.parametres.validation.reference} (${c.parametres.validation.date}, ${c.parametres.validation.par}). Ce contrôle ne vérifie pas la réalité de cette validation.`);
+      break;
+    }
+    case 'conservation-simuler': {
+      exiger(1, 'conservation-simuler <cabinetId> [--durees=<fichier>] [--grace=<jours>]');
+      const option = (nom) => args.find((x) => x.startsWith(`--${nom}=`))?.slice(nom.length + 3);
+      const { simulerConservationCabinet } = await import('../packages/db/dist/simulation-conservation.js');
+      const s = await simulerConservationCabinet(client, args[0], chargerParametres(p.POLITIQUE_FIN_DE_CONTRAT.categories, option('durees')), { graceJours: option('grace') === undefined ? undefined : Number(option('grace')) });
+      console.log(`Cabinet : ${s.cabinet.nom} (${s.cabinet.id}) — durées : jeu ${s.parametres.version}, « ${s.parametres.statut} », source ${s.parametres.source}`);
+      console.log(`Abonnement : ${s.abonnement ? `${s.abonnement.statut}, fin ${s.abonnement.fin ?? 'non datée'}` : 'aucun'} ; exécution possible au plus tôt le ${s.executionAuPlusTot ?? 'non calculable'} (+${s.delaiExecutionJours} jour(s)) ; aujourd’hui ${s.aujourdhui}.`);
+      console.table(s.lignes.map((l) => ({ catégorie: l.categorie, table: l.table, devenir: l.devenir, lignes: l.lignes, action: l.action, 'point de départ': l.pointDeDepart, 'première échéance': l.premiereEcheance ?? '', 'dernière échéance': l.derniereEcheance ?? '', état: l.etat })));
+      for (const a of s.avertissements) console.log(`AVERTISSEMENT : ${a}`);
+      console.log('SIMULATION : rien n’a été modifié.');
+      break;
+    }
+    case 'journal-fin-de-vie': {
+      exiger(1, 'journal-fin-de-vie <cabinetId> [--durees=<fichier>]');
+      const option = (nom) => args.find((x) => x.startsWith(`--${nom}=`))?.slice(nom.length + 3);
+      const { simulerFinDeVieJournal } = await import('../packages/db/dist/simulation-conservation.js');
+      const s = await simulerFinDeVieJournal(client, args[0], chargerParametres(p.POLITIQUE_FIN_DE_CONTRAT.categories, option('durees')));
+      console.log(`Journal du cabinet ${s.cabinetId} : ${s.journal.lignes} ligne(s) du ${s.journal.premiere ?? '—'} au ${s.journal.derniere ?? '—'} ; règle : ${JSON.stringify(s.regle.duree)} à partir de « ${s.regle.pointDeDepart} », puis « ${s.regle.apresEcheance} ».`);
+      console.log(`Échéances : première ${s.journal.premiereEcheance ?? '—'}, dernière ${s.journal.derniereEcheance ?? '—'} ; ${s.journal.echeancesPassees} ligne(s) échue(s) au ${s.aujourdhui}.`);
+      console.log(`État : dernière ligne ${s.etat.derniereLigne ?? '—'}, vérification stricte ${s.etat.verificationStricte === null ? 'intègre' : `RUPTURE à la ligne ${s.etat.verificationStricte}`}.`);
+      console.table(s.familles);
+      console.log(`Données personnelles dans les lignes : ${s.donneesPersonnellesDansLeJournal.lignesAvecCourriel} ligne(s) avec une adresse de courriel. Fiches désignées : ${s.acteurs.distincts} acteur(s), ${s.acteurs.fichesExistantes} fiche(s) existante(s), ${s.acteurs.fichesSansAppartenance} sans appartenance.`);
+      for (const l of s.plan) console.log(`  ${l}`);
+      for (const a of s.avertissements) console.log(`AVERTISSEMENT : ${a}`);
+      console.log(`${s.ancre} SIMULATION : aucune ligne du journal n’a été touchée.`);
+      break;
+    }
+    case 'comptes-fin-de-contrat': {
+      exiger(1, 'comptes-fin-de-contrat <cabinetId> [--durees=<fichier>] [--plan=<fichier.json>]');
+      const option = (nom) => args.find((x) => x.startsWith(`--${nom}=`))?.slice(nom.length + 3);
+      const c = await import('../packages/db/dist/comptes-fin-de-contrat.js');
+      const plan = await c.planComptesFinDeContrat(client, args[0], chargerParametres(p.POLITIQUE_FIN_DE_CONTRAT.categories, option('durees')));
+      console.log(`Comptes dont la SEULE appartenance est ce cabinet (${plan.comptes.length}) ; comptes ayant une autre appartenance, JAMAIS touchés (${plan.comptesConserves.length}).`);
+      console.table(plan.comptes.map((x) => ({ compte: x.email, rôle: x.role, support: x.support ? 'oui' : '', 'références restantes': x.referencesRestantes, fiche: x.devenirFiche, 'désactiver le': x.desactiverLe ?? '', 'supprimer le': x.supprimerLe ?? '' })));
+      for (const a of plan.avertissements) console.log(`AVERTISSEMENT : ${a}`);
+      if (option('plan')) {
+        (await import('node:fs')).writeFileSync(option('plan'), `${JSON.stringify(plan, null, 2)}\n`, { mode: 0o600 });
+        console.log(`Plan enregistré : ${option('plan')} (à conserver : après la fin de contrat, les appartenances n'existent plus).`);
+      }
+      console.log('SIMULATION : rien n’a été modifié, ni dans la base ni dans le fournisseur d’identité. L’exécution contre un fournisseur d’identité n’existe que pour un royaume d’essai créé par un test.');
+      break;
+    }
+    case 'fiches-orphelines': {
+      if (args.includes('--appliquer')) throw new Error('Refusé : l’exécution sur les fiches n’est possible que sur une base d’essai créée par un test (aucune purge réelle dans cet outil).');
+      const c = await import('../packages/db/dist/comptes-fin-de-contrat.js');
+      const plan = await c.planFichesOrphelines(client);
+      console.table(plan.fiches.map((f) => ({ compte: f.email, 'références restantes': f.referencesRestantes, devenir: f.devenir, 'déjà pseudonymisée': f.dejaPseudonymisee ? 'oui' : '' })));
+      console.log(`${plan.fiches.length} fiche(s) sans aucune appartenance. SIMULATION : rien n’a été modifié.`);
+      break;
+    }
     case 'fin-de-contrat-objets': {
-      exiger(1, 'fin-de-contrat-objets <cabinetId>');
-      if (args.includes('--appliquer')) throw new Error('La suppression réelle des objets n’est pas branchée dans cet outil : elle n’a jamais été exercée contre un stockage réel.');
-      const { Stockage } = await import('../packages/plateforme/dist/stockage.js');
+      exiger(1, 'fin-de-contrat-objets <cabinetId> [--nom="<nom exact>"] [--durees-validees=<référence>] [--rapport=<fichier.jsonl>] [--appliquer]');
+      const option = (nom) => args.find((x) => x.startsWith(`--${nom}=`))?.slice(nom.length + 3);
       const { S3_ENDPOINT, S3_REGION, S3_BUCKET, S3_ACCESS_KEY, S3_SECRET_KEY } = process.env;
+      if (args.includes('--appliquer')) {
+        // Aucune suppression dans le bucket des données : seul un stockage d'ESSAI explicitement déclaré est admis.
+        const { StockageEssaiS3 } = await import('../packages/plateforme/dist/stockage-essai.js');
+        const { supprimerObjetsFinDeContratEssai } = await import('../packages/db/dist/objets-fin-de-contrat.js');
+        const declare = process.env.STOCKAGE_ESSAI_BUCKET_DECLARE;
+        if (!declare) throw new Error('Refusé : aucun stockage d’essai n’est déclaré (STOCKAGE_ESSAI_BUCKET_DECLARE). Cet outil ne supprime aucun objet du bucket des données.');
+        const essai = new StockageEssaiS3({ endpoint: S3_ENDPOINT, region: S3_REGION, accessKey: S3_ACCESS_KEY, secretKey: S3_SECRET_KEY, bucket: declare }, { S3_BUCKET, STOCKAGE_ESSAI_BUCKET_DECLARE: declare });
+        const nom = option('nom');
+        const r = await supprimerObjetsFinDeContratEssai(client, essai, { cabinetId: args[0], confirmation: nom === undefined ? undefined : { cabinetId: args[0], nom }, dureesValidees: option('durees-validees'), fichierRapport: option('rapport') });
+        console.log(`STOCKAGE D'ESSAI ${r.bucket} — passage ${r.passage} : ${r.trouvees} version(s) trouvée(s), ${r.supprimees} supprimée(s), ${r.verrouillees} verrouillée(s), ${r.erreurs} erreur(s), ${r.restantes} restante(s).`);
+        break;
+      }
+      const { Stockage } = await import('../packages/plateforme/dist/stockage.js');
       const r = await p.objetsFinDeContrat(client, new Stockage({ S3_ENDPOINT, S3_REGION, S3_BUCKET, S3_ACCESS_KEY, S3_SECRET_KEY }), { cabinetId: args[0] });
       console.log(`SIMULATION : ${r.cles.length} objet(s) sous ${r.prefixes.join(' et ')} (empreinte de la liste : ${r.empreinteListeCles}). Rien n’a été supprimé.`);
       for (const k of r.cles.slice(0, 20)) console.log(`  ${k}`);

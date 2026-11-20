@@ -339,6 +339,7 @@ export async function exporterElementsFacturation(client: pg.ClientBase, periode
 // d'administration de la base, l'exécute. Sans `appliquer: true`, tout se passe dans une transaction EN LECTURE SEULE :
 // la base elle-même refuse alors toute écriture. Les durées citées sont PROPOSÉES, non arrêtées.
 import { createHash } from 'node:crypto';
+import { type ParametresCharges, type TraceValidationDurees, chargerParametres, delaiEffectifSuppression, exigerReferenceValidation, traceValidation } from './durees-conservation.js';
 
 export type DevenirFinDeContrat = 'supprimer' | 'conserver_jusqu_a' | 'anonymiser' | 'restituer_puis_supprimer';
 
@@ -446,7 +447,7 @@ async function tablesACabinet(client: pg.ClientBase): Promise<string[]> {
   return r.rows.map((l) => l.t);
 }
 
-async function exigerAdministration(client: pg.ClientBase): Promise<string> {
+export async function exigerAdministration(client: pg.ClientBase): Promise<string> {
   const r = await client.query<{ u: string; proprietaire: boolean }>(
     `select current_user::text as u, coalesce((select pg_has_role(current_user, t.tableowner, 'MEMBER') from pg_tables t where t.schemaname = 'public' and t.tablename = 'cabinets'), false) as proprietaire`,
   );
@@ -494,7 +495,7 @@ async function inventorier(client: pg.ClientBase, cabinetId: string, verrouiller
     horsTables: {
       cabinet: 'La ligne « cabinets » (nom, SIREN) est conservée : partie au contrat, référencée par la facturation, le journal et le procès-verbal (5 ans proposés, non arrêté).',
       utilisateursSansAutreCabinet: { nombre: Number(orphelins.rows[0]!.n), devenir: 'Non traités par cette procédure : conservés pour que le journal reste lisible, puis suppression ou pseudonymisation 12 mois après la désactivation (proposé, non arrêté).' },
-      fournisseurIdentite: 'Les comptes du fournisseur d’identité (Keycloak) sont hors de la base : à désactiver ou supprimer à la main.',
+      fournisseurIdentite: 'Les comptes du fournisseur d’identité (Keycloak) sont hors de la base. Plan à établir AVANT l’exécution (editeur.mjs comptes-fin-de-contrat) ; l’exécution contre un royaume réel n’est pas écrite (D-099) : à faire à la main, d’après ce plan.',
     },
     objets: {
       prefixes,
@@ -533,6 +534,8 @@ export interface PlanFinDeContrat {
   restitution: { id: string; sha256: string; taille: number | null; demandeeLe: string; termineeLe: string } | null;
   inventaire: InventaireFinDeContrat;
   sauvegardes: string;
+  /** Jeu de paramètres de durées utilisé (identifié par son empreinte) ; son statut dit s'il est une proposition. */
+  parametres: { version: string; statut: string; empreinte: string; source: string };
 }
 export interface ProcesVerbalFinDeContrat {
   format: 'comtaple.proces-verbal-fin-de-contrat/1';
@@ -542,6 +545,8 @@ export interface ProcesVerbalFinDeContrat {
   politique: { version: string; statut: string };
   delaiGraceJours: number;
   abonnement: { statut: string; fin: string };
+  /** Référence de validation des durées déclarée par l'éditeur à l'exécution, et jeu de paramètres employé. */
+  dureesConservation: TraceValidationDurees;
   restitution: NonNullable<PlanFinDeContrat['restitution']>;
   categories: Array<{ code: string; libelle: string; devenir: DevenirFinDeContrat; conservation: CategorieFinDeContrat['conservation'] | null; tables: Array<{ table: string; avant: number; apres: number }>; avant: number; apres: number }>;
   journal: { devenir: string; lignesAvant: number; lignesApres: number; derniereLigne: string; empreinteTete: string; verificationStricte: null };
@@ -573,18 +578,28 @@ export interface ParametresFinDeContrat {
   cabinetId: string;
   /** Confirmation explicite : l'identifiant ET le nom exact du cabinet. Exigée pour exécuter. */
   confirmation?: { cabinetId: string; nom: string };
-  /** Délai de grâce après la fin de l'abonnement résilié (90 jours par défaut, valeur proposée ; 30 au minimum). */
+  /** Délai de grâce après la fin de l'abonnement résilié (celui du jeu de paramètres si absent, 90 jours dans la proposition ; 30 au minimum). */
   delaiGraceJours?: number;
+  /** Jeu de durées de conservation (`durees-conservation.ts`) ; à défaut la PROPOSITION NON VALIDÉE du code. */
+  parametres?: ParametresCharges;
+  /**
+   * Référence de la validation des durées (`--durees-validees=<référence>`). EXIGÉE pour exécuter : sans elle,
+   * l'exécution est refusée (les durées par défaut sont une proposition non validée). Inscrite au journal et au procès-verbal.
+   */
+  dureesValidees?: string;
   /** Faux par défaut : SIMULATION, en transaction en lecture seule. */
   appliquer?: boolean;
   /** Suivi de progression ; une exception levée ici interrompt l'exécution et annule TOUT (transaction). */
   surEtape?: (etape: EtapeFinDeContrat) => void | Promise<void>;
 }
 
-async function etablirPlan(client: pg.ClientBase, p: ParametresFinDeContrat, appliquer: boolean): Promise<PlanFinDeContrat & { abonnement: { statut: string; fin: string } | null }> {
-  const grace = p.delaiGraceJours ?? POLITIQUE_FIN_DE_CONTRAT.delaiGraceJoursParDefaut;
-  if (!Number.isInteger(grace) || grace < 30 || grace > 3650) throw new Error('Délai de grâce : nombre entier de jours, entre 30 et 3650.');
+async function etablirPlan(client: pg.ClientBase, p: ParametresFinDeContrat, appliquer: boolean): Promise<PlanFinDeContrat & { abonnement: { statut: string; fin: string } | null; dureesConservation: TraceValidationDurees | null }> {
+  const chargees = p.parametres ?? chargerParametres(POLITIQUE_FIN_DE_CONTRAT.categories);
+  const graceDemandee = p.delaiGraceJours ?? chargees.parametres.delaiGraceJours;
+  if (!Number.isInteger(graceDemandee) || graceDemandee < 30 || graceDemandee > 3650) throw new Error('Délai de grâce : nombre entier de jours, entre 30 et 3650.');
   const inv = await inventorier(client, p.cabinetId, appliquer);
+  // Délai effectif : le plus long du délai de grâce et des durées que les paramètres fixent aux catégories supprimées à l'exécution.
+  const grace = delaiEffectifSuppression(chargees.parametres, inv.categories.filter((c) => c.devenir === 'supprimer' || c.devenir === 'restituer_puis_supprimer').map((c) => c.code), graceDemandee);
   const id = inv.cabinet.id;
   const pre: PreconditionFinDeContrat[] = [];
   const noter = (code: string, libelle: string, satisfaite: boolean, detail: string) => pre.push({ code, libelle, satisfaite, detail });
@@ -685,6 +700,16 @@ async function etablirPlan(client: pg.ClientBase, p: ParametresFinDeContrat, app
   const conf = p.confirmation;
   noter('confirmation', 'Confirmation nommant le cabinet (identifiant et nom exact)', !!conf && conf.cabinetId === id && conf.nom === inv.cabinet.nom, !conf ? 'non fournie (exigée pour exécuter)' : conf.cabinetId === id && conf.nom === inv.cabinet.nom ? 'identifiant et nom conformes' : 'l’identifiant ou le nom confirmé ne correspond pas exactement au cabinet');
 
+  // 8. Durées de conservation déclarées VALIDÉES : l'éditeur fournit la référence de la validation (jamais présumée).
+  let validation: TraceValidationDurees | null = null;
+  let motifValidation = '';
+  try {
+    validation = traceValidation(exigerReferenceValidation(p.dureesValidees, chargees), chargees);
+  } catch (e) {
+    motifValidation = (e as Error).message.replace(/^Exécution réelle refusée : /, '');
+  }
+  noter('durees_validees', 'Durées de conservation déclarées validées (référence fournie, jeu de paramètres identifié)', validation !== null, validation ? `référence « ${validation.reference} », jeu ${validation.version} (${validation.statut}), empreinte ${validation.empreinte.slice(0, 16)}…` : `${motifValidation} (jeu courant : ${chargees.parametres.version}, ${chargees.parametres.statut})`);
+
   // Ordre des suppressions : une table n'est supprimée qu'après toutes celles qui la référencent.
   const restantes = new Set(aSupprimer);
   const ordre: string[] = [];
@@ -716,6 +741,8 @@ async function etablirPlan(client: pg.ClientBase, p: ParametresFinDeContrat, app
     inventaire: inv,
     sauvegardes: LIMITE_SAUVEGARDES,
     abonnement: ab && ab.fin ? { statut: ab.statut, fin: ab.fin } : null,
+    dureesConservation: validation,
+    parametres: { version: chargees.parametres.version, statut: chargees.parametres.statut, empreinte: chargees.empreinte, source: chargees.source },
   };
 }
 
@@ -731,12 +758,12 @@ export async function finDeContrat(client: pg.ClientBase, p: ParametresFinDeCont
   await client.query(appliquer ? 'begin' : 'begin transaction read only');
   try {
     const role = await exigerAdministration(client);
-    const { abonnement, ...plan } = await etablirPlan(client, p, appliquer);
+    const { abonnement, dureesConservation, ...plan } = await etablirPlan(client, p, appliquer);
     if (!appliquer) {
       await client.query('rollback');
       return { simulation: true, plan };
     }
-    if (!plan.executable || !plan.restitution || !abonnement) throw new RefusFinDeContrat(plan.preconditions.filter((x) => !x.satisfaite).map((x) => `${x.libelle} — ${x.detail}`), plan);
+    if (!plan.executable || !plan.restitution || !abonnement || !dureesConservation) throw new RefusFinDeContrat(plan.preconditions.filter((x) => !x.satisfaite).map((x) => `${x.libelle} — ${x.detail}`), plan);
     const id = plan.inventaire.cabinet.id;
     const journalAvant = Number((await client.query<{ n: string }>('select count(*) as n from journal_audit where cabinet_id = $1', [id])).rows[0]!.n);
 
@@ -773,7 +800,7 @@ export async function finDeContrat(client: pg.ClientBase, p: ParametresFinDeCont
     const decomptes = categories.map((c) => ({ code: c.code, devenir: c.devenir, avant: c.avant, apres: c.apres }));
     const ligne = (await client.query<{ id: string; empreinte: string }>(
       `insert into journal_audit (cabinet_id, acteur_type, action, cible_type, cible_id, details) values ($1, 'systeme', 'fin_de_contrat.executee', 'cabinet', $2, $3) returning id::text, empreinte`,
-      [id, id, JSON.stringify({ politique: plan.inventaire.politique.version, restitution: plan.restitution.id, empreinteRestitution: plan.restitution.sha256, empreinteDecomptes: sha256Texte(jsonCanonique(decomptes)), lignesSupprimees: categories.reduce((s, c) => s + (c.avant - c.apres), 0) })],
+      [id, id, JSON.stringify({ politique: plan.inventaire.politique.version, restitution: plan.restitution.id, empreinteRestitution: plan.restitution.sha256, dureesConservation, empreinteDecomptes: sha256Texte(jsonCanonique(decomptes)), lignesSupprimees: categories.reduce((s, c) => s + (c.avant - c.apres), 0) })],
     )).rows[0]!;
     await p.surEtape?.(plan.etapes.find((e) => e.operation === 'journaliser')!);
     const strict = (await client.query<{ r: string | null }>('select journal_audit_verifier($1)::text as r', [id])).rows[0]!.r;
@@ -789,6 +816,7 @@ export async function finDeContrat(client: pg.ClientBase, p: ParametresFinDeCont
       politique: plan.inventaire.politique,
       delaiGraceJours: plan.delaiGraceJours,
       abonnement,
+      dureesConservation,
       restitution: plan.restitution,
       categories,
       journal: { devenir: 'Conservé jusqu’à sa propre échéance (proposée, non arrêtée), jamais réécrit ; dernière ligne « fin_de_contrat.executee ».', lignesAvant: journalAvant, lignesApres: journalAvant + 1, derniereLigne: ligne.id, empreinteTete: ligne.empreinte, verificationStricte: null },
@@ -796,7 +824,7 @@ export async function finDeContrat(client: pg.ClientBase, p: ParametresFinDeCont
       objets: { etat: 'a_supprimer_par_etape_separee', ...objets },
       sauvegardes: LIMITE_SAUVEGARDES,
       reserves: [
-        'Les durées de conservation citées sont PROPOSÉES, non arrêtées, et n’ont reçu aucune validation juridique.',
+        'Les durées de conservation citées sont celles du jeu de paramètres identifié ci-dessus ; la référence de validation est DÉCLARÉE par l’éditeur, ce procès-verbal n’en atteste pas la réalité.',
         'Les objets du stockage ne sont pas supprimés par ce procès-verbal : étape séparée, à constater à part.',
         'Les comptes du fournisseur d’identité et la table « utilisateurs » ne sont pas traités.',
       ],

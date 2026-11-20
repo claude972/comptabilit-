@@ -28,7 +28,7 @@ Source : documentation OVHcloud, <https://docs.ovhcloud.com/fr/guides/storage-an
 - Le verrouillage se choisit À LA CRÉATION du bucket et ne peut pas être ajouté ensuite ; une fois activé, il est irréversible pour ce bucket.
 - En mode conformité, ni le mode ni la durée ne peuvent être modifiés une fois appliqués à un objet.
 
-Conséquence de conception : les buckets de production destinés aux éléments à rétention immuable doivent être créés avec le verrouillage dès l'origine, séparément du bucket courant. Rien de cela n'est testé : le stockage local de développement ne sert pas à valider Object Lock.
+Conséquence de conception : les buckets de production destinés aux éléments à rétention immuable doivent être créés avec le verrouillage dès l'origine, séparément du bucket courant. Le SeaweedFS local (4.54) accepte pourtant le verrouillage à la création du bucket, le versionnement, une rétention par objet (mode gouvernance) et refuse la suppression d'une version verrouillée (`AccessDenied`) : le comportement « refus propre, jamais de contournement » de la suppression d'objets en fin de contrat y est exercé réellement (D-099). Ce n'est PAS une validation du verrouillage d'OVHcloud (mode conformité, conservation légale, comportement du fournisseur : non essayés).
 
 ## Restitution
 
@@ -37,6 +37,15 @@ Export de restitution par dossier (habilitation de validation) : archive ZIP con
 Restitution d'un cabinet entier (décision D-043, voir `couverture.md`) : réservée aux gestionnaires, limitée aux dossiers où le demandeur a le niveau « validation » (les autres sont listés et l'archive est marquée incomplète), archive construite en flux, téléchargeable par son seul demandeur, ni chiffrée ni signée.
 
 Non couvert : restitution des sauvegardes et des journaux techniques ; format d'échange normalisé avec un autre logiciel.
+
+## Durées paramétrables et simulations (D-099)
+
+Les durées juridiques restent **externes** (avocat, DPO : `acces-externes.md`). Ce que le projet fournit : des MÉCANISMES paramétrables, des SIMULATIONS et des essais sur ressources jetables, sans aucune purge réelle.
+
+- **Jeu de paramètres versionné** (`packages/db/src/durees-conservation.ts`, format `comtaple.durees-conservation/1`) : une règle par catégorie de la politique (durée en jours OU « jusqu'au » une date, point de départ, devenir à l'échéance : supprimer, pseudonymiser ou, pour le journal, sceller), le délai de grâce, la rétention des sauvegardes (durée et nombre minimal de jeux conservés), les délais de désactivation et de suppression des comptes. Fichier JSON de l'éditeur (`--durees=<fichier>`), validé contre la politique (`editeur.mjs durees-verifier`). Le devenir de chaque catégorie reste dans le code (`POLITIQUE_FIN_DE_CONTRAT`, gardée par un test) : un fichier de paramètres ne peut ni le changer ni omettre une catégorie.
+- **Aucune valeur par défaut n'est présentée comme validée.** Sans fichier, le jeu est la PROPOSITION NON VALIDÉE du code (`editeur.mjs durees-defauts`), marquée comme telle dans son statut, sa version et tout affichage. **Toute exécution réelle de fin de contrat exige `--durees-validees=<référence de la validation>`** (huitième pré-condition, `durees_validees`) : sans elle, ou avec une valeur vide (« oui », « ok »…), elle est refusée. La référence, la version, le statut et l'empreinte du jeu sont inscrits au journal du cabinet (`fin_de_contrat.executee`) et au procès-verbal. **Ce contrôle est formel : il impose qu'une personne affirme la validation et que l'affirmation soit tracée ; il ne prouve pas qu'elle a eu lieu.** Un jeu dont le statut n'est pas « PROPOSITION NON VALIDÉE » doit porter sa validation (référence, date, auteur) et la référence fournie doit être la même.
+- **Le délai effectif** avant exécution est le plus long du délai de grâce et des durées des catégories supprimées à l'exécution : un jeu qui allonge la durée d'une catégorie reporte l'exécution de toute la procédure (elle supprime tout en une transaction).
+- **Simulation par cabinet, table par table** : `node scripts/editeur.mjs conservation-simuler <cabinetId> [--durees=…]` (lecture seule) liste, pour chaque table : devenir, nombre de lignes, action (supprimer, anonymiser puis supprimer, conserver puis supprimer ou sceller), point de départ, première et dernière échéance, état (échue, à échoir, non calculable). Le point de départ « clôture de l'exercice de l'éditeur » est approché par le 31 décembre de l'année de l'événement.
 
 ## Fin de contrat : suppression à la résiliation
 
@@ -74,34 +83,83 @@ Hors de ces tables, et NON traités par la procédure : la ligne `cabinets` (con
 
 1. Toute table portant `cabinet_id` a un devenir, et aucune table conservée ne référence une table supprimée.
 2. Le registre des procès-verbaux existe (migration 0038) et la fin de contrat n'a pas déjà été exécutée pour ce cabinet.
-3. L'abonnement est au statut « résilié » et sa date de fin est dépassée d'un délai de grâce paramétrable (90 jours par défaut — proposition ; 30 au minimum).
+3. L'abonnement est au statut « résilié » et sa date de fin est dépassée d'un délai de grâce paramétrable (celui du jeu de paramètres : 90 jours dans la proposition non validée ; 30 au minimum).
 4. Une restitution du cabinet est terminée, complète (aucun dossier écarté ni hors périmètre), son empreinte SHA-256 est enregistrée et sa génération consignée au journal, et elle a été demandée APRÈS la dernière modification des données (horodatages des tables restituées ; actes inscrits au journal, hors consultations, restitutions et résiliation).
 5. Le journal d'audit se vérifie par la vérification STRICTE. S'il ne se vérifie pas, la procédure s'arrête et le dit ; elle ne répare ni ne consigne rien.
 6. Aucune politique de conservation déclarée pour le cabinet (`politiques_conservation`) ne s'oppose à la suppression d'une catégorie : conservation immuable, durée encore en cours (comptée, faute de mieux, depuis sa déclaration), ou catégorie non reconnue.
 7. Une confirmation nomme le cabinet : son identifiant ET son nom exact.
+8. Les durées de conservation sont déclarées validées : `--durees-validees=<référence>` fournie (D-099, ci-dessus).
 
 ### Exécution
 
-`node scripts/editeur.mjs fin-de-contrat <cabinetId>` SIMULE : inventaire, pré-conditions et plan ordonné, dans une transaction en lecture seule — la base elle-même y refuse toute écriture. Avec `--nom="<nom exact>" --appliquer`, et si toutes les pré-conditions sont réunies, une seule transaction : anonymisation des traces d'IA ; suppression table par table, les tables qui en référencent d'autres d'abord (ordre calculé d'après les clés étrangères), chaque décompte étant comparé au plan ; inscription de la dernière ligne du journal ; nouvelle vérification stricte ; inscription du procès-verbal. Un échec ou une interruption à n'importe quelle étape annule tout.
+`node scripts/editeur.mjs fin-de-contrat <cabinetId> [--durees=<fichier>]` SIMULE : inventaire, pré-conditions et plan ordonné, dans une transaction en lecture seule — la base elle-même y refuse toute écriture. Avec `--nom="<nom exact>" --durees-validees="<référence>" --appliquer`, et si toutes les pré-conditions sont réunies, une seule transaction : anonymisation des traces d'IA ; suppression table par table, les tables qui en référencent d'autres d'abord (ordre calculé d'après les clés étrangères), chaque décompte étant comparé au plan ; inscription de la dernière ligne du journal ; nouvelle vérification stricte ; inscription du procès-verbal. Un échec ou une interruption à n'importe quelle étape annule tout.
 
-**Journal d'audit.** Il est conservé, jamais réécrit ni supprimé, et reçoit une dernière ligne `fin_de_contrat.executee` chaînée comme les autres : il reste vérifiable, en base et hors base. Raisons : c'est la preuve des diligences du Cabinet et de l'exécution de la fin de contrat ; sa durée n'est pas arrêtée (12 mois à 10 ans selon les lignes, non scindées) ; et le supprimer supposerait de désactiver ses protections d'ajout seul, ce que rien ne distinguerait d'une altération. Sa destruction à son terme (export scellé, puis purge) n'est pas conçue.
+**Journal d'audit.** Il est conservé, jamais réécrit ni supprimé, et reçoit une dernière ligne `fin_de_contrat.executee` chaînée comme les autres : il reste vérifiable, en base et hors base. Raisons : c'est la preuve des diligences du Cabinet et de l'exécution de la fin de contrat ; sa durée n'est pas arrêtée (12 mois à 10 ans selon les lignes, non scindées) ; et le supprimer supposerait de désactiver ses protections d'ajout seul, ce que rien ne distinguerait d'une altération. Sa fin de vie est conçue (section « Fin de vie du journal et des éléments conservés ») et simulée ; elle n'est pas exécutable.
 
 **Procès-verbal.** Document JSON canonique (clés triées) : cabinet, date, rôle exécutant, politique et sa version, abonnement, restitution et son empreinte, décomptes avant/après par catégorie et par table, état du journal, objets restant à supprimer, limite des sauvegardes, réserves. Son empreinte SHA-256 se recalcule à partir du seul document. Il est écrit dans un fichier, à remettre au Cabinet, et inscrit au registre `fins_de_contrat` (ajout seul, sans aucun droit pour les rôles de l'application).
 
-**Objets du stockage.** Étape séparée (`objetsFinDeContrat`) : clés sous les préfixes `cabinets/<cabinet>/` et `tmp/<cabinet>/`, simulation par défaut, exécution seulement après la base, refusée si une ligne d'un autre cabinet référence un de ces objets, consignée au journal. L'outil de l'éditeur n'en propose que la simulation (`fin-de-contrat-objets`). Une clé référencée hors de ces préfixes n'est jamais supprimée : elle est décomptée.
+**Objets du stockage.** Étape séparée (`objetsFinDeContrat`) : clés sous les préfixes `cabinets/<cabinet>/` et `tmp/<cabinet>/`, simulation par défaut, exécution seulement après la base, refusée si une ligne d'un autre cabinet référence un de ces objets, consignée au journal. L'outil de l'éditeur n'en propose que la simulation sur le stockage des données (`fin-de-contrat-objets`). Sur un STOCKAGE D'ESSAI versionné (`supprimerObjetsFinDeContratEssai`, D-099), la suppression est exercée réellement : voir « Suppression d'objets sur un stockage d'essai ». Une clé référencée hors de ces préfixes n'est jamais supprimée : elle est décomptée.
 
 **Sauvegardes.** Elles ne sont pas modifiables une à une : les données supprimées y subsistent jusqu'à leur rotation (30 à 90 jours proposés, politique de production non définie). La procédure ne les purge pas ; le procès-verbal le mentionne. Une restauration postérieure à une fin de contrat devrait la rejouer.
 
+### Suppression d'objets sur un stockage d'essai (D-099)
+
+`packages/db/src/objets-fin-de-contrat.ts` (`supprimerObjetsFinDeContratEssai`) et `packages/plateforme/src/stockage-essai.ts` (`StockageEssaiS3`). Elle ne s'exécute que contre un bucket S3 qui **se déclare d'essai** : nom `comtaple-essai-…`, déclaré par la variable dédiée `STOCKAGE_ESSAI_BUCKET_DECLARE` (même nom exactement), et **distinct du bucket des données** (`S3_BUCKET`). La vérification a lieu à la construction de l'objet et avant chaque opération ; sinon refus, avant tout appel au stockage. Aucun code ne supprime d'objet du bucket des données : `fin-de-contrat-objets --appliquer` sans stockage d'essai déclaré est refusé.
+
+Ce que fait la fonction : refuse sans confirmation (identifiant et nom), sans procès-verbal au registre, sans référence de validation des durées, ou si une ligne d'un autre cabinet référence un objet visé ; liste les VERSIONS et marqueurs de suppression sous les préfixes du cabinet ; supprime version par version, **sans jamais demander le contournement de la gouvernance** — une version sous Object Lock reste en place et est rapportée « verrouillée » avec le mode et l'échéance (échec propre : exception `SuppressionObjetsIncomplete`, le reste est supprimé) ; ajoute une ligne par version à un rapport (JSON par ligne : clé, version, taille, résultat, date, passage) ; consigne chaque passage au journal du cabinet. Reprise : rejouée, elle liste ce qui reste et complète le même rapport ; idempotente (rien à supprimer = aucune action).
+
+### Comptes du fournisseur d'identité et fiches d'utilisateurs (D-099)
+
+- **Plan, à établir AVANT la fin de contrat** (`editeur.mjs comptes-fin-de-contrat <cabinetId> [--plan=<fichier>]`, lecture seule) : comptes dont la SEULE appartenance est ce cabinet (accès support compris), avec date de désactivation (fin de l'abonnement + délai de grâce + délai de désactivation) puis de suppression (+ délai de suppression après désactivation), et devenir de la fiche. Un compte qui a une autre appartenance n'est jamais listé pour fermeture. Après l'exécution, les appartenances n'existent plus : le plan enregistré sert de référence ; `editeur.mjs fiches-orphelines` liste les fiches sans appartenance.
+- **Fiche** (`utilisateurs`, sans `cabinet_id`) : supprimée si plus rien ne la référence, PSEUDONYMISÉE sinon (nom, e-mail et sujet remplacés, identifiant conservé) — par exemple le demandeur d'une restitution, référencé par le registre conservé. L'exécution (`appliquerFichesOrphelinesEssai`) refuse toute base dont le nom n'est pas `comtaple_essai_…` ou qui est la base configurée.
+- **Fournisseur d'identité** (`FournisseurIdentiteEssai`, Keycloak) : désactivation puis suppression des seuls comptes du plan, aux dates, **uniquement dans un royaume d'essai** `essai-fin-contrat-…` déclaré par `KEYCLOAK_ROYAUME_ESSAI_DECLARE`, distinct du royaume de l'application et de « master ». Un compte dont l'e-mail dans Keycloak diffère de celui du plan n'est pas touché. **Aucune exécution contre un royaume réel n'est écrite** : à faire à la main d'après le plan (ou à écrire après décision).
+- Ordre d'une fin de contrat réelle : plan des comptes ; fin de contrat en base ; objets ; fournisseur d'identité ; fiches (après le fournisseur : la pseudonymisation change le sujet).
+
+### Rotation des sauvegardes (D-099)
+
+`packages/plateforme/src/rotation-sauvegardes.ts`, `node scripts/sauvegardes-rotation.mjs [--retention=<jours>] [--minimum=<jeux>] [--durees=<fichier>]` : SIMULATION par défaut (liste de ce qui serait conservé, retiré ou laissé à examiner). Les `jeuxMinimumConserves` jeux complets les plus récents sont toujours conservés ; un jeu interrompu n'est jamais retiré (« à examiner ») ; ni `objets/` (dépôt adressé par empreinte : son nettoyage n'est pas conçu) ni un fichier étranger n'est touché. L'exécution (`appliquerRotation`) n'existe que pour un répertoire d'essai portant un marqueur posé par le test, distinct du répertoire réel (ni le même, ni dedans, ni le contenant, liens symboliques résolus) ; l'outil en ligne de commande n'en propose aucune. Aucune sauvegarde existante n'a été retirée ; la simulation sur `var/sauvegardes` rend, avec la rétention proposée, « rien à retirer » (tout date de moins de 90 jours).
+
+### Fin de vie du journal et des éléments conservés (conception, D-099)
+
+Conception écrite ; **simulation seulement** (`editeur.mjs journal-fin-de-vie`, `simulerFinDeVieJournal`), aucun traitement exécutable.
+
+1. **Le journal n'est jamais réécrit ni purgé** par un traitement : sa chaîne d'empreintes rend toute altération détectable, et sa suppression exigerait de désactiver ses protections d'ajout seul, ce que rien ne distinguerait d'une altération.
+2. **Échéance paramétrable** : règle `journal_audit` du jeu de paramètres (durée, point de départ « événement » = l'horodatage de chaque ligne ; proposée 3652 jours, la plus longue du double régime). À l'échéance, l'action « sceller » : vérification stricte, export final vérifiable hors base (`comtaple.journal-export/1`), ancre finale chaînée à la précédente, dépôt de l'export et de l'ancre HORS de portée de l'administrateur de la base **(externe : aucune destination indépendante n'existe)**, puis revue humaine documentée : prolonger, ou détruire le journal de ce cabinet par une procédure distincte, jamais automatique.
+3. **Données personnelles** : elles ne doivent pas être dans les lignes (qu'on ne peut réécrire) mais dans les tables modifiables. Les lignes désignent des personnes par `acteur_id` (sans clé étrangère) : la pseudonymisation de la fiche `utilisateurs` rompt le lien sans toucher une ligne. **La simulation révèle des lignes qui contiennent une adresse de courriel** (par exemple l'invitation d'un membre) : elles subsistent telles quelles. Deux voies, à arbitrer avec le DPO : ne plus écrire d'adresse dans les détails du journal (changement de code futur, ne corrige pas l'existant), ou consigner que ces lignes se conservent jusqu'à l'échéance. Rien n'est décidé.
+4. **Éléments conservés** (facturation, restitutions du cabinet, politiques déclarées, procès-verbaux) : règle par catégorie ; à l'échéance, « supprimer » (aucun traitement ne l'exécute : à concevoir avec la même exigence de simulation, rapport et reprise que ci-dessus). Les procès-verbaux portent le nom du cabinet : leur pseudonymisation n'est pas prévue (le nom d'un cabinet est une donnée de personne morale, parfois d'un exercice individuel : à arbitrer).
+5. **Ancres** : l'ancre n'a de valeur que conservée hors de portée de qui administre la base. La simulation n'en dépose aucune.
+
 ### Ce qui est réellement exercé
 
-| | État au 2026-11-19 |
+| | État au 2026-11-20 |
 |---|---|
 | Inventaire, pré-conditions, plan (simulation) | Testés sur une base neuve isolée ; simulés en lecture seule sur la base locale (aucun cabinet n'y remplit les pré-conditions) |
-| Suppression en base, journal, procès-verbal | Exécutés uniquement sur des bases d'essai créées puis supprimées par les tests. **Jamais sur la base locale ni sur des données conservées.** La migration 0038 n'a pas été appliquée à la base locale par ce développement |
-| Suppression des objets | Exercée uniquement contre un stockage factice en mémoire. **Jamais contre un stockage S3**, local ou distant |
-| Sauvegardes, comptes du fournisseur d'identité, journaux techniques | Non traités |
-| Volumes réels | Non mesurés : la durée de la transaction et ses verrous sur un cabinet de plusieurs centaines de milliers de lignes ne sont pas connus |
-| Durées, délai de grâce | Proposés, non arrêtés, sans validation juridique |
+| Durées paramétrables, référence de validation, simulation par table | Testées (10 essais unitaires, 10 sur base neuve) ; simulation lancée en lecture seule sur la base locale |
+| Suppression en base, journal, procès-verbal | Exécutés uniquement sur des bases d'essai créées puis supprimées par les tests. **Jamais sur la base locale ni sur des données conservées.** |
+| Suppression des objets | Exercée réellement contre un bucket S3 d'ESSAI créé par le test (versions, marqueurs, Object Lock gouvernance, reprise, idempotence, autres cabinets intacts, bucket des données inchangé). **Jamais contre le bucket des données.** |
+| Comptes Keycloak | Exercés contre un royaume d'essai créé puis supprimé par le test ; le royaume de développement n'est que lu (nombre de comptes avant et après) |
+| Fiches orphelines | Exercées sur base d'essai uniquement |
+| Rotation des sauvegardes | Exercée sur un répertoire d'essai créé par le test ; simulation seule sur `var/sauvegardes` (rien n'a été retiré) |
+| Fin de vie du journal et des éléments conservés | Conception et simulation seulement |
+| Volume réel | MESURÉ sur base jetable : 50 dossiers, 500 001 lignes d'écriture, 580 220 lignes au total pour le cabinet : transaction de 7,8 s (voir « Mesure de la transaction ») |
+| Durées, délai de grâce | Paramétrables ; valeurs proposées, **non validées** ; validation juridique externe |
+
+### Mesure de la transaction de fin de contrat (D-099)
+
+Essai `packages/db/src/mesure-fin-de-contrat.itest.ts` (activé par `MESURE_FIN_DE_CONTRAT=1`), base jetable `comtaple_essai_mesure_…`, cabinet synthétique : 50 dossiers, **500 001 lignes d'écriture**, 5 001 fichiers, 5 001 documents, 5 001 extractions, 10 001 pages, 5 001 réceptions, 20 001 mouvements bancaires, 5 001 décisions, 20 002 lignes de journal, soit **580 220 lignes** dans les tables du cabinet (base de 254 Mo). Résultats du 2026-11-20 (`var/mesures/fin-de-contrat-2026-11-20.json`), VM Docker 4 cœurs / 5,8 Gio, PostgreSQL 18 aux réglages par défaut (`shared_buffers` 160 Mo, `work_mem` 4 Mo) :
+
+| Mesure | Valeur |
+|---|---|
+| Simulation (lecture seule) | 171 ms (62 ms pour la simulation de conservation) |
+| **Transaction d'exécution réelle** | **7 845 ms** pour 560 210 lignes supprimées (≈ 71 000 lignes/s), dont 5 549 ms pour `lignes_ecriture`, 764 ms pour `documents`, 752 ms pour `entites` ; 20 012 lignes restent (journal, facturation, registres conservés) |
+| Verrous tenus par la transaction (pic) | 584 |
+| Journal écrit (WAL) | 177 152 352 octets (≈ 169 Mio) ; aucun fichier temporaire |
+| Mémoire du processus serveur de la transaction | pic résident 194 Mo, 172 Mo en fin |
+| Mémoire du processus Node de l'outil | 70 Mo avant, pic 84 Mo, tas 33 Mo : elle ne croît pas avec le volume (les suppressions se font côté base) |
+| Sondes de concurrence lancées au début de la transaction | lecture du même cabinet : 24 ms (non bloquée) ; écriture sur un AUTRE cabinet : 6 ms ; insertion au journal d'un AUTRE cabinet : 7 ms ; **écriture sur la ligne du cabinet visé : 7 693 ms (bloquée jusqu'à la fin)** |
+| Vérification stricte du journal après coup | intègre ; 57 ms pour 20 003 lignes |
+
+**Limites de cette mesure** : une seule exécution, sur un poste de développement et une VM, aucune autre charge ; données synthétiques uniformes (50 dossiers identiques, pas de pièces volumineuses, pas de lignes très larges) ; les objets du stockage ne sont pas comptés (étape séparée) ; les index et tables supprimés laissent des lignes mortes que seul l'aspirateur automatique récupérera (non mesuré) ; la durée d'un cabinet de plusieurs millions de lignes ou d'une base managée n'est pas extrapolable. **Constat de conception, établi par un essai** : une ligne ajoutée au journal du cabinet par une AUTRE session pendant l'exécution (le journal n'est pas verrouillé par la transaction) fait tout annuler — le contrôle des décomptes après suppression échoue et la transaction est annulée sans effet ; la reprise exige alors une nouvelle restitution si l'action écrite modifie des données. En exploitation : n'exécuter que sur un cabinet dont l'abonnement est résilié depuis le délai de grâce, donc sans activité (c'est déjà une pré-condition).
 
 ## Notifications internes : archivage et rétention
 
@@ -177,7 +235,7 @@ Cette section remplace l'ancienne mention « aucune durée chiffrée ». Elle PR
 
 1. La table `politiques_conservation` devrait porter ces catégories, avec une durée, un point de départ et un fondement par cabinet ; seule la procédure de fin de contrat la lit, pour refuser une suppression.
 2. Le point de départ « clôture de l'exercice » suppose de rattacher chaque pièce à un exercice : c'est le cas des écritures et des lots, pas de toutes les pièces.
-3. Il manque : l'archivage intermédiaire (retrait des travaux courants avec accès restreint), la purge à l'échéance, la rotation des sauvegardes, le traitement du journal d'audit à son terme. La suppression à la résiliation dispose d'une procédure, non activée (section « Fin de contrat »).
+3. Il manque : l'archivage intermédiaire (retrait des travaux courants avec accès restreint), la purge à l'échéance des éléments conservés, l'exécution de la rotation des sauvegardes sur les sauvegardes réelles, l'exécution de la fin de vie du journal. La suppression à la résiliation dispose d'une procédure, non activée (section « Fin de contrat ») ; la rotation, les comptes et la fin de vie du journal ont des mécanismes paramétrables et des simulations, sans exécution réelle (D-099).
 4. Un original est adressé par son empreinte et peut être partagé entre réceptions (doublon binaire) : une purge doit vérifier qu'aucune autre référence ne subsiste.
 5. Toute purge devra être simulable, journalisée, réversible pendant un délai de grâce, et laisser une trace de ce qui a été détruit sans en conserver le contenu.
 

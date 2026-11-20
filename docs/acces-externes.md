@@ -17,7 +17,7 @@ Liste courte des seuls obstacles que le développement local ne peut pas lever ;
 5. **Destination indépendante des ancres du journal d'audit** (ligne 15) — sans elle, aucun ancrage effectif.
 6. **Accès de services** (lignes 2 à 5 et 11) — applications OAuth Google et Microsoft, jeton OVHcloud (IA et infrastructure), API Légifrance.
 7. **Corpus réel autorisé** (ligne 6) — pièces et FEC réels, pour mesurer l'extraction et l'OCR.
-8. **Validations professionnelles et juridiques** (lignes 7, 8, 12, 13) — contrôles, états, indicateurs, durées de conservation, documents RGPD, grille tarifaire.
+8. **Validations professionnelles et juridiques** (lignes 7, 8, 12, 13) — contrôles, états, indicateurs, **durées de conservation et délai de grâce (mécanisme prêt, valeurs non validées : D-099)**, documents RGPD, grille tarifaire.
 9. **Appareils réels et Safari** — essais sur téléphone et sur Safari lui-même, hors de portée d'un poste de développement.
 
 | # | Action attendue | Qui | Ce qui en dépend | État du code |
@@ -29,7 +29,7 @@ Liste courte des seuls obstacles que le développement local ne peut pas lever ;
 | 5 | Fournir les accès à l'infrastructure cible (OVHcloud, région française) et autoriser la mise en production | Éditeur | Déploiement, sauvegardes gérées, Object Lock | Environnement local uniquement ; aucune ressource payante créée |
 | 6 | Fournir un corpus de pièces et de FEC réels AUTORISÉ, avec les protections adaptées | Cabinet pilote | Calibration de l'extraction et de l'OCR, compatibilité FEC par logiciel | Recette sur jeux synthétiques uniquement |
 | 7 | Valider les contrôles, leurs seuils et leurs formulations | Expert-comptable habilité | Usage professionnel des constats | Catalogue documenté, en attente de validation métier |
-| 8 | Valider les documents RGPD, le contrat de sous-traitance, l'analyse AI Act et les clauses de responsabilité | Avocat / DPO | Commercialisation | Non rédigés (voir `risques.md`) |
+| 8 | Valider les documents RGPD, le contrat de sous-traitance, l'analyse AI Act et les clauses de responsabilité, **et arrêter les durées de conservation, le délai de grâce, la rétention des sauvegardes et le traitement des adresses de courriel du journal** | Avocat / DPO | Commercialisation ; toute exécution réelle de fin de contrat | Non rédigés (voir `risques.md`). Côté code (D-099) : jeu de durées paramétrable (`editeur.mjs durees-defauts` donne le modèle PROPOSÉ NON VALIDÉ), exécution réelle impossible sans `--durees-validees=<référence de l'avis>` ; il ne reste à l'avocat/DPO qu'à remplir et valider le fichier |
 | 9 | Choisir et contractualiser un prestataire d'agrégation bancaire autorisé | Éditeur | Connexion bancaire directe | Non développé ; les imports de fichiers bancaires ne dépendent pas de ce choix |
 | 10 | Mettre en service le royaume Keycloak de production (second facteur exigé par le gabarit) et déclarer le fournisseur d'identité de chaque cabinet pour la fédération SSO | Éditeur | Sécurité des comptes du cabinet | Gabarit de production préparé et essayé en local (TOTP exigé, D-069) ; aucun fournisseur d'identité réel raccordé ; royaume de développement sans MFA (D-016) |
 

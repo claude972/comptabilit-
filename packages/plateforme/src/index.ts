@@ -15,3 +15,6 @@ export * from './notifications-poussees.js';
 export * from './rotation-secrets.js';
 export * from './rotation-vapid.js';
 export * from './simulateur-poussees.js';
+export * from './stockage-essai.js';
+export * from './fournisseur-identite-essai.js';
+export * from './rotation-sauvegardes.js';

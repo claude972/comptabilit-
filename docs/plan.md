@@ -107,6 +107,12 @@ Reste réalisable sans intervention extérieure, non fait (par ordre d'utilité)
 
 Le reste dépend d'une intervention extérieure : liste en tête de `acces-externes.md`.
 
+### Tri des restes au 2026-11-20 : exigé, optionnel, bloqué
+
+- **Exigé par le cahier des charges, local, encore ouvert** : fin de contrat (D-078) — les durées et le délai de grâce relèvent d'une décision juridique (avocat/DPO), la purge reste non écrite ; isolation par le noyau des analyseurs (D-076) — nécessite un environnement conteneur dédié, à concevoir ; relecture humaine de la migration de sécurité 0047 (D-095).
+- **Optionnel (amélioration)** : recherche du plein texte précalculée (gain au-delà de 500 000 lignes) ; pagination de l'écran de revue ; lecture d'un classeur XLSX ; rattachement de composants par import ; archive répartie entre dossiers (D-096, définition à fixer) ; unités d'œuvre, dérogatoire, plus ou moins-value, coefficient majoré (amortissements).
+- **Bloqué par un accès extérieur ou une validation professionnelle** : tout ce qui figure dans `acces-externes.md` (jeton IA, OAuth, déploiement, prestataire bancaire, texte de loi, formulaires du millésime, validations expert-comptable/DPO/avocat) ; le dégressif reste NON ACTIVÉ.
+
 ## État de reprise (au 2026-11-20, réconcilié)
 
 Pour reprendre le travail sans relire l'historique :

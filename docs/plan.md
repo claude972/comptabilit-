@@ -51,15 +51,15 @@ Critères d'acceptation et résultat :
 - [ ] Dépôt d'une archive répartie entre dossiers ; import de 300 dossiers avec de gros fichiers ; charge de plusieurs utilisateurs ou cabinets simultanés.
 - [ ] Agrégation bancaire (prestataire à choisir) ; export vers l'outil de facturation de l'éditeur.
 
-## Lot 3 — Veille et assistant : veille et recherche réalisées, assistant bloqué
+## Lot 3 — Veille et assistant : réalisés en local ; IA, Légifrance et qualification en attente d'accès extérieurs
 
 - [x] Surveillance des sources, détection de changement, évolutions à qualifier par une personne.
 - [x] Applicabilité par dossier, suivi par dossier.
 - [x] Recherche textuelle autorisée.
 - [ ] Accès à l'API officielle de Légifrance (le site refuse l'accès automatisé).
 - [ ] Qualification réelle d'évolutions par une personne compétente.
-- [ ] Assistant documenté (dépend de la passerelle IA).
-- [ ] Recherche vectorielle.
+- [x] Assistant documenté en mode « sans IA », sur un dossier et sur un portefeuille par tranches de vingt (D-079, D-088) ; [ ] version avec modèle : dépend de la passerelle IA (aucun jeton).
+- [x] Recherche textuelle multi-dossiers (D-088) ; passages indexés, vecteurs NULL ; [ ] recherche vectorielle : attend un fournisseur d'embeddings.
 
 ## Lot 4 — Missions et performance : réalisé en local, à valider
 
@@ -72,13 +72,13 @@ Critères d'acceptation et résultat :
 - [ ] Rapprochement avec la facturation réelle.
 - [ ] Validation professionnelle des conventions d'indicateurs.
 
-## Lot 5 — États et fiscalité : amorcé
+## Lot 5 — États et fiscalité : amorcé (dégressif non activé, règles non validées par un professionnel)
 
 - [x] Balance, projets de compte de résultat et de bilan.
 - [x] Écritures d'inventaire proposées (saisie humaine), balance ajustée de travail, export.
 - [ ] Validation professionnelle de la table de correspondance comptes → rubriques.
 - [x] États projetés sur la balance ajustée.
-- [ ] Génération assistée d'écritures d'inventaire ; annexe ; liasse.
+- [x] Écritures d'inventaire proposées (dont amortissements, D-089 à D-092), projet d'annexe, préparation de la liasse ; [ ] génération assistée par IA ; [ ] codes de cases des formulaires du millésime ; [ ] validation professionnelle.
 
 ## Chantier du 2026-11-19 (soir) : relecture complète du cahier des charges
 
@@ -97,7 +97,7 @@ Matrice exigence → implémentation → preuve → reste : `exigences.md`. Réa
 
 Reste réalisable sans intervention extérieure, non fait (par ordre d'utilité) :
 
-1. Persistance de la preuve de connexion de la passerelle IA et route de vérification (inutile tant qu'aucun jeton n'existe).
+1. FAIT (D-087, retiré de la liste) : preuve de connexion de la passerelle IA persistée ; reste seulement l'alerte d'expiration (point 6).
 2. Amortissements (D-089, D-090) : activer le dégressif après lecture du texte de loi et validation par un expert-comptable (`AMORTISSEMENT_DEGRESSIF_ACTIVE`) ; unités d'œuvre, amortissement dérogatoire, plus ou moins-value de cession, coefficient majoré, exercices non annuels en dégressif ; lecture directe d'un classeur XLSX et rattachement de composants par import (la reprise du fichier des immobilisations par CSV est faite, D-092).
 3. Assistant et recherche de portefeuille (D-079, D-088) : recherche par similarité quand des vecteurs réels existeront ; recherche multi-dossiers : coût par ligne dû aux politiques RLS (`app_niveau_entite` évaluée ligne à ligne, D-094), à traiter par une politique ensembliste (changement de sécurité à faire valider) avant d'approcher 500 000 lignes de portefeuille ; mesure sur un portefeuille RÉEL.
 4. Tiers et factures (D-077, D-084) : tolérances de montant ; règlements groupés non lettrés ; sort de l'ancienne table `factures`, jamais alimentée.
@@ -107,11 +107,11 @@ Reste réalisable sans intervention extérieure, non fait (par ordre d'utilité)
 
 Le reste dépend d'une intervention extérieure : liste en tête de `acces-externes.md`.
 
-## État de reprise (au 2026-11-19)
+## État de reprise (au 2026-11-20, réconcilié)
 
 Pour reprendre le travail sans relire l'historique :
 
-- **Code** : branche `main`, publiée sur le dépôt distant (accord de l'utilisateur du 2026-11-19, qui couvre les corrections de la CI). Intégration continue réussie, Chromium, WebKit et Firefox compris, au run 44654259397 sur le commit 7f81f14 (D-063, D-073, D-082) ; suivre une exécution : API publique `actions/runs` et annotations du job (pas de jeton sur ce poste).
+- **Code** : branche `main`, publiée sur le dépôt distant (accord de l'utilisateur du 2026-11-19, qui couvre les corrections de la CI). Dernière intégration continue vérifiée verte, Chromium, WebKit et Firefox compris : commit 0b9a229 (run 44707536419) ; les lots suivants (D-093, D-094, commit 86ffed2 et après) sont à vérifier dans `git log` et l'API publique des runs ; la CI est rouge de temps à autre sur des courses de tests qu'il faut corriger, pas masquer ; suivre une exécution : API publique `actions/runs` et annotations du job (pas de jeton sur ce poste).
 - **Démarrer** : `source ~/.comtaple-outils/env.sh`, `colima start` si Docker ne répond pas, `pnpm run services:up`, `pnpm run build`, `scripts/applis.sh demarrer` (API 4000, worker, web 3100). Le worker tourne avec un tas plafonné à 2 048 Mo.
 - **Vérifier** : `pnpm run typecheck`, `pnpm run test`, puis les suites d'intégration (`pnpm --filter @comtaple/db|api|worker run test:integration`) et navigateur (`rapport-de-tests.md` donne les commandes et les derniers résultats).
 - **Sauvegarder et essayer une restauration** : `scripts/sauvegarder.sh` (jeu cohérent), `scripts/essai-restauration.sh`, `scripts/essai-restauration-chiffree.sh` (clé éphémère). Ces essais sortent en code 3 sur cette base : c'est attendu (voir ci-dessous).
@@ -120,6 +120,7 @@ Pour reprendre le travail sans relire l'historique :
 - **Reste local connu** : liste ci-dessus (« Reste réalisable sans intervention extérieure »). Ce qui exige une intervention extérieure : `acces-externes.md`, section « En bref ».
 - **Disque de la machine Docker** : 50 Go depuis le 2026-11-20 (il en avait 30 et le stockage de test, ≈ 20 Go, l'avait saturé). Agrandir = `colima stop`, `colima start --disk <Go>`, puis `pnpm run services:up` (seuls certains conteneurs repartent seuls), puis `scripts/applis.sh demarrer`. Le stockage de test grossit à chaque campagne : surveiller l'espace.
 - **Fonctions préparées mais désactivées par défaut** (aucune variable n'est définie dans le fichier d'environnement local) : traces OpenTelemetry (`OTEL_EXPORTER_OTLP_ENDPOINT`), notifications poussées (`PUSH_VAPID_*`), agrégation bancaire, IA. La procédure de fin de contrat n'a jamais été exécutée et ne fait que simuler sans `--appliquer`.
+- **Troisième ensemble de lots du 2026-11-20** (D-083 à D-094) : traces conservées et essayées avec Grafana, destinataire lu, corrigé et réanalysé (D-084, D-091), isolation des relevés et FEC, cycle de vie des notifications poussées, preuve de connexion IA persistée, dégressif corrigé et NON ACTIVÉ (D-089, D-090, `docs/sources-officielles.md`), reprise des immobilisations par CSV (D-092), plafonds de l'API et mesure d'un portefeuille de 300 dossiers (D-093, D-094).
 - **Seconde relecture du cahier des charges** (D-074 à D-081) : traces, contrôles en flux, analyse isolée, tiers et factures, fin de contrat, assistant de portefeuille, suggestions tirées des corrections, notifications poussées — tous publiés, CI verte.
 - **IA** : aucune n'est connectée ; l'assistant répond « sans IA ». Ne jamais activer un jeton sans les vérifications de `packages/ia/docs/passerelle.md` § 7.
 - **Migrations** : 0000 à 0046 (aucune migration 0047 : aucun index n'aurait corrigé le défaut de recherche mesuré, D-094 ; 0038 crée le registre des fins de contrat, vide : aucune fin de contrat n'a été exécutée) ; les tests de base les rejouent toutes sur une base neuve.

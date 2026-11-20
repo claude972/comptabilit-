@@ -6,7 +6,9 @@ export function Carte({ className, ...reste }: HTMLAttributes<HTMLDivElement>) {
   return <div className={cn('rounded-xl border border-bordure bg-surface p-4 sm:p-5', className)} {...reste} />;
 }
 
-const styleEtiquette = cva('inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-sm font-medium whitespace-nowrap', {
+// Une étiquette longue passe à la ligne plutôt que de déborder de l'écran (défaut constaté à 360 px sous WebKit, D-082) :
+// elle ne dépasse jamais la largeur de son conteneur.
+const styleEtiquette = cva('inline-flex max-w-full items-center gap-1 rounded-2xl border px-2.5 py-0.5 text-sm font-medium whitespace-normal', {
   variants: {
     ton: {
       neutre: 'bg-neutre-fond text-neutre-texte border-transparent',

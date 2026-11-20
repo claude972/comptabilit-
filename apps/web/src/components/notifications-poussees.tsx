@@ -9,7 +9,7 @@ import { formaterHorodatage } from '@/lib/montants';
 import { type CapacitesNavigateur, cleServeur, empreintePointAcces, type EtatAppareil, etatAppareil, type EtatServicePoussees } from '@/lib/notifications-poussees';
 
 /** Relève ce que le navigateur sait faire. Ne demande JAMAIS l'autorisation : la demande n'a lieu que sur un geste (bouton). */
-async function releverCapacites(): Promise<CapacitesNavigateur> {
+async function releverCapacites(serviceActif: boolean): Promise<CapacitesNavigateur> {
   const ua = navigator.userAgent;
   const c: CapacitesNavigateur = {
     serviceWorker: 'serviceWorker' in navigator,
@@ -22,13 +22,26 @@ async function releverCapacites(): Promise<CapacitesNavigateur> {
     empreinteLocale: null,
   };
   if (!c.serviceWorker || !c.pushManager) return c;
+  // Tant que le service n'a pas activé les notifications poussées (état réel par défaut), le navigateur n'est PAS
+  // interrogé sur son service worker ni sur un abonnement : c'est inutile, et sous le moteur WebKit piloté par les tests
+  // cette interrogation figeait la page des notifications (constaté en CI, run 44646499061).
+  if (!serviceActif) return c;
   // L'enregistrement du service worker est lancé au chargement de l'application : on lui laisse quelques secondes avant
   // de conclure qu'il n'y en a pas (mode développement, navigation privée, réglage du navigateur).
   const enregistrement =
     (await navigator.serviceWorker.getRegistration().catch(() => undefined)) ??
     (await Promise.race([navigator.serviceWorker.ready, new Promise<undefined>((r) => setTimeout(() => r(undefined), 4000))]).catch(() => undefined));
   c.serviceWorkerEnregistre = Boolean(enregistrement);
-  const abonnement = await enregistrement?.pushManager.getSubscription().catch(() => null);
+  // Lecture de l'abonnement bornée dans le temps et protégée : un navigateur qui ne répond pas, ou qui lève, ne doit ni
+  // figer ni casser l'écran — l'appareil est alors simplement considéré comme non abonné.
+  const lire = async () => {
+    try {
+      return (await enregistrement?.pushManager.getSubscription()) ?? null;
+    } catch {
+      return null;
+    }
+  };
+  const abonnement = await Promise.race([lire(), new Promise<null>((r) => setTimeout(() => r(null), 3000))]);
   if (abonnement) c.empreinteLocale = await empreintePointAcces(abonnement.endpoint);
   return c;
 }
@@ -43,7 +56,8 @@ export function NotificationsPoussees({ etat }: { etat: EtatServicePoussees }) {
   const [occupe, setOccupe] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [succes, setSucces] = useState<string | null>(null);
-  const relever = useCallback(() => releverCapacites().then(setCapacites, () => setCapacites(null)), []);
+  const serviceActif = etat.activees;
+  const relever = useCallback(() => releverCapacites(serviceActif).then(setCapacites, () => setCapacites(null)), [serviceActif]);
   useEffect(() => {
     void relever();
   }, [relever]);

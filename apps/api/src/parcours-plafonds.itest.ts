@@ -69,6 +69,18 @@ function facture(graine: number, numero: string, date: string): string[] {
 /** Retire ce qui change à chaque appel (horodatages) avant de comparer deux réponses. */
 const stable = (v: unknown): unknown => JSON.parse(JSON.stringify(v, (cle, x) => (cle === 'mesureLe' ? undefined : x)));
 
+/**
+ * Retire de la réponse tout ce qui relève de la colonne N-1 (comparatif, valeurs `n1`, indication d'exercice précédent
+ * fourni, réserves « N-1 ») : c'est la seule chose qui change quand le plafond écarte l'exercice précédent.
+ */
+const sansN1 = (v: unknown): unknown => {
+  const ESSAI_N1 = /^(Colonne N-1 indisponible|Exercice N-1)/;
+  return JSON.parse(JSON.stringify(stable(v), (cle, x) => {
+    if (cle === 'comparatif' || cle === 'n1' || cle === 'exercicePrecedentFourni' || cle === 'motifExercicePrecedentNonFourni') return undefined;
+    return Array.isArray(x) ? x.filter((e) => !(typeof e === 'string' && ESSAI_N1.test(e))) : x;
+  }));
+};
+
 beforeAll(async () => {
   await ouvrirSessions();
   editeur = new pg.Client({ connectionString: urlBd('admin') });
@@ -168,7 +180,15 @@ describe('plafonds des calculs immédiats : sous le plafond, résultat identique
       expect(reference.statut, `${nom} (référence)`).toBe(200);
       const r = await sur(juste, qui, 'GET', chemin);
       expect(r.statut, nom).toBe(200);
-      expect(stable(r.json), nom).toEqual(stable(reference.json));
+      // La colonne N-1 est la seule différence légitime : au plafond de l'exercice seul, l'exercice précédent ne tient
+      // plus avec lui et n'est pas lu (motif dit) ; tout le reste, chiffres de N compris, doit être identique.
+      expect(sansN1(r.json), nom).toEqual(sansN1(reference.json));
+      const cmp = (j: unknown): { statut: string; motifs?: string[] } | undefined => (j as { comparatif?: { statut: string; motifs?: string[] } }).comparatif;
+      if (cmp(reference.json) !== undefined) {
+        expect(cmp(reference.json), `${nom} (comparatif de référence)`).toMatchObject({ statut: 'fourni' });
+        expect(cmp(r.json), `${nom} (comparatif sous plafond)`).toMatchObject({ statut: 'indisponible' });
+        expect(JSON.stringify(cmp(r.json)?.motifs), nom).toMatch(/exercice précédent .* n’a pas été lu .* dépasserait le plafond/);
+      }
     }
   });
 

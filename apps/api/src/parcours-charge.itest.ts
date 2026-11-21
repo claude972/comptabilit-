@@ -13,7 +13,7 @@ import { DEMO } from '@comtaple/db/amorcer';
 import { ouvrirEssai } from '@comtaple/db/provisionnement';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { apiCabinet, attendre, deposerCabinet, ouvrirSessions, pdfTexte, percentile } from './essais/outils.js';
+import { apiCabinet, attendre, deposerCabinet, ouvrirSessions, pdfTexte, percentile, sha } from './essais/outils.js';
 
 const SEL = randomBytes(4).toString('hex');
 const EX = { debut: '2025-01-01', fin: '2025-12-31' };
@@ -124,21 +124,46 @@ describe('dépôts simultanés : 12 sessions dans 3 cabinets', () => {
   it('la MÊME personne qui rouvre le même fichier pendant que son dépôt est ouvert reprend ce dépôt : une seule réception par téléversement, jamais de réception perdue', async () => {
     const c = cabs[0]!;
     const pdf = pdfTexte(['Facture identique bis', `Reprise ${SEL}`, 'Total TTC : 11,00 €'], `${SEL}-reprise`);
-    // Alice, remi, alice, remi, chloe, client, tous en même temps. Selon l'instant, la seconde ouverture d'alice voit ou non
-    // le premier dépôt encore ouvert : on n'attend donc pas un nombre fixe, mais l'invariant (une réception exactement par
-    // téléversement distinct, une même personne ne dépassant jamais ses clôtures) et l'absence d'erreur.
-    const res = await Promise.all(['alice', 'remi', 'alice', 'remi', 'chloe', 'client'].map((q, i) => deposerCabinet(q, c.id, c.dossier, pdf, {}, `reprise-${i}.pdf`)));
-    expect(res.map((r) => r.fin?.statut)).toEqual(Array(6).fill(200));
-    const sessions = new Set(res.map((r) => r.fin!.json.id as string));
-    expect(sessions.size).toBeGreaterThanOrEqual(4);
-    expect(sessions.size).toBeLessThanOrEqual(6);
-    const ids = new Set(res.map((r) => r.fin!.json.documentId));
+    // Déterministe : les six ouvertures se font l'une après l'autre AVANT toute clôture. Alice et remi rouvrent donc le
+    // fichier alors que leur premier dépôt est encore ouvert : chacun REPREND son dépôt (même téléversement), soit
+    // quatre téléversements distincts exactement. Les quatre sont téléversés et clos en même temps ; la clôture de chaque
+    // reprise est ensuite rejouée (réponse « complet », information de doublon restituée) : jamais de réception perdue.
+    const corps = (i: number) => ({ entiteId: c.dossier, nomFichier: `reprise-${i}.pdf`, taille: pdf.length, sha256: sha(pdf), canal: 'ordinateur' });
+    const demandeurs = ['alice', 'remi', 'alice', 'remi', 'chloe', 'client'];
+    const ouvertures: Array<{ qui: string; o: Awaited<ReturnType<typeof apiCabinet>> }> = [];
+    for (const [i, qui] of demandeurs.entries()) ouvertures.push({ qui, o: await apiCabinet(qui, c.id, 'POST', '/v1/televersements', corps(i)) });
+    expect(ouvertures.map((x) => x.o.statut)).toEqual(Array(6).fill(201));
+    const sessions = new Set(ouvertures.map((x) => x.o.json.id as string));
+    expect(sessions.size).toBe(4);
+    expect(ouvertures[2]!.o.json.id).toBe(ouvertures[0]!.o.json.id); // alice reprend son dépôt
+    expect(ouvertures[3]!.o.json.id).toBe(ouvertures[1]!.o.json.id); // remi reprend le sien
+    const uniques = ouvertures.filter((x, i) => ouvertures.findIndex((y) => y.o.json.id === x.o.json.id) === i);
+    const cloture = async (x: (typeof ouvertures)[number]) => {
+      for (let decalage = x.o.json.octetsRecus as number; decalage < pdf.length; ) {
+        const m = await apiCabinet(x.qui, c.id, 'PUT', `/v1/televersements/${x.o.json.id}/morceaux?decalage=${decalage}`, pdf.subarray(decalage, decalage + x.o.json.tailleMorceau));
+        expect(m.statut).toBe(200);
+        decalage = m.json.octetsRecus;
+      }
+      return apiCabinet(x.qui, c.id, 'POST', `/v1/televersements/${x.o.json.id}/terminer`);
+    };
+    const premieres = await Promise.all(uniques.map(cloture));
+    const rejouees = [];
+    for (const x of ouvertures.filter((y) => !uniques.includes(y))) rejouees.push(await apiCabinet(x.qui, c.id, 'POST', `/v1/televersements/${x.o.json.id}/terminer`));
+    expect([...premieres, ...rejouees].map((r) => r.statut)).toEqual(Array(6).fill(200));
+    expect(new Set(premieres.map((r) => r.json.id)).size).toBe(4);
+    const ids = new Set(premieres.map((r) => r.json.documentId));
     expect(ids.size).toBe(1);
     const n = (await editeur.query(`select count(distinct d.id)::int as docs, count(r.id)::int as receptions from documents d left join receptions r on r.document_id = d.id where d.id = $1`, [[...ids][0]])).rows[0];
-    expect(n).toEqual({ docs: 1, receptions: sessions.size });
+    expect(n).toEqual({ docs: 1, receptions: 4 });
     const parTele = (await editeur.query(`select count(*)::int as n from receptions r where r.document_id = $1 and r.provenance->>'televersementId' = any($2::text[])`, [[...ids][0], [...sessions]])).rows[0].n;
-    expect(parTele).toBe(sessions.size); // une réception, ni plus ni moins, par téléversement
-    expect(res.filter((r) => r.fin!.json.doublonBinaire === false)).toHaveLength(1);
+    expect(parTele).toBe(4); // une réception, ni plus ni moins, par téléversement
+    expect(premieres.filter((r) => r.json.doublonBinaire === false)).toHaveLength(1); // une seule première réception
+    // La clôture rejouée restitue le même résultat que la clôture d'origine du même téléversement.
+    for (const r of rejouees) {
+      const origine = premieres.find((p) => p.json.id === r.json.id)!;
+      expect(r.json.documentId).toBe(origine.json.documentId);
+      expect(r.json.doublonBinaire).toBe(origine.json.doublonBinaire);
+    }
   });
 });
 

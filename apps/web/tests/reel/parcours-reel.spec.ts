@@ -70,8 +70,12 @@ test('téléphone (émulation) : photo → envoi → « Reçu » confirmé par l
 
   const recu = page.getByTestId('liste-recus').getByRole('listitem');
   await expect(recu).toContainText('Reçu', { timeout: 60_000 });
-  await recu.getByRole('link', { name: 'Suivre cette pièce' }).click();
-  await expect(page).toHaveURL(/\/depots\/[0-9a-f-]{36}/);
+  // Firefox interrompt parfois une navigation lancée juste après l'envoi (NS_BINDING_ABORTED, vu en CI) : on la reprend
+  // tant que la page de suivi n'est pas atteinte.
+  await expect(async () => {
+    if (!/\/depots\/[0-9a-f-]{36}/.test(page.url())) await recu.getByRole('link', { name: 'Suivre cette pièce' }).click();
+    await expect(page).toHaveURL(/\/depots\/[0-9a-f-]{36}/, { timeout: 5_000 });
+  }).toPass({ timeout: 30_000, intervals: [1_000] });
 
   // L'analyse (antivirus, OCR, extraction) est asynchrone : on recharge jusqu'au statut « À contrôler ».
   await expect(async () => {

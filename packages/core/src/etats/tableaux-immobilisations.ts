@@ -686,7 +686,7 @@ function ctrl(code: string, ecart: Decimal | null, ok: string, ko: string, nonVe
 
 const RESERVES = [
   'Projet calculé sur les écritures importées, AVANT écritures d’inventaire : les dotations de la clôture non encore comptabilisées n’y figurent pas.',
-  'Lignes, colonnes et codes de cases : relus sur le formulaire du millésime 2026 (PDF officiel du 2026-11-20) par extraction de texte ; les codes sont « lus, à confirmer » (le symbole Ø est un zéro barré). Arrondi à l’euro non pratiqué : montants au centime.',
+  'Lignes, colonnes et codes de cases : relus sur le formulaire du millésime 2026 (PDF officiel du 2026-11-20) par extraction de texte ; les codes sont « lus, à confirmer » (le symbole Ø est un zéro barré). Montants restitués au centime ; l’écran propose l’affichage en euros entiers (montants exacts inchangés).',
   'Rattachement des comptes aux lignes : convention interne fondée sur la numérotation du PCG, non validée par un professionnel ; les comptes non rattachés sont affichés « non ventilés », hors totaux.',
   'Augmentations et diminutions = mouvements débit et crédit des comptes hors à-nouveaux : ils comprennent virements de poste à poste, extournes et corrections ; les réévaluations ne sont pas distinguées.',
   'Les dotations aux dépréciations (comptes 29) relèvent du tableau 2056, non couvert : elles ne figurent pas dans les amortissements.',

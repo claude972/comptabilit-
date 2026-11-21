@@ -324,7 +324,7 @@ function lignesReelNormal(c: CorrespondanceRubriques): LigneLiasseDefinition[] {
 const INFOS_COMMUNES_PARTIEL = [
   'Montants de l’exercice précédent (colonne N-1) : non alimentés.',
   'Renvois et cadres de bas de tableau (« dont… », parts à plus ou moins d’un an, crédit-bail, etc.) : non alimentés.',
-  'Arrondi à l’euro : non pratiqué (montants au centime).',
+  'Arrondi à l’euro : l’API restitue les montants au centime ; l’écran propose l’affichage en euros entiers (arrondi à l’euro le plus proche, 0,50 compté pour 1, notices 2026), sans modifier les montants exacts.',
   'Codes de cases du formulaire : à confirmer sur le millésime.',
 ];
 
@@ -347,17 +347,17 @@ const MOTIF_2033C_PARTIEL =
 const INFOS_2054_RESTE = [
   'Ventilation des diminutions entre virements de poste à poste et cessions ou mises hors service lorsque les mouvements de crédit ne sont pas nuls.',
   'Réévaluations (colonne 2 du cadre A, colonne 4 du cadre B) et mises en équivalence ; montants « dont composants ».',
-  'Codes de cases : lus sur le formulaire du millésime 2026 par extraction de texte, à confirmer visuellement ; arrondi à l’euro non pratiqué.',
+  'Codes de cases : lus sur le formulaire du millésime 2026 par extraction de texte, à confirmer visuellement ; affichage en euros entiers proposé à l’écran (montants exacts inchangés).',
 ];
 const INFOS_2055_RESTE = [
   'Cadre B : ventilation des mouvements de la provision pour amortissements dérogatoires (compte 145) par origine ; cadre C : charges réparties sur plusieurs exercices.',
   'Ligne de suivi de la déductibilité des amortissements des fonds commerciaux acquis du 1er janvier 2022 au 31 décembre 2025 (notice 2032-NOT-SD) : non préparée.',
-  'Codes de cases : lus sur le formulaire du millésime 2026 par extraction de texte, à confirmer visuellement ; arrondi à l’euro non pratiqué.',
+  'Codes de cases : lus sur le formulaire du millésime 2026 par extraction de texte, à confirmer visuellement ; affichage en euros entiers proposé à l’écran (montants exacts inchangés).',
 ];
 const INFOS_2033C_RESTE = [
   'Cadre III : nature des immobilisations cédées, valeur d’actif, amortissements, prix de cession, plus-values et moins-values à court et long terme, régularisations.',
   'Réévaluation légale (colonne 5 du cadre I), sans code de case au formulaire : à saisir.',
-  'Codes de cases : lus sur le formulaire du millésime 2026 par extraction de texte, à confirmer visuellement ; arrondi à l’euro non pratiqué.',
+  'Codes de cases : lus sur le formulaire du millésime 2026 par extraction de texte, à confirmer visuellement ; affichage en euros entiers proposé à l’écran (montants exacts inchangés).',
 ];
 const INFOS_PROVISIONS = ['Dotations et reprises de l’exercice par nature de provision, distinction des reprises utilisées et non utilisées.', 'Caractère déductible ou non de chaque provision.'];
 const INFOS_ECHEANCES = ['Ventilation de chaque créance et de chaque dette par échéance (à un an au plus, à plus d’un an, à plus de cinq ans).', 'Emprunts souscrits et remboursés dans l’exercice, prêts accordés et remboursements obtenus.'];

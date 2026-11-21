@@ -52,6 +52,16 @@ export function versChaine(d: Decimal, echelle = 2): ChaineDecimale {
   return /^-0(\.0+)?$/.test(s) ? s.slice(1) : s;
 }
 
+/**
+ * Arrondit une chaîne décimale à l'euro le plus proche, comme l'exigent les tableaux fiscaux (notices 2032-NOT-SD et
+ * 2033-NOT-SD, millésime 2026 : « arrondies à l'euro le plus proche ; la fraction d'euro égale 0,50 est comptée pour 1 »).
+ * Valeur pour l'AFFICHAGE de présentation : jamais un remplacement du montant exact. La notice ne dit rien des montants
+ * négatifs : la demi-unité s'éloigne de zéro, comme partout dans Comtaple, et c'est une convention, pas une règle lue.
+ */
+export function arrondirALEuro(v: ChaineDecimale): ChaineDecimale {
+  return versChaine(dec(v), 0);
+}
+
 const ESPACES = /[     ]/g;
 
 function groupesDeTroisValides(partieEntiere: string, sep: string): boolean {

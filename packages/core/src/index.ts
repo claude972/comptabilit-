@@ -1,7 +1,7 @@
 /** @comtaple/core — moteur métier déterministe et pur (aucun accès réseau, base ou fichier). */
 
 // 1. montant
-export { analyserMontantFr, dec, estChaineDecimale, estNul, schemaChaineDecimale, somme, versChaine } from './montant.js';
+export { analyserMontantFr, arrondirALEuro, dec, estChaineDecimale, estNul, schemaChaineDecimale, somme, versChaine } from './montant.js';
 export type { ChaineDecimale } from './montant.js';
 
 // 2. identifiants

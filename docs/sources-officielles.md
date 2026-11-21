@@ -84,3 +84,7 @@ sh scripts/verifier-sources-bofip.sh
 
 À rejouer avant toute activation du dégressif, de la liasse ou de l'annexe, et périodiquement : un document republié apparaît
 en « OBSOLÈTE » ; il faut alors relire le document et réviser la règle correspondante avant de poursuivre.
+
+## 6. Arrondi à l'euro des tableaux (D-105, 2026-11-21)
+
+Lu dans les notices du millésime 2026 téléchargées le 2026-11-21 sur impots.gouv.fr (sans compte ; SHA-256 identiques à ceux du § 4) : `2032-not-sd_5323.pdf` (régime réel normal) et `2033-sd_5395.pdf` (notice du régime simplifié), rubrique « Indication des montants en euros » et « Les arrondis fiscaux » : tableaux sans centimes ; arrondi à l'euro le plus proche, 0,50 compté pour 1. Non établis : arrondi des totaux, montants négatifs. Texte extrait par programme, non vérifié visuellement.

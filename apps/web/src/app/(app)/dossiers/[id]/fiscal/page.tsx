@@ -5,7 +5,9 @@ import { ErreurAcces } from '@/components/erreurs';
 import { CategorieAnnexe, ConfirmerRubrique } from '@/components/fiscal/actions';
 import { Alerte, Carte, Etiquette, MentionProjet, SousTitre, Tableau } from '@/components/ui/base';
 import { type Abstention, type AnnexeProjet, type CelluleImmobilisation, LIBELLE_CATEGORIE, type LiasseProjet, type ReponseAnnexe, type ReponseLiasse, type TableauxImmobilisationsProjet } from '@/lib/fiscal';
-import { formaterHorodatage, formaterMontant } from '@/lib/montants';
+import { formaterHorodatage, formaterMontant, formaterMontantEuros } from '@/lib/montants';
+
+type Fm = (valeur: string | null | undefined) => string;
 import { tenter } from '@/lib/serveur/api';
 import { parametre } from '@/lib/serveur/donnees';
 import { contexteDossier, contexteExercice } from '@/lib/serveur/dossier';
@@ -30,7 +32,7 @@ function BlocAbstention({ a, quoi }: { a: Abstention; quoi: string }) {
   );
 }
 
-function Liasse({ l }: { l: LiasseProjet }) {
+function Liasse({ l, fm }: { l: LiasseProjet; fm: Fm }) {
   return (
     <div className="space-y-4" data-testid="liasse">
       <Alerte ton="attention" titre="Projet incomplet par construction">
@@ -68,7 +70,7 @@ function Liasse({ l }: { l: LiasseProjet }) {
         {l.controles.map((c) => (
           <li key={c.code}>
             <Etiquette ton={c.statut === 'ok' ? 'succes' : c.statut === 'ecart' ? 'danger' : 'attention'}>{c.statut === 'ok' ? 'Cohérent' : c.statut === 'ecart' ? 'Écart' : 'Non vérifiable'}</Etiquette> {c.message}
-            {c.ecart ? ` (écart : ${formaterMontant(c.ecart)})` : ''}
+            {c.ecart ? ` (écart : ${fm(c.ecart)})` : ''}
           </li>
         ))}
       </ul>
@@ -105,12 +107,12 @@ function Liasse({ l }: { l: LiasseProjet }) {
                     <td>{x.codeCase ?? <span className="text-texte-doux">à confirmer</span>}</td>
                     {deuxColonnes ? (
                       <>
-                        <td className="text-right tabular-nums">{x.brut !== undefined ? formaterMontant(x.brut) : ''}</td>
-                        <td className="text-right tabular-nums">{x.amortissementsDepreciations !== undefined ? formaterMontant(x.amortissementsDepreciations) : ''}</td>
+                        <td className="text-right tabular-nums">{x.brut !== undefined ? fm(x.brut) : ''}</td>
+                        <td className="text-right tabular-nums">{x.amortissementsDepreciations !== undefined ? fm(x.amortissementsDepreciations) : ''}</td>
                       </>
                     ) : null}
-                    <td className="text-right tabular-nums">{formaterMontant(x.montant)}</td>
-                    {avecN1 ? <td className="text-right tabular-nums" data-n1={x.ligne}>{formaterMontant(x.n1?.montant)}</td> : null}
+                    <td className="text-right tabular-nums">{fm(x.montant)}</td>
+                    {avecN1 ? <td className="text-right tabular-nums" data-n1={x.ligne}>{fm(x.n1?.montant)}</td> : null}
                   </tr>
                 ))}
               </tbody>
@@ -124,12 +126,12 @@ function Liasse({ l }: { l: LiasseProjet }) {
           <ul className="list-disc pl-5">
             {l.comptesNonAffectes.map((c) => (
               <li key={c.compteNum}>
-                Compte {c.compteNum} {c.compteLib} : {formaterMontant(c.solde)}
+                Compte {c.compteNum} {c.compteLib} : {fm(c.solde)}
               </li>
             ))}
             {l.rubriquesNonAffectees.map((r) => (
               <li key={r.code}>
-                {r.libelle} : {formaterMontant(r.montant)} — {r.motif}
+                {r.libelle} : {fm(r.montant)} — {r.motif}
               </li>
             ))}
           </ul>
@@ -156,24 +158,24 @@ function Liasse({ l }: { l: LiasseProjet }) {
 }
 
 
-function CelluleMontant({ c, avecN1 }: { c: CelluleImmobilisation | undefined; avecN1: boolean }) {
+function CelluleMontant({ c, avecN1, fm }: { c: CelluleImmobilisation | undefined; avecN1: boolean; fm: Fm }) {
   if (c === undefined) return <td />;
   return (
     <td className="text-right tabular-nums" data-statut={c.statut}>
       {c.montant !== null ? (
-        formaterMontant(c.montant)
+        fm(c.montant)
       ) : (
         <span className="text-texte-doux" title={c.motif ?? undefined}>
           {c.statut === 'a_saisir' ? 'à saisir' : 'non établi'}
         </span>
       )}
-      {avecN1 && c.n1 !== null ? <span className="block text-xs text-texte-doux">N-1 : {formaterMontant(c.n1)}</span> : null}
+      {avecN1 && c.n1 !== null ? <span className="block text-xs text-texte-doux">N-1 : {fm(c.n1)}</span> : null}
       <span className="block text-xs text-texte-doux">{c.codeCase !== null ? `case ${c.codeCase} (lue, à confirmer)` : ''}</span>
     </td>
   );
 }
 
-function ImmobilisationsLiasse({ t }: { t: TableauxImmobilisationsProjet | Abstention }) {
+function ImmobilisationsLiasse({ t, fm }: { t: TableauxImmobilisationsProjet | Abstention; fm: Fm }) {
   if (t.statut === 'abstention') return <BlocAbstention a={t} quoi="Tableaux d’immobilisations et d’amortissements" />;
   const avecN1 = t.comparatif.statut === 'fourni';
   return (
@@ -226,7 +228,7 @@ function ImmobilisationsLiasse({ t }: { t: TableauxImmobilisationsProjet | Abste
         {t.controles.map((c) => (
           <li key={c.code}>
             <Etiquette ton={c.statut === 'ok' ? 'succes' : c.statut === 'ecart' ? 'danger' : 'attention'}>{c.statut === 'ok' ? 'Cohérent' : c.statut === 'ecart' ? 'Écart' : 'Non vérifiable'}</Etiquette> {c.message}
-            {c.ecart && c.statut === 'ecart' ? ` (écart : ${formaterMontant(c.ecart)})` : ''}
+            {c.ecart && c.statut === 'ecart' ? ` (écart : ${fm(c.ecart)})` : ''}
           </li>
         ))}
       </ul>
@@ -262,19 +264,19 @@ function ImmobilisationsLiasse({ t }: { t: TableauxImmobilisationsProjet | Abste
                           <ul className="list-disc pl-5">
                             {l.comptes.map((c) => (
                               <li key={c.compteNum}>
-                                {c.compteNum} {c.compteLib} : ouverture {formaterMontant(c.ouverture)}, augmentations {formaterMontant(c.augmentations)}, diminutions {formaterMontant(c.diminutions)}, clôture {formaterMontant(c.cloture)}
+                                {c.compteNum} {c.compteLib} : ouverture {fm(c.ouverture)}, augmentations {fm(c.augmentations)}, diminutions {fm(c.diminutions)}, clôture {fm(c.cloture)}
                               </li>
                             ))}
                             {l.fichierBrut ? (
                               <li>
-                                Fichier : {l.fichierBrut.nbImmobilisations} immobilisation(s), valeur brute à la clôture {formaterMontant(l.fichierBrut.valeurBruteCloture)}, écart avec la balance {formaterMontant(l.fichierBrut.ecartCloture)}.{' '}
+                                Fichier : {l.fichierBrut.nbImmobilisations} immobilisation(s), valeur brute à la clôture {fm(l.fichierBrut.valeurBruteCloture)}, écart avec la balance {fm(l.fichierBrut.ecartCloture)}.{' '}
                                 {l.fichierBrut.motifs.join(' ')}
                               </li>
                             ) : null}
                             {l.fichierAmortissements ? (
                               <li>
-                                Fichier : amortissements à l’ouverture {formaterMontant(l.fichierAmortissements.amortissementsOuverture)} (écart {formaterMontant(l.fichierAmortissements.ecartOuverture)}) ; dotation calculée par le moteur{' '}
-                                {formaterMontant(l.fichierAmortissements.dotationCalculee)}, comptabilisée {formaterMontant(l.fichierAmortissements.dotationComptabilisee)} (écart {formaterMontant(l.fichierAmortissements.ecartDotation)}).{' '}
+                                Fichier : amortissements à l’ouverture {fm(l.fichierAmortissements.amortissementsOuverture)} (écart {fm(l.fichierAmortissements.ecartOuverture)}) ; dotation calculée par le moteur{' '}
+                                {fm(l.fichierAmortissements.dotationCalculee)}, comptabilisée {fm(l.fichierAmortissements.dotationComptabilisee)} (écart {fm(l.fichierAmortissements.ecartDotation)}).{' '}
                                 {l.fichierAmortissements.motifs.join(' ')}
                               </li>
                             ) : null}
@@ -283,7 +285,7 @@ function ImmobilisationsLiasse({ t }: { t: TableauxImmobilisationsProjet | Abste
                       ) : null}
                     </th>
                     {cadre.colonnes.map((c) => (
-                      <CelluleMontant key={c.cle} c={l.cellules[c.cle]} avecN1={avecN1} />
+                      <CelluleMontant key={c.cle} c={l.cellules[c.cle]} avecN1={avecN1} fm={fm} />
                     ))}
                   </tr>
                 ))}
@@ -409,7 +411,10 @@ export default async function PageFiscal({ params, searchParams }: { params: Pro
   const exercice = ex.exercice;
   const vue = parametre(sp.vue) === 'annexe' ? 'annexe' : 'liasse';
   const regime = parametre(sp.regime) === 'reel_simplifie' ? 'reel_simplifie' : 'reel_normal';
+  const euros = parametre(sp.montants) === 'euros';
+  const fm: Fm = euros ? formaterMontantEuros : (v) => formaterMontant(v);
   const base = `/dossiers/${id}/fiscal?exercice=${exercice.id}`;
+  const lienMontants = `${base}&vue=${vue}&regime=${regime}${euros ? '' : '&montants=euros'}`;
   const revision = auMoins(ctx.niveau, 'revision');
   const liasse = vue === 'liasse' ? await tenter<ReponseLiasse>(`v1/exercices/${exercice.id}/liasse?regime=${regime}`) : null;
   const annexe = vue === 'annexe' ? await tenter<ReponseAnnexe>(`v1/exercices/${exercice.id}/annexe`) : null;
@@ -445,7 +450,22 @@ export default async function PageFiscal({ params, searchParams }: { params: Pro
         </ul>
       </nav>
       {vue === 'liasse' ? (
-        <p className="text-sm text-texte-doux">Le régime d’imposition est un choix du cabinet : Comtaple ne le déduit d’aucun seuil.</p>
+        <>
+          <p className="text-sm text-texte-doux">Le régime d’imposition est un choix du cabinet : Comtaple ne le déduit d’aucun seuil.</p>
+          <p className="text-sm" data-testid="choix-montants">
+            Montants affichés : <strong>{euros ? 'en euros entiers' : 'au centime'}</strong> —{' '}
+            <Link href={lienMontants} prefetch={false}>
+              {euros ? 'Afficher les centimes' : 'Afficher en euros entiers (présentation des formulaires)'}
+            </Link>
+            .{' '}
+            {euros ? (
+              <span className="text-texte-doux" data-testid="note-arrondi">
+                Chaque montant est arrondi à l’euro le plus proche (0,50 compté pour 1), comme l’exigent les notices 2032-NOT-SD et 2033-NOT-SD (millésime 2026). Les montants exacts ne sont pas modifiés ; la somme des montants arrondis peut
+                différer d’un euro du total arrondi, l’écart n’est pas corrigé ; la notice ne dit rien des montants négatifs (la demi-unité s’éloigne de zéro, par convention).
+              </span>
+            ) : null}
+          </p>
+        </>
       ) : null}
       {reponse && !reponse.ok ? (
         reponse.statut === 409 ? (
@@ -456,8 +476,8 @@ export default async function PageFiscal({ params, searchParams }: { params: Pro
           <ErreurAcces statut={reponse.statut} message={reponse.message} retour={`/dossiers/${id}`} />
         )
       ) : null}
-      {liasse?.ok ? liasse.donnees.resultat.statut === 'abstention' ? <BlocAbstention a={liasse.donnees.resultat} quoi="Liasse fiscale" /> : <Liasse l={liasse.donnees.resultat} /> : null}
-      {liasse?.ok && liasse.donnees.tableauxImmobilisations ? <ImmobilisationsLiasse t={liasse.donnees.tableauxImmobilisations} /> : null}
+      {liasse?.ok ? liasse.donnees.resultat.statut === 'abstention' ? <BlocAbstention a={liasse.donnees.resultat} quoi="Liasse fiscale" /> : <Liasse l={liasse.donnees.resultat} fm={fm} /> : null}
+      {liasse?.ok && liasse.donnees.tableauxImmobilisations ? <ImmobilisationsLiasse t={liasse.donnees.tableauxImmobilisations} fm={fm} /> : null}
       {annexe?.ok ? (
         annexe.donnees.resultat.statut === 'abstention' ? (
           <BlocAbstention a={annexe.donnees.resultat} quoi="Projet d’annexe" />

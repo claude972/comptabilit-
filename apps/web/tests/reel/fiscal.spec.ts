@@ -45,6 +45,14 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
     await expect(liasse.getByText('à confirmer').first()).toBeVisible();
     await expect(page.getByTestId('tableaux-non-couverts').locator('li').first()).toBeVisible();
     await expect(page.getByTestId('controles-liasse').locator('li').first()).toBeVisible();
+    // Euros entiers (D-105) : présentation seulement, la note dit les limites ; retour aux centimes.
+    await expect(page.getByTestId('choix-montants')).toContainText('au centime');
+    await page.getByTestId('choix-montants').getByRole('link', { name: /euros entiers/ }).click();
+    await expect(page.getByTestId('choix-montants')).toContainText('en euros entiers');
+    await expect(page.getByTestId('note-arrondi')).toContainText('0,50 compté pour 1');
+    await expect(page.getByTestId('liasse').locator('td.tabular-nums').filter({ hasText: /,\d\d$/ })).toHaveCount(0);
+    await page.getByTestId('choix-montants').getByRole('link', { name: 'Afficher les centimes' }).click();
+    await expect(page.getByTestId('choix-montants')).toContainText('au centime');
     await page.getByRole('navigation', { name: 'États fiscaux' }).getByRole('link', { name: /Régime simplifié/ }).click();
     await expect(page.getByTestId('liasse').getByRole('heading', { name: /^2033-A/ })).toBeVisible();
   }

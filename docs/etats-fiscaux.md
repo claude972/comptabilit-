@@ -14,13 +14,13 @@ Périmètre explicite : **société commerciale soumise à l’impôt sur les so
 
 | Tableau | État | Ce qui est préparé | Ce qui manque |
 |---|---|---|---|
-| 2050 Bilan-actif (réel normal) | partiel | Brut, amortissements et dépréciations, net de l’exercice, par poste ; colonne N-1 (D-103) | Renvois de bas de tableau, arrondi à l’euro, codes de cases |
+| 2050 Bilan-actif (réel normal) | partiel | Brut, amortissements et dépréciations, net de l’exercice, par poste ; colonne N-1 (D-103) | Renvois de bas de tableau, codes de cases ; euros entiers à l’écran (D-105) |
 | 2051 Bilan-passif | partiel | Montants de l’exercice (avant répartition) | idem |
 | 2052 Compte de résultat | partiel | Montants de l’exercice jusqu’au résultat courant | idem + ventilation France / export du chiffre d’affaires |
 | 2053 Compte de résultat (suite) | partiel | Exceptionnel, participation, impôt, totaux, bénéfice ou perte | idem + détail des produits et charges exceptionnels |
 | 2033-A Bilan simplifié (régime simplifié) | partiel | Montants de l’exercice par ligne agrégée | idem + postes sans ligne certaine (voir 3.3) |
 | 2033-B Compte de résultat simplifié | partiel | Partie comptable seulement | idem + **toute la partie « résultat fiscal »** |
-| 2054 Immobilisations (cadres A et B) | partiel (D-104) | Valeurs brutes à l’ouverture et à la clôture, augmentations (débits), diminutions totales, par ligne du formulaire, avec N-1 et rapprochement avec le fichier des immobilisations | Réévaluations, ventilation des diminutions (virement / cession) quand des crédits existent, « dont composants », arrondi à l’euro ; codes de cases lus, à confirmer |
+| 2054 Immobilisations (cadres A et B) | partiel (D-104) | Valeurs brutes à l’ouverture et à la clôture, augmentations (débits), diminutions totales, par ligne du formulaire, avec N-1 et rapprochement avec le fichier des immobilisations | Réévaluations, ventilation des diminutions (virement / cession) quand des crédits existent, « dont composants » ; euros entiers à l’écran (D-105) ; codes de cases lus, à confirmer |
 | 2055 Amortissements (cadre A) | partiel (D-104) | Amortissements à l’ouverture, dotations, diminutions, clôture, avec N-1 ; dotation du moteur comparée à la dotation comptabilisée | Cadres B (amortissements dérogatoires) et C (charges réparties) |
 | 2054 bis, 2056, 2057 | **non couvert** | — | Écarts de réévaluation, provisions, état des échéances |
 | 2058-A, 2058-B, 2058-C | **non couvert** | — | Réintégrations et déductions extra-comptables, déficits, affectation du résultat |
@@ -46,7 +46,7 @@ Guide utilisateur : `tableaux-immobilisations.md`. Entrées : écritures de l’
 - **Abstentions** : sans journal d’à-nouveaux → ouverture et mouvements `null` ; réévaluation, valeur d’origine, « dont composants » → à saisir ; ventilation des diminutions → établie seulement si les crédits sont nuls ; totaux tout ou rien ; compte sans ligne → « non ventilé », hors totaux.
 - **Fichier des immobilisations** : valeurs brutes à l’ouverture et à la clôture selon le fichier, amortissements antérieurs saisis, sorties d’actif, composants, dotation calculée par le moteur (linéaire ; dégressif non activé) ; immobilisation sans date ou sans base exclue avec motif ; écarts avec la balance affichés, jamais corrigés.
 - **Contrôles** : `valeur_brute_egale_projet_de_bilan`, `ouverture_brute_egale_cloture_n1`, `ouverture_amortissements_egale_cloture_n1`, `fichier_valeurs_brutes`, `fichier_dotations`, `dotations_egales_compte_6811`.
-- Non préparés : 2054 bis, 2055 cadres B et C, 2033-C cadre III, arrondi à l’euro.
+- Non préparés : 2054 bis, 2055 cadres B et C, 2033-C cadre III, renvois de bas de tableau. L’arrondi à l’euro est proposé à l’écran (D-105).
 
 ### 1.2 Projet d’annexe — `preparerAnnexe`
 
@@ -201,7 +201,7 @@ Un écart est **affiché, jamais forcé** ; il est repris dans `manques`.
 
 ## 5. Conventions
 
-- **Montants** : chaînes décimales à deux décimales ; arrondi demi-unité éloignée de zéro. **L’arrondi à l’euro n’est pas pratiqué.**
+- **Montants** : chaînes décimales à deux décimales ; arrondi demi-unité éloignée de zéro. **L’arrondi à l’euro n’est pas pratiqué par l’API ; l’écran l’offre en présentation (`?montants=euros`, D-105).**
 - **Signes** : actif = net ; passif et produits = crédit − débit ; charges = débit − crédit ; résultats = produits − charges. Impacts des propositions : positif = augmentation.
 - **Résultat au bilan** : celui de la balance (compte 12 augmenté du solde des classes 6 et 7 non soldées), jamais substitué.
 - **Sens des soldes** : apprécié par compte général, pas par tiers.
@@ -225,7 +225,7 @@ Un écart est **affiché, jamais forcé** ; il est repris dans `manques`.
 9. **Factures non parvenues et à établir** : la date de pièce n’est qu’un indice du rattachement ; traitement de la TVA (44586, 44587) ; schéma d’écriture des factures à établir (symétrique de l’art. 1214-40, lecture interne).
 10. **Dérivation des comptes** d’amortissement (28x) et de dotation (68111, 68112).
 10 bis. **Amortissements dégressifs** (calcul non activé par défaut) : texte du CGI art. 39 A (non lu : Légifrance refuse l’accès automatisé) ; BOI-BIC-AMT-20-20-50 (coefficients majorés ou diminués, non lu) ; coefficients et conditions d’éligibilité ; point de départ (premier jour du mois d’acquisition, établi par le BOFiP en vigueur) ; bascule au linéaire (faculté appliquée systématiquement) ; traitement de l’amortissement dérogatoire (non proposé) ; rapprochement par compte de dotation ; non-prise en compte de la valeur résiduelle dans le dégressif fiscal.
-11. **Arrondi à l’euro** et règles de présentation propres aux formulaires.
+11. **Arrondi à l’euro** : règle lue sur les notices 2026 et appliquée à l’affichage (D-105) ; non établis : l’arrondi des totaux (somme des arrondis ou arrondi de la somme) et celui des montants négatifs. **Renvois de bas de tableau** : non préparés (consignes de remplissage).
 12. Tout ce qui n’est pas couvert : résultat fiscal, tableaux 2054 bis à 2059-G (2054 et 2055 préparés en partie), 2033-D à G (2033-C préparé en partie), 2065.
 13. **Tableaux 2054, 2055 et 2033-C** (D-104) : rattachement des comptes aux lignes (convention interne fondée sur la numérotation du PCG ; ventilation fine du 218, des immobilisations financières et des frais d’établissement du régime simplifié), ventilation des diminutions, réévaluation, composants, vérification visuelle des codes de cases lus.
 

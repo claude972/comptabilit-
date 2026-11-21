@@ -55,3 +55,19 @@ export function formaterTaille(octets: number): string {
   if (octets < 1024 * 1024) return `${(octets / 1024).toFixed(0)} Ko`;
   return `${(octets / (1024 * 1024)).toFixed(1).replace('.', ',')} Mo`;
 }
+
+/**
+ * Variante « euros entiers » : présentation des tableaux fiscaux (notices 2032-NOT-SD / 2033-NOT-SD 2026 : montants arrondis à
+ * l'euro le plus proche, 0,50 compté pour 1). Arrondi sur la chaîne décimale, sans flottant ; la demi-unité s'éloigne de zéro
+ * (convention, la notice ne vise pas les montants négatifs). Une valeur qui n'est pas une chaîne décimale reste inchangée.
+ */
+export function formaterMontantEuros(valeur: string | null | undefined): string {
+  if (valeur === null || valeur === undefined || valeur === '') return '—';
+  const m = MOTIF.exec(valeur);
+  if (!m) return valeur;
+  const [, signe = '', entier = '0', decimales = ''] = m;
+  let unites = BigInt(entier);
+  if ((decimales[0] ?? '0') >= '5') unites += 1n;
+  const brut = `${signe && unites !== 0n ? '−' : ''}${unites.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ESPACE_FINE)}`;
+  return brut;
+}

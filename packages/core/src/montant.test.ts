@@ -1,6 +1,6 @@
 import { Decimal } from 'decimal.js';
 import { describe, expect, it } from 'vitest';
-import { analyserMontantFr, dec, estNul, schemaChaineDecimale, somme, versChaine } from './montant.js';
+import { analyserMontantFr, arrondirALEuro, dec, estNul, schemaChaineDecimale, somme, versChaine } from './montant.js';
 import { creerAlea } from './synthetique/alea.js';
 
 describe('schemaChaineDecimale / dec', () => {
@@ -81,4 +81,31 @@ describe('analyserMontantFr', () => {
       expect(analyserMontantFr(entree)).toBeNull();
     },
   );
+});
+
+describe('arrondirALEuro : arrondi des tableaux fiscaux (notices 2032-NOT-SD / 2033-NOT-SD 2026)', () => {
+  it.each([
+    ['0.49', '0'],
+    ['0.50', '1'],
+    ['0.51', '1'],
+    ['1234.49', '1234'],
+    ['1234.50', '1235'],
+    ['999.99', '1000'],
+    ['10000.00', '10000'],
+    ['0.00', '0'],
+    ['-0.49', '0'],
+    ['-0.50', '-1'],
+    ['-1234.50', '-1235'],
+  ])('%s → %s (la fraction 0,50 compte pour 1)', (entree, attendu) => {
+    expect(arrondirALEuro(entree)).toBe(attendu);
+  });
+
+  it('refuse une valeur qui n’est pas une chaîne décimale (aucune devinette)', () => {
+    expect(() => arrondirALEuro('12,50')).toThrow();
+    expect(() => arrondirALEuro('')).toThrow();
+  });
+
+  it('ne passe par aucun flottant : 0.50 arrondi sur de grands montants reste exact', () => {
+    expect(arrondirALEuro('999999999999.50')).toBe('1000000000000');
+  });
 });

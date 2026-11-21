@@ -194,6 +194,37 @@ export function lireDfPk(sortie: string): { totalOctets: number; libreOctets: nu
   return { totalOctets: total * 1024, libreOctets: libre * 1024 };
 }
 
+/** Analyse de /proc/meminfo : mémoire totale et disponible, en octets (null si illisible). */
+export function lireMeminfo(texte: string): { totalOctets: number; disponibleOctets: number } | null {
+  const lire = (cle: string) => {
+    const m = new RegExp(`^${cle}:\\s+(\\d+) kB`, 'm').exec(texte);
+    return m ? Number(m[1]) * 1024 : null;
+  };
+  const total = lire('MemTotal');
+  const dispo = lire('MemAvailable');
+  return total === null || dispo === null ? null : { totalOctets: total, disponibleOctets: dispo };
+}
+
+/** Mémoire : MANQUANT sous le plancher d'octets disponibles ou de pourcentage. */
+export function controlerMemoire(nom: string, groupe: string, disponibleOctets: number, totalOctets: number, minOctets: number, minPourcent: number, action: string): Controle {
+  const pct = totalOctets > 0 ? (disponibleOctets / totalOctets) * 100 : 0;
+  const mo = (o: number) => `${Math.round(o / 2 ** 20)} Mo`;
+  const motif = `${mo(disponibleOctets)} disponibles sur ${mo(totalOctets)} (${pct.toFixed(0)} %) ; planchers : ${mo(minOctets)} et ${minPourcent} %`;
+  return disponibleOctets < minOctets || pct < minPourcent ? { groupe, nom, etat: 'MANQUANT', motif, action } : { groupe, nom, etat: 'PRET', motif };
+}
+
+/** Certificat : MANQUANT s'il est expiré ou expire dans moins de `joursMin` jours. `finValidite` : date de fin (texte lisible par Date). */
+export function controlerCertificat(nom: string, finValidite: string, maintenantMs: number, joursMin: number, action: string): Controle {
+  const fin = Date.parse(finValidite);
+  const groupe = 'Certificats';
+  if (!Number.isFinite(fin)) return { groupe, nom, etat: 'NON_VERIFIE', motif: 'date de fin de validité illisible', action };
+  const jours = (fin - maintenantMs) / 86_400_000;
+  const quand = new Date(fin).toISOString().slice(0, 10);
+  if (jours <= 0) return { groupe, nom, etat: 'MANQUANT', motif: `EXPIRÉ depuis le ${quand}`, action };
+  if (jours < joursMin) return { groupe, nom, etat: 'MANQUANT', motif: `expire le ${quand}, dans ${jours.toFixed(0)} jour(s) (plancher ${joursMin})`, action };
+  return { groupe, nom, etat: 'PRET', motif: `valable jusqu'au ${quand} (${jours.toFixed(0)} jours ; plancher ${joursMin})` };
+}
+
 export interface GroupeJeu {
   id: string;
   /** Instant de création, ms. */

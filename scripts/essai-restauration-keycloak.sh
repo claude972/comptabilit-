@@ -21,6 +21,9 @@
 set -eu
 cd "$(dirname "$0")/.."
 . "$HOME/.comtaple-outils/env.sh"
+# Réseau d'essai dédié (D-102) : le pont par défaut « docker0 » de la VM a disparu après un incident (constaté le 2026-11-20 : « adding interface … to bridge docker0 failed: Device does not exist »), ce qui empêche tout NOUVEAU conteneur sur le réseau par défaut. S'il existe, les conteneurs d'essai y sont rattachés ; ils n'atteignent jamais la composition de l'application.
+RESEAU_ESSAI=""
+docker network inspect comtaple_essai_reseau >/dev/null 2>&1 && RESEAU_ESSAI="--network comtaple_essai_reseau"
 set -a; . ./.env; set +a
 ROYAUME="comtaple"
 SOURCE="comtaple-keycloak-1"
@@ -43,7 +46,7 @@ if [ -n "${KEYCLOAK_EXPORT:-}" ]; then
 else
 mkdir -p var/sauvegardes
 echo "--- 1) export complet du royaume, sans arrêt du service ---"
-docker create --name comtaple-essai-kc-export "$(docker inspect -f '{{.Config.Image}}' "$SOURCE")" export --dir /opt/keycloak/data/export --realm "$ROYAUME" --users realm_file >/dev/null
+docker create $RESEAU_ESSAI --name comtaple-essai-kc-export "$(docker inspect -f '{{.Config.Image}}' "$SOURCE")" export --dir /opt/keycloak/data/export --realm "$ROYAUME" --users realm_file >/dev/null
 GEL=$(node -e 'console.log(Date.now())')
 docker pause "$SOURCE" >/dev/null
 # Copie de conteneur à conteneur, sans passer par le disque de l'hôte : les propriétaires des fichiers sont conservés.
@@ -62,7 +65,7 @@ fi
 echo "--- 2) import dans une instance d'essai isolée (port $PORT) ---"
 export ESSAI_KC_URL="http://127.0.0.1:$PORT" ESSAI_KC_ADMIN="essai-$(openssl rand -hex 4)" ESSAI_KC_MDP="$(openssl rand -hex 24)"
 mkdir -p $IMPORT_TMP && cp "$EXPORT" "$IMPORT_TMP/$ROYAUME-realm.json" && chmod 755 $IMPORT_TMP && chmod 644 "$IMPORT_TMP/$ROYAUME-realm.json"
-docker create --name comtaple-essai-keycloak -p "127.0.0.1:$PORT:8080" -e KC_BOOTSTRAP_ADMIN_USERNAME="$ESSAI_KC_ADMIN" -e KC_BOOTSTRAP_ADMIN_PASSWORD="$ESSAI_KC_MDP" \
+docker create $RESEAU_ESSAI --name comtaple-essai-keycloak -p "127.0.0.1:$PORT:8080" -e KC_BOOTSTRAP_ADMIN_USERNAME="$ESSAI_KC_ADMIN" -e KC_BOOTSTRAP_ADMIN_PASSWORD="$ESSAI_KC_MDP" \
   quay.io/keycloak/keycloak:26.8.2 start-dev --import-realm >/dev/null
 docker cp $IMPORT_TMP/. comtaple-essai-keycloak:/opt/keycloak/data/import
 rm -rf $IMPORT_TMP

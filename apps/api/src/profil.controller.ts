@@ -1,20 +1,42 @@
 import { Controller, Get, Inject, Param } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Config, Files, Stockage } from '@comtaple/plateforme';
 import { type AccesBd, asc, desc, eq, schema as s, sql } from '@comtaple/db';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid, Public } from './acces.js';
-import { BD } from './jetons.js';
+import { BD, CONFIG, STOCKAGE, TACHES } from './jetons.js';
+import { type Sante, SondeSante } from './sante.js';
 
 @ApiTags('Profil et dossiers')
 @Controller('v1')
 export class ProfilController {
-  constructor(@Inject(BD) private readonly bd: AccesBd) {}
+  private readonly sonde: SondeSante;
+  constructor(
+    @Inject(BD) private readonly bd: AccesBd,
+    @Inject(TACHES) taches: Files,
+    @Inject(STOCKAGE) stockage: Stockage,
+    @Inject(CONFIG) cfg: Config,
+  ) {
+    this.sonde = new SondeSante({
+      files: () => taches.joignable(),
+      stockage: () => stockage.joignable(),
+      identite: async () => {
+        const r = await fetch(`${cfg.OIDC_ISSUER.replace(/\/$/, '')}/.well-known/openid-configuration`, { signal: AbortSignal.timeout(1400) });
+        if (!r.ok) throw new Error('non disponible');
+        await r.arrayBuffer();
+      },
+    });
+  }
 
   @Public()
   @Get('sante')
-  @ApiOperation({ summary: 'État du service (sans authentification, sans donnée)' })
-  async sante() {
+  @ApiOperation({
+    summary: 'État du service (sans authentification, sans donnée)',
+    description:
+      'La base de données est vitale : sans elle, 503. Les files (Redis), le stockage objet et le fournisseur d’identité sont rapportés « ok » ou « indisponible » (statut global « degrade », HTTP 200 : l’application sert ce qui n’en dépend pas). Aucune adresse, aucun message d’erreur. Résultat gardé 5 secondes.',
+  })
+  async sante(): Promise<Sante> {
     await this.bd.pool.query('select 1');
-    return { statut: 'ok' };
+    return this.sonde.evaluer();
   }
 
   @ApiBearerAuth()

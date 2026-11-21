@@ -116,6 +116,11 @@ export class Files {
     this.mail = new Queue(FILES.mail, options);
     this.pousses = new Queue(FILES.pousses, options);
   }
+  /** Sonde de santé : Redis répond à une lecture du nombre de travaux en attente (rien n'est écrit dans aucune file). Lève s'il est injoignable ; borné par l'appelant. */
+  async joignable(): Promise<void> {
+    await this.documents.getJobCounts('wait'); // lecture seule : compte les travaux en attente, n'écrit rien
+  }
+
   /**
    * Mise en file suivie : si une trace est en cours (requête de l'API, traitement du worker), son contexte W3C
    * (`traceparent`, `tracestate`) accompagne le travail dans l'option BullMQ `telemetry.metadata` — hors des données du

@@ -162,6 +162,16 @@ describe('Redis (file des travaux) : panne EN COURS de fonctionnement, puis reto
     expect((await sur(pile, 'alice', 'GET', '/v1/audit?limite=5')).statut).toBe(200);
   });
 
+  it('sonde de santé élargie (D-102) : Redis coupé = « degrade » (HTTP 200, files indisponibles, aucun détail interne)', async () => {
+    const s = await attendre(
+      () => fetch(`${pile.url}/v1/sante`).then(async (r) => ({ statut: r.status, corps: await r.text() })),
+      (x) => x.statut === 200 && JSON.parse(x.corps).dependances.files === 'indisponible',
+      20_000,
+    );
+    expect(JSON.parse(s.corps)).toEqual({ statut: 'degrade', dependances: { base: 'ok', files: 'indisponible', stockage: 'ok', identite: expect.any(String) } });
+    expect(s.corps).not.toMatch(/ECONNREFUSED|redis:|127\.0\.0\.1|mot de passe/i);
+  });
+
   it('Redis rétabli : la même API reprend sans redémarrage ; la pièce restée « reçue » est alors traitée', async () => {
     await relais.retablir();
     const r = await attendre(() => sur(pile, 'chloe', 'POST', `/v1/documents/${docId}/reanalyse`), (x) => x.statut !== 503, 30_000);
@@ -227,6 +237,8 @@ describe('Fournisseur d’identité (Keycloak) injoignable côté API', () => {
     expect(v.json.message).toMatch(/identité indisponible/);
     expect(ms).toBeLessThan(15_000);
     expect((await fetch(`${pile.url}/v1/sante`)).status).toBe(200);
+    const sante = await attendre(() => fetch(`${pile.url}/v1/sante`).then((r) => r.json() as Promise<{ dependances: { identite: string } }>), (j) => j.dependances.identite === 'indisponible', 20_000);
+    expect(sante).toEqual({ statut: 'degrade', dependances: { base: 'ok', files: 'ok', stockage: 'ok', identite: 'indisponible' } });
   });
 });
 

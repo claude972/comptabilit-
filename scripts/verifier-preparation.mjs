@@ -6,6 +6,7 @@
  *
  *   node scripts/verifier-preparation.mjs [--cible=local|production] [--env-fichier=<fichier>] [--sauvegardes=<dossier>]
  *                                         [--age-max-heures=26] [--disque-min-go=8] [--disque-min-pct=10]
+ *                                         [--memoire-min-mo=512] [--certificat-min-jours=30]
  *                                         [--sans-sondes] [--sans-empreintes] [--sans-docker] [--projet=comtaple] [--json]
  *
  * Chaque contrôle est PRÊT, MANQUANT ou NON VÉRIFIÉ, avec son motif et, sinon, l'action corrective. Code de sortie : 0 si aucun
@@ -38,7 +39,7 @@ if (inconnus.length || drapeau('aide')) {
 }
 
 const {
-  controlerConfiguration, controlerSauvegardes, controlerVolume, lireDfPk, rendre, synthese,
+  controlerCertificat, controlerConfiguration, controlerMemoire, controlerSauvegardes, controlerVolume, lireDfPk, lireMeminfo, rendre, synthese,
 } = await import('../packages/plateforme/dist/preparation.js');
 const { verifierJeu } = await import('../packages/plateforme/dist/jeu-sauvegarde.js');
 
@@ -230,11 +231,11 @@ if (drapeau('sans-sondes')) {
     let dernierComplet = null;
     for (const id of ids) {
       const stamp = /(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/.exec(id);
-      const ms = Date.UTC(+stamp[1], +stamp[2] - 1, +stamp[3], +stamp[4], +stamp[5], +stamp[6]) + (new Date().getTimezoneOffset() * 60_000);
+      const ms = Date.UTC(+stamp[1], +stamp[2] - 1, +stamp[3], +stamp[4], +stamp[5], +stamp[6]);
       const descripteur = join(dossier, `${id}.jeu.json`);
       const complet = existsSync(descripteur);
       const interrompu = noms.includes(`${id}.en-cours`);
-      // Instant tiré du NOM du jeu (heure locale du poste de sauvegarde), pour comparer jeux complets et interrompus sur la même base.
+      // Instant tiré du NOM du jeu (UTC : sauvegarder-jeu.mjs le forme avec toISOString), pour comparer jeux complets et interrompus sur la même base.
       const creeMs = ms;
       const chiffre = noms.some((n) => n.startsWith(`${id}.`) && n.endsWith('.chiffre'));
       groupes.push({ id, crealeMs: creeMs, complet, interrompu, chiffre });
@@ -276,6 +277,13 @@ if (drapeau('sans-sondes')) {
       ajouter({ groupe: G2, nom: 'VM Docker', etat: 'NON_VERIFIE', motif: `conteneur ${projet}-postgres-1 ou docker indisponible : ${bref(e)}`, action: 'Démarrer Docker (colima start) et la pile ; en production, surveiller le disque de l’hôte avec la sonde node-exporter (alerte à 15 % et 5 %).' });
     }
     try {
+      const m = lireMeminfo(await dansConteneur('postgres', ['cat', '/proc/meminfo']));
+      if (!m) throw new Error('meminfo illisible');
+      ajouter(controlerMemoire('Mémoire de la VM Docker (disponible)', 'Mémoire', m.disponibleOctets, m.totalOctets, Number(option('memoire-min-mo', '512')) * 2 ** 20, 5, 'Arrêter des conteneurs inutiles ou agrandir la mémoire de la VM (colima start --memory <Go>) ; les limites de mémoire des conteneurs sont dans les compositions.'));
+    } catch (e) {
+      ajouter({ groupe: 'Mémoire', nom: 'Mémoire de la VM Docker', etat: 'NON_VERIFIE', motif: `non mesurée : ${bref(e)}`, action: 'En production, la mémoire de l’hôte est suivie par la sonde de l’hôte de la supervision (node-exporter).' });
+    }
+    try {
       const ko = Number((await dansConteneur('s3', ['du', '-sk', '/data'])).split(/\s+/)[0]);
       if (!Number.isFinite(ko)) throw new Error('du illisible');
       ajouter({ groupe: G2, nom: 'Volume des objets (S3 local)', etat: 'PRET', motif: `${(ko / 2 ** 20).toFixed(1).replace('.', ',')} Go occupés par /data (information ; le seuil porte sur l’espace libre de la VM)` });
@@ -283,6 +291,34 @@ if (drapeau('sans-sondes')) {
       ajouter({ groupe: G2, nom: 'Volume des objets (S3)', etat: 'NON_VERIFIE', motif: `non mesuré : ${bref(e)}`, action: 'En production le stockage est celui de l’hébergeur : suivre son volume dans la console.' });
     }
   }
+}
+
+// ── 5. Certificats (fin de validité) ──
+{
+  const { X509Certificate } = await import('node:crypto');
+  const tls = await import('node:tls');
+  const joursMin = Number(option('certificat-min-jours', '30'));
+  const action = 'Renouveler le certificat avant l’échéance (TLS public : renouvellement automatique du proxy à vérifier ; certificats des traces : procédure § 9).';
+  let vus = 0;
+  for (const [nom, variable] of [['Autorité des traces (TRACES_AC_PEM)', 'TRACES_AC_PEM'], ['Certificat de l’agent de traces (TRACES_AGENT_CERT_PEM)', 'TRACES_AGENT_CERT_PEM'], ['Certificat de l’entrée des traces (TRACES_ENTREE_CERT_PEM)', 'TRACES_ENTREE_CERT_PEM'], ['Autorité de la base managée (PG_AC_PEM)', 'PG_AC_PEM']]) {
+    const pem = env[variable];
+    if (!pem || !pem.includes('BEGIN CERTIFICATE')) continue;
+    vus++;
+    try { controles.push(controlerCertificat(nom, new X509Certificate(pem.replace(/\\n/g, '\n')).validTo, Date.now(), joursMin, action)); } catch (e) { ajouter({ groupe: 'Certificats', nom, etat: 'NON_VERIFIE', motif: `illisible : ${bref(e)}`, action }); }
+  }
+  const domaines = [env.DOMAINE_WEB, env.DOMAINE_AUTH, ...[env.WEB_URL, env.OIDC_ISSUER].map((u) => { try { const x = new URL(u); return x.protocol === 'https:' ? x.hostname : null; } catch { return null; } })].filter(Boolean);
+  for (const hote of [...new Set(domaines)]) {
+    if (drapeau('sans-sondes')) break;
+    vus++;
+    try {
+      const fin = await new Promise((resolve, reject) => {
+        const s = tls.connect({ host: hote, port: 443, servername: hote, timeout: 6000 }, () => { const c = s.getPeerCertificate(); s.end(); resolve(c.valid_to); });
+        s.on('error', reject); s.on('timeout', () => { s.destroy(); reject(new Error('délai dépassé')); });
+      });
+      controles.push(controlerCertificat(`Certificat TLS public de ${hote}`, fin, Date.now(), joursMin, action));
+    } catch (e) { ajouter({ groupe: 'Certificats', nom: `Certificat TLS public de ${hote}`, etat: 'MANQUANT', motif: `non lu : ${bref(e)}`, action: 'Vérifier le DNS, le proxy et l’émission du certificat.' }); }
+  }
+  if (!vus) ajouter({ groupe: 'Certificats', nom: 'Certificats', etat: 'NON_VERIFIE', motif: 'aucun certificat à contrôler dans cette configuration (aucun domaine public HTTPS, aucun PEM) : pile locale en HTTP', action: 'En production : relancer avec --env-fichier=production.env ; les certificats TLS publics sont lus sur le port 443.' });
 }
 
 if (drapeau('json')) {

@@ -10,7 +10,8 @@ import pg from 'pg';
 import { chargerEnvLocal } from './env.js';
 import { urlBd } from './index.js';
 
-export async function migrer(env: NodeJS.ProcessEnv = process.env): Promise<void> {
+/** `dossierMigrations` : réservé aux essais de mise à jour (jeu de migrations tronqué) ; en exploitation, le dossier livré avec l'image. */
+export async function migrer(env: NodeJS.ProcessEnv = process.env, dossierMigrations?: string): Promise<void> {
   const client = new pg.Client({ connectionString: urlBd('admin', env) });
   await client.connect();
   try {
@@ -29,7 +30,7 @@ export async function migrer(env: NodeJS.ProcessEnv = process.env): Promise<void
       await client.query(rows[0]!.requete);
     }
     await client.query('CREATE EXTENSION IF NOT EXISTS vector');
-    const dossier = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
+    const dossier = dossierMigrations ?? join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
     await migrate(drizzle(client), { migrationsFolder: dossier, migrationsTable: 'migrations_drizzle', migrationsSchema: 'public' });
   } finally {
     await client.end();

@@ -1,0 +1,666 @@
+{
+  "format": "comtaple.rls-reference/1",
+  "note": "Référence de la revue des changements RLS (scripts/revue-rls.mjs). Réécrite SEULEMENT après relecture humaine d'un changement voulu. Ce n'est pas un audit indépendant.",
+  "migrations": 50,
+  "tablesACabinet": {
+    "abonnements": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "gestionnaire_abonnement": "7b596b2ea259",
+        "gestionnaire_abonnement_maj": "79081d6f4071",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "abonnements_pousses": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "isolation_cabinet": "828e5c572b82",
+        "ses_abonnements": "3afaafd1d4e0"
+      }
+    },
+    "anomalies_journal": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "isolation_cabinet": "828e5c572b82",
+        "lecture_gestionnaire": "7b596b2ea259"
+      }
+    },
+    "appartenances": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "ecriture_appartenances_i": "283e40a9b170",
+        "ecriture_appartenances_u": "df73f1735303",
+        "lecture_appartenances": "3ecb60ca85ac"
+      }
+    },
+    "baremes_temps": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "gestion_bareme_d": "9feced4362c8",
+        "gestion_bareme_i": "048e94c6d694",
+        "gestion_bareme_u": "79081d6f4071",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "campagnes_import": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "commentaires": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "confirmations_annexe": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "connexions_mail": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "gestion_mail": "435aec3e25d3",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "conseils": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "constats": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "decisions": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "demandes_connexion_mail": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "gestion_mail": "5b176dd7afb5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "documents": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "e15d6ba14aeb",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "echanges_assistant": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "7a1213abccf1",
+        "isolation_cabinet": "828e5c572b82",
+        "ses_echanges": "3afaafd1d4e0"
+      }
+    },
+    "echanges_document": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "e15d6ba14aeb",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "echanges_portefeuille": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "isolation_cabinet": "828e5c572b82",
+        "ses_echanges": "3afaafd1d4e0"
+      }
+    },
+    "echeances_abonnement": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "gestionnaire_echeances": "b820590b61e0",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "ecritures_inventaire": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "entites": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "90d8f09e348e",
+        "gestion_dossier_delete": "855bb366b8c3",
+        "gestion_dossier_insert": "048e94c6d694",
+        "gestion_dossier_update": "79081d6f4071",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "envois_pousses": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "etablissements": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "evenements_conseil": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "evenements_facturation": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "gestionnaire_evenements": "7b596b2ea259",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "evenements_ia": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "isolation_cabinet": "828e5c572b82",
+        "lecture_gestionnaire": "7b596b2ea259"
+      }
+    },
+    "executions_controles": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "executions_rapprochement": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "exercices": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "exports_revision": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "extractions": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "e15d6ba14aeb",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "factures": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "fichiers": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "fins_de_contrat": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "habilitations_dossier": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "ecriture_habilitations_d": "9feced4362c8",
+        "ecriture_habilitations_i": "048e94c6d694",
+        "ecriture_habilitations_u": "79081d6f4071",
+        "isolation_cabinet": "828e5c572b82",
+        "lecture_habilitations": "a6b9535eb6a0"
+      }
+    },
+    "immobilisations": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "invitations": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "gestionnaire_seulement": "435aec3e25d3",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "journal_audit": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "isolation_cabinet": "828e5c572b82",
+        "lecture_gestionnaire": "7b596b2ea259"
+      }
+    },
+    "lettres_mission": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "liens_factures": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "liens_tiers": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "lignes_ecriture": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "lignes_reprise_immobilisations": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "lots_import": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "messages_mail": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "gestion_mail": "435aec3e25d3",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "missions": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "mouvements_bancaires": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "mouvements_lots": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "notifications": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "isolation_cabinet": "828e5c572b82",
+        "marquer_ses_notifications": "7b620c0f33cf",
+        "ses_notifications": "81729a408eea"
+      }
+    },
+    "pages_document": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "e15d6ba14aeb",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "parametres_cabinet": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "gestionnaires_parametres": "435aec3e25d3",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "passages_recherche": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "pieces_a_qualifier": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "gestion_mail": "435aec3e25d3",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "pieces_mail_vues": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "gestion_mail": "435aec3e25d3",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "politiques_conservation": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "preferences_notification": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "isolation_cabinet": "828e5c572b82",
+        "ses_preferences": "3afaafd1d4e0"
+      }
+    },
+    "propositions_ia": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "rapprochements": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "reanalyses_destinataire": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "reanalyses_destinataire_pieces": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "receptions": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "e15d6ba14aeb",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "reglages_tiers_factures": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "isolation_cabinet": "828e5c572b82",
+        "reglage_ecriture": "e07b9545112d",
+        "reglage_lecture": "01e4611f3b5a"
+      }
+    },
+    "regles_cabinet": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "releves_bancaires": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "reprises_immobilisations": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "restitutions": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "restitutions_cabinet": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "gestionnaire_seulement": "435aec3e25d3",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "resultats_controles": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "signalements_mail": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "gestion_mail": "435aec3e25d3",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "suggestions_ecartees": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "ecriture_reviseurs": "567ce3d8e63e",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "suivis_evolution": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "televersements": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "e15d6ba14aeb",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    },
+    "travaux": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
+      }
+    }
+  },
+  "tablesSansCabinetAccessibles": {
+    "cabinets": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "lecture_cabinets": "297044a3e14d"
+      }
+    },
+    "evolutions_reglementaires": {
+      "rls": false,
+      "force": false,
+      "politiques": {}
+    },
+    "migrations_drizzle": {
+      "rls": false,
+      "force": false,
+      "politiques": {}
+    },
+    "offres_abonnement": {
+      "rls": false,
+      "force": false,
+      "politiques": {}
+    },
+    "sources_reglementaires": {
+      "rls": false,
+      "force": false,
+      "politiques": {}
+    },
+    "surveillances_sources": {
+      "rls": false,
+      "force": false,
+      "politiques": {}
+    },
+    "utilisateurs": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "creation_utilisateur": "3fa0d023d412",
+        "lecture_utilisateurs": "f225d8fec638",
+        "maj_utilisateur": "a4a07a8f3378"
+      }
+    },
+    "verifications_connexion_ia": {
+      "rls": false,
+      "force": false,
+      "politiques": {}
+    }
+  },
+  "fonctionsADroitsDuProprietaire": {
+    "abonnement_pousse_enregistrer(p_empreinte text, p_service text, p_secrets text, p_agent text)": "812617ba5d0b",
+    "abonnement_pousse_enregistrer(p_empreinte text, p_service text, p_secrets text, p_agent text, p_empreinte_cle_vapid text)": "6a561c27642f",
+    "abonnement_situation()": "ecc005e52f95",
+    "abonnement_usage()": "400e2318db65",
+    "appartenances_retirer_abonnements_pousses()": "e386307dc57d",
+    "cabinet_indicateurs(p_du date, p_au date)": "f976b0d98c57",
+    "campagne_nb_dossiers(p_campagne uuid)": "0b91fd6f6b47",
+    "campagne_nb_lots(p_campagne uuid)": "05cec0ff3046",
+    "dossier_membres(p_entite uuid)": "7010dfcb8ad8",
+    "invitations_accepter(p_email text, p_nom text)": "9e21bae3a8bc",
+    "journal_audit_chainer()": "636c2304b82f",
+    "mail_connexions_par_abonnement(p_abonnement text)": "ff9a6e8d908b",
+    "mail_connexions_par_adresse(p_fournisseur text, p_adresse text)": "730f4591b2ce",
+    "mail_preuves_integration()": "bfbf6dc95b09",
+    "notifications_mettre_en_file_poussee()": "07794282c2c5",
+    "notifier(p_destinataires uuid[], p_type text, p_entite uuid, p_cible_type text, p_cible_id text, p_donnees jsonb)": "410845efbcbe",
+    "notifier_gestionnaires(p_type text, p_entite uuid, p_cible_type text, p_cible_id text, p_donnees jsonb)": "b29876f11fc1",
+    "regles_rendre_obsolete(p_entite uuid)": "27fc393f9845",
+    "worker_abonnements_pousses_entretenir(p_inactivite_jours integer)": "cb645dd07a03",
+    "worker_connexions_mail_actives(p_limite integer)": "d0a4ea14d100",
+    "worker_documents_en_retard(p_minutes integer, p_limite integer)": "109dae05fd9b",
+    "worker_envois_pousses_a_distribuer(p_fenetre_s integer, p_limite integer)": "48ffc9981473",
+    "worker_envois_pousses_purger(p_jours integer)": "30a24ad7b8ee",
+    "worker_notifier_expiration_preuve_ia(p_verification uuid, p_jours_restants integer, p_expire_le timestamp with time zone, p_seuil_jours integer)": "9c62e4aea876",
+    "worker_televersements_expires(p_limite integer)": "070e7ad79061",
+    "worker_traitements_en_attente(p_minutes integer, p_limite integer)": "a9856615ae2f"
+  }
+}

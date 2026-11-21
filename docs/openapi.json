@@ -538,6 +538,7 @@
     },
     "/v1/sante": {
       "get": {
+        "description": "La base de données est vitale : sans elle, 503. Les files (Redis), le stockage objet et le fournisseur d’identité sont rapportés « ok » ou « indisponible » (statut global « degrade », HTTP 200 : l’application sert ce qui n’en dépend pas). Aucune adresse, aucun message d’erreur. Résultat gardé 5 secondes.",
         "operationId": "ProfilController_sante",
         "parameters": [],
         "responses": {
@@ -5691,7 +5692,7 @@
     },
     "/v1/exercices/{id}/liasse": {
       "get": {
-        "description": "Périmètre : société commerciale à l’IS, PCG, euros, France métropolitaine. Hors périmètre, ou tant qu’une caractéristique du dossier est « à confirmer », la réponse est une ABSTENTION motivée, sans aucun chiffre. Dans le périmètre : toujours « projet », jamais « complet » (les autres tableaux, listés avec les informations qu’ils exigent, ne sont pas couverts ; les codes de cases des formulaires ne sont pas vérifiés et restent « à confirmer »). Calcul sur les écritures importées, AVANT écritures d’inventaire. Aucune télétransmission n’existe.",
+        "description": "Périmètre : société commerciale à l’IS, PCG, euros, France métropolitaine. Hors périmètre, ou tant qu’une caractéristique du dossier est « à confirmer », la réponse est une ABSTENTION motivée, sans aucun chiffre. Dans le périmètre : toujours « projet », jamais « complet » (les autres tableaux, listés avec les informations qu’ils exigent, ne sont pas couverts ; les codes de cases des formulaires ne sont pas vérifiés et restent « à confirmer »). Calcul sur les écritures importées, AVANT écritures d’inventaire. Colonne N-1 : exercice précédent CONTIGU du dossier, s’il a une comptabilité importée, préparé par la même table et les mêmes règles ; sinon « indisponible » avec son motif (jamais approximée). Aucune télétransmission n’existe.",
         "operationId": "FiscalController_liasse",
         "parameters": [
           {

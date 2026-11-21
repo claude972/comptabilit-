@@ -125,6 +125,9 @@ services:
     command: ["-target=all", "-config.file=/etc/tempo/tempo.yaml", "-config.expand-env=true"]
     environment:
       TEMPO_RETENTION: ${TEMPO_RETENTION:-72h}
+      TEMPO_RETENTION_INTERVALLE: ${TEMPO_RETENTION_INTERVALLE:-10m}
+      TEMPO_BLOCS_COMPACTES: ${TEMPO_BLOCS_COMPACTES:-10m}
+      TEMPO_LIVE_STORE_DUREE: ${TEMPO_LIVE_STORE_DUREE:-20m}
       TEMPO_DEBIT_OCTETS_S: ${TEMPO_DEBIT_OCTETS_S:-8000}
       TEMPO_RAFALE_OCTETS: ${TEMPO_RAFALE_OCTETS:-4000000}
     ports: ["127.0.0.1:${TEMPO_PORT:-3201}:3200"]

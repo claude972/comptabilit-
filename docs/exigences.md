@@ -145,7 +145,7 @@ Lecture des colonnes :
 | Exigence | Implémentation | Preuve | Reste réel |
 |---|---|---|---|
 | Sept rôles, habilitation par dossier | Énumérations, RLS, gardes d'API | Tests | — |
-| MFA pour les comptes du cabinet, SSO | Gabarit de royaume de production (MFA obligatoire, emplacement SSO) | Import d'essai | Royaume de production réel **(externe)** ; royaume de développement sans MFA (D-016) |
+| MFA pour les comptes du cabinet, SSO | Gabarit de royaume de production (MFA obligatoire, emplacement SSO) | Import d'essai ; **enrôlement TOTP et connexion avec code essayés sur instance jetable (D-102, 36 contrôles)** | Royaume de production réel **(externe)** ; royaume de développement sans MFA (D-016) |
 | Sessions, révocation, secrets, liens temporaires, types réels, quarantaine, antivirus, limites de débit, journaux sans secret | En place | Tests | Bac à sable dédié des analyseurs (aujourd'hui : processus du worker, conteneur sans privilèges) |
 | Journal en ajout seul, intégrité, archivage protégé | Journal chaîné ; ancres préparées | Tests | Destination indépendante **(externe)** ; Object Lock **(externe)** |
 | Documents RGPD et réglementaires | `docs/juridique/` (projets) | Documents | Validation DPO / avocat **(externe)** |
@@ -157,7 +157,7 @@ Lecture des colonnes :
 | Exigence | Implémentation | Preuve | Reste réel |
 |---|---|---|---|
 | Capacités mesurées, pas d'objectif présenté comme mesure | `rapport-de-tests.md`, `exploitation.md` § 16, `scripts/mesure-portefeuille.mjs` | Mesures locales datées, dont un portefeuille de 300 dossiers (D-094) | Mesures sur l'environnement cible **(externe)** ; plusieurs utilisateurs simultanés ; portefeuille réel |
-| Sauvegardes, restauration, RPO/RTO, reprise | Scripts, essais isolés, `exploitation.md` | Essais | RPO/RTO : objectifs proposés, non mesurés en cible |
+| Sauvegardes, restauration, RPO/RTO, reprise | Scripts, essais isolés, `exploitation.md` ; **restauration chronométrée depuis copies chiffrées (626 s, 7,5 Go, D-102)**, mise à jour et retour arrière essayés, diagnostic de préparation (`scripts/verifier-preparation.mjs`) | Essais sur ressources jetables | RPO/RTO : objectifs proposés, non mesurés en cible (le chiffre de 626 s n'est pas un RTO) ; clé réelle, hébergeur, ordonnanceur, destination d'ancrage externe : à raccorder **(externe)** |
 | Fonctionnement dégradé sans IA | Aucune fonction ne dépend de l'IA ; replis étiquetés | Tests | — |
 | Jeux synthétiques et exigences de recette | `packages/core/src/synthetique`, recettes | Tests | — |
 | Dix parcours de bout en bout | Matrice parcours × preuve × lacune dans `couverture.md` (P3, D-101) ; parcours 1 enchaîné de bout en bout (`parcours-recette-dix.itest.ts`) | Tests | Parcours 2, 6, 7 : **simulés** (boîte réelle externe) ; parcours 10 : essai de restauration existant, non rejoué à la passe P3 (reste de P4) ; parcours 1 et 5 sur appareil réel : `recette-appareils.md` **jamais jouée** |

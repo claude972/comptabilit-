@@ -23,6 +23,9 @@
 set -eu
 cd "$(dirname "$0")/.."
 . "$HOME/.comtaple-outils/env.sh"
+# Réseau d'essai dédié (D-102) : le pont par défaut « docker0 » de la VM a disparu après un incident (constaté le 2026-11-20 : « adding interface … to bridge docker0 failed: Device does not exist »), ce qui empêche tout NOUVEAU conteneur sur le réseau par défaut. S'il existe, les conteneurs d'essai y sont rattachés ; ils n'atteignent jamais la composition de l'application.
+RESEAU_ESSAI=""
+docker network inspect comtaple_essai_reseau >/dev/null 2>&1 && RESEAU_ESSAI="--network comtaple_essai_reseau"
 set -a; . ./.env; set +a
 SAUVEGARDE="${1:-$(ls -t var/sauvegardes/*.dump | head -1)}"
 MANIFESTE="${SAUVEGARDE%.dump}.objets.json"
@@ -71,7 +74,7 @@ trap nettoyer EXIT INT TERM
 AVANT="$(temoins)"
 
 # ── Base : PostgreSQL d'essai séparé, sans port publié, ressources plafonnées ──
-docker create --name comtaple-essai-pg --init --cpus 1.5 --memory 1g -e POSTGRES_USER="$PG_ADMIN_USER" -e POSTGRES_PASSWORD="$(openssl rand -hex 24)" -e POSTGRES_DB=comtaple \
+docker create $RESEAU_ESSAI --name comtaple-essai-pg --init --cpus 1.5 --memory 1g -e POSTGRES_USER="$PG_ADMIN_USER" -e POSTGRES_PASSWORD="$(openssl rand -hex 24)" -e POSTGRES_DB=comtaple \
   -v comtaple_essai_pg:/var/lib/postgresql "$IMAGE_PG" >/dev/null
 docker start comtaple-essai-pg >/dev/null
 i=0; until docker exec comtaple-essai-pg pg_isready -U "$PG_ADMIN_USER" -d comtaple >/dev/null 2>&1 && docker exec comtaple-essai-pg psql -U "$PG_ADMIN_USER" -d comtaple -Atc 'select 1' >/dev/null 2>&1; do
@@ -127,7 +130,7 @@ while [ "$t" -le "$NB_TRANCHES" ]; do
   docker rm -f comtaple-essai-s3 >/dev/null 2>&1 || true; docker volume rm comtaple_essai_s3 >/dev/null 2>&1 || true
   export ESSAI_S3_ACCESS_KEY="essai$(openssl rand -hex 8)" ESSAI_S3_SECRET_KEY="$(openssl rand -hex 24)"
   printf '{"identities":[{"name":"essai","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List"]}]}' "$ESSAI_S3_ACCESS_KEY" "$ESSAI_S3_SECRET_KEY" > var/sauvegardes/.s3-essai.json
-  docker create --name comtaple-essai-s3 --init --cpus 1 --memory 1g -p "127.0.0.1:${ESSAI_S3_PORT:-8334}:8333" -v comtaple_essai_s3:/data "$IMAGE_S3" \
+  docker create $RESEAU_ESSAI --name comtaple-essai-s3 --init --cpus 1 --memory 1g -p "127.0.0.1:${ESSAI_S3_PORT:-8334}:8333" -v comtaple_essai_s3:/data "$IMAGE_S3" \
     server -dir=/data -ip.bind=0.0.0.0 -volume.max=60 -master.volumeSizeLimitMB=256 -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json >/dev/null
   docker cp var/sauvegardes/.s3-essai.json comtaple-essai-s3:/etc/seaweedfs/s3.json
   docker start comtaple-essai-s3 >/dev/null

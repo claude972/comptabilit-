@@ -88,6 +88,11 @@ export class Stockage {
     return Buffer.concat(morceaux).subarray(0, octets);
   }
 
+  /** Sonde de santé : le bucket répond (HeadBucket, sans lecture ni écriture d'objet). Lève si le stockage est injoignable. */
+  async joignable(): Promise<void> {
+    await this.s3.send(new HeadBucketCommand({ Bucket: this.cfg.S3_BUCKET }), { abortSignal: AbortSignal.timeout(1400) });
+  }
+
   async existe(cle: string): Promise<boolean> {
     try {
       // L'absence de l'objet est une réponse, pas une erreur : elle est absorbée dans le span.

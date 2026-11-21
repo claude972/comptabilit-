@@ -2,7 +2,10 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { lireConfig } from './config.js';
 import {
+  controlerCertificat,
   controlerConfiguration,
+  controlerMemoire,
+  lireMeminfo,
   controlerSauvegardes,
   controlerVolume,
   lireDfPk,
@@ -173,5 +176,26 @@ describe('rendu et code de sortie', () => {
     expect(t).not.toContain('ne pas afficher');
     expect(t).toContain('NON PRÊT');
     expect(synthese(cs.slice(0, 1)).codeSortie).toBe(0);
+  });
+});
+
+describe('mémoire et certificats', () => {
+  it('lit /proc/meminfo et applique des planchers', () => {
+    const r = lireMeminfo('MemTotal:        6054000 kB\nMemFree:  100 kB\nMemAvailable:    1740000 kB\n');
+    expect(r).toEqual({ totalOctets: 6054000 * 1024, disponibleOctets: 1740000 * 1024 });
+    expect(lireMeminfo('rien')).toBeNull();
+    const Mo = 2 ** 20;
+    expect(controlerMemoire('m', 'G', 1700 * Mo, 5900 * Mo, 512 * Mo, 5, 'a').etat).toBe('PRET');
+    expect(controlerMemoire('m', 'G', 300 * Mo, 5900 * Mo, 512 * Mo, 5, 'a').etat).toBe('MANQUANT');
+    expect(controlerMemoire('m', 'G', 600 * Mo, 32000 * Mo, 512 * Mo, 5, 'a').etat).toBe('MANQUANT');
+  });
+  it('certificat : valable, bientôt expiré, expiré, illisible', () => {
+    const maintenant = Date.parse('2026-11-20T00:00:00Z');
+    expect(controlerCertificat('c', '2027-06-01T00:00:00Z', maintenant, 30, 'a').etat).toBe('PRET');
+    const bientot = controlerCertificat('c', '2026-12-05T00:00:00Z', maintenant, 30, 'renouveler');
+    expect(bientot.etat).toBe('MANQUANT');
+    expect(bientot.motif).toMatch(/dans 15 jour/);
+    expect(controlerCertificat('c', '2026-11-01T00:00:00Z', maintenant, 30, 'a').motif).toMatch(/EXPIRÉ/);
+    expect(controlerCertificat('c', 'pas une date', maintenant, 30, 'a').etat).toBe('NON_VERIFIE');
   });
 });

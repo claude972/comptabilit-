@@ -41,7 +41,7 @@ if docker ps -a --format '{{.Names}}' | grep -q "^comtaple-essai-royaume-"; then
 fi
 
 echo "1/5 Construction de l'image de production (éphémère)…"
-docker build -q -f infra/keycloak/Dockerfile.production -t "$IMAGE" infra/keycloak >/dev/null
+docker build -q --network host -f infra/keycloak/Dockerfile.production -t "$IMAGE" infra/keycloak >/dev/null
 
 echo "2/5 Démarrage isolé (PostgreSQL d'essai sans port publié, Keycloak sur 127.0.0.1:$PORT)…"
 docker network create "$RESEAU" >/dev/null
@@ -141,6 +141,10 @@ connexion dispense
 if grep -qi "^location: $WEB/api/auth/retour.*code=" "$TMP/entetes"; then ok "compte portant le rôle de dispense : connecté sans second facteur (exception voulue)"; else ko "compte portant le rôle de dispense : comportement inattendu"; fi
 verifier "accès direct par mot de passe refusé" "$(c -o /dev/null -w '%{http_code}' -d grant_type=password -d client_id=comtaple-web --data-urlencode "client_secret=$SECRET_CLIENT" -d "username=dispense@essai.test" --data-urlencode "password=$MDP_FORT" "$BASE/realms/comtaple/protocol/openid-connect/token")" "400"
 
+echo "4 bis/5 Second facteur : enrôlement TOTP jusqu'au bout, puis connexions avec code (D-102)…"
+ID_MFA=$(creer mfa); mdp "$ID_MFA" "$MDP_FORT" >/dev/null
+if node scripts/essai-mfa.mjs "$BASE" "$WEB" "mfa@essai.test" "$MDP_FORT" "$SECRET_CLIENT"; then ok "parcours complet du second facteur (voir les lignes ci-dessus)"; else ko "parcours du second facteur en échec (voir ci-dessus)"; fi
+
 echo "5/5 Destruction de l'essai (conteneurs, réseau, image, fichiers temporaires)."
-if [ "$echec" -eq 0 ]; then echo "ESSAI RÉUSSI : le royaume de production s'importe et se comporte comme décrit."; else echo "ESSAI EN ÉCHEC : au moins un contrôle non conforme."; fi
+if [ "$echec" -eq 0 ]; then echo "ESSAI RÉUSSI : le royaume de production s'importe, se comporte comme décrit et impose le TOTP (enrôlement et connexions avec code)."; else echo "ESSAI EN ÉCHEC : au moins un contrôle non conforme."; fi
 exit "$echec"

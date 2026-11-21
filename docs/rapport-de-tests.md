@@ -191,6 +191,26 @@ Poste local au repos relatif (disque externe, machine partagée), pile réelle, 
 
 **Non mesuré / non jouée.** Plusieurs workers ou plusieurs API ; plus de quatre identités ; charge soutenue sur des heures ; fichier supérieur à 500 000 lignes à travers l'API et le worker (seul le moteur l'a été, 1 060 006 lignes) ; mémoire du worker pendant ces essais (non relevée : D-056 et D-061 restent la référence) ; panne réelle d'un service de la pile normale ; panne disque ; arrêt brutal pendant contrôles, rapprochements, exports, restitutions.
 
+## Exploitation (lot P4, D-102, passe du 2026-11-20)
+
+**Aucun déploiement.** Tout ce qui suit a été joué sur ressources jetables (conteneurs, bases `comtaple_essai_…`, ports et projets Compose distincts) ou en lecture seule sur la pile locale. Ce ne sont pas des suites vitest, sauf les lignes qui le disent ; la CI n'exécute AUCUN de ces scripts (aucune étape CI n'a été ajoutée sans l'éprouver).
+
+| Essai | Commande | Résultat du 2026-11-20 | Limites |
+|---|---|---|---|
+| Règles du diagnostic et de la configuration de production (vitest) | `pnpm --filter @comtaple/plateforme run test` | 103 réussis / 103 (16 NOUVEAUX : refus de chaque valeur de développement sans divulguer la valeur, forme `production.env`, cible locale, secrets faibles, démarrage de `lireConfig`, disque, mémoire, certificats, sauvegardes, code de sortie) | Fonctions pures |
+| Sonde de santé élargie (vitest) | `pnpm --filter @comtaple/api run test` | 14 réussis / 14 (5 NOUVEAUX : ok, dégradé sans divulgation, délai borné, mémoire de 5 s, rétablissement) | — |
+| Sonde de santé sur pile réelle (relais coupable) | `pnpm --filter @comtaple/api run test:integration -- src/parcours-dependances.itest.ts` | 8 réussis / 8 (1 NOUVEAU + 1 assertion ajoutée : Redis coupé = « degrade » avec `files: indisponible` et aucun détail, Keycloak injoignable = `identite: indisponible`) | Fichier seul, pas la suite complète |
+| Refus de démarrage en production (existant, rejoué) | `parcours-mail.itest.ts -t "NODE_ENV=production"` | 2 réussis | Le message des simulateurs passe avant la garde de production |
+| Diagnostic de préparation | `node scripts/verifier-preparation.mjs` | Pile locale : 25 prêts, 2 manquants (âge de la sauvegarde, sauvegardes en clair), 8 non vérifiés ; code 1 ; 0 fuite parmi 10 secrets de `.env` testés | Seuils proposés |
+| Installation depuis un dépôt vierge | `sh scripts/essai-installation.sh` | 44 s, tous les contrôles conformes (copie propre, verrou, `.env` 600, secrets neufs, pile jetable, sonde dégradée attendue, diagnostic, refus en production, volumes supprimés) ; premier passage : 1 écart de comptage de l'essai lui-même, corrigé | Magasin pnpm local ; avec `--avec-web` : `next build` réussi (16 s, 41 s au total), web non démarré ; pas d'hôte |
+| Mise à jour et retour arrière (base) | `node scripts/essai-mise-a-jour.mjs` | 14 contrôles conformes ; 47 → 50 → 47 → 50 migrations ; durées 3,7 / 7,9 / 0,4 / 0,1 / 23,0 / 0,8 s | Aucune image ; la 0047 modifie 41 politiques (non additive) |
+| Retour arrière de `deployer.sh` | `sh scripts/essai-deployer-retour.sh` | 13 contrôles conformes | `ssh`, `scp`, `docker`, `curl` remplacés |
+| Royaume de production et second facteur | `sh scripts/essai-royaume-production.sh` | 36 contrôles conformes (dont 10 sur l'enrôlement TOTP et les connexions avec code) ; premiers passages : image impossible à construire (pont de la VM), puis lecture du secret TOTP à corriger dans l'essai | Instance jetable ; pas de royaume réel |
+| Restauration chronométrée depuis copies chiffrées | `sh scripts/essai-restauration-chronometree.sh` | 626 s (chiffrement 176, déchiffrement 165, base 19, objets 239) ; empreintes identiques, 1 943 objets relus, Keycloak 16 contrôles ; code 3 (journal du cabinet Alpha rompu depuis D-038) | Poste local ; clé éphémère ; n'est pas un RTO |
+| Revue des changements RLS | `node scripts/revue-rls.mjs` ; `sh scripts/essai-isolation-rejouee.sh` | Invariants tenus, aucun écart (72 tables, 151 politiques) ; six écarts injectés détectés ; 30 tests d'isolation et d'équivalence réussis sur base jetable | Revue AUTOMATISÉE, pas un audit indépendant |
+| Ancrage du journal | `sh scripts/essai-ancrage.sh` | 6 contrôles conformes (quatre altérations détectées) | Ancrage local seulement |
+| Rétention des traces (durée d'essai) | `sh scripts/essai-retention-traces.sh 3m` | Rétention 3 min, live store à 2 min : trace SUPPRIMÉE après 484 s, trace plus récente conservée, 2 contrôles conformes ; live store par défaut (20 min) : trace lisible ≈ 19,7 min puis disparue. Premier passage de l'essai (cap d'attente trop court pour ce second délai) : abandonné avant la fin puis refait avec `TEMPO_LIVE_STORE_DUREE` | Mécanisme seulement |
+
 ## Qualité de l'extraction et de l'OCR
 
 Aucune mesure sur des pièces réelles. Sur les gabarits synthétiques, numéro, date, SIRET et totaux sont retrouvés ; l'extraction s'abstient (champ vide) plutôt que de corriger une erreur d'OCR. Limites observées : page pivotée de 90° ou 180° sans information d'orientation → texte faux sans que le score du moteur d'OCR le signale ; ordre de lecture perturbé à 10° d'inclinaison ; pas de structure de tableau. Aucun taux d'erreur, de faux positif ou d'abstention ne peut être annoncé avant une évaluation sur un corpus réel autorisé.

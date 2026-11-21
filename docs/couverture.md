@@ -146,6 +146,21 @@ Document de référence sur ce qui fonctionne. Mis à jour le 2026-11-19 (quatri
 | Projet d'annexe (59 rubriques du PCG, pré-remplissage, confirmations du cabinet) | En attente de validation | Personne morale uniquement ; catégorie de taille déclarée par le cabinet (seuils « à confirmer ») ; une rubrique n'est complète que confirmée par une personne habilitée, et la confirmation tombe si les données changent ; le texte de l'annexe n'est pas rédigé par le logiciel |
 | Télétransmission | Non implémenté, et non autorisée par conception sans périmètre et autorisation spécifiques | — |
 
+## Exploitation préparée (P4, D-102) — aucun déploiement, aucun hôte
+
+| Sujet | État | Preuve | Reste |
+|---|---|---|---|
+| Diagnostic de préparation (configuration, dépendances, sauvegardes, disque, mémoire, certificats) | Testé en local | `scripts/verifier-preparation.mjs` ; 16 tests des règles ; sortie réelle dans `exploitation.md` § 0 (25 prêts, 2 manquants, 8 non vérifiés) | Exécution sur un hôte réel **(externe)** ; ce n'est pas une autorisation (V9) |
+| Configuration refusée en production | Testé | `lireConfig` ; refus sur API réelle (variables nommées, aucune valeur) | Composition de production démarrée **(externe)** |
+| Installation depuis un dépôt vierge | Testé en local | `scripts/essai-installation.sh` (44 s) | Machine, images de production, registre, DNS **(externe)** ; l'application web se construit avec `--avec-web` (16 s, 41 s au total) mais n'est pas DÉMARRÉE dans cet essai |
+| Mise à jour et retour arrière | Testé en local | `scripts/essai-mise-a-jour.mjs` (14 contrôles), `scripts/essai-deployer-retour.sh` (13) | Images construites et démarrées, ancien code contre schéma neuf, hôte |
+| MFA du royaume de production | Testé sur instance jetable | `scripts/essai-royaume-production.sh` + `scripts/essai-mfa.mjs` (36 contrôles) | Royaume réel, courriels, SSO fédéré **(externes)** |
+| Restauration chronométrée | Testé en local | `scripts/essai-restauration-chronometree.sh` (626 s) | Voir parcours 10 |
+| Sonde de santé élargie | Testé | `apps/api/src/sante.test.ts` ; `parcours-dependances.itest.ts` (relais coupable) | Alerte lisant le corps de la sonde |
+| Revue des changements RLS | Testé en local (revue automatisée) | `scripts/revue-rls.mjs`, `docs/rls-reference.json`, `scripts/essai-isolation-rejouee.sh` | **Audit de sécurité indépendant (externe)**, justification des 6 tables sans `cabinet_id` |
+| Ancrage du journal | Local seulement | `scripts/essai-ancrage.sh` (4 altérations détectées) | Destination externe indépendante **(externe)** |
+| Rétention des traces | Testé avec durée d'essai | `scripts/essai-retention-traces.sh` (voir `exploitation.md` § 24) | Durée de production (72 h) ; Grafana |
+
 ## Écrans
 
 Tous les domaines ci-dessus ont leurs écrans : collecte (téléphone et ordinateur), revue de pièce, comptabilité, révision, banque et rapprochements, analyse (balance, projets d'états, indicateurs), inventaire, missions et conseils, veille, recherche, restitution, messagerie, règles du cabinet, administration (dossiers, habilitations, membres, audit, abonnement, indicateurs du cabinet). Détail de ce qui est vérifié sur la pile réelle et de ce qui ne l'est que contre un simulateur : `rapport-de-tests.md`.
@@ -179,7 +194,7 @@ Le territoire fiscal est une donnée explicite du dossier. Hors métropole, ou t
 | 7 | Jeton mail révoqué | Testé contre simulateur de messagerie uniquement |
 | 8 | Accès à un autre cabinet ou dossier | Testé (base, API, interface) |
 | 9 | Pièce contenant des instructions malveillantes | Testé : restituée comme donnée par l'assistant sans IA ; avec un modèle SIMULÉ jouant un modèle manipulé, les garde-fous refusent et tracent. Aucun modèle réel n'a lu de pièce |
-| 10 | Restauration après incident | Testé en local : base, stockage objet et Keycloak restaurés dans des instances isolées et vérifiés ; limites dans `deploiement.md` |
+| 10 | Restauration après incident | Testé en local et CHRONOMÉTRÉ (P4, D-102) : base, 1 943 objets (7,5 Go) et Keycloak restaurés depuis copies chiffrées (clé éphémère) dans des instances isolées, vérifiés, 626 s ; ce n'est pas un RTO ; clé réelle, hébergeur et restauration à un instant donné non essayés ; limites dans `exploitation.md` § 21 |
 
 ### Matrice des dix parcours : preuve existante et lacune (P3, D-101, 2026-11-20)
 
@@ -194,7 +209,7 @@ Le territoire fiscal est une donnée explicite du dossier. Hors métropole, ou t
 | 7 | `parcours-mail.itest.ts` (« parcours 7 » : jeton révoqué, connexion « revoque », aucune boucle) | `e2e/ordinateur/messagerie.spec.ts` | **Simulateur** seulement |
 | 8 | `parcours.itest.ts` (cloisonnement), `parcours-administration.itest.ts`, `packages/db/isolation.itest.ts` (RLS) ; **`parcours-droits-matrice.itest.ts` (NOUVEAU : 28 fonctions × 11 profils sur deux cabinets neufs, multi-cabinet, habilitation par dossier, expiration)** ; **`parcours-charge.itest.ts` (NOUVEAU : isolation sous charge, par l'API et par la base)** | `reel/parcours-reel.spec.ts` (cloisonnement dans l'interface) | Test d'intrusion indépendant (externe) |
 | 9 | `parcours.itest.ts` (parcours 9 : injection sans effet, EICAR en quarantaine, type refusé), `parcours-assistant*.itest.ts`, `preuve-ia.itest.ts` | `e2e/ordinateur/assistant.spec.ts` | Aucun modèle réel n'a lu de pièce (externe) |
-| 10 | `scripts/essai-restauration.sh`, `essai-restauration-chiffree.sh`, `essai-restauration-keycloak.sh` (base, objets et Keycloak restaurés dans des instances isolées, vérifiés) ; **non rejoué à cette passe** (copie de ≈ 8 Go) | — | **Reste de P4** : restauration chronométrée, hors poste de développement, depuis des sauvegardes chiffrées ; ce n'est pas un essai vitest, aucune suite automatisée ne le rejoue |
+| 10 | `scripts/essai-restauration-chronometree.sh` (D-102 : enchaîne `essai-restauration-chiffree.sh`, `essai-restauration.sh` et `essai-restauration-keycloak.sh` ; base, 1 943 objets et Keycloak restaurés depuis copies chiffrées dans des instances isolées, vérifiés ; 626 s le 2026-11-20 ; code de sortie 3 : journal du cabinet Alpha rompu depuis D-038, restauration fidèle) ; ce n'est pas un essai vitest, aucune suite automatisée ne le rejoue | — | **Reste** : clé réelle, base managée de l'hébergeur, restauration à un instant donné, transfert distant ; la rupture du journal d'audit local (D-038) empêche un « réussi » complet |
 
 ### Matrice profils et droits (P3, D-101)
 

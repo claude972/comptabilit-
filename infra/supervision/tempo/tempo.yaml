@@ -34,18 +34,26 @@ storage:
       path: /var/tempo/blocks
 
 # La rétention est appliquée par l'ordonnanceur et l'ouvrier de fond (tous deux dans le processus en mode monolithique).
+# TEMPO_RETENTION_INTERVALLE (10m) et TEMPO_BLOCS_COMPACTES (10m) ne changent qu'ESSAI : ils permettent d'observer une suppression
+# effective en quelques minutes (scripts/essai-retention-traces.sh). Ne pas les modifier en production.
 backend_scheduler:
   provider:
     retention:
-      interval: 10m
+      interval: ${TEMPO_RETENTION_INTERVALLE}
     compaction:
       compaction:
         block_retention: ${TEMPO_RETENTION}
-        compacted_block_retention: 10m
+        compacted_block_retention: ${TEMPO_BLOCS_COMPACTES}
 backend_worker:
   compaction:
     block_retention: ${TEMPO_RETENTION}
-    compacted_block_retention: 10m
+    compacted_block_retention: ${TEMPO_BLOCS_COMPACTES}
+
+# Durée pendant laquelle le « live store » garde (et sert) les blocs complets : défaut de Tempo 3.1 = 20m (TEMPO_LIVE_STORE_DUREE).
+# CONSTAT D-102 (docs/exploitation.md § 24) : en mode monolithique, les traces récentes sont servies par le live store ; ne changer
+# TEMPO_LIVE_STORE_DUREE qu'après lecture de ce paragraphe (essai : scripts/essai-retention-traces.sh).
+live_store:
+  complete_block_timeout: ${TEMPO_LIVE_STORE_DUREE}
 
 overrides:
   defaults:

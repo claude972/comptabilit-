@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { messageRefusProduction } from './preparation.js';
 
 const schema = z.object({
   REDIS_URL: z.string().min(1),
@@ -238,5 +239,8 @@ export function lireConfig(env: NodeJS.ProcessEnv = process.env): Config {
       throw new Error('Configuration refusée : PUSH_SIMULATEUR_URL doit désigner un simulateur local (127.0.0.1).');
     }
   }
+  // D-102 : en production, une valeur de développement (HTTP, hôte local, secret court ou factice, compte de test…) refuse le démarrage.
+  const refus = messageRefusProduction(env);
+  if (refus !== null) throw new Error(refus);
   return r.data;
 }

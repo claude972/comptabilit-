@@ -18,3 +18,4 @@ export * from './simulateur-poussees.js';
 export * from './stockage-essai.js';
 export * from './fournisseur-identite-essai.js';
 export * from './rotation-sauvegardes.js';
+export * from './preparation.js';

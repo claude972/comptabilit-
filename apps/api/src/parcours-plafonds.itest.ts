@@ -195,7 +195,13 @@ describe('plafonds des calculs immédiats : sous le plafond, résultat identique
           // motif légitime ; le plafond n'y change rien. LIMITE : la branche « fourni → indisponible sous plafond » n'est
           // PAS exercée par cet essai (exercice 2025) ; elle reste à couvrir par un essai sur un exercice dont N-1 est >= 2025.
           expect(ref.statut, `${nom} (comparatif de référence : ${JSON.stringify(ref.motifs)})`).toBe('indisponible');
-          expect(cmp(r.json), `${nom} (comparatif sous plafond)`).toEqual(ref);
+          // Sous plafond, le refus de lire N-1 est détecté avant l'absence de table : le motif dit alors le plafond. Les deux
+          // motifs sont légitimes ; ce qui est exigé : « indisponible », aucun chiffre N-1, un motif parmi ces deux.
+          const sous = cmp(r.json);
+          expect(sous, `${nom} (comparatif sous plafond)`).toMatchObject({ statut: 'indisponible' });
+          expect(Object.keys(sous ?? {}).sort(), nom).toEqual(['motifs', 'statut']);
+          const motif = JSON.stringify(sous?.motifs);
+          expect(motif === JSON.stringify(ref.motifs) || /n’a pas été lu .* dépasserait le plafond/.test(motif), `${nom} : ${motif}`).toBe(true);
         }
       }
     }

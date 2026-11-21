@@ -185,9 +185,18 @@ describe('plafonds des calculs immédiats : sous le plafond, résultat identique
       expect(sansN1(r.json), nom).toEqual(sansN1(reference.json));
       const cmp = (j: unknown): { statut: string; motifs?: string[] } | undefined => (j as { comparatif?: { statut: string; motifs?: string[] } }).comparatif;
       if (cmp(reference.json) !== undefined) {
-        expect(cmp(reference.json), `${nom} (comparatif de référence)`).toMatchObject({ statut: 'fourni' });
-        expect(cmp(r.json), `${nom} (comparatif sous plafond)`).toMatchObject({ statut: 'indisponible' });
-        expect(JSON.stringify(cmp(r.json)?.motifs), nom).toMatch(/exercice précédent .* n’a pas été lu .* dépasserait le plafond/);
+        const ref = cmp(reference.json)!;
+        if (ref.statut === 'fourni') {
+          // N-1 disponible sur la pile normale : sous plafond il n'est plus lu, avec son motif.
+          expect(cmp(r.json), `${nom} (comparatif sous plafond)`).toMatchObject({ statut: 'indisponible' });
+          expect(JSON.stringify(cmp(r.json)?.motifs), nom).toMatch(/exercice précédent .* n’a pas été lu .* dépasserait le plafond/);
+        } else {
+          // Ici N = 2025 : N-1 (2024) précède la première table de liasse vérifiée, donc « indisponible » PARTOUT, avec le même
+          // motif légitime ; le plafond n'y change rien. LIMITE : la branche « fourni → indisponible sous plafond » n'est
+          // PAS exercée par cet essai (exercice 2025) ; elle reste à couvrir par un essai sur un exercice dont N-1 est >= 2025.
+          expect(ref.statut, `${nom} (comparatif de référence : ${JSON.stringify(ref.motifs)})`).toBe('indisponible');
+          expect(cmp(r.json), `${nom} (comparatif sous plafond)`).toEqual(ref);
+        }
       }
     }
   });

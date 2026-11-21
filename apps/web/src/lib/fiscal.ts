@@ -44,10 +44,75 @@ export interface Abstention {
   perimetreCouvert?: string;
   mention: string;
 }
+/** Tableaux 2054, 2055 et 2033-C (D-104) : champ `tableauxImmobilisations` de la réponse de la liasse. */
+export interface CelluleImmobilisation {
+  codeCase: string | null;
+  etatCodeCase: 'lu_a_confirmer' | 'a_confirmer';
+  montant: string | null;
+  n1: string | null;
+  statut: 'etabli' | 'a_saisir' | 'abstention';
+  motif: string | null;
+}
+export interface FichierLigneBrut {
+  nbImmobilisations: number;
+  valeurBruteOuverture: string | null;
+  valeurBruteCloture: string | null;
+  ecartOuverture: string | null;
+  ecartCloture: string | null;
+  sortiesDansExercice: { nombre: number; valeurBrute: string };
+  composants: { nombre: number; valeurBrute: string };
+  nbDonneesManquantes: number;
+  motifs: string[];
+}
+export interface FichierLigneAmortissements {
+  nbImmobilisations: number;
+  amortissementsOuverture: string | null;
+  ecartOuverture: string | null;
+  dotationCalculee: string | null;
+  calculComplet: boolean;
+  dotationComptabilisee: string | null;
+  ecartDotation: string | null;
+  nbAbstentionsMoteur: number;
+  motifs: string[];
+}
+export interface LigneImmobilisations {
+  id: string;
+  libelle: string;
+  numeroRomain: string | null;
+  nature: 'poste' | 'total' | 'non_ventile';
+  cellules: Record<string, CelluleImmobilisation>;
+  comptes: Array<{ compteNum: string; compteLib: string; ouverture: string | null; augmentations: string | null; diminutions: string | null; cloture: string }>;
+  dontComposants: { codeCase: string | null; motif: string } | null;
+  fichierBrut: FichierLigneBrut | null;
+  fichierAmortissements: FichierLigneAmortissements | null;
+  note: string | null;
+}
+export interface TableauImmobilisations {
+  code: string;
+  intitule: string;
+  cadres: Array<{ id: string; titre: string; colonnes: Array<{ cle: string; numero: number | null; libelle: string; surFormulaire: boolean }>; lignes: LigneImmobilisations[] }>;
+  cadresNonCouverts: Array<{ cadre: string; intitule: string; motif: string }>;
+}
+export interface TableauxImmobilisationsProjet {
+  statut: 'projet';
+  complet: false;
+  manques: string[];
+  mention: string;
+  regime: 'reel_normal' | 'reel_simplifie';
+  reserves: string[];
+  aNouveauxIdentifies: boolean;
+  tableaux: TableauImmobilisations[];
+  totaux: Record<string, string | null>;
+  comparatif: { statut: 'fourni'; exercice: { debut: string; fin: string }; reserves: string[] } | { statut: 'indisponible'; motifs: string[] };
+  fichier: { fourni: boolean; nbImmobilisations: number; degressif: { active: boolean; motif: string }; abstentions: Array<{ immobilisation: string; libelle: string; code: string; motif: string }> };
+  controles: ControleEtat[];
+}
 export interface ReponseLiasse {
   exercice: { id: string; debut: string; fin: string };
   regimeDemande: 'reel_normal' | 'reel_simplifie';
   resultat: LiasseProjet | Abstention;
+  /** Absent d'une API plus ancienne. */
+  tableauxImmobilisations?: TableauxImmobilisationsProjet | Abstention;
 }
 export interface RubriqueAnnexe {
   id: string;

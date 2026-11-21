@@ -4,7 +4,7 @@ import { ChoixExercice } from '@/components/dossier';
 import { ErreurAcces } from '@/components/erreurs';
 import { CategorieAnnexe, ConfirmerRubrique } from '@/components/fiscal/actions';
 import { Alerte, Carte, Etiquette, MentionProjet, SousTitre, Tableau } from '@/components/ui/base';
-import { type Abstention, type AnnexeProjet, LIBELLE_CATEGORIE, type LiasseProjet, type ReponseAnnexe, type ReponseLiasse } from '@/lib/fiscal';
+import { type Abstention, type AnnexeProjet, type CelluleImmobilisation, LIBELLE_CATEGORIE, type LiasseProjet, type ReponseAnnexe, type ReponseLiasse, type TableauxImmobilisationsProjet } from '@/lib/fiscal';
 import { formaterHorodatage, formaterMontant } from '@/lib/montants';
 import { tenter } from '@/lib/serveur/api';
 import { parametre } from '@/lib/serveur/donnees';
@@ -13,7 +13,7 @@ import { auMoins } from '@/lib/types-api';
 
 export const metadata: Metadata = { title: 'États fiscaux (projets)' };
 
-const LIBELLE_REGIME = { reel_normal: 'Régime réel normal (2050 à 2053)', reel_simplifie: 'Régime simplifié (2033-A et 2033-B)' } as const;
+const LIBELLE_REGIME = { reel_normal: 'Régime réel normal (2050 à 2055)', reel_simplifie: 'Régime simplifié (2033-A à 2033-C)' } as const;
 const LIBELLE_STATUT_RUBRIQUE = { pre_rempli: 'Pré-remplie', a_completer: 'À compléter', non_applicable_a_confirmer: 'Applicabilité à confirmer' } as const;
 
 function BlocAbstention({ a, quoi }: { a: Abstention; quoi: string }) {
@@ -152,6 +152,150 @@ function Liasse({ l }: { l: LiasseProjet }) {
         </ul>
       </section>
     </div>
+  );
+}
+
+
+function CelluleMontant({ c, avecN1 }: { c: CelluleImmobilisation | undefined; avecN1: boolean }) {
+  if (c === undefined) return <td />;
+  return (
+    <td className="text-right tabular-nums" data-statut={c.statut}>
+      {c.montant !== null ? (
+        formaterMontant(c.montant)
+      ) : (
+        <span className="text-texte-doux" title={c.motif ?? undefined}>
+          {c.statut === 'a_saisir' ? 'à saisir' : 'non établi'}
+        </span>
+      )}
+      {avecN1 && c.n1 !== null ? <span className="block text-xs text-texte-doux">N-1 : {formaterMontant(c.n1)}</span> : null}
+      <span className="block text-xs text-texte-doux">{c.codeCase !== null ? `case ${c.codeCase} (lue, à confirmer)` : ''}</span>
+    </td>
+  );
+}
+
+function ImmobilisationsLiasse({ t }: { t: TableauxImmobilisationsProjet | Abstention }) {
+  if (t.statut === 'abstention') return <BlocAbstention a={t} quoi="Tableaux d’immobilisations et d’amortissements" />;
+  const avecN1 = t.comparatif.statut === 'fourni';
+  return (
+    <section className="space-y-4" aria-labelledby="titre-immobilisations" data-testid="tableaux-immobilisations">
+      <SousTitre id="titre-immobilisations" className="text-base">
+        Immobilisations et amortissements ({t.tableaux.map((x) => x.code).join(', ')}) <MentionProjet />
+      </SousTitre>
+      <Alerte ton="attention" titre="Projet incomplet par construction">
+        <p>{t.mention}</p>
+        {t.reserves.map((r) => (
+          <p key={r} className="text-sm">
+            {r}
+          </p>
+        ))}
+        <p className="text-sm">
+          Une cellule « à saisir » ou « non établi » n’est jamais remplie par défaut : le motif s’affiche au survol et dans le détail de la ligne. Les écarts entre la balance et le fichier des immobilisations sont affichés, jamais corrigés.
+        </p>
+      </Alerte>
+      {t.comparatif.statut === 'fourni' ? (
+        <p className="text-sm" data-testid="immobilisations-n1">
+          Colonne N-1 : exercice du {t.comparatif.exercice.debut} au {t.comparatif.exercice.fin}.
+        </p>
+      ) : (
+        <Alerte ton="attention" titre="Colonne N-1 indisponible" data-testid="immobilisations-n1-indisponible">
+          <ul className="list-disc pl-5">
+            {t.comparatif.motifs.map((m) => (
+              <li key={m}>{m}</li>
+            ))}
+          </ul>
+        </Alerte>
+      )}
+      <Alerte ton={t.fichier.fourni ? 'neutre' : 'attention'} titre="Fichier des immobilisations" data-testid="immobilisations-fichier">
+        <p>
+          {t.fichier.fourni
+            ? `${t.fichier.nbImmobilisations} immobilisation(s) saisie(s) ou reprise(s) pour ce dossier, rapprochées de la balance et du moteur d’amortissements.`
+            : 'Aucune immobilisation saisie pour ce dossier : aucun rapprochement avec le fichier. Saisie ou reprise dans l’onglet Amortissements.'}
+        </p>
+        <p className="text-sm">{t.fichier.degressif.motif}</p>
+        {t.fichier.abstentions.length ? (
+          <ul className="list-disc pl-5 text-sm">
+            {t.fichier.abstentions.map((a) => (
+              <li key={`${a.immobilisation}-${a.code}`}>
+                {a.libelle} : {a.motif}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </Alerte>
+      <ul className="space-y-1" aria-label="Contrôles des tableaux d’immobilisations" data-testid="controles-immobilisations">
+        {t.controles.map((c) => (
+          <li key={c.code}>
+            <Etiquette ton={c.statut === 'ok' ? 'succes' : c.statut === 'ecart' ? 'danger' : 'attention'}>{c.statut === 'ok' ? 'Cohérent' : c.statut === 'ecart' ? 'Écart' : 'Non vérifiable'}</Etiquette> {c.message}
+            {c.ecart && c.statut === 'ecart' ? ` (écart : ${formaterMontant(c.ecart)})` : ''}
+          </li>
+        ))}
+      </ul>
+      {t.tableaux.map((tab) =>
+        tab.cadres.map((cadre) => (
+          <div key={`${tab.code}-${cadre.id}`} className="space-y-2" data-tableau={tab.code} data-cadre={cadre.id}>
+            <p className="font-medium">
+              {tab.code} — {tab.intitule} · {cadre.titre}
+            </p>
+            <Tableau legende={`Projet du tableau ${tab.code}, cadre ${cadre.id}`}>
+              <thead>
+                <tr>
+                  <th scope="col">Ligne</th>
+                  {cadre.colonnes.map((c) => (
+                    <th key={c.cle} scope="col" className="text-right">
+                      {c.numero !== null ? `Col. ${c.numero} — ` : ''}
+                      {c.libelle}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {cadre.lignes.map((l) => (
+                  <tr key={l.id} className={l.nature === 'total' ? 'font-semibold' : undefined} data-ligne={l.id}>
+                    <th scope="row" className="!bg-transparent font-normal">
+                      {l.numeroRomain ? `${l.numeroRomain} — ` : ''}
+                      {l.libelle}
+                      {l.note ? <span className="block text-sm text-texte-doux">{l.note}</span> : null}
+                      {l.dontComposants ? <span className="block text-sm text-texte-doux">dont composants (case {l.dontComposants.codeCase}) : à saisir</span> : null}
+                      {l.comptes.length || l.fichierBrut || l.fichierAmortissements ? (
+                        <details className="text-sm">
+                          <summary>Détail : comptes et fichier</summary>
+                          <ul className="list-disc pl-5">
+                            {l.comptes.map((c) => (
+                              <li key={c.compteNum}>
+                                {c.compteNum} {c.compteLib} : ouverture {formaterMontant(c.ouverture)}, augmentations {formaterMontant(c.augmentations)}, diminutions {formaterMontant(c.diminutions)}, clôture {formaterMontant(c.cloture)}
+                              </li>
+                            ))}
+                            {l.fichierBrut ? (
+                              <li>
+                                Fichier : {l.fichierBrut.nbImmobilisations} immobilisation(s), valeur brute à la clôture {formaterMontant(l.fichierBrut.valeurBruteCloture)}, écart avec la balance {formaterMontant(l.fichierBrut.ecartCloture)}.{' '}
+                                {l.fichierBrut.motifs.join(' ')}
+                              </li>
+                            ) : null}
+                            {l.fichierAmortissements ? (
+                              <li>
+                                Fichier : amortissements à l’ouverture {formaterMontant(l.fichierAmortissements.amortissementsOuverture)} (écart {formaterMontant(l.fichierAmortissements.ecartOuverture)}) ; dotation calculée par le moteur{' '}
+                                {formaterMontant(l.fichierAmortissements.dotationCalculee)}, comptabilisée {formaterMontant(l.fichierAmortissements.dotationComptabilisee)} (écart {formaterMontant(l.fichierAmortissements.ecartDotation)}).{' '}
+                                {l.fichierAmortissements.motifs.join(' ')}
+                              </li>
+                            ) : null}
+                          </ul>
+                        </details>
+                      ) : null}
+                    </th>
+                    {cadre.colonnes.map((c) => (
+                      <CelluleMontant key={c.cle} c={l.cellules[c.cle]} avecN1={avecN1} />
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </Tableau>
+          </div>
+        )),
+      )}
+      <ul className="space-y-1 text-sm" data-testid="immobilisations-non-couverts">
+        {t.tableaux.flatMap((tab) => tab.cadresNonCouverts.map((c) => <li key={`${tab.code}-${c.cadre}`}>{tab.code}, cadre {c.cadre} « {c.intitule} » : non préparé. {c.motif}</li>))}
+      </ul>
+    </section>
   );
 }
 
@@ -313,6 +457,7 @@ export default async function PageFiscal({ params, searchParams }: { params: Pro
         )
       ) : null}
       {liasse?.ok ? liasse.donnees.resultat.statut === 'abstention' ? <BlocAbstention a={liasse.donnees.resultat} quoi="Liasse fiscale" /> : <Liasse l={liasse.donnees.resultat} /> : null}
+      {liasse?.ok && liasse.donnees.tableauxImmobilisations ? <ImmobilisationsLiasse t={liasse.donnees.tableauxImmobilisations} /> : null}
       {annexe?.ok ? (
         annexe.donnees.resultat.statut === 'abstention' ? (
           <BlocAbstention a={annexe.donnees.resultat} quoi="Projet d’annexe" />

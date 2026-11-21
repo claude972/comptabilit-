@@ -338,13 +338,26 @@ const INFOS_RESULTAT_FISCAL = [
   'Déductions extra-comptables (produits non imposables, régime des sociétés mères, plus-values à long terme, reprises de provisions non déductibles…).',
   'Déficits reportables et leur imputation.',
 ];
-const INFOS_IMMOBILISATIONS = [
-  'Mouvements de l’exercice par poste : acquisitions, créations, apports, virements de poste à poste, cessions, mises hors service.',
-  'Valeur brute à l’ouverture et à la clôture par poste, réévaluations éventuelles.',
+const MOTIF_IMMOBILISATIONS_PARTIEL =
+  'Cadres A et B préparés à part (D-104, champ « tableauxImmobilisations » de la réponse) : valeurs brutes, augmentations et diminutions totales déduites de la balance et du fichier des immobilisations ; la ventilation des diminutions et les réévaluations ne se déduisent pas et restent à saisir.';
+const MOTIF_AMORTISSEMENTS_PARTIEL =
+  'Cadre A préparé à part (D-104) : amortissements à l’ouverture, dotations, diminutions et clôture déduits de la balance ; les cadres B (amortissements dérogatoires) et C (charges réparties) ne sont pas préparés.';
+const MOTIF_2033C_PARTIEL =
+  'Cadres I (immobilisations) et II (amortissements) préparés à part (D-104) ; le cadre III (plus-values et moins-values de cession) n’est pas préparé : prix de cession, qualification court ou long terme et régularisations ne se déduisent pas de la balance.';
+const INFOS_2054_RESTE = [
+  'Ventilation des diminutions entre virements de poste à poste et cessions ou mises hors service lorsque les mouvements de crédit ne sont pas nuls.',
+  'Réévaluations (colonne 2 du cadre A, colonne 4 du cadre B) et mises en équivalence ; montants « dont composants ».',
+  'Codes de cases : lus sur le formulaire du millésime 2026 par extraction de texte, à confirmer visuellement ; arrondi à l’euro non pratiqué.',
 ];
-const INFOS_AMORTISSEMENTS = [
-  'Plan d’amortissement par immobilisation : base, date de mise en service, durée, mode (linéaire, dégressif, exceptionnel).',
-  'Dotations et reprises de l’exercice par poste, amortissements dérogatoires et leur ventilation.',
+const INFOS_2055_RESTE = [
+  'Cadre B : ventilation des mouvements de la provision pour amortissements dérogatoires (compte 145) par origine ; cadre C : charges réparties sur plusieurs exercices.',
+  'Ligne de suivi de la déductibilité des amortissements des fonds commerciaux acquis du 1er janvier 2022 au 31 décembre 2025 (notice 2032-NOT-SD) : non préparée.',
+  'Codes de cases : lus sur le formulaire du millésime 2026 par extraction de texte, à confirmer visuellement ; arrondi à l’euro non pratiqué.',
+];
+const INFOS_2033C_RESTE = [
+  'Cadre III : nature des immobilisations cédées, valeur d’actif, amortissements, prix de cession, plus-values et moins-values à court et long terme, régularisations.',
+  'Réévaluation légale (colonne 5 du cadre I), sans code de case au formulaire : à saisir.',
+  'Codes de cases : lus sur le formulaire du millésime 2026 par extraction de texte, à confirmer visuellement ; arrondi à l’euro non pratiqué.',
 ];
 const INFOS_PROVISIONS = ['Dotations et reprises de l’exercice par nature de provision, distinction des reprises utilisées et non utilisées.', 'Caractère déductible ou non de chaque provision.'];
 const INFOS_ECHEANCES = ['Ventilation de chaque créance et de chaque dette par échéance (à un an au plus, à plus d’un an, à plus de cinq ans).', 'Emprunts souscrits et remboursés dans l’exercice, prêts accordés et remboursements obtenus.'];
@@ -359,9 +372,9 @@ const TABLEAUX_NON_COUVERTS_RN: TableauNonCouvert[] = [
   partiel('2051', 'Bilan-passif', true, 'Seuls les montants de l’exercice sont préparés, à partir de la balance (bilan avant répartition).'),
   partiel('2052', 'Compte de résultat', true, 'Seuls les montants de l’exercice sont préparés ; la ventilation France / exportation du chiffre d’affaires n’est pas faite.', [...INFOS_COMMUNES_PARTIEL, 'Ventilation du chiffre d’affaires entre la France et les exportations et livraisons intracommunautaires.']),
   partiel('2053', 'Compte de résultat (suite)', true, 'Seuls les montants de l’exercice sont préparés ; le détail des produits et charges exceptionnels et sur exercices antérieurs n’est pas fait.', [...INFOS_COMMUNES_PARTIEL, 'Détail des produits et charges exceptionnels et des produits et charges sur exercices antérieurs.']),
-  nonCouvert('2054', 'Immobilisations', true, INFOS_IMMOBILISATIONS),
+  partiel('2054', 'Immobilisations', true, MOTIF_IMMOBILISATIONS_PARTIEL, INFOS_2054_RESTE),
   nonCouvert('2054 bis', 'Tableau des écarts de réévaluation sur immobilisations amortissables', true, ['Réévaluations pratiquées, écarts de réévaluation et suppléments d’amortissement correspondants.']),
-  nonCouvert('2055', 'Amortissements', true, INFOS_AMORTISSEMENTS),
+  partiel('2055', 'Amortissements', true, MOTIF_AMORTISSEMENTS_PARTIEL, INFOS_2055_RESTE),
   nonCouvert('2056', 'Provisions inscrites au bilan', true, INFOS_PROVISIONS),
   nonCouvert('2057', 'État des échéances des créances et des dettes à la clôture de l’exercice', true, INFOS_ECHEANCES),
   nonCouvert('2058-A', 'Détermination du résultat fiscal', true, INFOS_RESULTAT_FISCAL),
@@ -484,7 +497,7 @@ const SANS_LIGNE_RESULTAT_SIMPLIFIE = 'Le compte de résultat simplifié ne comp
 const TABLEAUX_NON_COUVERTS_RSI: TableauNonCouvert[] = [
   partiel('2033-A', 'Bilan simplifié actif et passif', true, 'Seuls les montants de l’exercice sont préparés ; certains postes du bilan n’ont pas de ligne certaine dans le tableau et restent non affectés.'),
   partiel('2033-B', 'Compte de résultat simplifié de l’exercice', true, 'Seule la partie comptable (résultat comptable) est préparée ; la partie « résultat fiscal » (réintégrations, déductions, déficits) ne l’est pas.', [...INFOS_COMMUNES_PARTIEL, ...INFOS_RESULTAT_FISCAL, 'Ventilation de la production vendue entre biens et services, exportations et livraisons intracommunautaires.']),
-  nonCouvert('2033-C', 'Immobilisations, amortissements, plus-values et moins-values', true, [...INFOS_IMMOBILISATIONS, ...INFOS_AMORTISSEMENTS, ...INFOS_PLUS_VALUES]),
+  partiel('2033-C', 'Immobilisations, amortissements, plus-values et moins-values', true, MOTIF_2033C_PARTIEL, INFOS_2033C_RESTE),
   nonCouvert('2033-D', 'Relevé des provisions, amortissements dérogatoires, déficits reportables et divers', true, [...INFOS_PROVISIONS, 'Amortissements dérogatoires.', 'Déficits reportables et leur imputation.']),
   nonCouvert('2033-E', 'Tableau de détermination de la valeur ajoutée produite au cours de l’exercice et des effectifs', true, INFOS_VALEUR_AJOUTEE),
   nonCouvert('2033-F', 'Tableau de composition du capital social', true, INFOS_CAPITAL),
@@ -585,7 +598,9 @@ const LIBELLES_TERRITOIRES: Record<TerritoireFiscal, string> = {
   metropole: 'France métropolitaine', guadeloupe: 'Guadeloupe', martinique: 'Martinique', guyane: 'Guyane', reunion: 'La Réunion', mayotte: 'Mayotte', autre: 'autre territoire', a_confirmer: 'à confirmer',
 };
 
-function motifsAbstention(d: DemandeLiasse): MotifAbstention[] {
+/** Caractéristiques du dossier qui bornent le périmètre : partagées avec les tableaux 2054, 2055 et 2033-C (même abstention). */
+export type PerimetreLiasse = Pick<DemandeLiasse, 'exercice' | 'regime' | 'territoire' | 'impotSurLeResultat' | 'referentielComptable' | 'devise' | 'societeCommerciale'>;
+export function motifsAbstention(d: PerimetreLiasse): MotifAbstention[] {
   const motifs: MotifAbstention[] = [];
   if (d.territoire === 'a_confirmer') motifs.push({ code: 'territoire_a_confirmer', message: 'Territoire fiscal à confirmer : la liasse n’est préparée que pour la France métropolitaine.' });
   else if (d.territoire !== 'metropole') motifs.push({ code: 'territoire_hors_perimetre', message: `Territoire fiscal hors périmètre (${LIBELLES_TERRITOIRES[d.territoire] ?? String(d.territoire)}) : la liasse n’est préparée que pour la France métropolitaine.` });

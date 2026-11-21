@@ -579,7 +579,9 @@ const MENTIONS_MICRO: Array<[string, string, string]> = [
 
 // ───────────────────────────── Calcul ─────────────────────────────
 
-function construireContexte(lignes: readonly LigneEcriture[], fin: string, journaux: readonly string[], correspondance: CorrespondanceRubriques): Contexte {
+/** Suivi par compte à la clôture : ouverture (journaux d'à-nouveaux), mouvements hors à-nouveaux, solde de clôture. Partagé avec les tableaux 2054, 2055 et 2033-C. */
+export interface SuiviCompte { compteNum: string; compteLib: string; ouverture: Decimal; debit: Decimal; credit: Decimal; cloture: Decimal }
+export function suivreComptes(lignes: readonly LigneEcriture[], fin: string, journaux: readonly string[]): { comptes: Map<string, SuiviCompte>; aNouveauxIdentifies: boolean } {
   const comptes = new Map<string, CompteSuivi>();
   const aNouveaux = new Set(journaux);
   let aNouveauxIdentifies = false;
@@ -592,6 +594,11 @@ function construireContexte(lignes: readonly LigneEcriture[], fin: string, journ
     c.cloture = c.cloture.plus(debit).minus(credit);
     if (aNouveaux.has(l.journalCode)) { aNouveauxIdentifies = true; c.ouverture = c.ouverture.plus(debit).minus(credit); } else { c.debit = c.debit.plus(debit); c.credit = c.credit.plus(credit); }
   }
+  return { comptes, aNouveauxIdentifies };
+}
+
+function construireContexte(lignes: readonly LigneEcriture[], fin: string, journaux: readonly string[], correspondance: CorrespondanceRubriques): Contexte {
+  const { comptes, aNouveauxIdentifies } = suivreComptes(lignes, fin, journaux);
   const balance = calculerBalance(lignes, { jusquau: fin });
   const rubriques = new Map<string, RubriqueProjetee>();
   for (const r of [...projeterBilan(balance, correspondance).rubriques, ...projeterCompteDeResultat(balance, correspondance).rubriques]) rubriques.set(r.code, r);

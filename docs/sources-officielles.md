@@ -73,7 +73,7 @@ Un accès légitime (compte PISTE de l'éditeur, ou lecture par une personne qui
 - PCG consolidé au 1er janvier 2026 (ANC) : lu en texte le 2026-11-20 (articles 214-4, 214-8, 214-9, 214-11 à 214-14 et comptes 145, 6872, 7872).
 - Seuils de taille de l'annexe : lus sur une page d'information officielle ancienne (mars 2024), non sur le code de commerce
   (Légifrance, même refus) : marqués « à confirmer » dans le logiciel.
-- Codes de cases des formulaires de la liasse : non lus (site des impôts en maintenance le 2026-11-19) : aucun code fourni.
+- Codes de cases des formulaires de la liasse : non lus le 2026-11-19 (site des impôts en maintenance). **Mise à jour du 2026-11-20 (D-104)** : le site répond de nouveau ; ont été relus, dans les PDF officiels du millésime 2026 (téléchargés dans un dossier temporaire, extraction de texte positionnée, jamais vérifiée visuellement), le tableau 2054-SD (cadres A et B), le 2055-SD (cadre A) dans `2050-liasse_5320.pdf` (SHA-256 0bba33528b893ba8aa581d97bbc6ddb7d59a78fdbc234920596bce228f8453e1), le 2033-C-SD (cadres I et II) dans `2033-sd_5394.pdf` (SHA-256 ce4c519097fa435e9bd0ca3956016e5e05321c6f07db341285c9f46fb177b6cb) et les passages correspondants des notices `2032-not-sd_5323.pdf` (68ac6083…26f39) et `2033-sd_5395.pdf` (b0a43522…d7a6d1). Seuls ces tableaux ont des codes de cases (« lus, à confirmer ») ; tous les autres restent sans code. La notice ne donne pas de table des comptes par ligne : le rattachement est une convention interne.
 - Documents du règlement ANC 2022-06 : date d'application confirmée par une page de l'ANC, texte non relu intégralement.
 
 ## 5. Refaire le contrôle

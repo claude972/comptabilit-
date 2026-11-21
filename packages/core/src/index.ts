@@ -118,11 +118,16 @@ export type {
 } from './etats/annexe.js';
 export { CONVENTIONS_INVENTAIRE, MOTIF_DEGRESSIF_NON_ACTIVE, REGLES_INVENTAIRE, lirePeriodeDansLibelle, proposerEcrituresInventaire } from './etats/inventaire.js';
 export type {
-  AbstentionInventaire, ComptesInventaire, CompteSansImmobilisation, ConventionJoursAmortissement, DemandeInventaire, ImmobilisationAAmortir, LignePlanAmortissement, LignePropositionInventaire, ModeAmortissement,
+  AbstentionInventaire, ComptesInventaire, CompteSansImmobilisation, ConventionJoursAmortissement, DemandeInventaire, ImmobilisationAAmortir, ImmobilisationSuivie, LignePlanAmortissement, LignePropositionInventaire, ModeAmortissement,
   PeriodeCouverte, PropositionEcritureInventaire, RapprochementCompteImmobilisation, RapprochementDotation, RapprochementImmobilisations, RegleInventaire, ResultatInventaire, SignalementInventaire,
   TypePropositionInventaire,
 } from './etats/inventaire.js';
 export { MENTION_PROJET, SOURCES_FISCALES } from './etats/sources-fiscales.js';
+export { TABLE_IMMOBILISATIONS, preparerTableauxImmobilisations } from './etats/tableaux-immobilisations.js';
+export type {
+  CadreImmobilisations, CelluleImmobilisation, CodeTableauImmobilisations, ColonneImmobilisations, CompteLigneImmobilisation, ComparatifImmobilisations, DemandeTableauxImmobilisations, FichierLigneAmortissements,
+  FichierLigneBrut, ImmobilisationAbstention, LigneTableauImmobilisations, ResultatTableauxImmobilisations, StatutCellule, TableauImmobilisations, TableauxImmobilisationsProjet,
+} from './etats/tableaux-immobilisations.js';
 
 // 16. tiers, factures et avoirs suivis, échéances et règlements — aide à la révision, recalculée à la lecture
 export { estDateIso } from './dates.js';

@@ -20,10 +20,13 @@ Périmètre explicite : **société commerciale soumise à l’impôt sur les so
 | 2053 Compte de résultat (suite) | partiel | Exceptionnel, participation, impôt, totaux, bénéfice ou perte | idem + détail des produits et charges exceptionnels |
 | 2033-A Bilan simplifié (régime simplifié) | partiel | Montants de l’exercice par ligne agrégée | idem + postes sans ligne certaine (voir 3.3) |
 | 2033-B Compte de résultat simplifié | partiel | Partie comptable seulement | idem + **toute la partie « résultat fiscal »** |
-| 2054, 2054 bis, 2055, 2056, 2057 | **non couvert** | — | Mouvements d’immobilisations et d’amortissements, provisions, état des échéances |
+| 2054 Immobilisations (cadres A et B) | partiel (D-104) | Valeurs brutes à l’ouverture et à la clôture, augmentations (débits), diminutions totales, par ligne du formulaire, avec N-1 et rapprochement avec le fichier des immobilisations | Réévaluations, ventilation des diminutions (virement / cession) quand des crédits existent, « dont composants », arrondi à l’euro ; codes de cases lus, à confirmer |
+| 2055 Amortissements (cadre A) | partiel (D-104) | Amortissements à l’ouverture, dotations, diminutions, clôture, avec N-1 ; dotation du moteur comparée à la dotation comptabilisée | Cadres B (amortissements dérogatoires) et C (charges réparties) |
+| 2054 bis, 2056, 2057 | **non couvert** | — | Écarts de réévaluation, provisions, état des échéances |
 | 2058-A, 2058-B, 2058-C | **non couvert** | — | Réintégrations et déductions extra-comptables, déficits, affectation du résultat |
 | 2059-A à 2059-G | **non couvert** | — | Plus-values, valeur ajoutée fiscale, composition du capital, filiales |
-| 2033-C à 2033-G | **non couvert** | — | Mêmes informations, au format simplifié |
+| 2033-C Immobilisations et amortissements (cadres I et II) | partiel (D-104) | Mêmes calculs que 2054 et 2055 au format simplifié, avec N-1 | Cadre III (plus-values et moins-values, prix de cession), colonne 5 (réévaluation) |
+| 2033-D à 2033-G | **non couvert** | — | Provisions et dérogatoires, valeur ajoutée, capital, filiales |
 | 2065 et annexes | **non couvert** | — | Résultat fiscal, identification, liquidation de l’impôt |
 
 **Colonne N-1 (D-103).** Voir `comparatif-n1.md`. `LiasseProjet.comparatif` vaut `fourni` (exercice précédent contigu, préparé par la même table, avant inventaire) ou `indisponible` avec ses motifs ; chaque ligne porte `n1` (`null` si indisponible). Le « idem » des lignes ci-dessus ne contient plus la colonne N-1.
@@ -33,6 +36,17 @@ La liste structurée est dans `LiasseProjet.tableauxNonCouverts` (`code`, `intit
 **Abstention.** Hors périmètre, la fonction rend `{ statut: 'abstention', motifs }` et **aucun chiffre** : territoire autre que la métropole ou « à confirmer », résultat non soumis à l’impôt sur les sociétés ou à confirmer, entité non commerciale ou non renseignée, référentiel autre que PCG, devise autre que EUR, exercice invalide ou hors de la période de la table.
 
 Le régime d’imposition (`reel_normal` / `reel_simplifie`) est une **donnée d’entrée** : le moteur ne le déduit d’aucun seuil (le barème BOI-BAREME-000044 n’a pas été lu).
+
+### 1.1 bis Tableaux 2054, 2055 et 2033-C — `preparerTableauxImmobilisations` (D-104)
+
+Guide utilisateur : `tableaux-immobilisations.md`. Entrées : écritures de l’exercice (et de l’exercice précédent contigu), fichier des immobilisations, régime. Sortie : `TableauxImmobilisationsProjet` (ou la même abstention que la liasse), exposée par `GET v1/exercices/:id/liasse` (champ `tableauxImmobilisations`).
+
+- **Lignes, colonnes et codes de cases** : relus le 2026-11-20 sur les PDF officiels du millésime 2026 (formulaire 2050-LIASSE pages 2054-SD et 2055-SD ; formulaire 2033-SD page 2033-C-SD), par extraction de texte positionnée ; les codes sont `lu_a_confirmer` (jamais vérifiés visuellement ; « Ø » = zéro barré). Une cellule hors formulaire (colonne « diminutions totales ») ou sans code lisible (colonne 5 du 2033-C) porte `codeCase: null`.
+- **Calcul** : par compte (`suivreComptes`, partagé avec la rubrique 832-1), regroupé par ligne du formulaire (préfixe de compte le plus précis ; convention interne `conventionRattachementImmobilisations`). Ouverture = journaux d’à-nouveaux ; augmentations = débits hors à-nouveaux ; diminutions = crédits ; clôture = solde. Amortissements : sens inverse.
+- **Abstentions** : sans journal d’à-nouveaux → ouverture et mouvements `null` ; réévaluation, valeur d’origine, « dont composants » → à saisir ; ventilation des diminutions → établie seulement si les crédits sont nuls ; totaux tout ou rien ; compte sans ligne → « non ventilé », hors totaux.
+- **Fichier des immobilisations** : valeurs brutes à l’ouverture et à la clôture selon le fichier, amortissements antérieurs saisis, sorties d’actif, composants, dotation calculée par le moteur (linéaire ; dégressif non activé) ; immobilisation sans date ou sans base exclue avec motif ; écarts avec la balance affichés, jamais corrigés.
+- **Contrôles** : `valeur_brute_egale_projet_de_bilan`, `ouverture_brute_egale_cloture_n1`, `ouverture_amortissements_egale_cloture_n1`, `fichier_valeurs_brutes`, `fichier_dotations`, `dotations_egales_compte_6811`.
+- Non préparés : 2054 bis, 2055 cadres B et C, 2033-C cadre III, arrondi à l’euro.
 
 ### 1.2 Projet d’annexe — `preparerAnnexe`
 
@@ -146,15 +160,17 @@ Une ligne de liasse est toujours un **regroupement de rubriques de la table des 
 | BOFiP BOI-BIC-AMT-20-20-30, 20-20-20-10, 20-20-40, 20-20-10 et 20-10 (version du 12/09/2012) | Amortissement dégressif et linéaire (voir 1 bis : adresses, périmètres) | **Vérifiée** le 2026-11-20 — « en vigueur du 12/09/2012 à aujourd’hui » ; confirmée dans le stock open data `bofip_stock_live_20261028` |
 | Légifrance, CGI art. 39 A | Conditions et majorations du dégressif | **Non vérifiée** — accès automatisé refusé (HTTP 403) ; aucune URL consignée |
 | Entreprendre.service-public.gouv.fr, actualité A17100 (05/03/2024) | Seuils micro / petite / moyenne entreprise (décret n° 2024-152) | **Vérifiée** — page ancienne : seuils **à confirmer** |
-| impots.gouv.fr, formulaire 2050-LIASSE et notice 2032-NOT-SD, millésime 2026 | Tracé, libellés et cases des tableaux 2050 à 2059-G | **Non vérifiée** — site en maintenance |
-| impots.gouv.fr, formulaire 2033-SD et notice, millésime 2026 | Tracé, libellés et cases des tableaux 2033-A à 2033-G | **Non vérifiée** — site en maintenance |
+| impots.gouv.fr, formulaire 2050-LIASSE et notice 2032-NOT-SD, millésime 2026 | Tracé, libellés et cases des tableaux 2050 à 2059-G | **Lus le 2026-11-20 pour 2054 et 2055 seulement** (PDF, SHA-256 dans `SOURCES_FISCALES`) ; **non lus** pour 2050 à 2053 et 2056 à 2059-G (site en maintenance le 2026-11-19) |
+| impots.gouv.fr, formulaire 2033-SD et notice, millésime 2026 | Tracé, libellés et cases des tableaux 2033-A à 2033-G | **Lus le 2026-11-20 pour 2033-C seulement** (cadres I et II) ; **non lus** pour les autres tableaux |
 | impots.gouv.fr, formulaire 2065-SD | Déclaration de résultats à l’impôt sur les sociétés | **Non vérifiée** |
 | Légifrance, code de commerce L. 123-16, L. 123-16-1, L. 123-25, D. 123-200 | Catégories de taille, seuils, règle des deux exercices | **Non vérifiée** — accès automatisé refusé (HTTP 403) |
 | BOFiP BOI-BAREME-000044 | Limites de chiffre d’affaires du régime simplifié | **Non vérifiée** — non lu |
 
 Toutes les références sont dans `SOURCES_FISCALES` au format `SourceRegle` (référence, URL, date de vérification, `verification`, période d’application). Chaque résultat restitue ses sources.
 
-### 3.1 Conséquence : aucun code de case
+### 3.1 Conséquence : aucun code de case (sauf 2054, 2055 et 2033-C)
+
+*Mise à jour du 2026-11-20 (D-104) : impots.gouv.fr répond de nouveau ; les tableaux 2054, 2055 et 2033-C ont été relus (lignes, colonnes, codes « lus, à confirmer » — voir 1.1 bis). Ce qui suit reste vrai de tous les autres tableaux de la liasse.*
 
 Le 2026-11-19, impots.gouv.fr affichait « Le site impots.gouv.fr est actuellement en maintenance […] vous ne pouvez pas consulter la documentation et les actualités, ni télécharger de formulaire ». **Aucun formulaire n’a donc été lu.** Par conséquent :
 
@@ -210,7 +226,8 @@ Un écart est **affiché, jamais forcé** ; il est repris dans `manques`.
 10. **Dérivation des comptes** d’amortissement (28x) et de dotation (68111, 68112).
 10 bis. **Amortissements dégressifs** (calcul non activé par défaut) : texte du CGI art. 39 A (non lu : Légifrance refuse l’accès automatisé) ; BOI-BIC-AMT-20-20-50 (coefficients majorés ou diminués, non lu) ; coefficients et conditions d’éligibilité ; point de départ (premier jour du mois d’acquisition, établi par le BOFiP en vigueur) ; bascule au linéaire (faculté appliquée systématiquement) ; traitement de l’amortissement dérogatoire (non proposé) ; rapprochement par compte de dotation ; non-prise en compte de la valeur résiduelle dans le dégressif fiscal.
 11. **Arrondi à l’euro** et règles de présentation propres aux formulaires.
-12. Tout ce qui n’est pas couvert : résultat fiscal, tableaux 2054 à 2059-G, 2033-C à G, 2065.
+12. Tout ce qui n’est pas couvert : résultat fiscal, tableaux 2054 bis à 2059-G (2054 et 2055 préparés en partie), 2033-D à G (2033-C préparé en partie), 2065.
+13. **Tableaux 2054, 2055 et 2033-C** (D-104) : rattachement des comptes aux lignes (convention interne fondée sur la numérotation du PCG ; ventilation fine du 218, des immobilisations financières et des frais d’établissement du régime simplifié), ventilation des diminutions, réévaluation, composants, vérification visuelle des codes de cases lus.
 
 ## 7. Écarts entre les sources et la demande initiale
 
@@ -230,9 +247,10 @@ preparerAnnexe(demande: DemandeAnnexe): ResultatAnnexe            // AnnexeProje
 evaluerCategorieTaille(mesures, seuils?): EvaluationTaille
 articlesRequisPourCategorie(categorie, tousLesArticles): { articles: string[]; motif: string }
 proposerEcrituresInventaire(demande: DemandeInventaire): ResultatInventaire
+preparerTableauxImmobilisations(demande: DemandeTableauxImmobilisations): ResultatTableauxImmobilisations // TableauxImmobilisationsProjet | LiasseAbstention (D-104)
 lirePeriodeDansLibelle(libelle: string)
 ```
 
 Constantes : `TABLE_LIASSE_REEL_NORMAL_2026`, `TABLE_LIASSE_REEL_SIMPLIFIE_2026`, `TABLES_LIASSE`, `PERIMETRE_LIASSE`, `DERNIERE_CLOTURE_COUVERTE_LIASSE_2026`, `MODELE_ANNEXE`, `ARTICLES_ANNEXE`, `SEUILS_TAILLE_PAR_DEFAUT`, `REGLES_INVENTAIRE`, `CONVENTIONS_INVENTAIRE`, `SOURCES_FISCALES`, `MENTION_PROJET`.
 
-Tous les résultats sont sérialisables en JSON tels quels. Fichiers : `liasse.ts`, `annexe.ts`, `inventaire.ts`, `sources-fiscales.ts` et leurs tests.
+Tous les résultats sont sérialisables en JSON tels quels. Fichiers : `liasse.ts`, `annexe.ts`, `inventaire.ts`, `tableaux-immobilisations.ts`, `sources-fiscales.ts` et leurs tests.

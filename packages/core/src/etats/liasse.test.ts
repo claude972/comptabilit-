@@ -72,8 +72,9 @@ describe('tables de liasse', () => {
 
   it('liste les tableaux non couverts avec les informations nécessaires, sans les présenter comme préparés', () => {
     const rn = TABLE_LIASSE_REEL_NORMAL_2026.tableauxNonCouverts;
-    expect(rn.filter((t) => t.couverture === 'non_couvert').map((t) => t.code)).toEqual(['2054', '2054 bis', '2055', '2056', '2057', '2058-A', '2058-B', '2058-C', '2059-A', '2059-B', '2059-C', '2059-D', '2059-E', '2059-F', '2059-G', '2065']);
-    expect(rn.filter((t) => t.couverture === 'partiel').map((t) => t.code)).toEqual(['2050', '2051', '2052', '2053']);
+    expect(rn.filter((t) => t.couverture === 'non_couvert').map((t) => t.code)).toEqual(['2054 bis', '2056', '2057', '2058-A', '2058-B', '2058-C', '2059-A', '2059-B', '2059-C', '2059-D', '2059-E', '2059-F', '2059-G', '2065']);
+    expect(rn.filter((t) => t.couverture === 'partiel').map((t) => t.code)).toEqual(['2050', '2051', '2052', '2053', '2054', '2055']);
+    expect(rn.find((t) => t.code === '2054')?.motif).toMatch(/tableauxImmobilisations/);
     expect(rn.every((t) => t.informationsComplementairesNecessaires.length > 0)).toBe(true);
     expect(rn.find((t) => t.code === '2058-A')?.informationsComplementairesNecessaires.join(' ')).toMatch(/Réintégrations extra-comptables/);
     expect(rn.find((t) => t.code === '2057')?.informationsComplementairesNecessaires.join(' ')).toMatch(/échéance/);
@@ -81,6 +82,8 @@ describe('tables de liasse', () => {
     const rsi = TABLE_LIASSE_REEL_SIMPLIFIE_2026.tableauxNonCouverts;
     expect(rsi.map((t) => t.code)).toEqual(['2033-A', '2033-B', '2033-C', '2033-D', '2033-E', '2033-F', '2033-G', '2065']);
     expect(rsi.find((t) => t.code === '2033-B')?.couverture).toBe('partiel');
+    expect(rsi.find((t) => t.code === '2033-C')).toMatchObject({ couverture: 'partiel' });
+    expect(rsi.find((t) => t.code === '2033-C')?.motif).toMatch(/cadre III/);
     expect(rsi.find((t) => t.code === '2033-B')?.motif).toMatch(/résultat fiscal/);
   });
 });

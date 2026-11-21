@@ -10,6 +10,7 @@ import {
   type LigneEcriture,
   preparerAnnexe,
   preparerLiasse,
+  preparerTableauxImmobilisations,
   MOTIF_DEGRESSIF_NON_ACTIVE,
   proposerEcrituresInventaire,
   schemaImmobilisation,
@@ -73,13 +74,25 @@ export class FiscalController {
     return { exercice, entite, lot, lignes: charge.lignes as LigneEcriture[], precedent, motifPrecedent: charge.motifPrecedent };
   }
 
+  /** Fichier des immobilisations SAISI ou REPRIS du dossier (D-071, D-092) : seules celles en service au plus tard à la clôture, au format du moteur. */
+  private async fichierEnService(tx: Tx, entiteId: string, fin: string) {
+    const fichier = await tx.select().from(s.immobilisations).where(eq(s.immobilisations.entiteId, entiteId)).orderBy(asc(s.immobilisations.creeLe));
+    const immobilisations = fichier
+      .filter((i) => i.dateMiseEnService <= fin)
+      .map((i) => ({
+        id: i.id, libelle: i.libelle, compteImmobilisation: i.compteImmobilisation, baseAmortissable: i.baseAmortissable, dateAcquisition: i.dateAcquisition, dateMiseEnService: i.dateMiseEnService, dureeMois: i.dureeMois, amortissementsAnterieurs: i.amortissementsAnterieurs,
+        modeAmortissement: i.modeAmortissement as 'lineaire' | 'degressif', coefficientDegressif: i.coefficientDegressif, eligibiliteDegressifConfirmee: i.eligibiliteDegressifConfirmee, valeurResiduelle: i.valeurResiduelle, dateSortie: i.dateSortie, composantDe: i.composantDe,
+      }));
+    return { nbImmobilisations: fichier.length, immobilisations };
+  }
+
   @Get('exercices/:id/liasse')
   @ApiRefusVolume()
   @ApiQuery({ name: 'regime', required: false, enum: ['reel_normal', 'reel_simplifie'] })
   @ApiOperation({
-    summary: 'PROJET de préparation de la liasse fiscale : tableaux déduits de la balance (2050 à 2053, ou 2033-A et 2033-B)',
+    summary: 'PROJET de préparation de la liasse fiscale : tableaux déduits de la balance (2050 à 2053, ou 2033-A et 2033-B) et tableaux d’immobilisations et d’amortissements (2054 et 2055, ou 2033-C)',
     description:
-      'Périmètre : société commerciale à l’IS, PCG, euros, France métropolitaine. Hors périmètre, ou tant qu’une caractéristique du dossier est « à confirmer », la réponse est une ABSTENTION motivée, sans aucun chiffre. Dans le périmètre : toujours « projet », jamais « complet » (les autres tableaux, listés avec les informations qu’ils exigent, ne sont pas couverts ; les codes de cases des formulaires ne sont pas vérifiés et restent « à confirmer »). Calcul sur les écritures importées, AVANT écritures d’inventaire. Colonne N-1 : exercice précédent CONTIGU du dossier, s’il a une comptabilité importée, préparé par la même table et les mêmes règles ; sinon « indisponible » avec son motif (jamais approximée). Aucune télétransmission n’existe.',
+      'Périmètre : société commerciale à l’IS, PCG, euros, France métropolitaine. Hors périmètre, ou tant qu’une caractéristique du dossier est « à confirmer », la réponse est une ABSTENTION motivée, sans aucun chiffre. Dans le périmètre : toujours « projet », jamais « complet » (les autres tableaux, listés avec les informations qu’ils exigent, ne sont pas couverts ; les codes de cases des formulaires ne sont pas vérifiés et restent « à confirmer »). Calcul sur les écritures importées, AVANT écritures d’inventaire. Colonne N-1 : exercice précédent CONTIGU du dossier, s’il a une comptabilité importée, préparé par la même table et les mêmes règles ; sinon « indisponible » avec son motif (jamais approximée). Aucune télétransmission n’existe. « tableauxImmobilisations » (D-104) : 2054 et 2055 (régime réel normal) ou 2033-C cadres I et II (régime simplifié), déduits de la balance (mouvements des comptes 20 à 28, hors à-nouveaux) et du fichier des immobilisations saisi ou repris : chaque cellule porte son montant, son N-1, son code de case lu sur le formulaire 2026 (« à confirmer »), ou un motif d’abstention (à-nouveaux non identifiés, ventilation des diminutions, réévaluation, composants) ; les écarts entre la balance et le fichier sont AFFICHÉS, jamais corrigés ; le dégressif reste non activé sauf décision de l’éditeur.',
   })
   async liasse(@AccesCourant() acces: Acces, @Param('id') id: string, @Query('regime') regimeBrut?: string) {
     exigerUuid(id);
@@ -99,6 +112,21 @@ export class FiscalController {
         precedent: precedent ? { balance: calculerBalance(precedent.lignes, { auxiliaire: true }), exercice: precedent.exercice } : null,
         motifPrecedentAbsent: motifPrecedent,
       });
+      const { immobilisations } = await this.fichierEnService(tx, entite.id, exercice.fin);
+      const tableauxImmobilisations = preparerTableauxImmobilisations({
+        lignes,
+        exercice: { debut: exercice.debut, fin: exercice.fin },
+        regime,
+        territoire: entite.territoireFiscal,
+        impotSurLeResultat: impot(entite.regimeFiscal),
+        referentielComptable: entite.referentielComptable,
+        devise: 'EUR',
+        societeCommerciale: societeCommerciale(entite.formeJuridique),
+        immobilisations,
+        precedent: precedent ? { lignes: precedent.lignes, exercice: precedent.exercice } : null,
+        motifPrecedentAbsent: motifPrecedent,
+        options: { amortissementDegressifActive: this.cfg.AMORTISSEMENT_DEGRESSIF_ACTIVE },
+      });
       return {
         exercice: { id: exercice.id, debut: exercice.debut, fin: exercice.fin, versionDonnees: exercice.versionDonnees },
         donnees: { lotImportId: lot.id, version: lot.version, statutDonnees: lot.statutDonnees, avantInventaire: true, exercicePrecedentFourni: Boolean(precedent), ...(motifPrecedent ? { motifExercicePrecedentNonFourni: motifPrecedent } : {}) },
@@ -107,6 +135,7 @@ export class FiscalController {
         regimeDeduit: false,
         teletransmission: 'non_disponible',
         resultat,
+        tableauxImmobilisations,
       };
     });
   }
@@ -292,15 +321,9 @@ export class FiscalController {
     const cesure = execution && !execution.obsolete ? await tx.select().from(s.constats).where(and(eq(s.constats.executionId, execution.id), eq(s.constats.controleId, 'CLO-001'))) : [];
     const constatsCesure: Constat[] = cesure.map((c) => ({ gravite: c.gravite, titre: c.titre, explication: c.explication, actionProposee: c.actionProposee, montant: c.montant, lignesConcernees: c.lignesConcernees as string[], preuves: c.preuves as Constat['preuves'], cle: c.cle }));
     // Fichier des immobilisations SAISI par le cabinet : seules les immobilisations en service au plus tard à la clôture.
-    const fichier = await tx.select().from(s.immobilisations).where(eq(s.immobilisations.entiteId, exercice.entiteId)).orderBy(asc(s.immobilisations.creeLe));
-    const immobilisations = fichier
-      .filter((i) => i.dateMiseEnService <= exercice.fin)
-      .map((i) => ({
-        id: i.id, libelle: i.libelle, compteImmobilisation: i.compteImmobilisation, baseAmortissable: i.baseAmortissable, dateAcquisition: i.dateAcquisition, dateMiseEnService: i.dateMiseEnService, dureeMois: i.dureeMois, amortissementsAnterieurs: i.amortissementsAnterieurs,
-        modeAmortissement: i.modeAmortissement as 'lineaire' | 'degressif', coefficientDegressif: i.coefficientDegressif, eligibiliteDegressifConfirmee: i.eligibiliteDegressifConfirmee, valeurResiduelle: i.valeurResiduelle, dateSortie: i.dateSortie, composantDe: i.composantDe,
-      }));
+    const { immobilisations, nbImmobilisations } = await this.fichierEnService(tx, exercice.entiteId, exercice.fin);
     const resultat = proposerEcrituresInventaire({ lignes, exercice: { debut: exercice.debut, fin: exercice.fin }, lireLibelles: true, constatsCesure, immobilisations, options: { amortissementDegressifActive: this.cfg.AMORTISSEMENT_DEGRESSIF_ACTIVE } });
-    return { exercice, lot, lignes, resultat, nbImmobilisations: fichier.length, signalCesure: execution ? (execution.obsolete ? 'controles_obsoletes' : 'disponible') : 'controles_non_executes' };
+    return { exercice, lot, lignes, resultat, nbImmobilisations, signalCesure: execution ? (execution.obsolete ? 'controles_obsoletes' : 'disponible') : 'controles_non_executes' };
   }
 
   @Get('exercices/:id/inventaire/propositions')

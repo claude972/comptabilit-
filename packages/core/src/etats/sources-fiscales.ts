@@ -50,6 +50,12 @@ function pcgAmortissement(reference: string): SourceRegle {
   return { type: 'reglementaire', reference, url: URL_PCG_2026, dateVerification: DATE_CONSULTATION_AMORTISSEMENTS, verification: 'verifiee', periodeApplication: PERIODE_PCG_2025 };
 }
 
+
+/** Document officiel LU le 2026-11-20 (impots.gouv.fr de nouveau accessible) : texte extrait du PDF, jamais vérifié visuellement. */
+function luLe20Novembre(reference: string, url: string, periodeApplication: string): SourceRegle {
+  return { type: 'reglementaire', reference, url, dateVerification: DATE_CONSULTATION_AMORTISSEMENTS, verification: 'verifiee', periodeApplication };
+}
+
 const PRECISION_BOFIP_EN_VIGUEUR =
   'En vigueur du 12/09/2012 à aujourd’hui, consultée le 2026-11-20 sur la page officielle ; confirmée dans le stock open data `bofip_stock_live_20261028` (https://bofip.impots.gouv.fr/opendata/stock/10, MD5 492e3cb39df9b8101ccf182aa23220b8 vérifié). ' +
   'Aucune version postérieure ; flux du 2026-10-29 au 2026-11-11 non identifiés (couverts par la mention « à aujourd’hui » de la page). Règle non validée par un professionnel.';
@@ -116,6 +122,33 @@ export const SOURCES_FISCALES = {
   conventionLiasse: sourceInterne(
     'Convention interne : les lignes de la liasse sont des regroupements des rubriques de la table PCG-SYSTEME-DE-BASE (elle-même en attente de validation professionnelle). ' +
       'Aucune case du formulaire n’est désignée : les identifiants de lignes sont internes et le code de case est « à confirmer ».',
+  ),
+
+  formulaires2054_2055Lus: luLe20Novembre(
+    'DGFiP, formulaire n° 2050-LIASSE millésime 2026 (PDF 2050-liasse_5320.pdf, 19 pages, SHA-256 0bba33528b893ba8aa581d97bbc6ddb7d59a78fdbc234920596bce228f8453e1, téléchargé le 2026-11-20 depuis la page officielle) : ' +
+      'SEULS les tableaux 2054-SD « Immobilisations » (cadres A et B) et 2055-SD « Amortissements » (cadre A) ont été relus, pour leurs lignes, leurs colonnes et leurs codes de cases. ' +
+      'LIMITES : le texte a été extrait du PDF par programme (positions des libellés et des codes), non vérifié visuellement ; le symbole « Ø » (zéro barré) est repris tel quel ; les cadres B et C du 2055, le 2054 bis et tous les autres tableaux n’ont pas été exploités.',
+    'https://www.impots.gouv.fr/formulaire/2050-liasse/liasse-fiscale-du-regime-reel-normal-en-matiere-de-bic-et-dis',
+    'Millésime 2026 (déclarations de résultats déposées en 2026).',
+  ),
+  formulaire2033CLu: luLe20Novembre(
+    'DGFiP, formulaire n° 2033-SD millésime 2026 (PDF 2033-sd_5394.pdf, 7 pages, SHA-256 ce4c519097fa435e9bd0ca3956016e5e05321c6f07db341285c9f46fb177b6cb, téléchargé le 2026-11-20 depuis la page officielle) : ' +
+      'SEUL le tableau 2033-C-SD, cadres I « Immobilisations » et II « Amortissements », a été relu, pour ses lignes, ses colonnes et ses codes de cases (numériques). ' +
+      'LIMITES : texte extrait du PDF par programme, non vérifié visuellement ; le cadre III (plus-values et moins-values) et les autres tableaux n’ont pas été exploités ; la colonne 5 du cadre I (réévaluation légale) n’a pas de code de case lisible.',
+    'https://www.impots.gouv.fr/formulaire/2033-sd/liasse-bicsi-regime-rsi-tableaux-ndeg-2033-sd-2033-g-sd',
+    'Millésime 2026 (déclarations de résultats déposées en 2026).',
+  ),
+  noticesImmobilisationsLues: luLe20Novembre(
+    'DGFiP, notice n° 2032-NOT-SD millésime 2026 (PDF 2032-not-sd_5323.pdf, SHA-256 68ac608323f7dfca3fa86606856f115db800a20c5cb7c0505d69f56c50f26f39) et notice n° 2033-NOT-SD millésime 2026 (PDF 2033-sd_5395.pdf, SHA-256 b0a4352237d3ef279a87180831a7ae5e32ba417cdbaca8fb831dbd9081c7a6d1), téléchargées le 2026-11-20 : ' +
+      'passages relus sur les tableaux 2054, 2055 et 2033-C : « les postes particuliers prévus par les plans comptables professionnels doivent être rattachés aux postes dont relèvent normalement les immobilisations, compte tenu de leur nature » ; ' +
+      'le cadre A du 2055 « retrace la situation des comptes d’amortissement présentés en déduction des postes d’immobilisations à l’actif du bilan » ; la colonne 4 du cadre B du 2054 porte la valeur d’origine servant au calcul des amortissements ; les amortissements dérogatoires relèvent du cadre B du 2055. ' +
+      'LIMITES : la notice ne donne PAS de table des comptes par ligne : le rattachement des comptes du PCG aux lignes est une convention interne (voir `conventionRattachementImmobilisations`).',
+    'https://www.impots.gouv.fr/formulaire/2032-not-sd/notice-pour-remplir-la-liasse-bicis-regime-rn-tableaux-ndeg-2050-sd-2059-g-s',
+    'Millésime 2026.',
+  ),
+  conventionRattachementImmobilisations: sourceInterne(
+    'Convention interne : chaque compte de classe 20 à 27 (valeurs brutes) ou 28 (amortissements) est rattaché à la ligne du formulaire par son numéro dans le plan comptable général (préfixe le plus précis : p. ex. 2135 et 2145 aux « installations générales, agencements et aménagements des constructions », 2181 à « installations générales, agencements, aménagements divers », 2182 au matériel de transport, 2183 et 2184 au matériel de bureau, informatique et mobilier, le reste du 218 à « emballages récupérables et divers »). ' +
+      'Un compte qu’aucune ligne ne reprend est présenté à part (« non ventilé ») et n’entre dans aucun total du formulaire. Rattachement NON validé par un professionnel ; la ventilation fine des comptes 218 et des immobilisations financières est à confirmer.',
   ),
 
   // ───────────────────────────── Annexe ─────────────────────────────

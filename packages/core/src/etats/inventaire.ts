@@ -216,6 +216,16 @@ export interface AbstentionInventaire {
 
 export interface RegleInventaire { id: string; version: string; type: TypePropositionInventaire; description: string; source: SourceRegle }
 
+/** Immobilisation du fichier telle que le moteur l'a suivie : valeur brute retenue et dotation calculée de l'exercice (`null` si le moteur s'est abstenu). Sert aux tableaux 2054, 2055 et 2033-C. */
+export interface ImmobilisationSuivie {
+  id: string;
+  libelle: string;
+  mode: ModeAmortissement;
+  compteImmobilisation: string | null;
+  valeurBrute: ChaineDecimale | null;
+  dotationExercice: ChaineDecimale | null;
+}
+
 export interface ResultatInventaire {
   statut: 'projet';
   mention: string;
@@ -228,6 +238,8 @@ export interface ResultatInventaire {
   signalements: SignalementInventaire[];
   /** Comparaison du fichier des immobilisations saisi avec la comptabilité importée. */
   rapprochement: RapprochementImmobilisations;
+  /** Immobilisations suivies par le moteur (une par immobilisation fournie, hors doublons). */
+  immobilisationsSuivies: ImmobilisationSuivie[];
   /** Cumul des impacts si TOUTES les propositions étaient retenues (elles ne le sont jamais d'office). */
   totaux: { nbPropositions: number; nbAbstentions: number; impactResultat: ChaineDecimale; impactTotalActif: ChaineDecimale; impactTotalPassif: ChaineDecimale };
 }
@@ -1033,6 +1045,7 @@ export function proposerEcrituresInventaire(demande: DemandeInventaire): Resulta
     conventions: [...CONVENTIONS_INVENTAIRE],
     signalements,
     rapprochement,
+    immobilisationsSuivies: suivis.map((sv) => ({ id: sv.id, libelle: sv.libelle, mode: sv.mode, compteImmobilisation: sv.compteImmo, valeurBrute: sv.brute === null ? null : m2(sv.brute), dotationExercice: sv.dotation === null ? null : m2(sv.dotation) })),
     totaux: { nbPropositions: propositions.length, nbAbstentions: abstentions.length, impactResultat: cumul((p) => p.impacts.resultat), impactTotalActif: cumul((p) => p.impacts.totalActif), impactTotalPassif: cumul((p) => p.impacts.totalPassif) },
   };
 }

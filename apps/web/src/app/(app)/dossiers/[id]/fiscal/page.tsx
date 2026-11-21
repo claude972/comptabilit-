@@ -47,6 +47,23 @@ function Liasse({ l }: { l: LiasseProjet }) {
           </ul>
         ) : null}
       </Alerte>
+      {l.comparatif.statut === 'fourni' ? (
+        <Alerte ton="neutre" titre={`Colonne N-1 : exercice du ${l.comparatif.exercice.debut} au ${l.comparatif.exercice.fin}`} data-testid="comparatif-n1">
+          <ul className="list-disc pl-5">
+            {l.comparatif.reserves.map((r) => (
+              <li key={r}>{r}</li>
+            ))}
+          </ul>
+        </Alerte>
+      ) : (
+        <Alerte ton="attention" titre="Colonne N-1 indisponible" data-testid="comparatif-n1-indisponible">
+          <ul className="list-disc pl-5">
+            {l.comparatif.motifs.map((m) => (
+              <li key={m}>{m}</li>
+            ))}
+          </ul>
+        </Alerte>
+      )}
       <ul className="space-y-1" aria-label="Contrôles de cohérence" data-testid="controles-liasse">
         {l.controles.map((c) => (
           <li key={c.code}>
@@ -57,6 +74,7 @@ function Liasse({ l }: { l: LiasseProjet }) {
       </ul>
       {l.tableaux.map((t) => {
         const deuxColonnes = t.lignes.some((x) => x.brut !== undefined);
+        const avecN1 = l.comparatif.statut === 'fourni';
         return (
           <section key={t.code} aria-labelledby={`tableau-${t.code}`} className="space-y-2">
             <SousTitre id={`tableau-${t.code}`} className="text-base">
@@ -74,6 +92,7 @@ function Liasse({ l }: { l: LiasseProjet }) {
                     </>
                   ) : null}
                   <th scope="col" className="text-right">{deuxColonnes ? 'Net' : 'Montant'}</th>
+                  {avecN1 ? <th scope="col" className="text-right">{deuxColonnes ? 'Net N-1' : 'N-1'}</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -91,6 +110,7 @@ function Liasse({ l }: { l: LiasseProjet }) {
                       </>
                     ) : null}
                     <td className="text-right tabular-nums">{formaterMontant(x.montant)}</td>
+                    {avecN1 ? <td className="text-right tabular-nums" data-n1={x.ligne}>{formaterMontant(x.n1?.montant)}</td> : null}
                   </tr>
                 ))}
               </tbody>

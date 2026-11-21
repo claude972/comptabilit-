@@ -20,6 +20,7 @@
 import { Decimal } from 'decimal.js';
 import type { SourceRegle } from '../controles/types.js';
 import { estDateIso } from '../dates.js';
+import { MOTIF_SANS_PRECEDENT, verifierExercicePrecedent } from './comparatif.js';
 import { type ChaineDecimale, dec, versChaine } from '../montant.js';
 import { CORRESPONDANCE_PCG, correspondancePour } from './correspondance.js';
 import { projeterBilan, projeterCompteDeResultat } from './projection.js';
@@ -124,6 +125,8 @@ export interface CaseLiasse {
   brut?: ChaineDecimale;
   /** Actif du bilan uniquement (montant à déduire, positif). */
   amortissementsDepreciations?: ChaineDecimale;
+  /** Exercice précédent (N-1), même ligne, même table ; `null` quand la colonne est indisponible (voir `comparatif`). */
+  n1: ValeurN1 | null;
   /** Actif : net. Passif et produits : crédit − débit. Charges : débit − crédit. Résultats : produits − charges. */
   montant: ChaineDecimale;
   /** Comptes de la balance qui composent la ligne (vide pour un total : voir `tracabilite.formule`). */
@@ -150,7 +153,32 @@ export interface DemandeLiasse {
   devise: string;
   /** La société est-elle une société commerciale ? `null` = non renseigné (abstention). */
   societeCommerciale: boolean | null;
+  /**
+   * Exercice précédent (colonne N-1), s'il existe et porte une comptabilité importée. Il est traité par la MÊME table et
+   * les MÊMES règles que l'exercice demandé ; s'il sort du périmètre ou n'est pas contigu, la colonne est « indisponible »
+   * avec son motif (jamais une colonne approximative).
+   */
+  precedent?: { balance: Balance; exercice: { debut: string; fin: string } } | null;
+  /** Motif précis de l'absence de l'exercice précédent (plafond de volume, par exemple) ; sinon motif générique. */
+  motifPrecedentAbsent?: string | null;
 }
+
+/** Valeurs d'une ligne pour l'exercice précédent. */
+export interface ValeurN1 {
+  montant: ChaineDecimale;
+  brut?: ChaineDecimale;
+  amortissementsDepreciations?: ChaineDecimale;
+}
+
+export type ComparatifLiasse =
+  | {
+      statut: 'fourni';
+      exercice: { debut: string; fin: string };
+      totaux: Record<string, ChaineDecimale>;
+      controles: ControleEtat[];
+      reserves: string[];
+    }
+  | { statut: 'indisponible'; motifs: string[] };
 
 export interface MotifAbstention {
   code: 'territoire_hors_perimetre' | 'territoire_a_confirmer' | 'impot_hors_perimetre' | 'impot_a_confirmer' | 'forme_hors_perimetre' | 'forme_a_confirmer'
@@ -180,6 +208,8 @@ export interface LiasseProjet {
   correspondanceComptes: { id: string; version: string };
   tableaux: Array<{ code: CodeTableauLiasse; intitule: string; lignes: CaseLiasse[] }>;
   totaux: Record<string, ChaineDecimale>;
+  /** Colonne de l'exercice précédent (N-1) : fournie ou indisponible avec motifs. */
+  comparatif: ComparatifLiasse;
   /** Écarts AFFICHÉS, jamais corrigés. */
   controles: ControleEtat[];
   /** Comptes de la balance qu'aucune rubrique ne reprend. Solde = débit − crédit. */
@@ -599,6 +629,20 @@ const LIGNES_CLES: Record<RegimeLiasse, { actif: string; passif: string; resulta
  * Prépare le projet de liasse fiscale d'un exercice à partir de sa balance. S'abstient hors périmètre.
  * Le résultat est sérialisable en JSON ; tous les montants sont des chaînes décimales à deux décimales.
  */
+/**
+ * Colonne N-1 : l'exercice précédent est préparé par la même fonction (même table, mêmes règles, mêmes abstentions).
+ * Il doit être CONTIGU (clôture N-1 + 1 jour = ouverture N) ; sinon aucune colonne.
+ */
+function calculerPrecedent(demande: DemandeLiasse): { projet: LiasseProjet | null; motifs: string[]; reserves: string[] } {
+  const p = demande.precedent;
+  if (p === undefined || p === null) return { projet: null, motifs: [demande.motifPrecedentAbsent ?? MOTIF_SANS_PRECEDENT], reserves: [] };
+  const v = verifierExercicePrecedent(demande.exercice, p.exercice);
+  if (v.motif !== null) return { projet: null, motifs: [v.motif], reserves: [] };
+  const r = preparerLiasse({ ...demande, balance: p.balance, exercice: p.exercice, precedent: null });
+  if (r.statut !== 'projet') return { projet: null, motifs: ['L’exercice précédent sort du périmètre couvert : ' + r.motifs.map((m) => m.message).join(' ')], reserves: [] };
+  return { projet: r, motifs: [], reserves: v.reserves };
+}
+
 export function preparerLiasse(demande: DemandeLiasse): ResultatLiasse {
   const motifs = motifsAbstention(demande);
   if (motifs.length > 0) return { statut: 'abstention', motifs, perimetreCouvert: PERIMETRE_LIASSE, mention: MENTION_PROJET };
@@ -640,6 +684,15 @@ export function preparerLiasse(demande: DemandeLiasse): ResultatLiasse {
     return cumul;
   };
 
+  const precedentCalcule = calculerPrecedent(demande);
+  const n1Projet = precedentCalcule.projet;
+  const valeurN1 = (id: string): ValeurN1 | null => {
+    if (n1Projet === null) return null;
+    const c = n1Projet.tableaux.flatMap((t) => t.lignes).find((x) => x.ligne === id);
+    if (c === undefined) return null;
+    return { montant: c.montant, ...(c.brut !== undefined ? { brut: c.brut } : {}), ...(c.amortissementsDepreciations !== undefined ? { amortissementsDepreciations: c.amortissementsDepreciations } : {}) };
+  };
+
   const versCase = (l: LigneLiasseDefinition): CaseLiasse => {
     const c = calculer(l.id, new Set());
     const formule = l.formule.length === 0 ? null : l.formule.map((f, i) => `${f.signe === 1 ? (i === 0 ? '' : '+ ') : '- '}${f.ligne}`).join(' ');
@@ -651,6 +704,7 @@ export function preparerLiasse(demande: DemandeLiasse): ResultatLiasse {
       codeCase: l.codeCase,
       etatCodeCase: l.etatCodeCase,
       ...(l.avecColonnesActif ? { brut: versChaine(c.brut), amortissementsDepreciations: versChaine(c.deduction) } : {}),
+      n1: valeurN1(l.id),
       montant: versChaine(c.net),
       comptes: l.rubriquesPcg.flatMap(contributeurs),
       tracabilite: { table: { id: table.id, version: table.version }, correspondanceComptes: { id: correspondance.id, version: correspondance.version }, rubriquesPcg: l.rubriquesPcg, formule },
@@ -719,8 +773,16 @@ export function preparerLiasse(demande: DemandeLiasse): ResultatLiasse {
     ...controles.filter((c) => c.statut === 'ecart').map((c) => `Écart au contrôle ${c.code} : ${c.message}`),
     'Codes de cases non fournis : le formulaire du millésime n’a pas pu être lu ; les identifiants de lignes sont internes et la correspondance avec les cases est à confirmer.',
     ...table.tableauxNonCouverts.map((t) => `Tableau ${t.code} « ${t.intitule} » ${t.couverture === 'partiel' ? 'partiellement couvert' : 'non couvert'} : ${t.informationsComplementairesNecessaires.join(' ')}`),
+    ...(n1Projet === null ? precedentCalcule.motifs.map((m) => `Colonne N-1 indisponible : ${m}`) : []),
+    ...(n1Projet !== null ? n1Projet.controles.filter((c) => c.statut === 'ecart').map((c) => `Exercice N-1, écart au contrôle ${c.code} : ${c.message}`) : []),
+    ...(n1Projet !== null ? n1Projet.comptesNonAffectes.map((c) => `Exercice N-1 : compte ${c.compteNum} ${c.compteLib} (solde ${c.solde}) non affecté.`) : []),
     'Table de correspondance en attente de validation professionnelle.',
   ];
+
+  const comparatif: ComparatifLiasse =
+    n1Projet === null
+      ? { statut: 'indisponible', motifs: precedentCalcule.motifs }
+      : { statut: 'fourni', exercice: n1Projet.exercice, totaux: n1Projet.totaux, controles: n1Projet.controles, reserves: precedentCalcule.reserves };
 
   return {
     statut: 'projet',
@@ -733,6 +795,7 @@ export function preparerLiasse(demande: DemandeLiasse): ResultatLiasse {
     correspondanceComptes: { id: correspondance.id, version: correspondance.version },
     tableaux,
     totaux,
+    comparatif,
     controles,
     comptesNonAffectes,
     rubriquesNonAffectees,

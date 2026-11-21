@@ -86,6 +86,8 @@ export type { Applicabilite, CriteresEvolution, OperationIdentifiable, ProfilDos
 // 12. etats — balance, projets de compte de résultat et de bilan (états de travail, jamais des comptes annuels)
 export { calculerBalance } from './etats/balance.js';
 export { CODES_RUBRIQUES_RESERVES, CORRESPONDANCE_PCG, correspondancePour, verifierCorrespondance } from './etats/correspondance.js';
+export { MOTIF_SANS_PRECEDENT, RESERVE_N1_NON_VALIDE, projeterEtatsPrecedent, verifierExercicePrecedent } from './etats/comparatif.js';
+export type { EtatsPrecedent } from './etats/comparatif.js';
 export { COMPTE_RESULTAT_EN_COURS, projeterBilan, projeterCompteDeResultat } from './etats/projection.js';
 export { DATE_APPLICATION_REGLEMENT_2022_06, SOURCES_ETATS } from './etats/sources.js';
 export type {
@@ -107,7 +109,7 @@ export {
   DERNIERE_CLOTURE_COUVERTE_LIASSE_2026, PERIMETRE_LIASSE, TABLES_LIASSE, TABLE_LIASSE_REEL_NORMAL_2026, TABLE_LIASSE_REEL_SIMPLIFIE_2026, preparerLiasse, tableLiassePour, verifierTableLiasse,
 } from './etats/liasse.js';
 export type {
-  CaseLiasse, CodeTableauLiasse, CompteContributeur, DemandeLiasse, ImpotSurLeResultat, LiasseAbstention, LiasseProjet, LigneLiasseDefinition, MotifAbstention, RegimeLiasse, ResultatLiasse, TableLiasse,
+  CaseLiasse, CodeTableauLiasse, ComparatifLiasse, CompteContributeur, ValeurN1, DemandeLiasse, ImpotSurLeResultat, LiasseAbstention, LiasseProjet, LigneLiasseDefinition, MotifAbstention, RegimeLiasse, ResultatLiasse, TableLiasse,
   TableauNonCouvert, TerritoireFiscal,
 } from './etats/liasse.js';
 export { ARTICLES_ANNEXE, MODELE_ANNEXE, SEUILS_TAILLE_PAR_DEFAUT, articlesRequisPourCategorie, evaluerCategorieTaille, preparerAnnexe } from './etats/annexe.js';

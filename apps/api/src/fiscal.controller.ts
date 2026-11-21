@@ -17,7 +17,7 @@ import {
   type RegimeLiasse,
   versChaine,
 } from '@comtaple/core';
-import { type AccesBd, and, asc, desc, eq, journaliser, schema as s, type Tx } from '@comtaple/db';
+import { type AccesBd, and, asc, desc, eq, journaliser, lt, schema as s, type Tx } from '@comtaple/db';
 import { type Config, tailleEtOperationsDuDossier } from '@comtaple/plateforme';
 import { z } from 'zod';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
@@ -52,7 +52,7 @@ function impot(regime: string | null): ImpotSurLeResultat {
 export class FiscalController {
   constructor(@Inject(BD) private readonly bd: AccesBd, @Inject(CONFIG) private readonly cfg: Config) {}
 
-  private async donnees(tx: Tx, budget: Budget, ecran: string, exerciceId: string, minimum: Parameters<typeof exigerNiveau>[2] = 'lecture') {
+  private async donnees(tx: Tx, budget: Budget, ecran: string, exerciceId: string, minimum: Parameters<typeof exigerNiveau>[2] = 'lecture', avecPrecedent = false) {
     const [exercice] = await tx.select().from(s.exercices).where(eq(s.exercices.id, exerciceId));
     if (!exercice) throw new NotFoundException('Exercice introuvable');
     await exigerNiveau(tx, exercice.entiteId, minimum);
@@ -61,8 +61,16 @@ export class FiscalController {
     const [lot] = await tx.select().from(s.lotsImport).where(and(eq(s.lotsImport.exerciceId, exerciceId), eq(s.lotsImport.type, 'fec'), eq(s.lotsImport.actif, true)));
     if (!lot) throw new ConflictException('Aucune donnée comptable importée pour cet exercice : rien ne peut être préparé');
     // Plafond de l'API (D-093) : volume vérifié avant toute lecture, refus motivé au-delà.
-    const { lignes } = await chargerLignes(tx, budget, this.cfg, { ecran, plafond: 'calcul', lot });
-    return { exercice, entite, lot, lignes: lignes as LigneEcriture[] };
+    // Exercice précédent (colonne N-1) : celui qui se termine juste avant, s'il a un lot comptable actif.
+    let precedentExercice: typeof s.exercices.$inferSelect | undefined;
+    let lotPrecedent: typeof s.lotsImport.$inferSelect | undefined;
+    if (avecPrecedent) {
+      [precedentExercice] = await tx.select().from(s.exercices).where(and(eq(s.exercices.entiteId, exercice.entiteId), lt(s.exercices.fin, exercice.debut))).orderBy(desc(s.exercices.fin)).limit(1);
+      if (precedentExercice) [lotPrecedent] = await tx.select().from(s.lotsImport).where(and(eq(s.lotsImport.exerciceId, precedentExercice.id), eq(s.lotsImport.type, 'fec'), eq(s.lotsImport.actif, true)));
+    }
+    const charge = await chargerLignes(tx, budget, this.cfg, { ecran, plafond: 'calcul', lot, lotPrecedent: lotPrecedent ?? null });
+    const precedent = charge.precedent && precedentExercice ? { lignes: charge.precedent as LigneEcriture[], exercice: { debut: precedentExercice.debut, fin: precedentExercice.fin } } : null;
+    return { exercice, entite, lot, lignes: charge.lignes as LigneEcriture[], precedent, motifPrecedent: charge.motifPrecedent };
   }
 
   @Get('exercices/:id/liasse')
@@ -71,14 +79,14 @@ export class FiscalController {
   @ApiOperation({
     summary: 'PROJET de préparation de la liasse fiscale : tableaux déduits de la balance (2050 à 2053, ou 2033-A et 2033-B)',
     description:
-      'Périmètre : société commerciale à l’IS, PCG, euros, France métropolitaine. Hors périmètre, ou tant qu’une caractéristique du dossier est « à confirmer », la réponse est une ABSTENTION motivée, sans aucun chiffre. Dans le périmètre : toujours « projet », jamais « complet » (les autres tableaux, listés avec les informations qu’ils exigent, ne sont pas couverts ; les codes de cases des formulaires ne sont pas vérifiés et restent « à confirmer »). Calcul sur les écritures importées, AVANT écritures d’inventaire. Aucune télétransmission n’existe.',
+      'Périmètre : société commerciale à l’IS, PCG, euros, France métropolitaine. Hors périmètre, ou tant qu’une caractéristique du dossier est « à confirmer », la réponse est une ABSTENTION motivée, sans aucun chiffre. Dans le périmètre : toujours « projet », jamais « complet » (les autres tableaux, listés avec les informations qu’ils exigent, ne sont pas couverts ; les codes de cases des formulaires ne sont pas vérifiés et restent « à confirmer »). Calcul sur les écritures importées, AVANT écritures d’inventaire. Colonne N-1 : exercice précédent CONTIGU du dossier, s’il a une comptabilité importée, préparé par la même table et les mêmes règles ; sinon « indisponible » avec son motif (jamais approximée). Aucune télétransmission n’existe.',
   })
   async liasse(@AccesCourant() acces: Acces, @Param('id') id: string, @Query('regime') regimeBrut?: string) {
     exigerUuid(id);
     const regime = (regimeBrut ?? 'reel_normal') as RegimeLiasse;
     if (regime !== 'reel_normal' && regime !== 'reel_simplifie') throw new BadRequestException('regime : reel_normal ou reel_simplifie');
     return avecCalcul(this.bd, acces, async (tx, budget) => {
-      const { exercice, entite, lot, lignes } = await this.donnees(tx, budget, 'Liasse fiscale (projet)', id);
+      const { exercice, entite, lot, lignes, precedent, motifPrecedent } = await this.donnees(tx, budget, 'Liasse fiscale (projet)', id, 'lecture', true);
       const resultat = preparerLiasse({
         balance: calculerBalance(lignes, { auxiliaire: true }),
         exercice: { debut: exercice.debut, fin: exercice.fin },
@@ -88,10 +96,12 @@ export class FiscalController {
         referentielComptable: entite.referentielComptable,
         devise: 'EUR',
         societeCommerciale: societeCommerciale(entite.formeJuridique),
+        precedent: precedent ? { balance: calculerBalance(precedent.lignes, { auxiliaire: true }), exercice: precedent.exercice } : null,
+        motifPrecedentAbsent: motifPrecedent,
       });
       return {
         exercice: { id: exercice.id, debut: exercice.debut, fin: exercice.fin, versionDonnees: exercice.versionDonnees },
-        donnees: { lotImportId: lot.id, version: lot.version, statutDonnees: lot.statutDonnees, avantInventaire: true },
+        donnees: { lotImportId: lot.id, version: lot.version, statutDonnees: lot.statutDonnees, avantInventaire: true, exercicePrecedentFourni: Boolean(precedent), ...(motifPrecedent ? { motifExercicePrecedentNonFourni: motifPrecedent } : {}) },
         regimeDemande: regime,
         // Le régime d'imposition (réel normal ou simplifié) est un choix du cabinet : il n'est déduit d'aucun seuil.
         regimeDeduit: false,

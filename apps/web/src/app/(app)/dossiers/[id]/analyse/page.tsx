@@ -61,7 +61,8 @@ function Comptes({ r }: { r: Rubrique }) {
   );
 }
 
-function EtatAffiche({ titre, etat, id }: { titre: string; etat: EtatProjet; id: string }) {
+function EtatAffiche({ titre, etat, id, n1 }: { titre: string; etat: EtatProjet; id: string; n1: EtatProjet | null }) {
+  const parCodeN1 = new Map((n1?.rubriques ?? []).map((r) => [r.code, r]));
   const actif = etat.rubriques.filter((r) => r.brut !== undefined);
   const autres = etat.rubriques.filter((r) => r.brut === undefined);
   return (
@@ -90,6 +91,7 @@ function EtatAffiche({ titre, etat, id }: { titre: string; etat: EtatProjet; id:
               <th scope="col" className="text-right">Brut</th>
               <th scope="col" className="text-right">Amortissements et dépréciations</th>
               <th scope="col" className="text-right">Net</th>
+              {n1 ? <th scope="col" className="text-right" data-testid={`${id}-colonne-n1`}>Net N-1</th> : null}
             </tr>
           </thead>
           <tbody>
@@ -102,6 +104,7 @@ function EtatAffiche({ titre, etat, id }: { titre: string; etat: EtatProjet; id:
                 <td className="text-right tabular-nums">{formaterMontant(r.brut)}</td>
                 <td className="text-right tabular-nums">{formaterMontant(r.amortissementsDepreciations)}</td>
                 <td className="text-right tabular-nums">{formaterMontant(r.montant)}</td>
+                {n1 ? <td className="text-right tabular-nums" data-n1={r.code}>{formaterMontant(parCodeN1.get(r.code)?.montant)}</td> : null}
               </tr>
             ))}
           </tbody>
@@ -113,6 +116,7 @@ function EtatAffiche({ titre, etat, id }: { titre: string; etat: EtatProjet; id:
             <tr>
               <th scope="col">{actif.length ? 'Passif' : 'Rubrique'}</th>
               <th scope="col" className="text-right">Montant</th>
+              {n1 ? <th scope="col" className="text-right" data-testid={`${id}-colonne-n1-bis`}>N-1</th> : null}
             </tr>
           </thead>
           <tbody>
@@ -123,6 +127,7 @@ function EtatAffiche({ titre, etat, id }: { titre: string; etat: EtatProjet; id:
                   <Comptes r={r} />
                 </th>
                 <td className="text-right tabular-nums">{formaterMontant(r.montant)}</td>
+                {n1 ? <td className="text-right tabular-nums" data-n1={r.code}>{formaterMontant(parCodeN1.get(r.code)?.montant)}</td> : null}
               </tr>
             ))}
           </tbody>
@@ -132,7 +137,10 @@ function EtatAffiche({ titre, etat, id }: { titre: string; etat: EtatProjet; id:
         {Object.entries(etat.totaux ?? {}).map(([cle, v]) => (
           <div key={cle} className="contents">
             <dt className="text-texte-doux">{libelleTotal(cle)}</dt>
-            <dd className="font-semibold tabular-nums">{formaterMontant(v)}</dd>
+            <dd className="font-semibold tabular-nums">
+              {formaterMontant(v)}
+              {n1 ? <span className="ml-3 font-normal text-texte-doux" data-testid={`${id}-total-n1-${cle}`}>N-1 : {formaterMontant(n1.totaux?.[cle])}</span> : null}
+            </dd>
           </div>
         ))}
       </dl>
@@ -341,8 +349,25 @@ export default async function PageAnalyse({ params, searchParams }: { params: Pr
                   </span>
                 ) : null}
               </Alerte>
-              {etats.donnees.compteDeResultat ? <EtatAffiche titre="Projet de compte de résultat" etat={etats.donnees.compteDeResultat} id="compte-de-resultat" /> : null}
-              {etats.donnees.bilan ? <EtatAffiche titre="Projet de bilan" etat={etats.donnees.bilan} id="bilan" /> : null}
+              {etats.donnees.comparatif?.statut === 'fourni' ? (
+                <Alerte ton="neutre" titre={`Colonne N-1 : exercice du ${etats.donnees.comparatif.exercice.debut} au ${etats.donnees.comparatif.exercice.fin}`} data-testid="comparatif-n1">
+                  <ul className="list-disc pl-5">
+                    {etats.donnees.comparatif.reserves.map((r) => (
+                      <li key={r}>{r}</li>
+                    ))}
+                  </ul>
+                </Alerte>
+              ) : etats.donnees.comparatif ? (
+                <Alerte ton="attention" titre="Colonne N-1 indisponible" data-testid="comparatif-n1-indisponible">
+                  <ul className="list-disc pl-5">
+                    {etats.donnees.comparatif.motifs.map((m) => (
+                      <li key={m}>{m}</li>
+                    ))}
+                  </ul>
+                </Alerte>
+              ) : null}
+              {etats.donnees.compteDeResultat ? <EtatAffiche titre="Projet de compte de résultat" etat={etats.donnees.compteDeResultat} id="compte-de-resultat" n1={etats.donnees.comparatif?.statut === 'fourni' ? etats.donnees.comparatif.compteDeResultat : null} /> : null}
+              {etats.donnees.bilan ? <EtatAffiche titre="Projet de bilan" etat={etats.donnees.bilan} id="bilan" n1={etats.donnees.comparatif?.statut === 'fourni' ? etats.donnees.comparatif.bilan : null} /> : null}
             </>
           ) : (
             <Alerte ton="attention" titre="Projets de compte de résultat et de bilan indisponibles" data-testid="sans-correspondance">

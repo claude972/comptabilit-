@@ -511,6 +511,20 @@ Coût réel par pièce : environ 0,26 à 0,30 s de latence en plus (création, d
 
 **Limites.** Pas de test de montée en charge soutenue ni de plusieurs workers ou API ; seulement quatre identités de test (douze sessions) ; les pannes jouées sont celles de dépendances atteintes par un relais ou un port fermé, non l'arrêt réel des services de la pile ; pas d'essai de panne disque ; arrêt brutal du worker éprouvé pour les imports, non pour les contrôles, rapprochements, exports ni restitutions (ils repartent de zéro par conception) ; parcours 2, 6, 7 toujours contre simulateur ; parcours 10 non rejoué (P4) ; appareils réels, Safari et lecteurs d'écran : recette PRÉPARÉE, JAMAIS JOUÉE ; 2 contrôles de gabarit de page (« 503 » dans l'interface) non rejoués dans un navigateur réel sur panne réelle.
 
+### D-103 — Colonne N-1 (exercice précédent) sur les projets de bilan, de compte de résultat et de liasse (2026-11-20 ; LOT P5 du plan d'achèvement ; EXIGENCE : états comparatifs d'un dossier, lacune « pas de colonne N-1 » de `etats-fiscaux.md`)
+
+Contexte : les projets de bilan, de compte de résultat et de liasse (2050 à 2053, 2033-A et 2033-B) ne portaient que l'exercice demandé ; le comparatif, que tout cabinet attend d'un état, manquait (lacune écrite dans `etats-fiscaux.md` et `couverture.md`). Classement de toutes les lacunes fonctionnelles : `plan-achevement.md`, section P5.
+
+Décision : le moteur (`packages/core/src/etats/comparatif.ts`, `liasse.ts`) prépare l'exercice précédent PAR LA MÊME FONCTION, la même table de liasse, la même table de correspondance et les mêmes abstentions que l'exercice demandé ; l'API (`GET v1/exercices/:id/liasse` et `…/etats`) charge l'exercice qui se termine juste avant, s'il a un lot comptable actif, sous le même plafond de volume que le reste (D-093 : si les deux exercices ne tiennent pas ensemble, N-1 est écarté AVEC son motif). Règles de fond :
+- **contiguïté exigée** (clôture N-1 + 1 jour = ouverture N) ; sinon colonne « indisponible » et motif, jamais une colonne trompeuse ;
+- **aucune colonne approximative** : exercice précédent absent, hors période de la table (ouvert avant le 1er janvier 2025), hors périmètre (abstention) ou refusé par le plafond : `comparatif.statut = 'indisponible'` avec les motifs, `n1 = null` sur chaque ligne, et un manque listé dans la liasse ;
+- **réserves toujours affichées** : calculé sur les écritures importées de N-1 AVANT écritures d'inventaire, avec une table non validée (ce n'est pas le N-1 des comptes annuels approuvés) ; durée différente de douze mois signalée comme non comparable ;
+- le calcul de l'exercice demandé n'est PAS modifié par la présence de N-1 (prouvé : totaux et montants identiques avec et sans) ; les écarts de contrôle et comptes non affectés de N-1 sont ajoutés aux manques de la liasse ;
+- montants en chaînes décimales (décimal exact), statut toujours « projet », `complet` toujours faux, aucune transmission ; la lecture ne modifie rien : pas d'entrée au journal d'audit (comme les autres lectures d'états) ; droits inchangés (lecture du dossier ; le déposant reçoit 404).
+Écran : colonnes « Net N-1 » / « N-1 » sur `/dossiers/:id/analyse` (bilan et compte de résultat) et `/dossiers/:id/fiscal` (liasse), avec encadré de réserves ou d'indisponibilité.
+
+Preuves : tests du moteur `comparatif.test.ts` (contiguïté, durée, égalité avec l'exercice précédent seul, inchangé pour N, abstention, régime simplifié) ; parcours d'intégration `parcours-comparatif-n1.itest.ts` sur pile réelle (cabinet neuf, deux exercices importés, N-1 égal à l'exercice précédent seul, indisponible sans données, droits). Limites : pas d'arrondi à l'euro, pas de renvois de bas de tableau, codes de cases toujours à confirmer ; N-1 non ajusté par les écritures d'inventaire de N-1 ; un exercice intermédiaire sans comptabilité importée rend N-1 indisponible (pas de saut) ; aucune validation professionnelle.
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

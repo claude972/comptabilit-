@@ -52,6 +52,11 @@ export interface Etats {
   correspondance: { id: string; version: string; periodeApplication: string; etat: string; source: SourceRegle } | null;
   compteDeResultat: EtatProjet | null;
   bilan: EtatProjet | null;
+  /** Colonne N-1 : exercice précédent contigu, mêmes tables, avant inventaire ; `null` hors table de correspondance. */
+  comparatif:
+    | { statut: 'fourni'; exercice: { debut: string; fin: string }; compteDeResultat: EtatProjet; bilan: EtatProjet; reserves: string[] }
+    | { statut: 'indisponible'; motifs: string[] }
+    | null;
   motif: string | null;
 }
 export type Unite = 'euros' | 'jours' | 'pourcentage' | 'ratio';

@@ -14,7 +14,7 @@ Périmètre explicite : **société commerciale soumise à l’impôt sur les so
 
 | Tableau | État | Ce qui est préparé | Ce qui manque |
 |---|---|---|---|
-| 2050 Bilan-actif (réel normal) | partiel | Brut, amortissements et dépréciations, net de l’exercice, par poste | Colonne N-1, renvois de bas de tableau, arrondi à l’euro, codes de cases |
+| 2050 Bilan-actif (réel normal) | partiel | Brut, amortissements et dépréciations, net de l’exercice, par poste ; colonne N-1 (D-103) | Renvois de bas de tableau, arrondi à l’euro, codes de cases |
 | 2051 Bilan-passif | partiel | Montants de l’exercice (avant répartition) | idem |
 | 2052 Compte de résultat | partiel | Montants de l’exercice jusqu’au résultat courant | idem + ventilation France / export du chiffre d’affaires |
 | 2053 Compte de résultat (suite) | partiel | Exceptionnel, participation, impôt, totaux, bénéfice ou perte | idem + détail des produits et charges exceptionnels |
@@ -25,6 +25,8 @@ Périmètre explicite : **société commerciale soumise à l’impôt sur les so
 | 2059-A à 2059-G | **non couvert** | — | Plus-values, valeur ajoutée fiscale, composition du capital, filiales |
 | 2033-C à 2033-G | **non couvert** | — | Mêmes informations, au format simplifié |
 | 2065 et annexes | **non couvert** | — | Résultat fiscal, identification, liquidation de l’impôt |
+
+**Colonne N-1 (D-103).** Voir `comparatif-n1.md`. `LiasseProjet.comparatif` vaut `fourni` (exercice précédent contigu, préparé par la même table, avant inventaire) ou `indisponible` avec ses motifs ; chaque ligne porte `n1` (`null` si indisponible). Le « idem » des lignes ci-dessus ne contient plus la colonne N-1.
 
 La liste structurée est dans `LiasseProjet.tableauxNonCouverts` (`code`, `intitule`, `couverture`, `motif`, `informationsComplementairesNecessaires`). `complet` vaut toujours `false` dans cette version, et `manques` dit pourquoi.
 

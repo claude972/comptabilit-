@@ -98,7 +98,7 @@ Lecture des colonnes :
 | Propositions d'écritures d'inventaire | Saisie humaine + propositions assistées déterministes | Tests | Validation **(externe)** |
 | Balance ajustée, projets de bilan et de compte de résultat | Moteur, API, écrans | Tests | Validation de la table **(externe)** |
 | Projet d'annexe | Modèle par rubrique, pré-remplissage, informations à compléter | Tests | Validation **(externe)** |
-| Préparation de la liasse, régimes explicitement couverts | Tableaux déduits de la balance, périmètre documenté (`etats-fiscaux.md`) | Tests | Tableaux non couverts listés ; validation **(externe)** |
+| Préparation de la liasse, régimes explicitement couverts | Tableaux déduits de la balance, périmètre documenté (`etats-fiscaux.md`) ; **colonne N-1** sur la liasse, le bilan et le compte de résultat projetés (D-103, `comparatif.ts`, `comparatif-n1.md`) | Tests moteur (`comparatif.test.ts`), parcours sur pile réelle (`parcours-comparatif-n1.itest.ts`) | Tableaux non couverts listés (priorité suivante : 2054 et 2055, `plan-achevement.md` P5) ; N-1 sans inventaire de N-1, exercice précédent contigu seulement ; validation **(externe)** |
 | Correspondances versionnées ; incomplet jamais présenté comme complet | Tables versionnées, statut `complet: false` et manques listés | Tests | — |
 | Préparer / approuver / exporter / intégrer / transmettre distincts ; pas de télétransmission | Statuts distincts ; aucune télétransmission | Tests | Télétransmission : hors périmètre par conception |
 

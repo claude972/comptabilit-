@@ -13,6 +13,8 @@ export interface CaseLiasse {
   brut?: string;
   amortissementsDepreciations?: string;
   montant: string;
+  /** Exercice précédent (N-1), même ligne ; `null` si la colonne est indisponible. */
+  n1: { montant: string; brut?: string; amortissementsDepreciations?: string } | null;
   comptes: Array<{ compteNum: string; compteLib: string; montant: string }>;
   note: string | null;
 }
@@ -30,6 +32,7 @@ export interface LiasseProjet {
   regime: 'reel_normal' | 'reel_simplifie';
   table: { id: string; version: string; millesimeFormulaire: string; etat: string };
   tableaux: Array<{ code: string; intitule: string; lignes: CaseLiasse[] }>;
+  comparatif: { statut: 'fourni'; exercice: { debut: string; fin: string }; reserves: string[] } | { statut: 'indisponible'; motifs: string[] };
   controles: ControleEtat[];
   comptesNonAffectes: Array<{ compteNum: string; compteLib: string; solde: string }>;
   rubriquesNonAffectees: Array<{ code: string; libelle: string; montant: string; motif: string }>;

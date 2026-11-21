@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Controller, Get, Inject, NotFoundException, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { calculerBalance, calculerIndicateurs, CATALOGUE_INDICATEURS, correspondancePour, type LigneEcriture, projeterBilan, projeterCompteDeResultat, schemaChaineDecimale } from '@comtaple/core';
+import { calculerBalance, calculerIndicateurs, CATALOGUE_INDICATEURS, correspondancePour, type LigneEcriture, projeterBilan, projeterEtatsPrecedent, projeterCompteDeResultat, schemaChaineDecimale } from '@comtaple/core';
 import { type AccesBd, and, desc, eq, inArray, lt, schema as s, type Tx } from '@comtaple/db';
 import type { Config } from '@comtaple/plateforme';
 import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
@@ -47,7 +47,7 @@ export class EtatsController {
   async etats(@AccesCourant() acces: Acces, @Param('id') id: string, @Query('ajuste') ajuste?: string) {
     exigerUuid(id);
     return avecCalcul(this.bd, acces, async (tx, budget) => {
-      const { exercice, lot, lignes: importees } = await this.donnees(tx, budget, 'États de travail', id, false);
+      const { exercice, lot, lignes: importees, precedent: exercicePrecedent, motifPrecedent } = await this.donnees(tx, budget, 'États de travail', id, true);
       let lignes = importees;
       let inventaire: { ecritures: number; ecartees: number } | null = null;
       if (ajuste === '1') {
@@ -71,7 +71,7 @@ export class EtatsController {
       const base = { mention: inventaire ? `${MENTION} Version AJUSTÉE : elle intègre ${inventaire.ecritures} écriture(s) d’inventaire approuvée(s) en interne, non intégrées dans le logiciel comptable.` : MENTION, ajuste: Boolean(inventaire), inventaire, exercice, donnees: { lotImportId: lot.id, version: lot.version, versionDonnees: exercice.versionDonnees, statutDonnees: lot.statutDonnees }, balance };
       const correspondance = correspondancePour(exercice.debut);
       if (!correspondance) {
-        return { ...base, correspondance: null, compteDeResultat: null, bilan: null, motif: 'Aucune table de correspondance vérifiée pour un exercice ouvert avant le 1er janvier 2025 : seuls la balance et certains indicateurs sont disponibles.' };
+        return { ...base, correspondance: null, compteDeResultat: null, bilan: null, comparatif: null, motif: 'Aucune table de correspondance vérifiée pour un exercice ouvert avant le 1er janvier 2025 : seuls la balance et certains indicateurs sont disponibles.' };
       }
       // Chaque rubrique projetée est complétée par sa nature, son parent et son ordre (issus de la table de
       // correspondance), pour que l'interface n'ait rien à déduire.
@@ -88,6 +88,8 @@ export class EtatsController {
         correspondance: { id: correspondance.id, version: correspondance.version, periodeApplication: correspondance.periodeApplication, etat: correspondance.etat, source: correspondance.source },
         compteDeResultat: enrichir(projeterCompteDeResultat(balance, correspondance)),
         bilan: enrichir(projeterBilan(balance, correspondance)),
+        // Colonne N-1 : exercice précédent contigu, mêmes tables et règles, avant inventaire (voir `comparatif.statut`).
+        comparatif: projeterEtatsPrecedent({ debut: exercice.debut, fin: exercice.fin }, exercicePrecedent ? { balance: calculerBalance(exercicePrecedent.lignes), exercice: exercicePrecedent.exercice } : null, motifPrecedent),
         motif: null,
       };
     });

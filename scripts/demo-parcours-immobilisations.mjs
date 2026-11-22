@@ -95,7 +95,8 @@ for (const tab of t.tableaux) for (const c of tab.cadres) {
 }
 
 // ── Navigateur réel : état joint à l'écran, CSV, PDF ; concordance avec les valeurs de l'API ──
-const url = `${WEB}/dossiers/${dossier}/fiscal/etat-joint?exercice=${exercice}&regime=${REGIME}`;
+const ESSENTIEL = process.env.VUE_ESSENTIEL === '1';
+const url = `${WEB}/dossiers/${dossier}/fiscal/etat-joint?exercice=${exercice}&regime=${REGIME}${ESSENTIEL ? '&vue=essentiel' : ''}`;
 const { nav, page } = await session(url);
 await page.getByTestId('etat-joint').waitFor();
 await page.screenshot({ path: `${sortie}parcours-immo-etat-joint.png` });

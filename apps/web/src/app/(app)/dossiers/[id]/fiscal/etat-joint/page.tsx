@@ -32,7 +32,10 @@ export default async function PageEtatJoint({ params, searchParams }: { params: 
   const regime = parametre(sp.regime) === 'reel_simplifie' ? 'reel_simplifie' : 'reel_normal';
   const liasse = await tenter<ReponseLiasse>(`v1/exercices/${exercice.id}/liasse?regime=${regime}`);
   if (!liasse.ok) return <ErreurAcces statut={liasse.statut} message={liasse.message} retour={`/dossiers/${id}/fiscal?exercice=${exercice.id}`} />;
-  const tableaux = etatJointDe(liasse.donnees);
+  // `?vue=essentiel` : bilan, comptes de résultat, immobilisations et amortissements seulement (D-163) ; sans paramètre, tous les tableaux préparés.
+  const essentiel = parametre(sp.vue) === 'essentiel';
+  const tousTableaux = etatJointDe(liasse.donnees);
+  const tableaux = essentiel ? tousTableaux.filter((t) => /^(liasse-|2054\/|2055\/|2033-C\/)/.test(t.id)) : tousTableaux;
   const edition = formaterHorodatage(new Date().toISOString());
   const identification = [
     `Dossier : ${ctx.dossier.raisonSociale}${ctx.dossier.formeJuridique ? ` (${ctx.dossier.formeJuridique})` : ''} — SIREN ${liasse.donnees.identification?.siren ?? 'non renseigné au dossier'}`,
@@ -63,6 +66,15 @@ export default async function PageEtatJoint({ params, searchParams }: { params: 
         <Link href={`/dossiers/${id}/fiscal/etat-joint?exercice=${exercice.id}&regime=${regime === 'reel_normal' ? 'reel_simplifie' : 'reel_normal'}`} prefetch={false}>
           Voir l’état joint du régime {REGIMES[regime === 'reel_normal' ? 'reel_simplifie' : 'reel_normal'].toLowerCase()}
         </Link>
+        {essentiel ? (
+          <Link href={`/dossiers/${id}/fiscal/etat-joint?exercice=${exercice.id}&regime=${regime}`} prefetch={false} data-testid="lien-etat-complet">
+            Voir tous les tableaux préparés ({tousTableaux.length})
+          </Link>
+        ) : (
+          <Link href={`/dossiers/${id}/fiscal/etat-joint?exercice=${exercice.id}&regime=${regime}&vue=essentiel`} prefetch={false} data-testid="lien-etat-essentiel">
+            Bilan, comptes de résultat et immobilisations seulement
+          </Link>
+        )}
         <a href={`data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`} download={`etat-joint-${regime}-${exercice.fin}.csv`} data-testid="export-csv-etat-joint">
           Exporter en CSV
         </a>

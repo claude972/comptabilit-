@@ -972,6 +972,11 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 ### D-162 — Worker tué par SIGKILL pendant les CONTRÔLES : reprise prouvée (2026-11-22)
 - Essai `parcours-reprise-worker.itest.ts` (pile réelle, worker d'essai) : FEC de 95 000 écritures ; SIGKILL dès que l'exécution des contrôles existe sans être terminée ; constat : statut « en attente », **aucun résultat partiel** (transaction abandonnée) ; un nouveau worker reprend sans intervention et termine en ≈ 70 s ; un seul résultat par contrôle, aucun constat en double, une seule exécution pour le lot. Ferme, pour les contrôles, le « non mesuré » de la matrice (§17). Reste non mesuré : l'arrêt brutal pendant la génération d'un dossier de révision.
 
+### D-163 — Livrable utilisable : dossier de démonstration → import XLSX → immobilisations → bilan et liasse → PDF et CSV (2026-11-22)
+- **Fonction** : `node scripts/livrable-demo.mjs` (pile locale démarrée) crée un dossier fictif, importe son FEC, importe le fichier des immobilisations en XLSX **par l'interface** (aperçu sans écriture, confirmation), lit la liasse, et range dans `var/livrables/demo/` un **PDF A4 paysage de 16 pages** (bilan et comptes de résultat 2050 à 2053 avec codes de cases et colonnes brut / amortissements / net ; immobilisations et amortissements 2054 et 2055), le **CSV** correspondant, deux captures et un `LISEZ-MOI.txt` avec les liens exacts. Tous les contrôles du script sont vérifiés (valeurs de l'écran, du CSV et du PDF égales à celles de l'API).
+- **Obstacle corrigé** : l'état joint n'incluait ni le bilan ni les comptes de résultat, et son PDF complet comptait 101 pages dont la plupart de tableaux « à saisir » vides. L'état joint reprend désormais les tableaux de la liasse (`depuisLiasse`, montants exacts de l'API, aucun recalcul) et propose `?vue=essentiel` (liasse + immobilisations seulement) ; sans paramètre, tous les tableaux restent disponibles.
+- **Limites dites** : statut « projet », données synthétiques, aucune validation professionnelle, aucune transmission, aucune connexion externe réelle ; ce n'est pas une liasse officielle.
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

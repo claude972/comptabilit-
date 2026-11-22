@@ -64,4 +64,16 @@ describe('état joint', () => {
     expect(t[0]!.lignes[1]!.cellules).toEqual(['', '', '']);
     expect(t[0]!.limites).toEqual(['R1', 'M1', 'Total : Note', 'PROJET']);
   });
+  it('reprend le bilan et les comptes de résultat de la liasse (montants exacts, codes vérifiés ou « à confirmer »), en tête de l’état', () => {
+    const ligne = (ligne: string, libelle: string, nature: 'poste' | 'total', montant: string, extra: Record<string, unknown> = {}) => ({ ligne, libelle, nature, codeCase: null, etatCodeCase: 'a_confirmer', montant, n1: null, comptes: [], note: null, ...extra });
+    const l = { regimeDemande: 'reel_normal', resultat: { statut: 'projet', manques: ['M1'], mention: 'PROJET', tableaux: [
+      { code: '2050', intitule: 'Bilan - actif', lignes: [ligne('RN_2050_A_TERRAINS', 'Terrains', 'poste', '50000.00', { brut: '50000.00', amortissementsDepreciations: '0.00', codesActif: { brut: 'AN', amortissements: 'AO' }, etatCodeCase: 'verifie' }), ligne('RN_2050_TOTAL_GENERAL', 'Total général', 'total', '95699.07', { brut: '177000.00', amortissementsDepreciations: '81300.93', codesActif: { brut: 'CO', amortissements: '1A' }, etatCodeCase: 'verifie' })] },
+      { code: '2052', intitule: 'Compte de résultat', lignes: [ligne('RN_2052_PE', 'Total des produits d’exploitation (I)', 'total', '1000.00', { codeCase: 'FR', etatCodeCase: 'verifie' }), ligne('RN_2052_PE_PRODUCTION_VENDUE', 'Production vendue', 'poste', '800.00')] },
+    ] } } as unknown as ReponseLiasse;
+    const t = etatJointDe(l);
+    expect(t.map((x) => x.id)).toEqual(['liasse-2050', 'liasse-2052']);
+    expect(t[0]!.colonnes).toEqual(['Ligne', 'Code(s) de case', 'Brut', 'Amortissements et provisions', 'Net']);
+    expect(t[0]!.lignes[1]!.cellules).toEqual(['CO / 1A', '177000.00', '81300.93', '95699.07']);
+    expect(t[1]!.lignes.map((x) => x.cellules)).toEqual([['FR', '1000.00'], ['à confirmer', '800.00']]);
+  });
 });

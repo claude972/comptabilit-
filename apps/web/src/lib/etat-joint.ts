@@ -3,7 +3,7 @@
  * (grilles, 2059-A, filiales du 2033-G / 2059-G, associés du 2033-F / 2059-F). Chaque tableau garde son statut, ses totaux tels que calculés par
  * l'API (ou leur abstention motivée) et ses limites. Aucune signature, aucune transmission, aucune validation.
  */
-import type { AmortissementsDerogatoiresProjet, CadreIIIProjet, CelluleMontantSaisie, ChargesRepartiesProjet, EcartsReevaluationProjet, CelluleGrille, Formulaire2033DProjet, Formulaire2033EProjet, FormulaireCasesProjet, Formulaire2033FProjet, Formulaire2033GProjet, Formulaire2059AProjet, GrilleProjet, ReponseLiasse, TableauxImmobilisationsProjet } from './fiscal';
+import type { AmortissementsDerogatoiresProjet, CadreIIIProjet, CelluleMontantSaisie, ChargesRepartiesProjet, EcartsReevaluationProjet, CelluleGrille, Formulaire2033DProjet, Formulaire2033EProjet, FormulaireCasesProjet, Formulaire2033FProjet, Formulaire2033GProjet, Formulaire2059AProjet, GrilleProjet, LiasseProjet, ReponseLiasse, TableauxImmobilisationsProjet } from './fiscal';
 import { LIBELLES_COLONNES_2055_B, LIBELLES_COLONNES_2059_A } from './fiscal';
 
 export interface TableauEtatJoint {
@@ -244,10 +244,36 @@ function depuisImmobilisations(t: TableauxImmobilisationsProjet): TableauEtatJoi
   );
 }
 
+/**
+ * Bilan et comptes de résultat de la liasse (2050 à 2053, ou 2033-A et 2033-B) : lignes, codes de cases (vérifiés sur le PDF ou « à confirmer »), montants exacts de l'API, brut,
+ * amortissements et provisions et net pour l'actif. Rien n'est recalculé : les totaux sont ceux de l'API (D-163).
+ */
+function depuisLiasse(p: LiasseProjet): TableauEtatJoint[] {
+  return p.tableaux.map((t) => {
+    const deuxColonnes = t.lignes.some((l) => l.brut !== undefined);
+    const code = (l: LiasseProjet['tableaux'][number]['lignes'][number]): string =>
+      l.codesActif ? `${l.codesActif.brut}${l.codesActif.amortissements ? ` / ${l.codesActif.amortissements}` : ''}` : l.codeCase !== null ? l.codeCase : 'à confirmer';
+    return {
+      id: `liasse-${t.code}`,
+      titre: `${t.code} — ${t.intitule}`,
+      etat: `montants de l’exercice déduits de la balance (avant écritures d’inventaire) ; codes de cases : « à confirmer » quand la ligne regroupe plusieurs lignes du formulaire`,
+      colonnes: deuxColonnes ? ['Ligne', 'Code(s) de case', 'Brut', 'Amortissements et provisions', 'Net'] : ['Ligne', 'Code de case', 'Montant'],
+      lignes: t.lignes.map((l) => ({
+        libelle: l.libelle,
+        statut: l.nature === 'poste' ? 'poste' : l.nature === 'total' ? 'total' : 'résultat',
+        cellules: deuxColonnes ? [code(l), l.brut ?? '', l.amortissementsDepreciations ?? '', l.montant] : [code(l), l.montant],
+      })),
+      totaux: [],
+      limites: [...p.manques.slice(0, 3), p.mention],
+    };
+  });
+}
+
 /** Tous les tableaux saisis par lignes de la réponse de la liasse, dans l'ordre des numéros de tableau. */
 export function etatJointDe(l: ReponseLiasse): TableauEtatJoint[] {
   const nom = l.regimeDemande === 'reel_normal' ? '2059' : '2033';
   return [
+    ...(l.resultat && l.resultat.statut === 'projet' ? depuisLiasse(l.resultat) : []),
     ...(l.tableauxImmobilisations && l.tableauxImmobilisations.statut === 'projet' ? depuisImmobilisations(l.tableauxImmobilisations) : []),
     ...(l.formulairesCases ?? []).flatMap(depuisCases),
     ...(l.formulaire2033D ? depuis2033D(l.formulaire2033D) : []),

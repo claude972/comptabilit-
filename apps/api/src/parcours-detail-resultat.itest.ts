@@ -494,7 +494,8 @@ describe('2033-F (régime simplifié) : composition du capital par saisie ligne 
     expect(f.nombres.total905).toMatchObject({ statut: 'abstention', codeCase: '905' });
     expect(f.personnesMorales).toHaveLength(4);
     expect(f.personnesPhysiques).toHaveLength(2);
-    expect((await liasse(exN, 'reel_normal')).json.formulaire2033F).toBeNull();
+    // Au régime réel normal, le même tableau est le 2059-F : mêmes saisies, mêmes contrôles (D-120).
+    expect((await liasse(exN, 'reel_normal')).json.formulaire2033F).toMatchObject({ statut: 'projet', etat: 'a_saisir' });
   }, 120_000);
 
   it('refus de forme et de droits', async () => {
@@ -540,7 +541,7 @@ describe('2033-G (régime simplifié) : filiales et participations par saisie li
     const f = await f2033g();
     expect(f).toMatchObject({ statut: 'projet', etat: 'a_saisir' });
     expect(f.filiales).toHaveLength(7);
-    expect((await liasse(exN, 'reel_normal')).json.formulaire2033G).toBeNull();
+    expect((await liasse(exN, 'reel_normal')).json.formulaire2033G).toMatchObject({ statut: 'projet', etat: 'a_saisir' }); // 2059-G (D-120)
     expect((await tg('2033G_FIL', '01', { ...FIL, denomination: '' })).statut).toBe(400);
     expect((await tg('2033G_FIL', '08', FIL)).statut).toBe(400);
     expect((await tg('2033G_FIL', '01', FIL, 'Essai collaborateur', 'chloe')).statut).toBeGreaterThanOrEqual(400);
@@ -629,7 +630,7 @@ describe('2058-B et 2058-C (régime réel normal) : déficits, provisions non d�
 
   it('les trois formulaires du 2058 sont présents ; 2058-B : 29 cases, K6 / YK / YN / YO en abstention ; 2058-C : 47 cases', async () => {
     const f = await forms();
-    expect(f.map((x) => x.id)).toEqual(['2058-A', '2058-B', '2058-C']);
+    expect(f.map((x) => x.id)).toEqual(['2058-A', '2058-B', '2058-C', '2059-E']);
     const b = f[1], c = f[2];
     expect(b.cases).toHaveLength(29);
     for (const k of ['K6', 'YK', 'YN', 'YO']) expect(calc(b, k).statut).toBe('abstention');
@@ -672,6 +673,29 @@ describe('2058-B et 2058-C (régime réel normal) : déficits, provisions non d�
     expect(calc(await unique('2058-C'), 'ZJ').statut).toBe('abstention');
     expect((await pc('YW', '-1.00')).statut).toBe(400);
     expect((await pc('ZZZ', '1.00')).statut).toBe(404);
+  }, 120_000);
+});
+
+describe('2059-E (régime réel normal) : effectifs et valeur ajoutée, mêmes calculs que le 2033-E (D-120)', () => {
+  const f2059 = async () => ((await liasse(exN, 'reel_normal')).json.formulairesCases as any[]).find((f) => f.id === '2059-E');
+  const ee = (code: string, montant: string, note = 'Saisie du cabinet pour l’essai') => api('remi', 'PUT', `/v1/exercices/${exN}/qualifications/renvois/E59_${code}`, { montant, note });
+  const T1 = ['OA', 'OK', 'OL'], T2 = ['OH', 'OE', 'OF', 'OD', 'XT'], T3 = ['ON', 'OQ', 'OR', 'OS', 'OZ', 'OW', 'OU', 'O9', 'OY'];
+  it('sans saisie : 25 cases à saisir, totaux en abstention ; puis totaux, valeur ajoutée et SA calculés ; GX proposée pour 12 mois', async () => {
+    let f = await f2059();
+    expect(f.cases).toHaveLength(25);
+    expect(f.calculs.every((k: any) => k.statut === 'abstention')).toBe(true);
+    for (const c of T1) expect((await ee(c, '1000.00', 'Produits retenus pour la CVAE (essai)')).statut, c).toBeLessThan(300);
+    for (const c of T2) expect((await ee(c, c === 'XT' ? '0.00' : '100.00', c === 'XT' ? 'Néant : aucune rentrée sur créance amortie' : 'Autres produits (essai)')).statut, c).toBeLessThan(300);
+    for (const c of T3) expect((await ee(c, '200.00', 'Charges retenues pour la CVAE (essai)')).statut, c).toBeLessThan(300);
+    f = await f2059();
+    const k = (code: string) => f.calculs.find((x: any) => x.code === code);
+    expect(k('OX')).toMatchObject({ statut: 'etabli', montant: '3000.00' });
+    expect(k('OM')).toMatchObject({ montant: '400.00' });
+    expect(k('OJ')).toMatchObject({ montant: '1800.00' });
+    expect(k('OG')).toMatchObject({ montant: '1600.00' });
+    expect(k('SA')).toMatchObject({ montant: '1600.00' });
+    expect(f.cases.find((c: any) => c.code === 'GX')).toMatchObject({ statut: 'a_saisir', proposition: { montant: '3000.00' } });
+    expect((await ee('OA', '-1.00')).statut).toBe(400);
   }, 120_000);
 });
 

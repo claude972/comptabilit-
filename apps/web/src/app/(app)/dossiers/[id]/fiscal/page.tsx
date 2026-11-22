@@ -1540,7 +1540,7 @@ function Formulaire2033E({ f, fm, exerciceId, revision, evenements }: { f: Formu
 }
 
 /** Tableau 2033-F (composition du capital social) : saisie ligne par ligne, justifiée et historisée (D-116). */
-function Formulaire2033F({ f, fm, exerciceId, revision, evenements }: { f: Formulaire2033FProjet; fm: Fm; exerciceId: string; revision: boolean; evenements: EvenementQualification[] }) {
+function Formulaire2033F({ f, fm, exerciceId, revision, evenements, numero = '2033' }: { f: Formulaire2033FProjet; fm: Fm; exerciceId: string; revision: boolean; evenements: EvenementQualification[]; numero?: string }) {
   const badge = (statut: string) => <Etiquette ton={statut === 'saisi' ? 'succes' : 'attention'}>{statut === 'saisi' ? 'Saisi' : statut === 'a_revoir' ? 'À revoir : données modifiées' : 'À saisir'}</Etiquette>;
   const t = (cle: string, libelle: string, valeur: string | undefined, optionnel = false) => ({ cle, libelle, type: 'texte' as const, valeur: valeur ?? '', optionnel });
   const m = (cle: string, libelle: string, valeur: string | undefined) => ({ cle, libelle, type: 'montant' as const, valeur: valeur ?? '' });
@@ -1550,7 +1550,7 @@ function Formulaire2033F({ f, fm, exerciceId, revision, evenements }: { f: Formu
   return (
     <section className="space-y-4" aria-labelledby="titre-2033-f" data-testid="formulaire-2033-f">
       <SousTitre id="titre-2033-f" className="text-base">
-        2033-F — Composition du capital social <MentionProjet />
+        {numero}-F — Composition du capital social <MentionProjet />
       </SousTitre>
       <Alerte ton="attention" titre="Saisie du cabinet : le registre des associés est tenu par la société, rien ne se déduit de la balance">
         <p className="text-sm">
@@ -1705,13 +1705,13 @@ function Formulaire2033F({ f, fm, exerciceId, revision, evenements }: { f: Formu
 }
 
 /** Tableau 2033-G (filiales et participations) : saisie ligne par ligne, justifiée et historisée (D-117). */
-function Formulaire2033G({ f, fm, exerciceId, revision, evenements }: { f: Formulaire2033GProjet; fm: Fm; exerciceId: string; revision: boolean; evenements: EvenementQualification[] }) {
+function Formulaire2033G({ f, fm, exerciceId, revision, evenements, numero = '2033' }: { f: Formulaire2033GProjet; fm: Fm; exerciceId: string; revision: boolean; evenements: EvenementQualification[]; numero?: string }) {
   const badge = (statut: string) => <Etiquette ton={statut === 'saisi' ? 'succes' : 'attention'}>{statut === 'saisi' ? 'Saisi' : statut === 'a_revoir' ? 'À revoir : données modifiées' : 'À saisir'}</Etiquette>;
   const t = (cle: string, libelle: string, valeur: string | undefined, optionnel = false) => ({ cle, libelle, type: 'texte' as const, valeur: valeur ?? '', optionnel });
   return (
     <section className="space-y-4" aria-labelledby="titre-2033-g" data-testid="formulaire-2033-g">
       <SousTitre id="titre-2033-g" className="text-base">
-        2033-G — Filiales et participations (détention directe d’au moins 10 % du capital) <MentionProjet />
+        {numero}-G — Filiales et participations (détention directe d’au moins 10 % du capital) <MentionProjet />
       </SousTitre>
       <Alerte ton="attention" titre="Saisie du cabinet : le portefeuille de titres relève du registre de la société, rien ne se déduit de la balance">
         <p className="text-sm">
@@ -2086,8 +2086,8 @@ export default async function PageFiscal({ params, searchParams }: { params: Pro
       ) : null}
       {liasse?.ok && liasse.donnees.formulaire2033D ? <Formulaire2033D f={liasse.donnees.formulaire2033D} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.formulaire2033E ? <Formulaire2033E f={liasse.donnees.formulaire2033E} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
-      {liasse?.ok && liasse.donnees.formulaire2033F ? <Formulaire2033F f={liasse.donnees.formulaire2033F} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
-      {liasse?.ok && liasse.donnees.formulaire2033G ? <Formulaire2033G f={liasse.donnees.formulaire2033G} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
+      {liasse?.ok && liasse.donnees.formulaire2033F ? <Formulaire2033F numero={regime === 'reel_normal' ? '2059' : '2033'} f={liasse.donnees.formulaire2033F} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
+      {liasse?.ok && liasse.donnees.formulaire2033G ? <Formulaire2033G numero={regime === 'reel_normal' ? '2059' : '2033'} f={liasse.donnees.formulaire2033G} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.formulairesCases ? liasse.donnees.formulairesCases.map((f) => <FormulaireCases key={f.id} f={f} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} />) : null}
       {liasse?.ok && liasse.donnees.detailResultat ? <DetailResultat d={liasse.donnees.detailResultat} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {annexe?.ok ? (

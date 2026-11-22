@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import type { QualificationRenvoi } from './detail-resultat.js';
 import { FORMULAIRE_2058_A, FORMULAIRE_2058_B } from './definitions-2058.js';
+import { FORMULAIRE_2059_E } from './definitions-2059.js';
 import { cleCase, preparerFormulaireCases } from './formulaire-cases.js';
 
 const TRACE = { note: 'Saisie du cabinet pour l’essai', qualifieePar: 'u-1', le: '2026-12-31T10:00:00Z', versionDonnees: 7 };
@@ -126,5 +127,33 @@ describe('2058-B : calculs énoncés, propositions reprises du 2058-A, rapproche
     expect(f.controles.find((c) => c.code === 'B58_YN_WI')?.statut).toBe('coherent');
     expect(f.controles.find((c) => c.code === 'B58_YO_WU')).toMatchObject({ statut: 'ecart', ecart: '5.00' });
     expect(prepB([...lignes.slice(1), ...reprises]).calculs.find((k) => k.code === 'YN')!.statut).toBe('abstention'); // ZV manquante
+  });
+});
+
+describe('2059-E : mêmes calculs que le 2033-E avec les codes du régime réel normal (D-120)', () => {
+  const rvE = (code: string, montant: string, s: Partial<QualificationRenvoi> = {}): QualificationRenvoi => ({ code: cleCase('E59', code), montant, ...TRACE, ...s });
+  const prepE = (renvois: QualificationRenvoi[] = [], dureeMois = 12) => preparerFormulaireCases(FORMULAIRE_2059_E, { versionDonnees: 7, renvois, dureeMois });
+  const T1 = ['OA', 'OK', 'OL'], T2 = ['OH', 'OE', 'OF', 'OD', 'XT'], T3 = ['ON', 'OQ', 'OR', 'OS', 'OZ', 'OW', 'OU', 'O9', 'OY'];
+  it('intégrité : 25 cases, clés uniques et valides', () => {
+    const codes = FORMULAIRE_2059_E.cases.map((c) => c.code);
+    expect(codes).toHaveLength(25);
+    expect(new Set(codes.map((c) => cleCase('E59', c))).size).toBe(25);
+    for (const c of codes) expect(cleCase('E59', c)).toMatch(/^E59_[0-9A-Z]{2}$/);
+  });
+  it('sans saisie : totaux en abstention ; avec tout : OX, OM, OJ, OG et SA calculés ; valeur ajoutée négative : SA = 0', () => {
+    expect(prepE().calculs.every((k) => k.statut === 'abstention')).toBe(true);
+    const f = prepE([...T1.map((c) => rvE(c, '1000.00')), ...T2.map((c) => rvE(c, '100.00')), ...T3.map((c) => rvE(c, '200.00'))]);
+    expect(f.calculs.find((k) => k.code === 'OX')).toMatchObject({ montant: '3000.00' });
+    expect(f.calculs.find((k) => k.code === 'OG')).toMatchObject({ statut: 'etabli', montant: '1700.00' });
+    expect(f.calculs.find((k) => k.code === 'SA')).toMatchObject({ montant: '1700.00' });
+    const neg = prepE([...T1.map((c) => rvE(c, '10.00')), ...T2.map((c) => rvE(c, '0.00')), ...T3.map((c) => rvE(c, '100.00'))]);
+    expect(neg.calculs.find((k) => k.code === 'OG')).toMatchObject({ montant: '-870.00' });
+    expect(neg.calculs.find((k) => k.code === 'SA')).toMatchObject({ montant: '0.00' });
+  });
+  it('GX proposée (= OX) pour un exercice de 12 mois seulement, jamais retenue sans saisie', () => {
+    const t1 = T1.map((c) => rvE(c, '100.00'));
+    expect(prepE(t1).cases.find((c) => c.code === 'GX')).toMatchObject({ statut: 'a_saisir', montant: null, proposition: { montant: '300.00' } });
+    expect(prepE(t1, 9).cases.find((c) => c.code === 'GX')!.proposition).toBeNull();
+    expect(prepE([...t1, rvE('GX', '300.00')]).cases.find((c) => c.code === 'GX')!.proposition).toBeNull();
   });
 });

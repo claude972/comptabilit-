@@ -59,8 +59,10 @@ export interface DefinitionImputation {
 export interface DefinitionProposition {
   code: string;
   origine: string;
-  /** Clés de valeurs d'autres tableaux (`valeursAutres`), additionnées ; la proposition n'existe que si toutes sont présentes. */
+  /** Clés de valeurs d'autres tableaux (`valeursAutres`), additionnées ; « =CODE » désigne un calcul ou une saisie de CE tableau ; la proposition n'existe que si toutes sont présentes. */
   sources: readonly string[];
+  /** Vrai : proposition seulement pour un exercice de 12 mois (« report … le cas échéant ajusté à 12 mois » : l'ajustement n'est pas calculé). */
+  douzeMoisSeulement?: boolean;
 }
 /** Rapprochement INDICATIF d'un total calculé ou saisi avec la valeur d'une case d'un autre tableau (« à reporter ligne WI du tableau 2058-A »). */
 export interface DefinitionControleExterne {
@@ -128,6 +130,8 @@ export interface DemandeFormulaire {
   renvois: readonly QualificationRenvoi[];
   /** Valeurs établies d'autres tableaux (saisies retenues et calculs), par clé `<préfixe>_<code>` : propositions et rapprochements entre tableaux. */
   valeursAutres?: Readonly<Record<string, ChaineDecimale>>;
+  /** Durée de l'exercice en mois (arrondie) : conditionne les propositions « 12 mois seulement ». */
+  dureeMois?: number;
 }
 
 const SEUIL = new Decimal(1_000_000);
@@ -141,7 +145,7 @@ export function preparerFormulaireCases(def: DefinitionFormulaire, demande: Dema
     const montant = statut === 'saisi' ? s!.montant : null;
     const p = def.propositions?.find((x) => x.code === c.code);
     const autres = demande.valeursAutres ?? {};
-    const proposition = p !== undefined && statut !== 'saisi' && p.sources.every((k) => autres[k] !== undefined) ? { montant: versChaine(p.sources.reduce((a, k) => a.plus(autres[k]!), ZERO)), origine: p.origine } : null;
+    const proposition = p !== undefined && statut !== 'saisi' && p.sources.every((k) => !k.startsWith('=') && autres[k] !== undefined) ? { montant: versChaine(p.sources.reduce((a, k) => a.plus(autres[k]!), ZERO)), origine: p.origine } : null;
     return { ...c, cle, etatCodeCase: 'lu_verifie', statut, neant: montant !== null && new Decimal(montant).isZero(), montant, saisie: s, proposition };
   });
   const valeurs = new Map<string, Decimal | null>();
@@ -159,6 +163,15 @@ export function preparerFormulaireCases(def: DefinitionFormulaire, demande: Dema
     else if (k.plancherZero && somme.isNegative()) somme = ZERO;
     valeurs.set(k.code, somme);
     calculs.push({ statut: 'etabli', montant: versChaine(somme), code: k.code, etatCodeCase: 'lu_verifie', libelle: k.libelle, groupe: k.groupe, calcul: k.composantes.map((x, i) => `${i === 0 ? (x.signe === -1 ? '− ' : '') : x.signe === 1 ? '+ ' : '− '}${x.code}`).join(' ') });
+  }
+  // Propositions fondées sur un calcul ou une saisie de CE tableau (« =CODE »), connues seulement après les calculs.
+  for (const p of def.propositions ?? []) {
+    if (!p.sources.some((k) => k.startsWith('='))) continue;
+    const cible = cases.find((c) => c.code === p.code);
+    if (cible === undefined || cible.statut === 'saisi') continue;
+    if (p.douzeMoisSeulement === true && demande.dureeMois !== 12) continue;
+    const vals = p.sources.map((k) => (k.startsWith('=') ? valeurs.get(k.slice(1)) : undefined));
+    if (vals.every((v) => v !== null && v !== undefined)) cible.proposition = { montant: versChaine(vals.reduce((a, v) => a.plus(v!), ZERO)), origine: p.origine };
   }
   const controles: ControleDetail[] = [];
   for (const k of def.controles) {

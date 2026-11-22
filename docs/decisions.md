@@ -678,6 +678,14 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Garanties communes** : justification obligatoire, trace, historique en ajout seul, « à revoir », néant explicite distinct du manque, abstention sans chiffre, aucune décision fiscale, statut « projet ». Clés de saisie : `K4 bis` → `B58_K4BIS` ; le zéro barré Ø devient 0 (`C58_0C`).
 - **Preuves** : 12 tests du moteur et des définitions (`formulaire-cases.test.ts`), 3 tests d'intégration sur la pile réelle (propositions, K6 / YK / YN / YO, rapprochement WI avec écart de 50,00, ØF = ZH = 1 500,00 puis écart de 25,00, ZJ en abstention, refus), Playwright `fiscal.spec.ts`, saisies jouées par les formulaires (capture).
 
+### D-120 — Tableaux 2059-E, 2059-F et 2059-G (régime réel normal) (2026-11-22)
+
+- **Sources** : `2050-liasse_5320.pdf` (SHA-256 0bba3352…8453e1), pages 17 (2059-E-SD), 18 (2059-F-SD) et 19 (2059-G-SD) ; cases du 2059-E lues par extraction positionnée puis **vérifiées sur le rendu image** (2026-11-22) ; la structure du 2059-F et du 2059-G est celle du 2033-F et du 2033-G (D-116, D-117), sans code de case propre sauf le 2059-F (cases 901 à 906 retrouvées).
+- **2059-E** : définition du moteur générique (D-118), 25 cases : effectifs YP, YF, YG, RL ; I : OA, OK, OL ; II : OH, OE, OF, OD, XT ; III : ON, OQ, OR, OS, OZ, OW, OU, O9, OY ; mono-établissement : EV, GX, EY, HX. Calculs énoncés par le formulaire, seulement quand toutes les composantes sont saisies : TOTAL 1 (OX), TOTAL 2 (OM), TOTAL 3 (OJ), valeur ajoutée (OG = total 1 + total 2 − total 3), valeur ajoutée assujettie à la CVAE (SA = OG, ou 0 si négative). Case GX (« report de la ligne OX, le cas échéant ajusté à 12 mois ») proposée (= OX) pour un exercice de 12 mois seulement, jamais retenue sans saisie (extension du moteur : propositions fondées sur un calcul du même tableau et conditionnées à la durée de l'exercice).
+- **2059-F et 2059-G** : ce sont les mêmes tableaux que 2033-F et 2033-G (composition du capital, filiales et participations) au régime réel normal : **mêmes saisies, mêmes contrôles**, exposés aux deux régimes (une saisie faite sous l'un vaut pour l'autre : les informations ne dépendent pas du régime) ; l'écran porte le numéro du tableau selon le régime.
+- **Non préparé, dit** : périodes de référence et date de cessation du 2059-E (dates), tableaux supplémentaires des 2059-F et 2059-G ; mêmes limites que D-115, D-116, D-117. Statut « projet ».
+- **Preuves** : 3 tests du moteur pour le 2059-E (15 au total dans `formulaire-cases.test.ts`), 1 test d'intégration sur la pile réelle pour le 2059-E, adaptation des essais 2033-F et G (présents aux deux régimes), Playwright `fiscal.spec.ts`.
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

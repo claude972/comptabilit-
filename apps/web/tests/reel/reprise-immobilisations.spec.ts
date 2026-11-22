@@ -49,7 +49,7 @@ test('reprise des immobilisations : aperçu sans écriture, confirmation, rappor
   try {
     await page.goto(`/dossiers/${DOSSIER_DEMO}/inventaire`);
     await page.getByTestId('lien-reprise').click();
-    await expect(page.getByRole('heading', { name: 'Reprise du fichier des immobilisations (import CSV)' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Reprise du fichier des immobilisations (import CSV ou XLSX)' })).toBeVisible();
     await expect(page.getByText('Le dégressif reste non activé')).toBeVisible();
     const avant = await page.locator('section[aria-labelledby="titre-reprises"] tbody tr').count();
 

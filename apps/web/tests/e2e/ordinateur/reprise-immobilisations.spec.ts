@@ -34,7 +34,7 @@ test.describe('reprise des immobilisations — collaborateur', () => {
     const erreurs = surveiller(page);
     await page.goto(`/dossiers/${ID.dupain}/inventaire`);
     await page.getByTestId('lien-reprise').click();
-    await expect(page.getByRole('heading', { name: 'Reprise du fichier des immobilisations (import CSV)' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Reprise du fichier des immobilisations (import CSV ou XLSX)' })).toBeVisible();
     await expect(page.getByText('Le dégressif reste non activé')).toBeVisible();
     await expect(page.getByText('Aucune reprise pour ce dossier.')).toBeVisible();
 

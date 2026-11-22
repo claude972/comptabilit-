@@ -139,7 +139,7 @@ export default async function PageReprise({ params, searchParams }: { params: Pr
         </Link>
       </p>
       <div>
-        <h2 className="text-xl font-semibold">Reprise du fichier des immobilisations (import CSV)</h2>
+        <h2 className="text-xl font-semibold">Reprise du fichier des immobilisations (import CSV ou XLSX)</h2>
         <p className="mt-1 text-texte-doux">
           Importez le fichier des immobilisations d’un dossier en trois temps : un aperçu qui n’écrit rien, votre confirmation explicite, puis un rapport ligne par ligne conservé. Les mêmes contrôles que la saisie manuelle s’appliquent à chaque ligne ; rien n’est deviné, et un import ne modifie ni ne supprime jamais une immobilisation existante.
         </p>

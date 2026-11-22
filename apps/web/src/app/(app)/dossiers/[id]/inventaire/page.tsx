@@ -252,7 +252,7 @@ export default async function PageInventaire({ params, searchParams }: { params:
         ) : null}
         <p>
           <Link href={`/dossiers/${id}/inventaire/reprise`} prefetch={false} data-testid="lien-reprise">
-            {collaboration ? 'Reprendre un fichier d’immobilisations (import CSV)' : 'Rapports des reprises du fichier d’immobilisations'}
+            {collaboration ? 'Reprendre un fichier d’immobilisations (import CSV ou XLSX)' : 'Rapports des reprises du fichier d’immobilisations'}
           </Link>
         </p>
         {collaboration ? (

@@ -5,7 +5,9 @@
  */
 import { genererFecSynthetique, type LigneFec } from '@comtaple/core';
 import { describe, expect, it } from 'vitest';
-import { analyserFecIsole, ENTREE_ENFANT, type OptionsAnalyse } from './analyse-isolee.js';
+import { fileURLToPath } from 'node:url';
+import { z } from 'zod';
+import { analyserFecIsole, ENTREE_ENFANT, executerEnfant, type OptionsAnalyse } from './analyse-isolee.js';
 import { FENETRE_CREDIT_OCTETS } from './analyse-types.js';
 
 const EX = { debut: '2025-01-01', fin: '2025-12-31' };
@@ -53,4 +55,28 @@ describe('entrée à crédit : fenêtre d’écriture bornée par ce que l’enf
     expect(lignes).toBe(fec.nbLignes);
     expect(mesureCredit.actif).toBe(false);
   }, 60_000);
+
+  describe('crédits malformés ou excessifs d’un enfant (hostile) : jamais de contournement de la borne, jamais d’attente sans fin', () => {
+    const HOSTILE = fileURLToPath(new URL('../essais/enfant-hostile.mjs', import.meta.url));
+    const schema = z.object({ ok: z.literal(true) });
+    const corps = Buffer.alloc(2 * 1024 * 1024, 97);
+
+    it('crédits illisibles (non numérique, négatif, trop long, vide, exposant) : aucun octet crédité ; le parent n’écrit que la fenêtre puis le délai l’arrête', async () => {
+      const mesureCredit: NonNullable<OptionsAnalyse['mesureCredit']> = { actif: false, ecrit: 0, credite: 0, maxEnVol: 0 };
+      const t = performance.now();
+      const issue = await executerEnfant({ entete: { op: 'piece', type: 'application/pdf', mode: 'credit-malforme' }, corps, schema }, { entree: HOSTILE, creditForce: true, mesureCredit, dureeMaxMs: 3000 });
+      expect(issue.ok).toBe(false);
+      expect(issue.ok ? '' : issue.cause).toBe('delai');
+      expect(performance.now() - t).toBeLessThan(15_000); // borné par la durée autorisée, pas d'attente sans fin
+      expect(mesureCredit.credite).toBe(0);
+      expect(mesureCredit.ecrit).toBeLessThanOrEqual(FENETRE_CREDIT_OCTETS); // la borne n'est pas contournée
+    }, 60_000);
+
+    it('crédits excessifs (4 milliards d’octets annoncés d’emblée) : plafonnés à ce qui a été écrit ; le traitement va à son terme', async () => {
+      const mesureCredit: NonNullable<OptionsAnalyse['mesureCredit']> = { actif: false, ecrit: 0, credite: 0, maxEnVol: 0 };
+      const issue = await executerEnfant({ entete: { op: 'piece', type: 'application/pdf', mode: 'credit-excessif' }, corps, schema }, { entree: HOSTILE, creditForce: true, mesureCredit, dureeMaxMs: 20_000 });
+      expect(issue.ok, JSON.stringify(issue)).toBe(true);
+      expect(mesureCredit.credite).toBeLessThanOrEqual(mesureCredit.ecrit);
+    }, 60_000);
+  });
 });

@@ -14,7 +14,23 @@ import tls from 'node:tls';
 import { Worker } from 'node:worker_threads';
 
 const morceaux = [];
-for await (const m of process.stdin) morceaux.push(m);
+let modeCredit = null;
+for await (const m of process.stdin) {
+  morceaux.push(m);
+  if (modeCredit === null && morceaux.length === 1 && m.length >= 4) {
+    // Modes de CRÉDIT (D-171) : annoncés dès le premier bloc, AVANT d'avoir tout lu, pour éprouver le parent.
+    try {
+      const l = m.readUInt32BE(0);
+      const mode = JSON.parse(m.subarray(4, 4 + l).toString('utf8')).mode;
+      modeCredit = mode === 'credit-malforme' || mode === 'credit-excessif' ? mode : '';
+    } catch {
+      modeCredit = '';
+    }
+    if (modeCredit === 'credit-malforme') for (const x of ['x', '-1', '99999999999999999999', '', '1e9', '12 ']) process.stderr.write(`\u0001CREDIT ${x}\n`);
+  }
+  // Crédit excessif : à CHAQUE bloc reçu, 4 milliards d'octets annoncés consommés (le parent doit les plafonner à ce qu'il a écrit).
+  if (modeCredit === 'credit-excessif') process.stderr.write('\u0001CREDIT 4000000000\n');
+}
 const entree = Buffer.concat(morceaux);
 const longueur = entree.readUInt32BE(0);
 const entete = JSON.parse(entree.subarray(4, 4 + longueur).toString('utf8'));
@@ -22,6 +38,10 @@ const corps = entree.subarray(4 + longueur);
 const marque = /%%HOSTILE:([a-z-]+)/.exec(corps.subarray(0, 200).toString('latin1'));
 const mode = entete.mode ?? marque?.[1] ?? 'sain';
 const rendre = (v) => process.stdout.write(typeof v === 'string' ? v : JSON.stringify(v), () => process.exit(0));
+if (mode === 'credit-malforme' || mode === 'credit-excessif') {
+  rendre({ ok: true });
+  await new Promise(() => undefined); // rien d'autre n'est exécuté ni écrit
+}
 const pieceVide = { pages: [], nbPages: null, champs: null, methode: 'aucune', moteur: null, lectureImpossible: false };
 
 function trame(objet) {

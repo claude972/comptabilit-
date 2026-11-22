@@ -44,6 +44,8 @@ export interface OptionsAnalyse extends Partial<LimitesAnalyse> {
   /** Paramètres du mode `conteneur` (image, client docker, bornes) ; ignorés en mode `processus`. */
   conteneur?: ParametresConteneur;
   /** Mesure du protocole d'entrée à crédit, REMPLIE par l'appel (essais, D-171) : octets de corps écrits, crédités, maximum en vol, protocole actif ou non. */
+  /** ESSAIS SEULEMENT : applique le protocole de crédit même avec un enfant d'essai (point d'entrée explicite). */
+  creditForce?: boolean;
   mesureCredit?: { actif: boolean; ecrit: number; credite: number; maxEnVol: number };
 }
 
@@ -131,7 +133,7 @@ interface Lancement {
   /** Issue d'un enfant terminé sans arrêt forcé mais avec un code non nul. */
   causeSortie(): CauseEchec;
   /** Écriture à crédit du corps (D-171) : rend la main quand `octets` de plus tiennent dans la fenêtre annoncée par l'enfant, ou quand l'enfant est arrêté. */
-  attendreCredit(octets: number): Promise<void>;
+  attendreCredit(octets: number): Promise<boolean>;
 }
 
 /**
@@ -192,7 +194,7 @@ function lancer(options: OptionsAnalyse): Lancement {
   let partiel = '';
   const mesure = options.mesureCredit;
   // Protocole actif seulement avec l'enfant RÉEL (ni point d'entrée d'essai, ni image d'essai) : un enfant d'essai qui ne parle pas le protocole est servi à l'ancienne.
-  const creditActif = options.entree === undefined && options.conteneur?.essai === undefined;
+  const creditActif = options.creditForce === true || (options.entree === undefined && options.conteneur?.essai === undefined);
   const credit = { ecrit: 0, credite: 0, maxEnVol: 0 };
   let attentes: Array<() => void> = [];
   const reveiller = () => {
@@ -258,14 +260,16 @@ function lancer(options: OptionsAnalyse): Lancement {
       })();
     });
   });
-  const attendreCredit = async (octets: number): Promise<void> => {
+  const attendreCredit = async (octets: number): Promise<boolean> => {
     // Rien en vol : on écrit toujours (un bloc plus grand que la fenêtre passe seul) ; sinon on attend que l'enfant ait consommé de quoi faire de la place.
     while (creditActif && credit.ecrit - credit.credite > 0 && credit.ecrit - credit.credite + octets > FENETRE_CREDIT_OCTETS && arret === null && !enfant.stdin!.destroyed && enfant.exitCode === null) {
       await new Promise<void>((r) => attentes.push(r));
     }
+    if (arret !== null || enfant.stdin!.destroyed || enfant.exitCode !== null) return false; // enfant arrêté pendant l'attente : rien n'est écrit, rien n'est compté
     credit.ecrit += octets;
     credit.maxEnVol = Math.max(credit.maxEnVol, credit.ecrit - credit.credite);
     if (mesure) Object.assign(mesure, { ecrit: credit.ecrit, maxEnVol: credit.maxEnVol });
+    return true;
   };
   return { enfant, limites, debut, arreter, cause: () => arret, fin, attendreCredit, causeSortie: () => (/heap out of memory|Allocation failed|out of memory/i.test(erreurs) ? 'memoire' : 'plantage') };
 }
@@ -301,8 +305,7 @@ export async function executerEnfant<T>(demande: { entete: unknown; corps: Buffe
   const entree = l.enfant.stdin!;
   for (let i = 0; i < demande.corps.length && !l.cause() && !entree.destroyed; i += BLOC_ENTREE) {
     const bloc = demande.corps.subarray(i, i + BLOC_ENTREE);
-    await l.attendreCredit(bloc.length);
-    if (l.cause() || entree.destroyed) break;
+    if (!(await l.attendreCredit(bloc.length)) || l.cause() || entree.destroyed) break;
     if (!entree.write(bloc)) {
       await new Promise<void>((suite) => {
         const reprendre = () => {
@@ -367,8 +370,7 @@ export async function executerEnfantFlux<L, F>(
     try {
       for await (const bloc of demande.corps) {
         if (l.cause() || entree.destroyed) break;
-        await l.attendreCredit(bloc.length);
-        if (l.cause() || entree.destroyed) break;
+        if (!(await l.attendreCredit(bloc.length)) || l.cause() || entree.destroyed) break;
         if (!entree.write(bloc)) {
           await new Promise<void>((suite) => {
             const reprendre = () => {

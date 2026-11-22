@@ -1040,6 +1040,10 @@ describe('2054 / 2033-C : cellules non déductibles de la balance saisies (réé
     const f1 = await sto();
     expect(f1.etat).toBe('saisi');
     expect(f1.cadres[0].lignes.find((l: any) => l.ligne === 'ECB').valeurs).toMatchObject({ c1: '710.00' });
+    const hist = ((await api('remi', 'GET', `/v1/exercices/${exN}/qualifications/historique?cle=2050_STOCKS:ECB`)).json.evenements as any[]);
+    expect(hist.length).toBeGreaterThanOrEqual(2); // chaque saisie est journalisée, la première n'est pas écrasée
+    expect(JSON.stringify(hist)).toContain('700.00');
+    expect(JSON.stringify(hist)).toContain('710.00');
     // Reprise (D-170) : sans décision, abstention ; décision « oui » sans montant source rapproché : toujours abstention (aucun écrasement, rien de présumé).
     const rep0 = (await liasse(exN, 'reel_normal')).json.reprise2050Stocks;
     expect(rep0.etat).toBe('aucune_decision');

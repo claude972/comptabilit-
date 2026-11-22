@@ -62,6 +62,11 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
     await expect(page.getByTestId('choix-montants')).toContainText('au centime');
     await page.getByRole('navigation', { name: 'États fiscaux' }).getByRole('link', { name: /Régime simplifié/ }).click();
     await expect(page.getByTestId('liasse').getByRole('heading', { name: /^2033-A/ })).toBeVisible();
+    // 2033-B (D-107) : « dont export » et lignes « dont » en saisie tracée, sans part France ni détail exceptionnel.
+    const detailRsi = page.getByTestId('detail-resultat');
+    await expect(detailRsi).toContainText('Détail du compte de résultat simplifié (2033-B)');
+    await expect(detailRsi.getByTestId('renvois-detail').locator('li[data-renvoi="255"]')).toBeVisible();
+    await expect(detailRsi.locator('#titre-2053')).toHaveCount(0);
   }
 
   // Annexe : incomplète tant que les rubriques requises ne sont pas confirmées par une personne.

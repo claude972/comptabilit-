@@ -1,5 +1,5 @@
 /**
- * Détail du compte de résultat (2052 France / exportations, 2053 exceptionnel, renvois) — D-106, pile réelle locale, cabinet NEUF.
+ * Détail du compte de résultat (2052 France / exportations, 2053 exceptionnel, renvois ; 2033-B « dont export » et renvois) — D-106, D-107, pile réelle locale, cabinet NEUF.
  * La ventilation France / exportations n'est JAMAIS déduite : qualification par compte, tracée, refusée si la somme n'égale pas le
  * solde, « à revoir » si les données changent ; renvois saisis ou en abstention ; droits ; journal.
  */
@@ -79,6 +79,35 @@ afterAll(async () => {
   await editeur.end();
 });
 
+describe('2033-B (régime simplifié) : « dont export » et renvois, mêmes qualifications que le régime normal (D-107)', () => {
+  const rsi = async () => (await liasse(exN, 'reel_simplifie')).json.detailResultat;
+
+  it('totaux de la balance avec leurs cases, « dont export » en abstention tant que les comptes ne sont pas qualifiés, aucun net ni détail exceptionnel', async () => {
+    const d = await rsi();
+    expect(d).toMatchObject({ statut: 'projet', complet: false, regime: 'reel_simplifie', detailExceptionnel: null });
+    expect(d.ventilationChiffreAffaires.chiffreAffairesNet).toBeNull();
+    expect(ligneCA(d, 'MARCHANDISES').total).toMatchObject({ statut: 'etabli', montant: '5800.00', codeCase: '210', etatCodeCase: 'lu_verifie' });
+    expect(ligneCA(d, 'BIENS').total).toMatchObject({ montant: '4000.00', codeCase: '214' });
+    expect(ligneCA(d, 'SERVICES').total).toMatchObject({ montant: '2000.00', codeCase: '218' });
+    expect(ligneCA(d, 'BIENS').export).toMatchObject({ statut: 'abstention', codeCase: '215' });
+    expect(d.renvois.map((r: any) => r.code)).toEqual(['CB_MOB', 'CB_IMM', '243', '255', '259', '260', '347', '348']);
+    expect(d.renvois.find((r: any) => r.code === 'CB_MOB')).toMatchObject({ codeCase: null, proposition: { montant: '2400.00' } });
+  }, 120_000);
+
+  it('la qualification d’un compte vaut pour les deux régimes ; un renvoi du 2033-B se saisit, se trace et se retire', async () => {
+    expect((await qualifier('701100', '3000.00', '1000.00')).statut).toBeLessThan(300);
+    expect((await api('remi', 'PUT', `/v1/exercices/${exN}/qualifications/renvois/255`, { montant: '1200.00', note: 'Amortissement du fonds acquis en 2023' })).statut).toBeLessThan(300);
+    let d = await rsi();
+    expect(ligneCA(d, 'BIENS').export).toMatchObject({ statut: 'etabli', montant: '1000.00', codeCase: '215' });
+    expect(d.renvois.find((r: any) => r.code === '255')).toMatchObject({ statut: 'saisi', montant: '1200.00', codeCase: '255', saisie: { qualifieePar: DEMO.remi } });
+    expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/qualifications/renvois/255`)).statut).toBeLessThan(300);
+    expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/qualifications/ventilation/701100`)).statut).toBeLessThan(300);
+    d = await rsi();
+    expect(d.renvois.find((r: any) => r.code === '255')).toMatchObject({ statut: 'a_saisir', montant: null });
+    expect(ligneCA(d, 'BIENS').export.statut).toBe('abstention');
+  }, 120_000);
+});
+
 describe('détail du compte de résultat : qualification tracée, abstention sans qualification', () => {
   it('sans qualification : totaux de la balance, France et exportations en abstention, renvois à saisir, exceptionnel détaillé', async () => {
     const d = await detail();
@@ -131,7 +160,7 @@ describe('détail du compte de résultat : qualification tracée, abstention san
     const q = ligneCA(d, 'BIENS').comptes[0];
     expect(q).toMatchObject({ etat: 'qualifie', qualification: { montantFrance: '3000.00', montantExport: '1000.00', qualifieePar: DEMO.remi, versionDonnees: expect.any(Number) } });
     const journal = await editeur.query(`select action, details from journal_audit where cabinet_id = $1 and action = 'resultat.ventilation_qualifiee' order by id`, [cabinet]);
-    expect(journal.rows.length).toBe(5);
+    expect(journal.rows.length).toBe(6); // 5 qualifications de ce test + 1 jouée par l'essai du 2033-B (retirée depuis, mais journalisée)
   }, 120_000);
 
   it('renvoi : saisi avec sa trace, proposition de la balance distincte ; retrait possible', async () => {
@@ -146,13 +175,12 @@ describe('détail du compte de résultat : qualification tracée, abstention san
     expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/qualifications/renvois/HP`)).statut).toBe(404);
   });
 
-  it('droits : la collaboration lit mais ne qualifie pas ; le déposant n’a aucun accès ; le régime simplifié n’a pas ce détail', async () => {
+  it('droits : la collaboration lit mais ne qualifie pas ; le déposant n’a aucun accès', async () => {
     expect((await qualifier('706000', '2000.00', '0.00', 'Essai collaborateur', 'chloe')).statut).toBeGreaterThanOrEqual(400);
     expect((await renvoi('HP', '1.00', 'Essai collaborateur', 'chloe')).statut).toBeGreaterThanOrEqual(400);
     expect((await liasse(exN, 'reel_normal', 'chloe')).statut).toBe(200);
     expect((await liasse(exN, 'reel_normal', 'client')).statut).toBe(404);
     expect((await qualifier('706000', '2000.00', '0.00', 'Essai déposant', 'client')).statut).toBe(404);
-    expect((await liasse(exN, 'reel_simplifie')).json.detailResultat).toBeNull();
   });
 
   it('les données changent (nouvel import) : la qualification devient « à revoir » et ne compte plus', async () => {

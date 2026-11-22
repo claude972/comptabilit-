@@ -246,6 +246,39 @@ const CORRESPONDANCE_COMPTES = { id: CORRESPONDANCE_PCG.id, version: CORRESPONDA
 
 type Brouillon = Pick<LigneLiasseDefinition, 'id' | 'tableau' | 'libelle' | 'origineLibelle' | 'nature'> & Partial<Pick<LigneLiasseDefinition, 'rubriquesPcg' | 'formule' | 'note'>>;
 
+/**
+ * Codes de cases du tableau 2033-B-SD (partie « A – résultat comptable »), millésime 2026 : lus par extraction de texte positionnée
+ * dans 2033-sd_5394.pdf (SHA-256 ce4c5190…b6cb) puis VÉRIFIÉS sur le rendu image de la page le 2026-11-21 (D-107). Seules les lignes
+ * dont le contenu coïncide sans ambiguïté avec la ligne du formulaire portent un code : « production vendue » (biens 214, services
+ * 218, regroupés ici) et « dotations aux provisions » (regroupement de trois lignes) n'en ont pas. Tableau 2033-A : non relu.
+ */
+const CODES_2033_B: Readonly<Record<string, string>> = {
+  RSI_2033B_VENTES_MARCHANDISES: '210',
+  RSI_2033B_PRODUCTION_STOCKEE: '222',
+  RSI_2033B_PRODUCTION_IMMOBILISEE: '224',
+  RSI_2033B_SUBVENTIONS: '226',
+  RSI_2033B_AUTRES_PRODUITS: '230',
+  RSI_2033B_TOTAL_PRODUITS_EXPLOITATION: '232',
+  RSI_2033B_ACHATS_MARCHANDISES: '234',
+  RSI_2033B_VARIATION_STOCK_MARCHANDISES: '236',
+  RSI_2033B_ACHATS_MATIERES: '238',
+  RSI_2033B_VARIATION_STOCK_MATIERES: '240',
+  RSI_2033B_AUTRES_CHARGES_EXTERNES: '242',
+  RSI_2033B_IMPOTS_TAXES: '244',
+  RSI_2033B_REMUNERATIONS: '250',
+  RSI_2033B_CHARGES_SOCIALES: '252',
+  RSI_2033B_DOTATIONS_AMORTISSEMENTS: '254',
+  RSI_2033B_AUTRES_CHARGES: '262',
+  RSI_2033B_TOTAL_CHARGES_EXPLOITATION: '264',
+  RSI_2033B_RESULTAT_EXPLOITATION: '270',
+  RSI_2033B_PRODUITS_FINANCIERS: '280',
+  RSI_2033B_PRODUITS_EXCEPTIONNELS: '290',
+  RSI_2033B_CHARGES_FINANCIERES: '294',
+  RSI_2033B_CHARGES_EXCEPTIONNELLES: '300',
+  RSI_2033B_IMPOTS_BENEFICES: '306',
+  RSI_2033B_RESULTAT: '310',
+};
+
 function finaliser(brouillons: Brouillon[]): LigneLiasseDefinition[] {
   return brouillons.map((b, i) => ({
     id: b.id,
@@ -257,8 +290,8 @@ function finaliser(brouillons: Brouillon[]): LigneLiasseDefinition[] {
     avecColonnesActif: b.tableau === '2050' || (b.tableau === '2033-A' && b.id.includes('_ACTIF_')),
     rubriquesPcg: b.rubriquesPcg ?? [],
     formule: b.formule ?? [],
-    codeCase: null,
-    etatCodeCase: 'a_confirmer',
+    codeCase: b.tableau === '2033-B' ? (CODES_2033_B[b.id] ?? null) : null,
+    etatCodeCase: b.tableau === '2033-B' && CODES_2033_B[b.id] !== undefined ? 'verifie' : 'a_confirmer',
     note: b.note ?? null,
   }));
 }

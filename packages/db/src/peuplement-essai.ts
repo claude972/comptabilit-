@@ -47,6 +47,11 @@ const REFERENCES_LAISSEES_VIDES = new Set(['reanalyses_destinataire_pieces.extra
 const VALEURS: Record<string, (c: Cabinet | null) => unknown> = {
   'invitations.email': () => `essai-${alea()}@exemple.test`,
   'invitations.role': () => 'collaborateur',
+  // Qualification du détail du compte de résultat : formes contrôlées par la base (nature, montants décimaux, ventilation avec part export, note d'au moins 5 caractères).
+  'qualifications_resultat.nature': () => 'ventilation_ca',
+  'qualifications_resultat.montant': () => '10.00',
+  'qualifications_resultat.montant_export': () => '5.00',
+  'qualifications_resultat.note': () => 'Qualification de démonstration (essai de peuplement)',
   'immobilisations.compte_immobilisation': () => '2183',
   // Provenance d'une reprise par import : l'identifiant de la reprise et le numéro de ligne vont ensemble (contrainte de la base).
   'immobilisations.reprise_ligne': () => 2,

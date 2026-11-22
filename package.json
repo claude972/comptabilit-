@@ -13,7 +13,7 @@
     "test:integration": "pnpm -r run test:integration",
     "db:migrate": "pnpm --filter @comtaple/db run migrate",
     "db:seed": "pnpm --filter @comtaple/db run seed",
-    "services:up": "docker compose up -d --wait",
+    "services:up": "sh scripts/verifier-profil-colima.sh && docker compose up -d --wait",
     "services:down": "docker compose down"
   }
 }

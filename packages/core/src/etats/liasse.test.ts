@@ -37,10 +37,11 @@ describe('tables de liasse', () => {
       expect(t.etat).toBe('en_attente_de_validation_professionnelle');
       expect(t.correspondanceComptes).toEqual({ id: 'PCG-SYSTEME-DE-BASE', version: '2025.1' });
       expect(t.periodeApplication.exercicesOuvertsAPartirDu).toBe('2025-01-01');
-      // Le formulaire n'a pas pu être lu : la source le dit, et aucun code de case n'est avancé.
+      // Les tableaux 2050 à 2053 et 2033-A n'ont pas de code dans ces lignes ; seules des lignes du 2033-B en portent (D-107), lus puis vérifiés visuellement.
       expect(t.source.verification).toBe('non_verifiee');
       expect(t.source.dateVerification).toBe('2026-11-19');
-      expect(t.lignes.every((l) => l.codeCase === null && l.etatCodeCase === 'a_confirmer')).toBe(true);
+      expect(t.lignes.every((l) => (l.tableau === '2033-B' && l.codeCase !== null ? l.etatCodeCase === 'verifie' && /^\d{3}$/.test(l.codeCase) : l.codeCase === null && l.etatCodeCase === 'a_confirmer'))).toBe(true);
+      expect(t.lignes.filter((l) => l.codeCase !== null).every((l) => l.tableau === '2033-B')).toBe(true);
       expect(new Set(t.lignes.map((l) => l.id)).size).toBe(t.lignes.length);
     }
     expect(TABLE_LIASSE_REEL_NORMAL_2026.tableaux.map((t) => t.code)).toEqual(['2050', '2051', '2052', '2053']);
@@ -292,5 +293,17 @@ describe('abstentions hors périmètre', () => {
     expect(r.motifs.map((m) => m.code)).toEqual(['territoire_hors_perimetre', 'impot_hors_perimetre', 'exercice_hors_periode']);
     expect(r.perimetreCouvert).toMatch(/impôt sur les sociétés.*France métropolitaine/);
     expect(r.motifs[0]?.message).toMatch(/La Réunion/);
+  });
+});
+
+describe('codes de cases du tableau 2033-B (D-107) : lus puis vérifiés sur le rendu du formulaire 2026', () => {
+  it('les lignes sans ambiguïté portent leur code ; les lignes regroupées n’en portent pas', () => {
+    const l = (id: string) => TABLE_LIASSE_REEL_SIMPLIFIE_2026.lignes.find((x) => x.id === id)!;
+    expect(l('RSI_2033B_VENTES_MARCHANDISES')).toMatchObject({ codeCase: '210', etatCodeCase: 'verifie' });
+    expect(l('RSI_2033B_TOTAL_PRODUITS_EXPLOITATION')).toMatchObject({ codeCase: '232' });
+    expect(l('RSI_2033B_RESULTAT_EXPLOITATION')).toMatchObject({ codeCase: '270' });
+    expect(l('RSI_2033B_RESULTAT')).toMatchObject({ codeCase: '310' });
+    expect(l('RSI_2033B_PRODUCTION_VENDUE')).toMatchObject({ codeCase: null, etatCodeCase: 'a_confirmer' });
+    expect(l('RSI_2033B_DOTATIONS_PROVISIONS')).toMatchObject({ codeCase: null, etatCodeCase: 'a_confirmer' });
   });
 });

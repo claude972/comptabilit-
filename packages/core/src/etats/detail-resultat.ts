@@ -1,7 +1,8 @@
 /**
- * Détail du compte de résultat de la liasse du régime réel normal : ventilation du chiffre d'affaires entre la France et les
- * exportations / livraisons intracommunautaires (tableau 2052-SD), détail des produits et charges exceptionnels (cadre (7) du
- * tableau 2053-SD) et renvois de bas de tableau qui demandent une information que la balance ne porte pas (D-106).
+ * Détail du compte de résultat de la liasse : ventilation du chiffre d'affaires entre la France et les exportations /
+ * livraisons intracommunautaires (tableau 2052-SD du régime réel normal ; lignes « dont export et livraisons
+ * intracommunautaires » du tableau 2033-B-SD du régime simplifié), détail des produits et charges exceptionnels (cadre (7) du
+ * tableau 2053-SD) et renvois de bas de tableau qui demandent une information que la balance ne porte pas (D-106, D-107).
  *
  * Principes :
  *  - une écriture du FEC ne dit pas où se trouve le client ni si la vente est une exportation : cette information n'est JAMAIS
@@ -16,8 +17,9 @@
  *    sans ambiguïté, la balance fournit une PROPOSITION, jamais retenue tant que le cabinet ne l'a pas saisie ;
  *  - statut « projet » toujours, jamais « complet » ; aucune transmission ; aucune validation professionnelle.
  *
- * Codes de cases : lus sur le formulaire du millésime 2026 (PDF officiel 2050-liasse_5320.pdf, SHA-256 0bba3352…8453e1) par
- * extraction de texte, jamais vérifiés visuellement : tous « lus, à confirmer ». Notice : 2032-NOT-SD (SHA-256 68ac6083…26f39).
+ * Codes de cases : lus sur le formulaire du millésime 2026 (PDF officiel 2050-liasse_5320.pdf, SHA-256 0bba3352…8453e1, et
+ * 2033-sd_5394.pdf, SHA-256 ce4c5190…b6cb) par extraction de texte positionnée PUIS vérifiés sur le rendu image des pages
+ * (2026-11-21) : « lu_verifie ». Notice : 2032-NOT-SD (SHA-256 68ac6083…26f39).
  * L'affectation des comptes de la classe 70 aux lignes « biens » et « services » reprend la table de correspondance existante
  * (production vendue) en la scindant : convention interne à faire valider par un professionnel.
  */
@@ -29,7 +31,8 @@ import { MENTION_PROJET } from './sources-fiscales.js';
 
 const ZERO = new Decimal(0);
 
-export type EtatCodeCase = 'lu_a_confirmer';
+/** lu_verifie : lu par extraction de texte positionnée et vérifié sur le rendu image du PDF officiel ; lu_a_confirmer : extraction seule. */
+export type EtatCodeCase = 'lu_a_confirmer' | 'lu_verifie';
 
 /** Trace d'une saisie du cabinet. */
 export interface TraceQualification {
@@ -72,13 +75,27 @@ interface DefinitionLigneCA {
   libelle: string;
   /** Préfixes de comptes (la table de correspondance existante, scindée en biens et services). */
   prefixes: readonly string[];
-  codes: { france: string; export: string; total: string };
+  /** `france` est absent du formulaire du régime simplifié (qui ne demande que « dont export et livraisons intracommunautaires »). */
+  codes: { france: string | null; export: string; total: string };
 }
 
+const COMPTES_CA = {
+  MARCHANDISES: { libelle: 'Ventes de marchandises', prefixes: ['707', '7097'] },
+  BIENS: { libelle: 'Production vendue — biens', prefixes: ['701', '702', '703', '7091', '7092'] },
+  SERVICES: { libelle: 'Production vendue — services', prefixes: ['704', '705', '706', '708', '7094', '7095', '7096', '7098'] },
+} as const;
+
+/** Régime réel normal, tableau 2052-SD : France (FA, FD, FG), exportations et livraisons intracommunautaires (FB, FE, FH), total (FC, FF, FI). */
 export const LIGNES_CA: readonly DefinitionLigneCA[] = [
-  { id: 'MARCHANDISES', libelle: 'Ventes de marchandises', prefixes: ['707', '7097'], codes: { france: 'FA', export: 'FB', total: 'FC' } },
-  { id: 'BIENS', libelle: 'Production vendue — biens', prefixes: ['701', '702', '703', '7091', '7092'], codes: { france: 'FD', export: 'FE', total: 'FF' } },
-  { id: 'SERVICES', libelle: 'Production vendue — services', prefixes: ['704', '705', '706', '708', '7094', '7095', '7096', '7098'], codes: { france: 'FG', export: 'FH', total: 'FI' } },
+  { id: 'MARCHANDISES', ...COMPTES_CA.MARCHANDISES, codes: { france: 'FA', export: 'FB', total: 'FC' } },
+  { id: 'BIENS', ...COMPTES_CA.BIENS, codes: { france: 'FD', export: 'FE', total: 'FF' } },
+  { id: 'SERVICES', ...COMPTES_CA.SERVICES, codes: { france: 'FG', export: 'FH', total: 'FI' } },
+];
+/** Régime simplifié, tableau 2033-B-SD : « dont export et livraisons intracommunautaires » (209, 215, 217) et total (210, 214, 218). */
+export const LIGNES_CA_RSI: readonly DefinitionLigneCA[] = [
+  { id: 'MARCHANDISES', ...COMPTES_CA.MARCHANDISES, codes: { france: null, export: '209', total: '210' } },
+  { id: 'BIENS', ...COMPTES_CA.BIENS, codes: { france: null, export: '215', total: '214' } },
+  { id: 'SERVICES', ...COMPTES_CA.SERVICES, codes: { france: null, export: '217', total: '218' } },
 ];
 const CODES_CA_NET = { france: 'FJ', export: 'FK', total: 'FL' };
 
@@ -96,8 +113,8 @@ export interface CompteChiffreAffaires {
 }
 
 export type CelluleVentilation =
-  | { statut: 'etabli'; montant: ChaineDecimale; codeCase: string; etatCodeCase: EtatCodeCase }
-  | { statut: 'abstention'; motif: string; codeCase: string; etatCodeCase: EtatCodeCase };
+  | { statut: 'etabli'; montant: ChaineDecimale; codeCase: string | null; etatCodeCase: EtatCodeCase }
+  | { statut: 'abstention'; motif: string; codeCase: string | null; etatCodeCase: EtatCodeCase };
 
 export interface LigneChiffreAffaires {
   id: string;
@@ -119,7 +136,8 @@ export interface CompteNonAffecte {
 
 export interface VentilationChiffreAffaires {
   lignes: LigneChiffreAffaires[];
-  chiffreAffairesNet: { total: CelluleVentilation; france: CelluleVentilation; export: CelluleVentilation };
+  /** Ligne « chiffre d'affaires net » : propre au tableau 2052 ; null au régime simplifié (le formulaire 2033-B n'en a pas). */
+  chiffreAffairesNet: { total: CelluleVentilation; france: CelluleVentilation; export: CelluleVentilation } | null;
   /** Comptes de la classe 70 qui portent un montant mais n'entrent dans aucune ligne : absents de tout total, dits. */
   comptesNonAffectes: CompteNonAffecte[];
   /** Qualifications saisies pour un compte qui n'existe pas ou ne porte aucun montant dans la balance : signalées, jamais comptées. */
@@ -150,15 +168,18 @@ export interface DetailExceptionnel {
 interface DefinitionRenvoi {
   code: string;
   renvoi: string;
-  tableau: '2052' | '2053';
+  tableau: '2052' | '2053' | '2033-B';
   libelle: string;
   nature: 'produit' | 'charge';
+  /** Code de case du formulaire ; absent (null) quand le formulaire n'en porte pas (montant à inscrire sur des pointillés). Par défaut : `code`. */
+  codeCase?: string | null;
   /** Comptes dont la balance donne une PROPOSITION (jamais retenue sans saisie). */
   comptesProposition?: readonly string[];
   /** Pourquoi la balance ne suffit pas, ou précision sur la proposition. */
   precision: string;
 }
 
+/** Régime réel normal, tableaux 2052 et 2053. */
 export const RENVOIS: readonly DefinitionRenvoi[] = [
   { code: 'HO', renvoi: '(1)', tableau: '2052', libelle: 'Dont produits nets partiels sur opérations à long terme', nature: 'produit', precision: 'Information extra-comptable (avancement des opérations) : à saisir.' },
   { code: 'HY', renvoi: '(2)', tableau: '2052', libelle: 'Dont produits de locations immobilières', nature: 'produit', precision: 'Le compte 7083 (locations diverses) ne distingue pas la nature immobilière : à saisir.' },
@@ -176,11 +197,25 @@ export const RENVOIS: readonly DefinitionRenvoi[] = [
   { code: 'RD', renvoi: '(6 ter)', tableau: '2053', libelle: 'Dont amortissements exceptionnels de 25 % des constructions nouvelles (art. 39 quinquies D du CGI)', nature: 'charge', precision: 'Information fiscale non portée par la balance : à saisir. Code de case à confirmer (lecture par ordre d’apparition).' },
 ];
 
+/** Régime simplifié, tableau 2033-B-SD : lignes « dont » du résultat comptable (codes 243, 255, 259, 260, 347, 348 ; crédit-bail sans code). */
+export const RENVOIS_RSI: readonly DefinitionRenvoi[] = [
+  { code: 'CB_MOB', codeCase: null, renvoi: 'dont', tableau: '2033-B', libelle: 'Autres charges externes, dont crédit-bail mobilier (montant à inscrire sur les pointillés du formulaire)', nature: 'charge', comptesProposition: ['6122'], precision: 'Proposition : compte 6122 du PCG. Le formulaire ne porte aucun code de case pour cette ligne.' },
+  { code: 'CB_IMM', codeCase: null, renvoi: 'dont', tableau: '2033-B', libelle: 'Autres charges externes, dont crédit-bail immobilier (montant à inscrire sur les pointillés du formulaire)', nature: 'charge', comptesProposition: ['6125'], precision: 'Proposition : compte 6125 du PCG. Le formulaire ne porte aucun code de case pour cette ligne.' },
+  { code: '243', renvoi: 'dont', tableau: '2033-B', libelle: 'Impôts, taxes et versements assimilés, dont CFE et CVAE', nature: 'charge', precision: 'La balance ne distingue pas la CFE et la CVAE des autres impôts directs : à saisir.' },
+  { code: '255', renvoi: 'dont', tableau: '2033-B', libelle: 'Dotations aux amortissements, dont amortissement du fonds de commerce (art. 39, 1-2°, al. 3 du CGI)', nature: 'charge', precision: 'Exige le suivi des fonds commerciaux concernés : à saisir.' },
+  { code: '259', renvoi: 'dont', tableau: '2033-B', libelle: 'Autres charges, dont provisions fiscales pour implantations commerciales à l’étranger', nature: 'charge', precision: 'Information fiscale non portée par la balance : à saisir.' },
+  { code: '260', renvoi: 'dont', tableau: '2033-B', libelle: 'Autres charges, dont cotisations versées aux organisations syndicales et professionnelles', nature: 'charge', precision: 'La balance ne distingue pas ces cotisations des autres charges : à saisir.' },
+  { code: '347', renvoi: 'dont', tableau: '2033-B', libelle: 'Charges exceptionnelles, dont amortissements des souscriptions dans des PME innovantes (art. 217 octies du CGI)', nature: 'charge', precision: 'Information fiscale non portée par la balance : à saisir.' },
+  { code: '348', renvoi: 'dont', tableau: '2033-B', libelle: 'Charges exceptionnelles, dont amortissements exceptionnels de 25 % des constructions nouvelles (art. 39 quinquies D du CGI)', nature: 'charge', precision: 'Information fiscale non portée par la balance : à saisir.' },
+];
+
 export interface RenvoiDetail {
   code: string;
   renvoi: string;
-  tableau: '2052' | '2053';
+  tableau: '2052' | '2053' | '2033-B';
   libelle: string;
+  /** Code de case ; null quand le formulaire n'en porte pas. */
+  codeCase: string | null;
   etatCodeCase: EtatCodeCase;
   /** a_saisir : aucune saisie ; saisi : retenu pour le projet ; a_revoir : saisi sur une autre version des données (non retenu). */
   statut: 'a_saisir' | 'saisi' | 'a_revoir';
@@ -191,11 +226,15 @@ export interface RenvoiDetail {
 }
 
 /** Renvois de l'exercice que la préparation ne couvre pas du tout (dits, jamais omis en silence). */
-export const RENVOIS_NON_PREPARES: readonly string[] = [
+const RENVOIS_NON_PREPARES_RSN: readonly string[] = [
   '(10), (13) : cotisations personnelles de l’exploitant et cotisations facultatives (cases A2, A5, A8, A10, A11) : propres aux exploitants individuels, hors périmètre (société commerciale).',
   'Renvois (7) et (8) du tableau 2053 : le détail des produits et charges sur exercices antérieurs n’est pas déduit ; seuls les montants des cases 1G et 1H se saisissent, l’explication va dans la note de la saisie.',
-  'Ventilation du chiffre d’affaires des régimes simplifiés (tableau 2033-B) : non préparée.',
 ];
+const RENVOIS_NON_PREPARES_RSI: readonly string[] = [
+  'Ligne « dont cotisation personnelle de l’exploitant » (case 380) : propre aux exploitants individuels, hors périmètre (société commerciale).',
+  'Partie « B – résultat fiscal » du tableau 2033-B (réintégrations, déductions, déficits) : non préparée, elle exige des décisions et des informations extra-comptables du cabinet.',
+];
+export const RENVOIS_NON_PREPARES = RENVOIS_NON_PREPARES_RSN;
 
 export const SOURCES_DETAIL_RESULTAT = [
   'Formulaires 2052-SD et 2053-SD du millésime 2026 (2050-liasse_5320.pdf, SHA-256 0bba33528b893ba8aa581d97bbc6ddb7d59a78fdbc234920596bce228f8453e1) : lignes FA à FL, renvois et cadres (7) et (8), lus par extraction de texte, non vérifiés visuellement.',
@@ -213,10 +252,11 @@ export interface ControleDetail {
 export interface DetailResultatProjet {
   statut: 'projet';
   complet: false;
-  regime: 'reel_normal';
+  regime: RegimeLiasse;
   exercice: { debut: string; fin: string };
   ventilationChiffreAffaires: VentilationChiffreAffaires;
-  detailExceptionnel: DetailExceptionnel;
+  /** Cadre (7) du tableau 2053 ; null au régime simplifié (le tableau 2033-B n'a pas ce cadre). */
+  detailExceptionnel: DetailExceptionnel | null;
   renvois: RenvoiDetail[];
   renvoisNonPrepares: readonly string[];
   controles: ControleDetail[];
@@ -229,21 +269,22 @@ export interface DetailResultatProjet {
 export type ResultatDetailResultat = DetailResultatProjet | LiasseAbstention;
 
 const PREFIXES_TOUS_CA = LIGNES_CA.flatMap((l) => l.prefixes);
+const lignesCA = (regime: RegimeLiasse): readonly DefinitionLigneCA[] => (regime === 'reel_simplifie' ? LIGNES_CA_RSI : LIGNES_CA);
 const commencePar = (compte: string, prefixes: readonly string[]): boolean => prefixes.some((p) => compte.startsWith(p));
 const soldeCrediteur = (l: { totalCredit: string; totalDebit: string }): Decimal => new Decimal(l.totalCredit).minus(l.totalDebit);
 const soldeDebiteur = (l: { totalCredit: string; totalDebit: string }): Decimal => new Decimal(l.totalDebit).minus(l.totalCredit);
 
-function etablie(montant: Decimal, codeCase: string): CelluleVentilation {
-  return { statut: 'etabli', montant: versChaine(montant), codeCase, etatCodeCase: 'lu_a_confirmer' };
+function etablie(montant: Decimal, codeCase: string | null): CelluleVentilation {
+  return { statut: 'etabli', montant: versChaine(montant), codeCase, etatCodeCase: 'lu_verifie' };
 }
-function abstention(motif: string, codeCase: string): CelluleVentilation {
-  return { statut: 'abstention', motif, codeCase, etatCodeCase: 'lu_a_confirmer' };
+function abstention(motif: string, codeCase: string | null): CelluleVentilation {
+  return { statut: 'abstention', motif, codeCase, etatCodeCase: 'lu_verifie' };
 }
 
 function qualifierComptes(demande: DemandeDetailResultat): { lignes: LigneChiffreAffaires[]; nonAffectes: CompteNonAffecte[]; orphelines: Array<{ compte: string; motif: string }> } {
   const parCompte = new Map(demande.ventilations.map((q) => [q.compte, q]));
   const vus = new Set<string>();
-  const lignes: LigneChiffreAffaires[] = LIGNES_CA.map((def) => {
+  const lignes: LigneChiffreAffaires[] = lignesCA(demande.regime).map((def) => {
     const comptes: CompteChiffreAffaires[] = demande.balance.lignes
       .filter((l) => commencePar(l.compteNum, def.prefixes))
       .map((l) => {
@@ -297,7 +338,7 @@ function detailExceptionnel(balance: Balance): DetailExceptionnel {
 
 function renvoisDetail(demande: DemandeDetailResultat): RenvoiDetail[] {
   const saisies = new Map(demande.renvois.map((r) => [r.code, r]));
-  return RENVOIS.map((def) => {
+  return (demande.regime === 'reel_simplifie' ? RENVOIS_RSI : RENVOIS).map((def) => {
     const saisie = saisies.get(def.code) ?? null;
     let proposition: RenvoiDetail['proposition'] = null;
     if (def.comptesProposition !== undefined) {
@@ -306,13 +347,12 @@ function renvoisDetail(demande: DemandeDetailResultat): RenvoiDetail[] {
       if (lignes.length > 0 && !m.isZero()) proposition = { montant: versChaine(m), comptes: lignes.map((l) => l.compteNum), precision: def.precision };
     }
     const statut = saisie === null ? 'a_saisir' : saisie.versionDonnees !== demande.versionDonnees ? 'a_revoir' : 'saisi';
-    return { code: def.code, renvoi: def.renvoi, tableau: def.tableau, libelle: def.libelle, etatCodeCase: 'lu_a_confirmer', statut, montant: statut === 'saisi' ? saisie!.montant : null, saisie, proposition, precision: def.precision };
+    return { code: def.code, renvoi: def.renvoi, tableau: def.tableau, libelle: def.libelle, codeCase: def.codeCase === undefined ? def.code : def.codeCase, etatCodeCase: 'lu_verifie', statut, montant: statut === 'saisi' ? saisie!.montant : null, saisie, proposition, precision: def.precision };
   });
 }
 
 export function preparerDetailResultat(demande: DemandeDetailResultat): ResultatDetailResultat {
   const motifs = motifsAbstention({ exercice: demande.exercice, regime: demande.regime, territoire: demande.territoire, impotSurLeResultat: demande.impotSurLeResultat, referentielComptable: demande.referentielComptable, devise: demande.devise, societeCommerciale: demande.societeCommerciale });
-  if (demande.regime !== 'reel_normal') motifs.push({ code: 'regime_hors_perimetre', message: 'Les tableaux 2052 et 2053 n’existent que pour le régime réel normal.' });
   if (motifs.length > 0) return { statut: 'abstention', motifs, perimetreCouvert: PERIMETRE_LIASSE, mention: MENTION_PROJET };
 
   const { lignes, nonAffectes, orphelines } = qualifierComptes(demande);
@@ -322,20 +362,23 @@ export function preparerDetailResultat(demande: DemandeDetailResultat): Resultat
   const exportNet = lignes.reduce((s, l) => s.plus(l.export.statut === 'etabli' ? l.export.montant : 0), ZERO);
   const motifNet = 'Le chiffre d’affaires net n’est ventilé que lorsque toutes les lignes le sont : au moins un compte reste à qualifier.';
   const nbAQualifier = lignes.flatMap((l) => l.comptes).filter((c) => c.etat === 'a_qualifier' || c.etat === 'ecart' || c.etat === 'a_revoir').length;
+  const simplifie = demande.regime === 'reel_simplifie';
   const ventilation: VentilationChiffreAffaires = {
     lignes,
-    chiffreAffairesNet: {
-      total: etablie(totalNet, CODES_CA_NET.total),
-      france: tousQualifies ? etablie(franceNet, CODES_CA_NET.france) : abstention(motifNet, CODES_CA_NET.france),
-      export: tousQualifies ? etablie(exportNet, CODES_CA_NET.export) : abstention(motifNet, CODES_CA_NET.export),
-    },
+    chiffreAffairesNet: simplifie
+      ? null
+      : {
+          total: etablie(totalNet, CODES_CA_NET.total),
+          france: tousQualifies ? etablie(franceNet, CODES_CA_NET.france) : abstention(motifNet, CODES_CA_NET.france),
+          export: tousQualifies ? etablie(exportNet, CODES_CA_NET.export) : abstention(motifNet, CODES_CA_NET.export),
+        },
     comptesNonAffectes: nonAffectes,
     qualificationsOrphelines: orphelines,
     nbComptesAQualifier: nbAQualifier,
     complete: tousQualifies && nonAffectes.length === 0,
   };
 
-  const exceptionnel = detailExceptionnel(demande.balance);
+  const exceptionnel = simplifie ? null : detailExceptionnel(demande.balance);
   const renvois = renvoisDetail(demande);
 
   const controles: ControleDetail[] = [];
@@ -352,26 +395,27 @@ export function preparerDetailResultat(demande: DemandeDetailResultat): Resultat
   } else {
     controles.push({ code: 'CA_FRANCE_EXPORT', statut: 'non_verifie', message: `Répartition France / exportations non vérifiable : ${nbAQualifier} compte(s) à qualifier.` });
   }
-  controles.push({ code: 'EXCEPTIONNEL_RESULTAT', statut: 'coherent', message: `Résultat exceptionnel du détail : ${exceptionnel.resultatExceptionnel} (produits ${exceptionnel.totalProduits}, charges ${exceptionnel.totalCharges}).` });
+  if (exceptionnel !== null) controles.push({ code: 'EXCEPTIONNEL_RESULTAT', statut: 'coherent', message: `Résultat exceptionnel du détail : ${exceptionnel.resultatExceptionnel} (produits ${exceptionnel.totalProduits}, charges ${exceptionnel.totalCharges}).` });
   const sansSaisie = renvois.filter((r) => r.statut !== 'saisi').length;
   controles.push({ code: 'RENVOIS', statut: 'non_verifie', message: `${sansSaisie} renvoi(s) sur ${renvois.length} sans saisie retenue : aucun montant n’est présumé ; une case sans saisie reste vide.` });
 
   return {
     statut: 'projet',
     complet: false,
-    regime: 'reel_normal',
+    regime: demande.regime,
     exercice: demande.exercice,
     ventilationChiffreAffaires: ventilation,
     detailExceptionnel: exceptionnel,
     renvois,
-    renvoisNonPrepares: RENVOIS_NON_PREPARES,
+    renvoisNonPrepares: simplifie ? RENVOIS_NON_PREPARES_RSI : RENVOIS_NON_PREPARES_RSN,
     controles,
     limites: [
       'Calcul sur les écritures importées, AVANT écritures d’inventaire.',
       'La ventilation France / exportations est une saisie du cabinet : Comtaple la trace et en vérifie l’arithmétique (somme égale au solde du compte), pas la réalité de la destination des ventes ni la notion fiscale d’exportation ou de livraison intracommunautaire.',
       'Les montants d’une qualification sont exprimés dans le sens du produit : un compte débiteur de rabais, remises et ristournes (709x) se qualifie avec des montants NÉGATIFS.',
       'La scission des comptes de la classe 70 entre biens et services est une convention interne tirée de la table de correspondance existante : à faire valider.',
-      'Codes de cases lus par extraction de texte du formulaire 2026, jamais vérifiés visuellement : tous « à confirmer ».',
+      ...(simplifie ? ['Au régime simplifié (tableau 2033-B), le formulaire ne demande que la part « dont export et livraisons intracommunautaires » (cases 209, 215, 217) et le total ; la part France se déduit (total − export) mais n’a pas de case et n’est pas présentée.'] : []),
+      'Codes de cases lus par extraction de texte positionnée des formulaires 2026 puis vérifiés sur le rendu image des pages (2026-11-21) ; les lignes « crédit-bail » du tableau 2033-B n’ont pas de code.',
     ],
     sources: SOURCES_DETAIL_RESULTAT,
     mention: MENTION_PROJET,

@@ -350,6 +350,51 @@ sortie({'enfants': enfants, 'refus': refus})`,
       }
     }
   }, 60_000);
+
+  it('worker TUÉ par SIGKILL pendant une analyse (processus réel) : le conteneur survit jusqu’à son expiration, le balayage ne le touche pas avant, puis le retire (P0, D-098 bis)', async () => {
+    const p = base();
+    const dist = resolve(fileURLToPath(new URL('.', import.meta.url)), '../dist/analyse-isolee.js');
+    const DUREE_MS = 60_000;
+    // Un « worker » minimal : le vrai code (executerEnfant) lance un conteneur d'essai qui dort, comme une analyse longue en cours.
+    const script = `
+      import { pathToFileURL } from 'node:url';
+      const { executerEnfant } = await import(pathToFileURL(${JSON.stringify(dist)}).href);
+      const schema = { safeParse: (v) => ({ success: v !== null && typeof v === 'object', data: v }) };
+      await executerEnfant(
+        { entete: { op: 'texte' }, corps: Buffer.alloc(0), schema },
+        { isolation: 'conteneur', conteneur: { image: ${JSON.stringify(IMAGE_ESSAI)}, docker: 'docker', hote: '', cpus: 1, pidsMax: 64, tmpfsMo: 64, essai: { entrypoint: 'python3', commande: ['-I', '-c', 'import sys, time; sys.stdin.buffer.read(4); time.sleep(300)'] } }, dureeMaxMs: ${DUREE_MS}, memoireMaxMo: 256 },
+      );
+    `;
+    const enfant = spawn(process.execPath, ['--input-type=module', '-e', script], { stdio: 'ignore' });
+    const fini = new Promise<string | null>((r) => enfant.on('exit', (_code, signal) => r(signal)));
+    try {
+      const debut = Date.now();
+      while ((await compterConteneursAnalyse(p)) < 1) {
+        if (Date.now() - debut > 30_000) throw new Error('le conteneur d’analyse n’est jamais apparu');
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      enfant.kill('SIGKILL');
+      expect(await fini).toBe('SIGKILL');
+      // Le worker n'est plus : le conteneur, lui, vit encore (c'est la limite que le balayage borne), avec sa date d'expiration.
+      await new Promise((r) => setTimeout(r, 3_000));
+      expect(await compterConteneursAnalyse(p)).toBe(1);
+      const etat = execFileSync('docker', ['ps', '-a', '--filter', `label=${ETIQUETTE}`, '--format', '{{.State}} {{.Label "comtaple.analyse.expire"}}'], { encoding: 'utf8' }).trim();
+      const m = /^(\w+) (\d+)$/.exec(etat);
+      expect(m, etat).not.toBeNull();
+      const expiration = Number(m![2]);
+      expect(expiration).toBeGreaterThan(Date.now()); // pas encore expiré
+      expect(expiration - Date.now()).toBeLessThanOrEqual(DUREE_MS + 61_000);
+      // Avant l'expiration, un worker qui démarre ne touche à rien ; après, il retire ce conteneur et lui seul.
+      expect(await retirerConteneursAnalyseExpires(p)).toBe(0);
+      expect(await compterConteneursAnalyse(p)).toBe(1);
+      expect(await retirerConteneursAnalyseExpires(p, expiration + 1_000)).toBe(1);
+      expect(await compterConteneursAnalyse(p)).toBe(0);
+    } finally {
+      enfant.kill('SIGKILL');
+      const restes = execFileSync('docker', ['ps', '-a', '-q', '--filter', `label=${ETIQUETTE}`], { encoding: 'utf8' }).split('\n').filter(Boolean);
+      if (restes.length) execFileSync('docker', ['rm', '-f', ...restes], { stdio: 'ignore' });
+    }
+  }, 120_000);
 });
 
 // ── Lanceur restreint (proxy filtrant de l'API du moteur) : l'architecture de production, jouée en local ─────────────

@@ -128,7 +128,7 @@ export type {
   CadreImmobilisations, CelluleImmobilisation, CodeTableauImmobilisations, ColonneImmobilisations, CompteLigneImmobilisation, ComparatifImmobilisations, DemandeTableauxImmobilisations, FichierLigneAmortissements,
   FichierLigneBrut, ImmobilisationAbstention, LigneTableauImmobilisations, ResultatTableauxImmobilisations, StatutCellule, TableauImmobilisations, TableauxImmobilisationsProjet,
 } from './etats/tableaux-immobilisations.js';
-export { LIGNES_CA, RENVOIS, preparerDetailResultat } from './etats/detail-resultat.js';
+export { LIGNES_CA, LIGNES_CA_RSI, RENVOIS, RENVOIS_RSI, preparerDetailResultat } from './etats/detail-resultat.js';
 export type {
   CelluleVentilation, CompteChiffreAffaires, ControleDetail, DemandeDetailResultat, DetailExceptionnel, DetailResultatProjet, EtatQualification, LigneChiffreAffaires, QualificationRenvoi, QualificationVentilation, RenvoiDetail,
   ResultatDetailResultat, VentilationChiffreAffaires,

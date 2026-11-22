@@ -88,3 +88,7 @@ en « OBSOLÈTE » ; il faut alors relire le document et réviser la règle corr
 ## 6. Arrondi à l'euro des tableaux (D-105, 2026-11-21)
 
 Lu dans les notices du millésime 2026 téléchargées le 2026-11-21 sur impots.gouv.fr (sans compte ; SHA-256 identiques à ceux du § 4) : `2032-not-sd_5323.pdf` (régime réel normal) et `2033-sd_5395.pdf` (notice du régime simplifié), rubrique « Indication des montants en euros » et « Les arrondis fiscaux » : tableaux sans centimes ; arrondi à l'euro le plus proche, 0,50 compté pour 1. Non établis : arrondi des totaux, montants négatifs. Texte extrait par programme, non vérifié visuellement.
+
+## 7. Vérification visuelle des codes de cases (D-107, 2026-11-21)
+
+Les pages 2052 (page 3), 2053 (page 4) de `2050-liasse_5320.pdf` (SHA-256 0bba3352…8453e1) et 2033-B (page 2) de `2033-sd_5394.pdf` (SHA-256 ce4c5190…b6cb) ont été rendues en image (pdf.js dans le navigateur intégré) et comparées aux codes lus par extraction de texte positionnée : concordance totale (cases FA à FL ; HO, HY, 1G, HP, HQ, 1H, 1J, 1K, HX, RC, RD, A3, A4, HS ; 209 à 310 du 2033-B). Les renvois A2, A5, A8, A10 et A11 (exploitant individuel) sont hors périmètre. Seuls ces tableaux sont « vérifiés » ; ce n'est pas une validation professionnelle.

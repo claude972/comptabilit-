@@ -113,7 +113,7 @@ export interface ReponseLiasse {
   resultat: LiasseProjet | Abstention;
   /** Absent d'une API plus ancienne. */
   tableauxImmobilisations?: TableauxImmobilisationsProjet | Abstention;
-  /** Détail 2052 / 2053 (D-106) ; null hors régime réel normal. */
+  /** Détail 2052 / 2053 (régime réel normal, D-106) ou « dont export » et renvois du 2033-B (régime simplifié, D-107). */
   detailResultat?: DetailResultatProjet | Abstention | null;
 }
 export interface RubriqueAnnexe {
@@ -248,7 +248,7 @@ export const LIBELLE_ETAT_COMPTE_IMMOBILISATION: Record<string, string> = {
 export const LIBELLE_VERIFICATION_SOURCE: Record<string, string> = { verifiee: 'lue en ligne', non_verifiee: 'non vérifiée en ligne', sans_objet: 'convention interne' };
 
 /** Détail du compte de résultat (2052 France / exportations, 2053 exceptionnel, renvois) : champ `detailResultat` de la réponse de la liasse (D-106). */
-export type CelluleVentilation = { statut: 'etabli'; montant: string; codeCase: string; etatCodeCase: string } | { statut: 'abstention'; motif: string; codeCase: string; etatCodeCase: string };
+export type CelluleVentilation = { statut: 'etabli'; montant: string; codeCase: string | null; etatCodeCase: string } | { statut: 'abstention'; motif: string; codeCase: string | null; etatCodeCase: string };
 export interface TraceQualification {
   note: string;
   qualifieePar: string;
@@ -275,8 +275,9 @@ export interface LigneChiffreAffaires {
 export interface RenvoiDetail {
   code: string;
   renvoi: string;
-  tableau: '2052' | '2053';
+  tableau: '2052' | '2053' | '2033-B';
   libelle: string;
+  codeCase: string | null;
   etatCodeCase: string;
   statut: 'a_saisir' | 'saisi' | 'a_revoir';
   montant: string | null;
@@ -287,17 +288,17 @@ export interface RenvoiDetail {
 export interface DetailResultatProjet {
   statut: 'projet';
   complet: false;
-  regime: 'reel_normal';
+  regime: 'reel_normal' | 'reel_simplifie';
   exercice: { debut: string; fin: string };
   ventilationChiffreAffaires: {
     lignes: LigneChiffreAffaires[];
-    chiffreAffairesNet: { total: CelluleVentilation; france: CelluleVentilation; export: CelluleVentilation };
+    chiffreAffairesNet: { total: CelluleVentilation; france: CelluleVentilation; export: CelluleVentilation } | null;
     comptesNonAffectes: Array<{ compteNum: string; compteLib: string; solde: string; motif: string }>;
     qualificationsOrphelines: Array<{ compte: string; motif: string }>;
     nbComptesAQualifier: number;
     complete: boolean;
   };
-  detailExceptionnel: { produits: Array<{ compteNum: string; compteLib: string; montant: string }>; charges: Array<{ compteNum: string; compteLib: string; montant: string }>; totalProduits: string; totalCharges: string; resultatExceptionnel: string; origine: string };
+  detailExceptionnel: null | { produits: Array<{ compteNum: string; compteLib: string; montant: string }>; charges: Array<{ compteNum: string; compteLib: string; montant: string }>; totalProduits: string; totalCharges: string; resultatExceptionnel: string; origine: string };
   renvois: RenvoiDetail[];
   renvoisNonPrepares: string[];
   controles: Array<{ code: string; statut: 'coherent' | 'ecart' | 'non_verifie'; message: string; ecart?: string }>;

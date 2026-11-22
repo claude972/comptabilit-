@@ -15,6 +15,7 @@ import {
   type QualificationRenvoi,
   type QualificationVentilation,
   RENVOIS,
+  RENVOIS_RSI,
   LIGNES_CA,
   schemaChaineDecimale,
   MOTIF_DEGRESSIF_NON_ACTIVE,
@@ -42,7 +43,8 @@ const montantSigne = schemaChaineDecimale;
 const ventilation = z.object({ montantFrance: montantSigne, montantExport: montantSigne, note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie la ventilation').max(2000) });
 const renvoiSaisie = z.object({ montant: montantSigne, note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie le montant').max(2000) });
 const COMPTE_CA = /^70[0-9A-Za-z]{1,13}$/;
-const CODE_RENVOI = /^[0-9A-Z]{2}$/;
+const CODE_RENVOI = /^[0-9A-Z_]{2,6}$/;
+const RENVOIS_CONNUS = [...RENVOIS, ...RENVOIS_RSI];
 const RUBRIQUE = /^ANX-[0-9A-Za-z-]{1,24}$/;
 const PROPOSITION = /^[A-Za-z0-9:_|.-]{1,200}$/;
 
@@ -97,9 +99,8 @@ export class FiscalController {
     return { nbImmobilisations: fichier.length, immobilisations };
   }
 
-  /** Détail du compte de résultat (2052 / 2053, D-106) : qualifications du cabinet lues pour l'exercice, moteur appliqué à la balance. */
+  /** Détail du compte de résultat (2052 / 2053 ou 2033-B, D-106 / D-107) : qualifications du cabinet lues pour l'exercice, moteur appliqué à la balance. */
   private async detailResultat(tx: Tx, c: { exercice: typeof s.exercices.$inferSelect; entite: typeof s.entites.$inferSelect; lignes: LigneEcriture[]; regime: RegimeLiasse }) {
-    if (c.regime !== 'reel_normal') return null;
     const rows = await tx.select().from(s.qualificationsResultat).where(eq(s.qualificationsResultat.exerciceId, c.exercice.id));
     const trace = (r: (typeof rows)[number]) => ({ note: r.note, qualifieePar: r.qualifieePar, le: new Date(r.creeLe).toISOString(), versionDonnees: r.versionDonnees });
     const ventilations: QualificationVentilation[] = rows.filter((r) => r.nature === 'ventilation_ca').map((r) => ({ compte: r.cle, montantFrance: r.montant, montantExport: r.montantExport ?? '0.00', ...trace(r) }));
@@ -164,7 +165,7 @@ export class FiscalController {
   @ApiBody({ schema: schemaOpenApi(renvoiSaisie) })
   async saisirRenvoi(@AccesCourant() acces: Acces, @Param('id') id: string, @Param('code') code: string, @Body() corps: unknown) {
     exigerUuid(id);
-    if (!CODE_RENVOI.test(code) || !RENVOIS.some((r) => r.code === code)) throw new NotFoundException('Renvoi inconnu : les renvois préparés sont ' + RENVOIS.map((r) => r.code).join(', '));
+    if (!CODE_RENVOI.test(code) || !RENVOIS_CONNUS.some((r) => r.code === code)) throw new NotFoundException('Renvoi inconnu : les renvois préparés sont ' + RENVOIS_CONNUS.map((r) => r.code).join(', '));
     const d = valider(renvoiSaisie, corps);
     return this.bd.avecContexte(acces, async (tx) => {
       const [exercice] = await tx.select().from(s.exercices).where(eq(s.exercices.id, id));
@@ -251,7 +252,7 @@ export class FiscalController {
         teletransmission: 'non_disponible',
         resultat,
         tableauxImmobilisations,
-        /** Détail 2052 / 2053 (D-106) : ventilation France / exportations qualifiée par le cabinet, détail exceptionnel, renvois ; null hors régime réel normal. */
+        /** Détail 2052 / 2053 (régime réel normal, D-106) ou « dont export » et renvois du 2033-B (régime simplifié, D-107) : qualification tracée par le cabinet, abstention sans qualification. */
         detailResultat,
       };
     });

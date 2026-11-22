@@ -302,17 +302,19 @@ function ImmobilisationsLiasse({ t, fm }: { t: TableauxImmobilisationsProjet | A
 }
 
 function CelluleVentil({ c, fm }: { c: CelluleVentilation; fm: Fm }) {
+  const etat = c.etatCodeCase === 'lu_verifie' ? 'lue, vérifiée sur le PDF' : 'lue, à confirmer';
+  const legende = c.codeCase === null ? <span className="block text-xs text-texte-doux">sans case sur ce formulaire</span> : <span className="block text-xs text-texte-doux">case {c.codeCase} ({etat})</span>;
   return c.statut === 'etabli' ? (
     <>
       {fm(c.montant)}
-      <span className="block text-xs text-texte-doux">case {c.codeCase} (lue, à confirmer)</span>
+      {legende}
     </>
   ) : (
     <>
       <span className="text-texte-doux" title={c.motif}>
         abstention
       </span>
-      <span className="block text-xs text-texte-doux">case {c.codeCase} (lue, à confirmer)</span>
+      {legende}
     </>
   );
 }
@@ -322,10 +324,11 @@ function DetailResultat({ d, fm, exerciceId, revision }: { d: DetailResultatProj
   if (d.statut === 'abstention') return <BlocAbstention a={d} quoi="Détail des tableaux 2052 et 2053" />;
   const v = d.ventilationChiffreAffaires;
   const net = v.chiffreAffairesNet;
+  const simplifie = d.regime === 'reel_simplifie';
   return (
     <section className="space-y-4" aria-labelledby="titre-detail-resultat" data-testid="detail-resultat">
       <SousTitre id="titre-detail-resultat" className="text-base">
-        Détail du compte de résultat (2052 et 2053) <MentionProjet />
+        {simplifie ? 'Détail du compte de résultat simplifié (2033-B)' : 'Détail du compte de résultat (2052 et 2053)'} <MentionProjet />
       </SousTitre>
       <Alerte ton="attention" titre="Information que la balance ne porte pas : qualifiée par le cabinet, jamais déduite">
         <p className="text-sm">
@@ -350,14 +353,20 @@ function DetailResultat({ d, fm, exerciceId, revision }: { d: DetailResultatProj
 
       <div className="space-y-2">
         <h3 className="font-semibold" id="titre-2052">
-          2052 — Chiffre d’affaires : France, exportations et livraisons intracommunautaires, total
+          {simplifie ? '2033-B — Production vendue : dont export et livraisons intracommunautaires, total' : '2052 — Chiffre d’affaires : France, exportations et livraisons intracommunautaires, total'}
         </h3>
         <Tableau legende="Ventilation du chiffre d’affaires du tableau 2052">
           <thead>
             <tr>
               <th scope="col">Ligne</th>
-              <th scope="col" className="text-right">France</th>
-              <th scope="col" className="text-right">Exportations et livraisons intracom.</th>
+              {simplifie ? null : (
+                <th scope="col" className="text-right">
+                  France
+                </th>
+              )}
+              <th scope="col" className="text-right">
+                {simplifie ? 'Dont export et livraisons intracom.' : 'Exportations et livraisons intracom.'}
+              </th>
               <th scope="col" className="text-right">Total (balance)</th>
             </tr>
           </thead>
@@ -368,9 +377,11 @@ function DetailResultat({ d, fm, exerciceId, revision }: { d: DetailResultatProj
                   {l.libelle}
                   <span className="block text-xs font-normal text-texte-doux">{l.qualifiee ? 'Tous les comptes sont qualifiés' : 'Comptes à qualifier ci-dessous'}</span>
                 </th>
-                <td className="text-right tabular-nums">
-                  <CelluleVentil c={l.france} fm={fm} />
-                </td>
+                {simplifie ? null : (
+                  <td className="text-right tabular-nums">
+                    <CelluleVentil c={l.france} fm={fm} />
+                  </td>
+                )}
                 <td className="text-right tabular-nums">
                   <CelluleVentil c={l.export} fm={fm} />
                 </td>
@@ -379,6 +390,7 @@ function DetailResultat({ d, fm, exerciceId, revision }: { d: DetailResultatProj
                 </td>
               </tr>
             ))}
+            {net === null ? null : (
             <tr data-ligne="CA_NET">
               <th scope="row">Chiffre d’affaires net</th>
               <td className="text-right tabular-nums">
@@ -391,6 +403,7 @@ function DetailResultat({ d, fm, exerciceId, revision }: { d: DetailResultatProj
                 <CelluleVentil c={net.total} fm={fm} />
               </td>
             </tr>
+            )}
           </tbody>
         </Tableau>
         {v.comptesNonAffectes.length > 0 ? (
@@ -439,11 +452,12 @@ function DetailResultat({ d, fm, exerciceId, revision }: { d: DetailResultatProj
         </ul>
       </div>
 
+      {d.detailExceptionnel === null ? null : (
       <div className="space-y-2">
         <h3 className="font-semibold" id="titre-2053">
           2053 — Détail des produits et charges exceptionnels (cadre (7))
         </h3>
-        <p className="text-sm text-texte-doux">{d.detailExceptionnel.origine}</p>
+        <p className="text-sm text-texte-doux">{d.detailExceptionnel!.origine}</p>
         <Tableau legende="Détail des produits et charges exceptionnels du tableau 2053">
           <thead>
             <tr>
@@ -453,7 +467,7 @@ function DetailResultat({ d, fm, exerciceId, revision }: { d: DetailResultatProj
             </tr>
           </thead>
           <tbody data-testid="detail-exceptionnel">
-            {d.detailExceptionnel.produits.map((l) => (
+            {d.detailExceptionnel!.produits.map((l) => (
               <tr key={`p-${l.compteNum}`}>
                 <th scope="row">
                   {l.compteNum} {l.compteLib}
@@ -462,7 +476,7 @@ function DetailResultat({ d, fm, exerciceId, revision }: { d: DetailResultatProj
                 <td />
               </tr>
             ))}
-            {d.detailExceptionnel.charges.map((l) => (
+            {d.detailExceptionnel!.charges.map((l) => (
               <tr key={`c-${l.compteNum}`}>
                 <th scope="row">
                   {l.compteNum} {l.compteLib}
@@ -472,17 +486,19 @@ function DetailResultat({ d, fm, exerciceId, revision }: { d: DetailResultatProj
               </tr>
             ))}
             <tr>
-              <th scope="row">Total — résultat exceptionnel : {fm(d.detailExceptionnel.resultatExceptionnel)}</th>
-              <td className="text-right font-semibold tabular-nums">{fm(d.detailExceptionnel.totalProduits)}</td>
-              <td className="text-right font-semibold tabular-nums">{fm(d.detailExceptionnel.totalCharges)}</td>
+              <th scope="row">Total — résultat exceptionnel : {fm(d.detailExceptionnel!.resultatExceptionnel)}</th>
+              <td className="text-right font-semibold tabular-nums">{fm(d.detailExceptionnel!.totalProduits)}</td>
+              <td className="text-right font-semibold tabular-nums">{fm(d.detailExceptionnel!.totalCharges)}</td>
             </tr>
           </tbody>
         </Tableau>
       </div>
 
+      )}
+
       <div className="space-y-2">
         <h3 className="font-semibold" id="titre-renvois">
-          Renvois de bas de tableau (2052 et 2053) : saisie tracée
+          {simplifie ? 'Lignes « dont » du 2033-B (renvois) : saisie tracée' : 'Renvois de bas de tableau (2052 et 2053) : saisie tracée'}
         </h3>
         <p className="text-sm text-texte-doux">
           Une case sans saisie reste vide. Une proposition tirée de la balance (quand un compte du PCG désigne le renvoi sans ambiguïté) n’est jamais retenue tant que le cabinet ne l’a pas saisie.
@@ -492,9 +508,9 @@ function DetailResultat({ d, fm, exerciceId, revision }: { d: DetailResultatProj
             <li key={r.code} className="rounded-lg border border-bordure p-3" data-renvoi={r.code}>
               <p className="text-sm">
                 <strong>
-                  {r.tableau} {r.renvoi} — {r.libelle}
+                  {r.tableau} {r.renvoi === 'dont' ? '' : r.renvoi + ' '}— {r.libelle}
                 </strong>{' '}
-                <span className="text-texte-doux">(case {r.code}, lue, à confirmer)</span>{' '}
+                <span className="text-texte-doux">{r.codeCase === null ? '(sans case : montant à inscrire sur les pointillés)' : `(case ${r.codeCase}, ${r.etatCodeCase === 'lu_verifie' ? 'lue, vérifiée sur le PDF' : 'lue, à confirmer'})`}</span>{' '}
                 <Etiquette ton={r.statut === 'saisi' ? 'succes' : 'attention'}>{r.statut === 'saisi' ? 'Saisi' : r.statut === 'a_revoir' ? 'À revoir : données modifiées' : 'À saisir'}</Etiquette>
               </p>
               <p className="text-xs text-texte-doux">

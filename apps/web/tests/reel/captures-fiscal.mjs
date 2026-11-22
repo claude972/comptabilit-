@@ -54,5 +54,12 @@ if (process.argv.includes('--qualifier')) {
   await page.getByTestId('renvois-detail').scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${sortie}fiscal-detail-renvois.png` });
 }
+// 2033-B (D-107) : « dont export » et lignes « dont » du régime simplifié.
+await page.goto(`${base}&vue=liasse&regime=reel_simplifie`);
+await page.waitForLoadState('networkidle');
+await page.getByTestId('detail-resultat').scrollIntoViewIfNeeded();
+await page.screenshot({ path: `${sortie}fiscal-2033b-detail.png` });
+await page.getByTestId('renvois-detail').scrollIntoViewIfNeeded();
+await page.screenshot({ path: `${sortie}fiscal-2033b-renvois.png` });
 await nav.close();
 console.log('captures écrites dans', sortie);

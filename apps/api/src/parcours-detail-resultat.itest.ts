@@ -789,11 +789,11 @@ describe('2059-B, 2059-C, 2059-D (régime réel normal) : grilles saisies ligne 
   it('2059-C et 2059-B : solde calculé par ligne ; cadre B libre avec origine ; retraits', async () => {
     expect((await tg('2059C_II', 'N', { c2: '100.00', c3: '10.00', c5: '30.00' })).statut).toBeLessThan(300);
     let c = await g('2059-C');
-    expect(c.cadres[1].lignes[0].calculee).toEqual({ statut: 'etabli', montant: '80.00' });
+    expect(c.cadres.find((k: any) => k.tableau === '2059C_II').lignes[0].calculee).toEqual({ statut: 'etabli', montant: '80.00' });
     expect((await tg('2059B_B', '01', { origine: 'Fusion 2020 (fictive)', a: '100.00', b: '10.00', c: '20.00', d: '70.00' })).statut).toBeLessThan(300);
     const b = await g('2059-B');
-    expect(b.cadres[1].calculs[0].cellules.d).toMatchObject({ statut: 'etabli', montant: '70.00' });
-    expect(b.cadres[0].calculs[0].cellules.a.statut).toBe('abstention');
+    expect(b.cadres.find((k: any) => k.tableau === '2059B_B').calculs[0].cellules.d).toMatchObject({ statut: 'etabli', montant: '70.00' });
+    expect(b.cadres.find((k: any) => k.tableau === '2059B_A').calculs[0].cellules.a.statut).toBe('abstention');
     expect((await suppr('2059C_II', 'N')).statut).toBeLessThan(300);
     expect((await suppr('2059B_B', '01')).statut).toBeLessThan(300);
     c = await g('2059-C');

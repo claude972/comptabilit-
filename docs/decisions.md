@@ -886,7 +886,7 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Rupture de parcours trouvée et corrigée** : l'écran de reprise s'intitulait « import CSV » alors que le classeur XLSX est accepté (D-124) ; intitulés, lien et tests alignés sur « import CSV ou XLSX ».
 - **Honnêteté du jeu** : avec une dotation comptabilisée différente de celle du moteur (première exécution, 4 000 + 6 000 + 4 000 au lieu de 15 300,93), la liasse AFFICHE l'écart (−1 300,93), sans le corriger ; le dossier final (« dotations concordantes ») reprend la dotation du moteur pour le nouveau poste. Dossiers fictifs laissés dans la base locale (noms « Atelier Démo Immobilisations SAS (fictive…) »), non supprimés.
 - **Preuves** : `var/captures/parcours-immo-*` (capture, CSV, PDF, JSON de la liasse, capture de l'import XLSX). Lien local : `http://localhost:3100/dossiers/<dossier>/fiscal?vue=liasse` (identifiants imprimés par le script).
-- **Limite dite** : régime réel normal ; le même moteur sert le 2033-C du régime simplifié (valeurs nulles seulement sur le dossier de démonstration général).
+- **Régime simplifié** : même parcours sur le même dossier (`REGIME=reel_simplifie`), 2033-C cadres I et II : 86 cellules, 24 non nulles, 0 écart écran ↔ API, CSV et PDF (29 pages) concordants.
 
 ## Écarts par rapport au cahier des charges
 

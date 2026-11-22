@@ -20,6 +20,7 @@ const API = 'http://127.0.0.1:4000';
 const WEB = 'http://localhost:3100';
 const sortie = join(racine, 'var/captures/');
 mkdirSync(sortie, { recursive: true });
+const REGIME = process.env.REGIME ?? 'reel_normal';
 const DOTATION_NOUVEAU = process.env.DOTATION_NOUVEAU ?? '0.00';
 
 const jeton = async (email) => (await (await fetch(`${env.OIDC_ISSUER}/protocol/openid-connect/token`, { method: 'POST', body: new URLSearchParams({ grant_type: 'password', client_id: 'comtaple-tests', username: email, password: env.DEV_MDP_UTILISATEURS, scope: 'openid' }) })).json()).access_token;
@@ -128,8 +129,8 @@ if (!dossier) {
   await pageImport.screenshot({ path: `${sortie}parcours-immo-import-xlsx.png` });
   await navImport.close();
 }
-const liasse = (await api('alice', 'GET', `/v1/exercices/${exercice}/liasse?regime=reel_normal`)).json;
-writeFileSync(`${sortie}parcours-immo-liasse.json`, JSON.stringify(liasse.tableauxImmobilisations, null, 1));
+const liasse = (await api('alice', 'GET', `/v1/exercices/${exercice}/liasse?regime=${REGIME}`)).json;
+writeFileSync(`${sortie}parcours-immo-liasse-${REGIME}.json`, JSON.stringify(liasse.tableauxImmobilisations, null, 1));
 const t = liasse.tableauxImmobilisations;
 ok(t?.statut === 'projet', `liasse : tableauxImmobilisations ${t?.statut}`);
 for (const tab of t.tableaux) for (const c of tab.cadres) {
@@ -138,7 +139,7 @@ for (const tab of t.tableaux) for (const c of tab.cadres) {
 }
 
 // ── Navigateur réel : état joint à l'écran, CSV, PDF ; concordance avec les valeurs de l'API ──
-const url = `${WEB}/dossiers/${dossier}/fiscal/etat-joint?exercice=${exercice}&regime=reel_normal`;
+const url = `${WEB}/dossiers/${dossier}/fiscal/etat-joint?exercice=${exercice}&regime=${REGIME}`;
 const { nav, page } = await session(url);
 await page.getByTestId('etat-joint').waitFor();
 await page.screenshot({ path: `${sortie}parcours-immo-etat-joint.png` });

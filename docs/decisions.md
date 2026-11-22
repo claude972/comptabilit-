@@ -889,6 +889,11 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Preuves** : `var/captures/parcours-immo-*` (capture, CSV, PDF, JSON de la liasse, capture de l'import XLSX). Lien local : `http://localhost:3100/dossiers/<dossier>/fiscal?vue=liasse` (identifiants imprimés par le script).
 - **Régime simplifié** : même parcours sur le même dossier (`REGIME=reel_simplifie`), 2033-C cadres I et II : 86 cellules, 24 non nulles, 0 écart écran ↔ API, CSV et PDF (29 pages) concordants.
 
+### D-149 — Lecture unique de la CI du 2026-11-22 (fin de matinée) : un test flaky corrigé (cause CONFIRMÉE), un second échec WebKit (cause NON confirmée) (2026-11-22)
+- **7e615eb, étape « Tests unitaires »** : `packages/ia/src/assistant/assistant.test.ts:72` cherchait `Minoterie|1248|IGNORE` dans tout le JSON du journal, identifiants compris. L'annotation montre l'identifiant `d879a675-fb14-4fea-8df5-a81248c67be3` : l'UUID aléatoire contenait « 1248 ». **Cause confirmée** : faux positif aléatoire du test (≈ une exécution sur quelques dizaines), aucun contenu fuité. Correctif sans affaiblissement : le contrôle porte sur le journal privé de ses clés `id` et `empreinte*` (aléatoires), et cherche toujours les trois motifs dans tout le reste. Rejoué 3 fois, 17 / 17.
+- **10cd7a2, étape « Navigateur WebKit, pile réelle »** : 49 réussis, 1 échec, `fiscal.spec.ts:22` — après `goto(fiscal?vue=liasse)` puis clic sur `lien-etat-joint`, `etat-joint` introuvable pendant 20 s. Ce n'est pas l'échec de `ecrans-cabinet.spec.ts` (D-147) mais la même famille : action utilisateur peut-être faite avant l'hydratation. **Cause NON confirmée** (trace non accessible sans jeton ; non reproduit en local, Chromium vert). Mesure : attente de fin de chargement avant le clic et vérification de l'URL ; assertions inchangées. À confirmer par les prochaines CI ; le délai d'action de 60 s (D-147) reste une hypothèse.
+- **Encore en cours à cette lecture** : c1c31c4, 4e9b230, ecd40cb (aucun verdict ; non lus).
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

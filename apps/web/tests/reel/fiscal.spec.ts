@@ -181,7 +181,10 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
 
   // État joint imprimable / exportable (D-138) : identification, statut PROJET, limites, tableaux saisis, export CSV.
   await page.goto(`/dossiers/${DOSSIER_DEMO}/fiscal?vue=liasse`);
+  // Hydratation terminée avant le clic (D-149) : en WebKit CI, un clic sur ce lien n'a abouti à aucune navigation (échec du 2026-11-22) ; hypothèse, non confirmée.
+  await page.waitForLoadState('networkidle');
   await page.getByTestId('lien-etat-joint').click();
+  await page.waitForURL(/\/fiscal\/etat-joint/);
   await expect(page.getByTestId('etat-joint')).toBeVisible();
   await expect(page.getByTestId('identification-etat-joint')).toContainText('PROJET, non validé');
   await expect(page.getByTestId('identification-etat-joint')).toContainText('Exercice : du');

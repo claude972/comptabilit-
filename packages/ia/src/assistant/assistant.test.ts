@@ -69,7 +69,10 @@ describe('assistant documenté — de bout en bout contre le SIMULATEUR', () => 
     // Audit : 3 appels au modèle et 2 fonctions exécutées, sans contenu.
     expect(journal.appels.map((t) => [t.tache, t.resultat])).toEqual([['assistant', 'ok'], ['assistant', 'ok'], ['assistant', 'ok']]);
     expect(journal.fonctions.map((t) => [t.fonction, t.issue, t.tailles.elements])).toEqual([['rechercherDocuments', 'executee', 2], ['rechercherEcritures', 'executee', 1]]);
-    expect(JSON.stringify(journal.evenements)).not.toMatch(/Minoterie|1248|IGNORE/);
+    // Les identifiants et empreintes du journal sont aléatoires (UUID, SHA-256) : ils peuvent contenir « 1248 » par hasard (échec CI du 2026-11-22, D-149).
+    // Le contrôle porte donc sur le CONTENU consigné, identifiants et empreintes exclus : aucun nom, montant ni consigne ne doit y figurer.
+    const sansIdentifiants = JSON.stringify(journal.evenements, (cle, v) => (cle === 'id' || /^empreinte/.test(cle) ? undefined : v));
+    expect(sansIdentifiants).not.toMatch(/Minoterie|1248|IGNORE/);
   });
 
   it('ne déclare au modèle que la liste blanche, le dossier limité au périmètre, et jamais le cabinet', async () => {

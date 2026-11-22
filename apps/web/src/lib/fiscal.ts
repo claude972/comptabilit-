@@ -93,7 +93,7 @@ export interface TableauImmobilisations {
   code: string;
   intitule: string;
   cadres: Array<{ id: string; titre: string; colonnes: Array<{ cle: string; numero: number | null; libelle: string; surFormulaire: boolean }>; lignes: LigneImmobilisations[] }>;
-  cadresNonCouverts: Array<{ cadre: string; intitule: string; motif: string }>;
+  cadresNonCouverts: Array<{ cadre: string; intitule: string; motif: string; saisieCabinet?: true }>;
 }
 export interface TableauxImmobilisationsProjet {
   statut: 'projet';

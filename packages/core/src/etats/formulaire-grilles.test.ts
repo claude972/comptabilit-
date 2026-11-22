@@ -298,3 +298,15 @@ describe('reports énoncés par la notice entre 2059-B, 2059-D, 2058-A et 2051 (
   });
 });
 
+describe('2057 : rapprochements des postes de libellé identique avec le projet de bilan (D-167)', () => {
+  it('créances rattachées, prêts, autres immobilisations financières, obligations, dettes sur immobilisations ; écart affiché ; postes mêlés non rapprochés', () => {
+    const a = (ligne: string, m: string) => s('2057_A', ligne, { c1: m, c2: m, c3: '0.00' });
+    const b = (ligne: string, m: string) => s('2057_B', ligne, { c1: m, c2: m, c3: '0.00', c4: '0.00' });
+    const g = preparerGrille(GRILLE_2057, { versionDonnees: 7, saisiesTableaux: [a('UL', '500.00'), a('UP', '1000.00'), a('UT', '40.00'), b('7Y', '10.00'), b('7Z', '2000.00'), b('8J', '300.00'), b('8A', '99.00'), b('VI', '77.00')], valeursAutres: { BIL_CREANCES_PARTICIPATIONS_BRUT: '500.00', BIL_PRETS_BRUT: '1000.00', BIL_AUTRES_IMMOS_FIN_BRUT: '45.00', BIL_OBLIG_CONVERTIBLES: '10.00', BIL_AUTRES_OBLIG: '2000.00', BIL_DETTES_IMMOS: '300.00' } });
+    const k = (c: string) => g.controles.find((x) => x.code === `2057_${c}`);
+    for (const c of ['CREANCES_PARTICIPATIONS_BILAN', 'PRETS_BILAN', 'OBLIG_CONVERTIBLES_BILAN', 'AUTRES_OBLIG_BILAN', 'DETTES_IMMOS_BILAN']) expect(k(c)?.statut, c).toBe('coherent');
+    expect(k('AUTRES_IMMOS_FIN_BILAN')).toMatchObject({ statut: 'ecart', ecart: '-5.00' });
+    expect(g.controles.filter((x) => /_BILAN$/.test(x.code) && /8A|VI|DETTES_FIN/.test(x.code)).map((x) => x.code)).toEqual([]);
+  });
+});
+

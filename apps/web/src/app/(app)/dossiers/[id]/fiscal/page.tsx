@@ -352,7 +352,7 @@ function ImmobilisationsLiasse({ t, fm }: { t: TableauxImmobilisationsProjet | A
         )),
       )}
       <ul className="space-y-1 text-sm" data-testid="immobilisations-non-couverts">
-        {t.tableaux.flatMap((tab) => tab.cadresNonCouverts.map((c) => <li key={`${tab.code}-${c.cadre}`}>{tab.code}, cadre {c.cadre} « {c.intitule} » : non préparé. {c.motif}</li>))}
+        {t.tableaux.flatMap((tab) => tab.cadresNonCouverts.map((c) => <li key={`${tab.code}-${c.cadre}`}>{tab.code}, cadre {c.cadre} « {c.intitule} » : {c.saisieCabinet ? 'saisi par le cabinet, jamais déduit de la balance (voir les tableaux saisis ci-dessous).' : 'non préparé.'} {c.motif}</li>))}
       </ul>
     </section>
   );

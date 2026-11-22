@@ -132,7 +132,8 @@ export interface TableauImmobilisations {
   code: CodeTableauImmobilisations;
   intitule: string;
   cadres: CadreImmobilisations[];
-  cadresNonCouverts: Array<{ cadre: string; intitule: string; motif: string }>;
+  /** Cadres que la balance ne permet pas de déduire. `saisieCabinet` : servis par SAISIE ligne par ligne du cabinet (`tableauxSaisis`, D-112 et D-113) ; sans : réellement non préparés. */
+  cadresNonCouverts: Array<{ cadre: string; intitule: string; motif: string; saisieCabinet?: true }>;
 }
 
 export interface ImmobilisationAbstention {
@@ -434,14 +435,14 @@ function definitions(regime: RegimeLiasse): TableauDef[] {
           { id: 'A', titre: 'Cadre A — Immobilisations : valeur brute au début de l’exercice et augmentations', nature: 'brut', colonnes: colonnesBrutA(), lignes: lignesA, rattachement: RATTACHEMENT_BRUT_2054 },
           { id: 'B', titre: 'Cadre B — Immobilisations : diminutions et valeur brute à la fin de l’exercice', nature: 'brut', colonnes: colonnesBrutB(), lignes: lignesB, rattachement: RATTACHEMENT_BRUT_2054 },
         ],
-        cadresNonCouverts: [{ cadre: '2054 bis', intitule: 'Écarts de réévaluation sur immobilisations amortissables', motif: 'Tableau exigé des seules entreprises ayant pratiqué la réévaluation légale ; il ne se déduit pas de la balance.' }],
+        cadresNonCouverts: [{ cadre: '2054 bis', intitule: 'Écarts de réévaluation sur immobilisations amortissables', motif: 'Tableau exigé des seules entreprises ayant pratiqué la réévaluation légale ; il ne se déduit pas de la balance.', saisieCabinet: true }],
       },
       {
         code: '2055', intitule: 'Amortissements',
         cadres: [{ id: 'A', titre: 'Cadre A — Situations et mouvements de l’exercice des amortissements techniques (ou venant en diminution de l’actif)', nature: 'amortissements', colonnes: colonnesAmort(), lignes: lignes55, rattachement: RATTACHEMENT_AMORT_2055 }],
         cadresNonCouverts: [
-          { cadre: 'B', intitule: 'Ventilation des mouvements affectant la provision pour amortissements dérogatoires', motif: 'La ventilation par origine (différentiel de durée, dégressif, amortissement fiscal exceptionnel) ne se déduit pas de la balance : à saisir à partir du compte 145.' },
-          { cadre: 'C', intitule: 'Mouvements de l’exercice affectant les charges réparties sur plusieurs exercices', motif: 'Frais d’émission d’emprunt et primes de remboursement : non préparés dans ce lot.' },
+          { cadre: 'B', intitule: 'Ventilation des mouvements affectant la provision pour amortissements dérogatoires', motif: 'La ventilation par origine (différentiel de durée, dégressif, amortissement fiscal exceptionnel) ne se déduit pas de la balance : à saisir à partir du compte 145.', saisieCabinet: true },
+          { cadre: 'C', intitule: 'Mouvements de l’exercice affectant les charges réparties sur plusieurs exercices', motif: 'Frais d’émission d’emprunt et primes de remboursement : saisis ligne par ligne par le cabinet, jamais déduits de la balance.', saisieCabinet: true },
         ],
       },
     ];
@@ -465,7 +466,7 @@ function definitions(regime: RegimeLiasse): TableauDef[] {
         },
         { id: 'II', titre: 'Cadre II — Amortissements', nature: 'amortissements', colonnes: colonnesAmort(), lignes: lignesII, rattachement: RATTACHEMENT_AMORT_2033C },
       ],
-      cadresNonCouverts: [{ cadre: 'III', intitule: 'Plus-values, moins-values', motif: 'Prix de cession, nature des immobilisations cédées, qualification court ou long terme et régularisations ne se déduisent pas de la balance : cadre non préparé.' }],
+      cadresNonCouverts: [{ cadre: 'III', intitule: 'Plus-values, moins-values', motif: 'Prix de cession, nature des immobilisations cédées, qualification court ou long terme et régularisations ne se déduisent pas de la balance : cadre saisi ligne par ligne par le cabinet.', saisieCabinet: true }],
     },
   ];
 }
@@ -890,7 +891,7 @@ export function preparerTableauxImmobilisations(demande: DemandeTableauxImmobili
   const manques: string[] = [
     ...(aNouveaux ? [] : [MOTIF_SANS_A_NOUVEAUX]),
     ...(saisiesProjet.some((x) => x.statut !== 'saisi') ? ['Cellules à saisir : réévaluations, valeur d’origine, ventilation des diminutions lorsque des crédits existent, « dont composants » (voir le motif de chaque cellule et les lignes de saisie en dessous).'] : []),
-    ...tableaux.flatMap((t) => t.cadresNonCouverts.map((c) => `${t.code === '2033-C' ? '2033-C' : t.code} cadre ${c.cadre} « ${c.intitule} » non préparé : ${c.motif}`)),
+    ...tableaux.flatMap((t) => t.cadresNonCouverts.map((c) => `${t.code === '2033-C' ? '2033-C' : t.code} cadre ${c.cadre} « ${c.intitule} » ${c.saisieCabinet ? 'saisi par le cabinet (jamais déduit de la balance ; voir tableauxSaisis)' : 'non préparé'} : ${c.motif}`)),
     ...tableaux.flatMap((t) => t.cadres.flatMap((c) => c.lignes.filter((l) => l.nature === 'non_ventile').map((l) => `Tableau ${t.code}, cadre ${c.id} : ${l.comptes.length} compte(s) non ventilé(s) (${l.comptes.map((x) => x.compteNum).join(', ')}), hors totaux : à rattacher à une ligne.`))),
     ...controles.filter((c) => c.statut === 'ecart').map((c) => `Écart au contrôle ${c.code} : ${c.message}`),
     ...(fournies.length === 0 ? ['Aucune immobilisation saisie : rapprochement avec le fichier et dotation du moteur indisponibles.'] : []),

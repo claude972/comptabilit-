@@ -380,6 +380,10 @@ export const GRILLE_2057: DefinitionGrille = {
       controlesExternes: [
         { code: 'CLIENTS_BILAN', libelle: 'Clients douteux ou litigieux (VA) + autres créances clients (UX), montant brut, et créances clients du projet de bilan (brut)', mode: 'lignes', lignes: ['VA', 'UX'], colonne: 'c1', externe: 'BIL_CLIENTS_BRUT', formulation: 'dans le projet de bilan (correspondance interne des comptes, non validée ; la notice dit seulement que les créances sont ventilées « pour leur montant brut »)' },
         { code: 'CCA_BILAN', libelle: 'Charges constatées d’avance (VS), montant brut, et charges constatées d’avance du projet de bilan', mode: 'lignes', lignes: ['VS'], colonne: 'c1', externe: 'BIL_CCA_BRUT', formulation: 'dans le projet de bilan (correspondance interne des comptes, non validée)' },
+        // Lignes de l'actif immobilisé dont le libellé est IDENTIQUE à celui du poste du bilan (D-167).
+        { code: 'CREANCES_PARTICIPATIONS_BILAN', libelle: 'Créances rattachées à des participations (UL), montant brut, et poste du projet de bilan de même libellé', mode: 'lignes', lignes: ['UL'], colonne: 'c1', externe: 'BIL_CREANCES_PARTICIPATIONS_BRUT', formulation: 'dans le projet de bilan (correspondance interne des comptes, non validée)' },
+        { code: 'PRETS_BILAN', libelle: 'Prêts (UP), montant brut, et poste « Prêts » du projet de bilan', mode: 'lignes', lignes: ['UP'], colonne: 'c1', externe: 'BIL_PRETS_BRUT', formulation: 'dans le projet de bilan (correspondance interne des comptes, non validée)' },
+        { code: 'AUTRES_IMMOS_FIN_BILAN', libelle: 'Autres immobilisations financières (UT), montant brut, et poste du projet de bilan de même libellé', mode: 'lignes', lignes: ['UT'], colonne: 'c1', externe: 'BIL_AUTRES_IMMOS_FIN_BRUT', formulation: 'dans le projet de bilan (correspondance interne des comptes, non validée)' },
       ],
     },
     {
@@ -404,6 +408,9 @@ export const GRILLE_2057: DefinitionGrille = {
       controlesExternes: [
         { code: 'FOURNISSEURS_BILAN', libelle: 'Fournisseurs et comptes rattachés (8B), montant brut, et dettes fournisseurs du projet de bilan', mode: 'lignes', lignes: ['8B'], colonne: 'c1', externe: 'BIL_FOURNISSEURS', formulation: 'dans le projet de bilan (correspondance interne des comptes, non validée)' },
         { code: 'PCA_BILAN', libelle: 'Produits constatés d’avance (8L), montant brut, et produits constatés d’avance du projet de bilan', mode: 'lignes', lignes: ['8L'], colonne: 'c1', externe: 'BIL_PCA', formulation: 'dans le projet de bilan (correspondance interne des comptes, non validée)' },
+        { code: 'OBLIG_CONVERTIBLES_BILAN', libelle: 'Emprunts obligataires convertibles (7Y), montant brut, et poste du projet de bilan de même libellé', mode: 'lignes', lignes: ['7Y'], colonne: 'c1', externe: 'BIL_OBLIG_CONVERTIBLES', formulation: 'dans le projet de bilan (correspondance interne des comptes, non validée)' },
+        { code: 'AUTRES_OBLIG_BILAN', libelle: 'Autres emprunts obligataires (7Z), montant brut, et poste du projet de bilan de même libellé', mode: 'lignes', lignes: ['7Z'], colonne: 'c1', externe: 'BIL_AUTRES_OBLIG', formulation: 'dans le projet de bilan (correspondance interne des comptes, non validée)' },
+        { code: 'DETTES_IMMOS_BILAN', libelle: 'Dettes sur immobilisations et comptes rattachés (8J), montant brut, et poste du projet de bilan de même libellé', mode: 'lignes', lignes: ['8J'], colonne: 'c1', externe: 'BIL_DETTES_IMMOS', formulation: 'dans le projet de bilan (correspondance interne des comptes, non validée)' },
       ],
     },
     {
@@ -422,7 +429,7 @@ export const GRILLE_2057: DefinitionGrille = {
     'Identification de l’entreprise et exercice : repris du dossier, non ressaisis ici.',
     'Aucun montant n’est déduit de la balance : l’échéance d’une créance ou d’une dette ne figure pas à la balance ; chaque ligne est une saisie justifiée du cabinet.',
     'Seule la colonne « montant brut » a un code imprimé sur la plupart des lignes (UM, UN, UR, US, UV, UW pour les trois premières lignes des créances) ; les codes des autres cellules ne sont pas imprimés sur le formulaire.',
-    'Rapprochement avec le projet de bilan, INDICATIF et limité à quatre postes de même libellé sur les deux tableaux (clients, charges constatées d’avance, fournisseurs, produits constatés d’avance), fait avec la correspondance interne des comptes (non validée) ; les autres lignes ne sont pas rapprochées : aucune correspondance n’est établie par les sources. Jamais corrigé.',
+    'Rapprochement avec le projet de bilan, INDICATIF et limité aux postes de LIBELLÉ IDENTIQUE sur les deux tableaux (clients, charges constatées d’avance, fournisseurs, produits constatés d’avance, créances rattachées à des participations, prêts, autres immobilisations financières, emprunts obligataires, dettes sur immobilisations), fait avec la correspondance interne des comptes (non validée). NON rapprochées, volontairement : « emprunts et dettes financières divers » et « groupe et associés » (le poste du bilan mêle les comptes d’associés), « dettes fiscales et sociales » (six lignes du 2057 contre un poste du bilan), « autres créances » et « autres dettes » (regroupements sans règle énoncée). Jamais corrigé.',
   ],
 };
 

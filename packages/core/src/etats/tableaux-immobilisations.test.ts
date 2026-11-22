@@ -274,7 +274,7 @@ describe('fichier des immobilisations : rapprochement affiché, jamais corrigé'
 describe('2033-C : régime simplifié', () => {
   const p = projet(preparerTableauxImmobilisations(demande({ regime: 'reel_simplifie', precedent: { lignes: lignes2025(), exercice: EX_N1 } })));
 
-  it('prépare les cadres I et II avec les codes numériques du formulaire, et laisse le cadre III non préparé', () => {
+  it('prépare les cadres I et II avec les codes numériques du formulaire, et signale le cadre III comme saisi par le cabinet (non déduit de la balance)', () => {
     expect(p.tableaux.map((t) => t.code)).toEqual(['2033-C']);
     expect(tableau(p, '2033-C').cadres.map((c) => c.id)).toEqual(['I', 'II']);
     expect(tableau(p, '2033-C').cadresNonCouverts).toEqual([expect.objectContaining({ cadre: 'III' })]);

@@ -29,7 +29,7 @@ function fec(): Buffer {
     n++;
     for (const [c, cl, d, k] of lignes) L.push([j, j, String(n).padStart(4, '0'), date, c, cl, '', '', `${j}-${n}`, date, lib, d.toFixed(2).replace('.', ','), k.toFixed(2).replace('.', ','), '', '', date, '', ''].join('\t'));
   };
-  e('AN', '20250101', [['512000', 'Banque', 200300, 0], ['101000', 'Capital', 0, 200000], ['106400', 'Réserves réglementées', 0, 300]], 'À-nouveaux');
+  e('AN', '20250101', [['512000', 'Banque', 201100, 0], ['101000', 'Capital', 0, 200000], ['106400', 'Réserves réglementées', 0, 300], ['274000', 'Prêts', 1000, 0], ['267000', 'Créances rattachées à des participations', 500, 0], ['163000', 'Autres emprunts obligataires', 0, 2000], ['404000', 'Fournisseurs d’immobilisations', 0, 300]], 'À-nouveaux');
   e('VT', '20250630', [['411000', 'Clients', 900, 0], ['416000', 'Clients douteux ou litigieux', 100, 0], ['706000', 'Prestations de services', 0, 1000]], 'Ventes');
   e('AC', '20250930', [['616000', 'Primes d’assurance', 50, 0], ['512000', 'Banque', 0, 50]], 'Assurance');
   e('OD', '20251231', [['486000', 'Charges constatées d’avance', 50, 0], ['616000', 'Primes d’assurance', 0, 50]], 'CCA');
@@ -91,6 +91,7 @@ test('reports 2059 → 2058-A, feuillets du 2056 et du 2057, rapprochement du 20
   const c3 = (m: string) => ({ c1: m, c2: m, c3: '0.00' });
   const c4 = (m: string) => ({ c1: m, c2: m, c3: '0.00', c4: '0.00' });
   await tab('2057_A', 'VA', c3('100.00')); await tab('2057_A', 'UX', c3('900.00')); await tab('2057_A', 'VS', c3('55.00'));
+  await tab('2057_A', 'UL', c3('500.00')); await tab('2057_A', 'UP', c3('1000.00')); await tab('2057_B', '7Z', c4('2000.00')); await tab('2057_B', '8J', c4('300.00'));
   await tab('2057_B', '8B', c4('700.00')); await tab('2057_B', '8L', c4('30.00'));
   await tab('2057_F_PRET', '01', { origine: 'Actions fictives', m: '800.00' });
 
@@ -121,6 +122,7 @@ test('reports 2059 → 2058-A, feuillets du 2056 et du 2057, rapprochement du 20
   const k57 = (c: string) => liasse.formulaire2057.controles.find((x: any) => x.code === `2057_${c}`);
   expect(['CLIENTS_BILAN', 'FOURNISSEURS_BILAN', 'PCA_BILAN'].map((c) => k57(c).statut)).toEqual(['coherent', 'coherent', 'coherent']);
   expect(k57('CCA_BILAN')).toMatchObject({ statut: 'ecart', ecart: '5.00' });
+  for (const x of ['CREANCES_PARTICIPATIONS_BILAN', 'PRETS_BILAN', 'AUTRES_OBLIG_BILAN', 'DETTES_IMMOS_BILAN']) expect(k57(x)?.statut, x).toBe('coherent');
   expect(liasse.feuilles2058.find((g: any) => g.id === '2057-FEUILLETS').cadres[0].calculs[0].cellules.m).toMatchObject({ statut: 'etabli', montant: '800.00' });
 
   // À l'écran : la proposition et les écarts sont lisibles ; l'état joint reprend les feuillets.

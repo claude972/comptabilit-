@@ -474,7 +474,7 @@ export class FiscalController {
       if (corrBilan) {
         const rub = projeterBilan(calculerBalance(lignes), corrBilan).rubriques;
         const pris = (code: string, champ: 'brut' | 'montant') => rub.find((r) => r.code === code)?.[champ];
-        for (const [cle, code, champ] of [['BIL_CLIENTS_BRUT', 'A_CLIENTS', 'brut'], ['BIL_CCA_BRUT', 'A_CHARGES_CONSTATEES_AVANCE', 'brut'], ['BIL_FOURNISSEURS', 'P_FOURNISSEURS', 'montant'], ['BIL_PCA', 'P_PRODUITS_CONSTATES_AVANCE', 'montant']] as const) {
+        for (const [cle, code, champ] of [['BIL_CLIENTS_BRUT', 'A_CLIENTS', 'brut'], ['BIL_CCA_BRUT', 'A_CHARGES_CONSTATEES_AVANCE', 'brut'], ['BIL_FOURNISSEURS', 'P_FOURNISSEURS', 'montant'], ['BIL_PCA', 'P_PRODUITS_CONSTATES_AVANCE', 'montant'], ['BIL_CREANCES_PARTICIPATIONS_BRUT', 'A_CREANCES_PARTICIPATIONS', 'brut'], ['BIL_PRETS_BRUT', 'A_PRETS', 'brut'], ['BIL_AUTRES_IMMOS_FIN_BRUT', 'A_AUTRES_IMMOBILISATIONS_FINANCIERES', 'brut'], ['BIL_OBLIG_CONVERTIBLES', 'P_EMPRUNTS_OBLIGATAIRES_CONVERTIBLES', 'montant'], ['BIL_AUTRES_OBLIG', 'P_AUTRES_EMPRUNTS_OBLIGATAIRES', 'montant'], ['BIL_DETTES_IMMOS', 'P_DETTES_IMMOBILISATIONS', 'montant']] as const) {
           const v = pris(code, champ);
           if (v !== undefined) valeursBilan2057[cle] = v;
         }

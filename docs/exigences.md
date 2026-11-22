@@ -233,3 +233,24 @@ notées « limite assumée » ou absentes de la matrice ; elles sont rouvertes e
 ## Reste réel, hors dépendances externes
 
 Les huit lacunes rouvertes à la seconde relecture sont traitées (tableau ci-dessus, décisions D-074 à D-081) ; ce qui reste de chacune est dit dans sa ligne. Liste d'ensemble du reste réalisable sans intervention extérieure : `plan.md`, section « Chantier du 2026-11-19 (soir) ».
+
+## Relecture des lignes « (externe) » (D-167, 2026-11-22)
+
+Relecture une à une des 44 lignes du tableau portant une mention **(externe)** (la 45ᵉ occurrence est la définition en tête du document). Pour chacune : ce qui manque réellement, et la preuve qu'aucune fonction locale n'est cachée derrière.
+
+| Nature du manque réel | Lignes | Preuve que la partie locale existe |
+|---|---|---|
+| **Validation professionnelle** (expert-comptable, DPO, avocat : règles, tables, seuils) | 24, 25, 129, 138, 139, 140, 141, 150, 158, 172, 191, 101, 227, 230 | contrôles, tables et propositions exécutés par les suites ; le statut « projet » est imposé à l'écran et à l'export |
+| **Modèle d'IA réel** (jeton, vérifications contractuelles, évaluation sur corpus) | 29, 79, 121, 128, 157, 173, 181 | `@comtaple/ia` et les routes exercés contre simulateur ; repli déterministe étiqueté « sans IA » testé sur l'API |
+| **Connexion réelle à un service tiers** (Gmail, Microsoft, agrégateur bancaire, Légifrance) | 62, 122, 149 | adaptateurs réels écrits, simulateurs, statut « non connecté » |
+| **Données réelles** (FEC, pièces, relevés, exports de logiciels comptables, corpus évalué) | 116, 117, 118, 119, 175 | importeurs exercés sur jeux synthétiques, rapports ligne à ligne |
+| **Personne et appareils réels** | 110, 203 (parcours 1 et 5), `recette-appareils.md` | parcours émulé jouable ; la recette sur appareils n'a jamais été jouée |
+| **Hébergeur, contrats, clé, ordonnanceur, royaume de production, destination d'ancrage, test d'intrusion indépendant** | 80, 92, 93, 95, 188, 190, 192, 193, 200, 205, 231 | restauration, conservation et fin de contrat essayées sur ressources jetables ; MFA essayé sur instance jetable |
+| **Mesure sur l'environnement cible** | 199, 207 | voir ci-dessous : la partie locale n'est pas complète |
+
+**Fonctions locales incomplètes trouvées derrière un « (externe) »** :
+
+1. **Charge multi-cabinet** (lignes 199 et 207) : seuls 12 sessions et 4 identités ont été exercés ; aucune mesure simultanée de plusieurs cabinets importants. Marquée **INCOMPLET (local)** ; mesure bornée écrite en D-167 (voir `rapport-de-tests.md`). La mesure sur l'environnement cible reste **(externe)**.
+2. **Ligne 141 (liasse)** : les sous-totaux du 2050 sans code imprimé restent en abstention délibérée (ambiguïté de libellé, D-161, D-166) — ce n'est ni externe ni un manque de code : une règle inventée serait pire qu'une abstention.
+3. **Restes inscrits au « Détail de la ligne 5 »** : les cadres 2054 bis, 2055 B, 2055 C et 2033-C III étaient décrits « non préparés » alors que leur saisie ligne par ligne, justifiée et historisée, existe (`tableauxSaisis`) : texte corrigé (« saisi par le cabinet, jamais déduit de la balance ») dans l'API, l'écran et l'export. Les colonnes de réévaluation du 2033-C sont saisissables par la même voie. Les rapprochements 2057 manquants ont été ajoutés pour les seules lignes dont le libellé est identique à celui du bilan (UL, UP, UT, 7Y, 7Z, 8J) ; 8A, VI, les dettes fiscales et sociales et les autres créances/dettes restent sans rapprochement (postes mêlés : aucune source n'énonce l'égalité).
+

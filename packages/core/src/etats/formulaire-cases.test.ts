@@ -1,6 +1,7 @@
 /** Recette du moteur générique de formulaires par cases (D-118) et de la définition du 2058-A : intégrité, abstention, néant, calculs énoncés, imputation, contrôles indicatifs. */
 import { describe, expect, it } from 'vitest';
 import type { QualificationRenvoi } from './detail-resultat.js';
+import { FORMULAIRE_2056 } from './definitions-2056.js';
 import { FORMULAIRE_2058_A, FORMULAIRE_2058_B, FORMULAIRE_2058_C } from './definitions-2058.js';
 import { FORMULAIRE_2059_E } from './definitions-2059.js';
 import { cleCase, preparerFormulaireCases } from './formulaire-cases.js';
@@ -172,5 +173,37 @@ describe('2058-C : rapprochements ZJ / FW et YX / FX avec le 2052 déduit de la 
   });
   it('YX égal à FX', () => {
     expect(prepC([rc('YW', '30.00'), rc('9Z', '12.00')], { R52_FX: '42.00' }).controles.find((c) => c.code === 'C58_YX_FX')?.statut).toBe('coherent');
+  });
+});
+
+describe('2056 : provisions inscrites au bilan (D-129)', () => {
+  const rp = (code: string, montant: string): QualificationRenvoi => ({ code: cleCase('P56', code), montant, ...TRACE });
+  const prepP = (renvois: QualificationRenvoi[] = []) => preparerFormulaireCases(FORMULAIRE_2056, { versionDonnees: 7, renvois });
+  it('intégrité : 107 cases lues (25 lignes × 4 colonnes, 6 « dont », 10), codes et clés uniques, 16 totaux', () => {
+    const codes = FORMULAIRE_2056.cases.map((c) => c.code);
+    expect(codes).toHaveLength(107);
+    expect(new Set(codes).size).toBe(107);
+    expect(new Set(codes.map((c) => cleCase('P56', c))).size).toBe(107);
+    for (const c of codes) expect(cleCase('P56', c)).toMatch(/^P56_[0-9A-Z]{2}$/);
+    expect(FORMULAIRE_2056.calculs.map((c) => c.code)).toEqual(['3Z', 'TS', 'TT', 'TU', '5Z', 'TV', 'TW', 'TX', '7B', 'TY', 'TZ', 'UA', '7C', 'UB', 'UC', 'UD']);
+    const connus = new Set([...codes, ...FORMULAIRE_2056.calculs.map((c) => c.code)]);
+    for (const k of FORMULAIRE_2056.controles) for (const x of [k.total, ...k.somme.map((y) => y.code)]) expect(connus.has(x), `${k.code} : ${x}`).toBe(true);
+    expect(cleCase('P56', 'Ø2')).toBe('P56_02');
+  });
+  it('sans saisie : totaux en abstention ; TOTAL I calculé seulement quand les six lignes de la colonne sont saisies, « dont majorations » exclue', () => {
+    const f0 = prepP();
+    expect(f0.calculs.every((c) => c.statut === 'abstention')).toBe(true);
+    const col1 = ['3T', '3U', '3V', '3X', 'IJ', '3Y'].map((c) => rp(c, '10.00'));
+    const f = prepP([...col1.slice(1), rp('D3', '5.00')]);
+    expect(f.calculs.find((c) => c.code === '3Z')!.statut).toBe('abstention');
+    const g = prepP([...col1, rp('D3', '5.00')]);
+    expect(g.calculs.find((c) => c.code === '3Z')).toMatchObject({ statut: 'etabli', montant: '60.00' });
+  });
+  it('contrôle indicatif début + dotations − reprises = fin ; jamais corrigé', () => {
+    const ok = prepP([rp('4A', '100.00'), rp('4B', '30.00'), rp('4C', '10.00'), rp('4D', '120.00')]);
+    expect(ok.controles.find((c) => c.code === 'P56_FIN_LIT')?.statut).toBe('coherent');
+    const ko = prepP([rp('4A', '100.00'), rp('4B', '30.00'), rp('4C', '10.00'), rp('4D', '150.00')]);
+    expect(ko.controles.find((c) => c.code === 'P56_FIN_LIT')).toMatchObject({ statut: 'ecart', ecart: '30.00' });
+    expect(ko.cases.find((c) => c.code === '4D')!.montant).toBe('150.00');
   });
 });

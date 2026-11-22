@@ -631,8 +631,8 @@ describe('2058-B et 2058-C (régime réel normal) : déficits, provisions non d�
 
   it('les trois formulaires du 2058 sont présents ; 2058-B : 29 cases, K6 / YK / YN / YO en abstention ; 2058-C : 47 cases', async () => {
     const f = await forms();
-    expect(f.map((x) => x.id)).toEqual(['2058-A', '2058-B', '2058-C', '2059-E']);
-    const b = f[1], c = f[2];
+    expect(f.map((x) => x.id)).toEqual(['2056', '2058-A', '2058-B', '2058-C', '2059-E']);
+    const b = f[2], c = f[3];
     expect(b.cases).toHaveLength(29);
     for (const k of ['K6', 'YK', 'YN', 'YO']) expect(calc(b, k).statut).toBe('abstention');
     expect(c.cases).toHaveLength(47);
@@ -867,6 +867,42 @@ describe('états joints : lignes au-delà de la capacité du formulaire, saisies
     expect(c.totaux.prixCession).toMatchObject({ statut: 'etabli', montant: '900.00' });
     expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/2033C_III/11`)).statut).toBeLessThan(300);
     expect((await put('2033G_FIL', '31', FIL)).statut).toBe(404);
+  }, 120_000);
+});
+
+describe('2056 (régime réel normal) : provisions inscrites au bilan, saisie case par case, totaux calculés comme le formulaire (D-129)', () => {
+  const f2056 = async () => ((await liasse(exN, 'reel_normal')).json.formulairesCases as any[]).find((f) => f.id === '2056');
+  const pp = (code: string, montant: string, note = 'Provisions du bilan (essai)', qui = 'remi') => api(qui, 'PUT', `/v1/exercices/${exN}/qualifications/renvois/P56_${code}`, { montant, note });
+  const calc = (f: any, code: string) => f.calculs.find((c: any) => c.code === code);
+
+  it('sans saisie : 107 cases à saisir, 16 totaux en abstention ; absent au régime simplifié ; refus', async () => {
+    const f = await f2056();
+    expect(f.cases).toHaveLength(107);
+    expect(f.cases.every((c: any) => c.statut === 'a_saisir' && c.montant === null && c.etatCodeCase === 'lu_verifie')).toBe(true);
+    expect(f.calculs.every((c: any) => c.statut === 'abstention')).toBe(true);
+    expect((await liasse(exN, 'reel_simplifie')).json.formulairesCases).toBeNull();
+    expect((await pp('4A', '-1.00')).statut).toBe(400);
+    expect((await pp('ZZZ', '1.00')).statut).toBe(404);
+    expect((await pp('4A', '1.00', 'Essai collaborateur', 'chloe')).statut).toBeGreaterThanOrEqual(400);
+    expect((await pp('4A', '1.00', 'Essai déposant', 'client')).statut).toBe(404);
+  }, 120_000);
+
+  it('une ligne saisie : contrôle début + dotations − reprises = fin ; TOTAL II seulement quand les dix lignes de la colonne sont saisies ; historique ; retrait', async () => {
+    for (const [c, m] of [['4A', '100.00'], ['4B', '30.00'], ['4C', '10.00'], ['4D', '120.00']] as const) expect((await pp(c, m)).statut, c).toBeLessThan(300);
+    let f = await f2056();
+    expect(f.controles.find((c: any) => c.code === 'P56_FIN_LIT').statut).toBe('coherent');
+    expect(calc(f, '5Z').statut).toBe('abstention');
+    const colonne1 = ['4A', '4E', '4N', '4T', '4X', '5B', '5F', 'EO', '5R', '5V'];
+    for (const c of colonne1.slice(1)) expect((await pp(c, '10.00')).statut, c).toBeLessThan(300);
+    f = await f2056();
+    expect(calc(f, '5Z')).toMatchObject({ statut: 'etabli', montant: '190.00' });
+    expect((await pp('4D', '150.00', 'Correction (essai)')).statut).toBeLessThan(300);
+    f = await f2056();
+    expect(f.controles.find((c: any) => c.code === 'P56_FIN_LIT')).toMatchObject({ statut: 'ecart', ecart: '30.00' });
+    const h = (await api('remi', 'GET', `/v1/exercices/${exN}/qualifications/historique?cle=P56_4D`)).json.evenements as any[];
+    expect(h).toHaveLength(2);
+    for (const c of [...colonne1, '4B', '4C', '4D']) expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/qualifications/renvois/P56_${c}`)).statut, c).toBeLessThan(300);
+    expect(calc(await f2056(), '5Z').statut).toBe('abstention');
   }, 120_000);
 });
 

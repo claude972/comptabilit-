@@ -433,6 +433,26 @@ if (process.argv.includes('--2033reste')) {
   await c690.scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${sortie}fiscal-2033d-cadre-iv.png` });
 }
+// 2056 (D-129) : saisies par les formulaires (MODIFIE le dossier fictif indiqué), régime réel normal.
+if (process.argv.includes('--2056')) {
+  await page.goto(`${base}&vue=liasse&regime=reel_normal`);
+  await page.waitForLoadState('networkidle');
+  await page.evaluate(() => document.querySelectorAll('[data-testid^="groupe-formulaire-2056"]').forEach((d) => d.setAttribute('open', '')));
+  await page.getByTestId('formulaire-2056').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2056-avant.png` });
+  for (const [code, m] of Object.entries({ '4A': '100.00', '4B': '30.00', '4C': '10.00', '4D': '120.00' })) {
+    const f = page.getByTestId(`renvoi-P56_${code}`);
+    await f.scrollIntoViewIfNeeded();
+    await f.getByLabel('Montant').fill(m);
+    await f.getByLabel('Justification (obligatoire)').fill('Provision pour litige du bilan (démonstration fictive)');
+    await f.getByRole('button', { name: new RegExp(`Enregistrer le renvoi P56_${code}`) }).click();
+    await f.getByText('Renvoi enregistré.').waitFor();
+  }
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('controles-formulaire-2056').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2056-controles.png` });
+}
 // 2033-B (D-107) : « dont export » et lignes « dont » du régime simplifié.
 await page.goto(`${base}&vue=liasse&regime=reel_simplifie`);
 await page.waitForLoadState('networkidle');

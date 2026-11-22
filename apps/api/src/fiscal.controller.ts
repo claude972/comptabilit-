@@ -25,6 +25,7 @@ import {
   preparerGrille,
   preparerFormulaireCases,
   cleCase,
+  FORMULAIRE_2056,
   FORMULAIRE_2058_A,
   FORMULAIRE_2058_B,
   FORMULAIRE_2058_C,
@@ -81,7 +82,7 @@ const estGrille = (tableau: string) => TABLEAUX_GRILLES.includes(tableau);
 const ligneAdmise = (tableau: string, ligne: string) => (estGrille(tableau) ? LIGNE_GRILLE : tableau.startsWith('2059A_') ? LIGNE_2059A : AVEC_ETAT_JOINT.test(tableau) ? LIGNE_ETAT_JOINT : LIGNE_HISTORIQUE).test(ligne);
 const COMPTE_CA = /^70[0-9A-Za-z]{1,13}$/;
 /** Formulaires du régime réel normal servis par saisie case par case (moteur générique, D-118). */
-const FORMULAIRES_CASES: readonly DefinitionFormulaire[] = [FORMULAIRE_2058_A, FORMULAIRE_2058_B, FORMULAIRE_2058_C, FORMULAIRE_2059_E];
+const FORMULAIRES_CASES: readonly DefinitionFormulaire[] = [FORMULAIRE_2056, FORMULAIRE_2058_A, FORMULAIRE_2058_B, FORMULAIRE_2058_C, FORMULAIRE_2059_E];
 const CLES_FORMULAIRES_CASES = FORMULAIRES_CASES.flatMap((f) => f.cases.map((c) => cleCase(f.prefixe, c.code)));
 const CODE_RENVOI = /^[0-9A-Z_]{2,12}$/;
 const RENVOIS_CONNUS = [...RENVOIS, ...RENVOIS_RSI, ...LIGNES_RESULTAT_FISCAL.map((l) => ({ code: l.cle })), ...DETAIL_RESULTAT_FISCAL.map((l) => ({ code: l.cle })), ...CLES_2033_D.map((cle) => ({ code: cle })), ...CLES_2033_E.map((cle) => ({ code: cle })), ...CLES_FORMULAIRES_CASES.map((cle) => ({ code: cle }))];

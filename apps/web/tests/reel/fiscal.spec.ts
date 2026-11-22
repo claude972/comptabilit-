@@ -64,6 +64,9 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
     await expect(page.getByTestId('grille-2065').locator('li[data-ligne-grille]')).toHaveCount(30);
     // Dates du 2033-E / 2059-E (D-126) et cadre IV du 2033-D (D-126).
     await expect(page.getByTestId('grille-2033-E-DATES').locator('li[data-ligne-grille]')).toHaveCount(2);
+    // 2056 (D-129) : provisions inscrites au bilan, 107 cases saisies une à une, totaux en abstention sans saisie.
+    await expect(page.getByTestId('formulaire-2056').locator('li[data-case-f]')).toHaveCount(107);
+    await expect(page.getByTestId('formulaire-2056').locator('li[data-calcul-f]')).toHaveCount(16);
     // 2059-E, 2059-F, 2059-G (D-120) : effectifs, capital et filiales au régime réel normal (mêmes saisies que 2033-F et G).
     await expect(page.getByTestId('formulaire-2059-E').locator('li[data-case-f]')).toHaveCount(25);
     await expect(page.getByTestId('formulaire-2033-f')).toContainText('2059-F');

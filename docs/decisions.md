@@ -749,6 +749,14 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Ce qui n'est PAS fait, dit** : l'**état papier joint lui-même** n'est pas produit (mise en page du feuillet) ; les contrôles de nombre (case 905 contre lignes listées) portent sur toutes les lignes saisies ; les maxima sont un choix d'ingénierie, relevables.
 - **Preuves** : tests du moteur adaptés (923 verts), essai d'intégration d'un état joint (8e filiale, 11e cession entrant dans le total 584) et adaptation des essais de refus (55 verts), Playwright `fiscal.spec.ts`.
 
+### D-129 — Tableau 2056 « Provisions inscrites au bilan » (régime réel normal) (2026-11-22)
+
+- **Source** : `2050-liasse_5320.pdf` (SHA-256 0bba3352…8453e1), page 8 (2056-SD) ; les 4 codes de chaque ligne (début, dotations, reprises, fin) lus par extraction positionnée puis **vérifiés sur le rendu image**. 107 cases : 25 lignes (7 provisions réglementées dont « dont majorations de 30 % », 10 risques et charges, 8 dépréciations) × 4 colonnes, 6 cases « dont dotations et reprises » (UE à UK), case 10 (titres mis en équivalence).
+- **Moteur générique de formulaires par cases** (D-118), préfixe `P56`, saisie justifiée, historisée, néant distinct du manque, « à revoir » si les données changent. **Totaux calculés comme le formulaire l'énonce**, seulement quand toutes leurs composantes sont saisies : TOTAL I (3Z, TS, TT, TU ; la ligne « dont majorations » n'est pas additionnée), TOTAL II (5Z, TV, TW, TX), TOTAL III (7B, TY, TZ, UA), TOTAL GÉNÉRAL (7C, UB, UC, UD).
+- **Contrôles indicatifs, jamais corrigés** : début + dotations − reprises = fin pour chacune des 25 lignes ; dotations (resp. reprises) du total général = somme des « dont » exploitation, financières, exceptionnelles.
+- **Rien n'est déduit de la balance** (elle ne distingue pas la nature ni les dotations et reprises par catégorie). **Non préparé, dit** : feuillets séparés des lignes (1) selon l'année de constitution ou l'objet ; état détaillé des charges à payer ; relation avec le 2058-B. Statut « projet ».
+- **Preuves** : 3 tests du moteur (intégrité des 107 codes, totaux, contrôle de ligne ; 20 verts), 2 essais d'intégration sur la pile réelle (57 verts), Playwright `fiscal.spec.ts`, captures `fiscal-2056-avant/controles.png` (`--2056`).
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

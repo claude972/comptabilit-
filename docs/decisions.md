@@ -969,6 +969,9 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Laissé SANS code (ambiguïté, abstention)** : « Total de l'actif immobilisé (III) » (contenu différent du total du formulaire) ; « en-cours de production » (le formulaire a deux lignes, biens BN / BO et services BP / BQ, la liasse une seule) ; « produits finis » (le formulaire dit « produits intermédiaires et finis », BR / BS : même classe de comptes 35 mais libellé différent, non tranché) ; « instruments financiers à terme et jetons » (absent du formulaire 2026) ; 2051 : total des réserves (DD à DG), fonds non remboursables et droits du concédant (le formulaire a « produit des émissions de titres participatifs » DM, correspondance non établie) ; 2052 : production vendue (FF + FI) et dotations (GA à GD) ; 2033-A : « autres dettes » (172, 173, 175).
 - **Test corrigé** : `parcours-fiscal.itest.ts` affirmait qu'AUCUNE ligne n'avait de code (l'incohérence même corrigée par D-155 et D-156) ; il vérifie maintenant que les lignes codées sont « vérifiées », que les autres restent « à confirmer », et que plus de 80 lignes portent un code.
 
+### D-162 — Worker tué par SIGKILL pendant les CONTRÔLES : reprise prouvée (2026-11-22)
+- Essai `parcours-reprise-worker.itest.ts` (pile réelle, worker d'essai) : FEC de 95 000 écritures ; SIGKILL dès que l'exécution des contrôles existe sans être terminée ; constat : statut « en attente », **aucun résultat partiel** (transaction abandonnée) ; un nouveau worker reprend sans intervention et termine en ≈ 70 s ; un seul résultat par contrôle, aucun constat en double, une seule exécution pour le lot. Ferme, pour les contrôles, le « non mesuré » de la matrice (§17). Reste non mesuré : l'arrêt brutal pendant la génération d'un dossier de révision.
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

@@ -124,4 +124,43 @@ describe('worker tué par SIGKILL pendant un import', () => {
     const n = Number((await editeur.query(`select count(*) as n from mouvements_bancaires where entite_id = $1`, [dossier])).rows[0].n);
     expect(n).toBe(releve.attendu.nbMouvements);
   }, 600_000);
+
+  it('worker tué par SIGKILL pendant l’exécution des CONTRÔLES : un nouveau worker les reprend, un seul jeu de résultats, sans doublon (D-162)', async () => {
+    // Dossier et exercice neufs : le FEC précédent a déjà été importé sur le premier exercice.
+    const dossier2 = (await apiCabinet('alice', cabinet, 'POST', '/v1/dossiers', { raisonSociale: `Société reprise contrôles ${SEL} (fictive)`, territoireFiscal: 'metropole', formeJuridique: 'SAS', regimeFiscal: 'IS' })).json.id as string;
+    for (const [u, n] of [[DEMO.alice, 'validation'], [DEMO.remi, 'revision']] as const) expect((await apiCabinet('alice', cabinet, 'PUT', `/v1/dossiers/${dossier2}/habilitations/${u}`, { niveau: n })).statut).toBeLessThan(300);
+    const exercice2 = (await apiCabinet('alice', cabinet, 'POST', `/v1/dossiers/${dossier2}/exercices`, EX)).json.id as string;
+    const [ancienDossier, ancienExercice] = [dossier, exercice];
+    dossier = dossier2;
+    exercice = exercice2;
+    try {
+      const fec = genererFecSynthetique({ exercice: EX, nbEcritures: 95_000, graine: 9802 });
+      const w1 = lancer('worker', { NODE_OPTIONS: '--max-old-space-size=2048' });
+      await new Promise((r) => setTimeout(r, 4_000));
+      const lot = await deposerSurApiEssai(Buffer.from(fec.contenu), { usage: 'fec', exerciceId: exercice2, statutDonnees: 'travail_avant_cloture' }, fec.nomFichier);
+      const execution = async () => (await editeur.query(`select id, statut from executions_controles where lot_import_id = $1`, [lot])).rows[0] as { id: string; statut: string } | undefined;
+      // Dès que l'exécution des contrôles existe et n'est pas terminée : coup de SIGKILL.
+      const e0 = await attendre(execution, (e) => e !== undefined && e.statut !== 'termine', 240_000);
+      w1.kill('SIGKILL');
+      await new Promise((r) => setTimeout(r, 2_000));
+      const apres = (await execution())!;
+      const nbApres = Number((await editeur.query(`select count(*) as n from resultats_controles where execution_id = $1`, [e0!.id])).rows[0].n);
+      console.log(`[mesure] contrôles après SIGKILL : ${apres.statut}, résultats en base : ${nbApres}`);
+      expect(apres.statut).not.toBe('termine'); // le coup est bien tombé AVANT la fin (sinon l'essai ne prouverait rien)
+      expect(nbApres).toBe(0); // transaction abandonnée : aucun résultat partiel
+      lancer('worker', { NODE_OPTIONS: '--max-old-space-size=2048' });
+      const t = Date.now();
+      const fin = await attendre(execution, (e) => e?.statut === 'termine', 300_000);
+      console.log(`[mesure] contrôles repris après SIGKILL : ${fin!.statut} en ${Date.now() - t} ms après le nouveau worker`);
+      const r = (await editeur.query(`select count(*)::int as n, count(distinct controle_id)::int as distincts from resultats_controles where execution_id = $1`, [fin!.id])).rows[0];
+      expect(r.n).toBeGreaterThan(0);
+      expect(r.n).toBe(r.distincts); // un seul résultat par contrôle
+      const c = (await editeur.query(`select count(*)::int as n, count(distinct (controle_id, cle))::int as distincts from constats where execution_id = $1`, [fin!.id])).rows[0];
+      expect(c.n).toBe(c.distincts); // aucun constat en double
+      expect(Number((await editeur.query(`select count(*) as n from executions_controles where lot_import_id = $1`, [lot])).rows[0].n)).toBe(1); // pas de seconde exécution
+    } finally {
+      dossier = ancienDossier;
+      exercice = ancienExercice;
+    }
+  }, 900_000);
 });

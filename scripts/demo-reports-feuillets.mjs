@@ -86,6 +86,10 @@ if (!dossier) {
   await tab('2057_B', '8B', d4('700.00')); await tab('2057_B', '8L', d4('30.00'));
   await tab('2057_F_PRET', '01', { origine: 'Actions fictives (prêtées)', m: '800.00' });
   await tab('2057_F_PRET', '02', { origine: 'Obligations fictives (remises en garantie)', m: '200.00' });
+  // Relevé interne des frais à payer (D-175) : trois lignes justifiées (nature ou tiers, montant) ; aucune déduction de la balance
+  await tab('CAP_RELEVE', '01', { origine: 'Honoraires de commissariat aux comptes à payer (fictifs)', m: '1200.00' });
+  await tab('CAP_RELEVE', '02', { origine: 'Électricité du dernier trimestre (fictive)', m: '350.50' });
+  await tab('CAP_RELEVE', '03', { origine: 'Taxe d’apprentissage à régler (fictive)', m: '89.50' });
 }
 const liasse = (await api('GET', `/v1/exercices/${exercice}/liasse?regime=reel_normal`)).json;
 writeFileSync(`${sortie}demo-reports-liasse.json`, JSON.stringify({ formulairesCases: liasse.formulairesCases, formulaire2059A: liasse.formulaire2059A, formulaire2057: liasse.formulaire2057, feuilles2058: liasse.feuilles2058 }, null, 1));
@@ -117,5 +121,7 @@ const r50 = liasse.reprise2050Stocks; const c50 = (c) => r50.cases.find((x) => x
 ok(r50.etat === 'decidee' && ['BN', 'BO', 'BP', 'BQ'].every((c) => c50(c).statut === 'repris') && c50('BN').montant === '700.00' && c50('BP').montant === '300.00' && r50.totalEnCours.brut === '1000.00' && c50('BR').statut === 'abstention' && c50('BR').montant === null && /-50\.00/.test(c50('BR').motif), `2050, reprise EXPLICITE (D-170) : BN 700,00, BO 100,00, BP 300,00, BQ 0,00 retenus (total 1000,00 = montant source) ; BR en abstention (${c50('BR')?.motif?.slice(0, 70)}…) ; bilan source et totaux du 2050 inchangés`);
 const lAct = liasse.resultat.tableaux.flatMap((x) => x.lignes); const srcEC = lAct.find((l) => l.ligne === 'RN_2050_A_STOCKS_EN_COURS');
 ok(srcEC?.brut === '1000.00' && srcEC?.amortissementsDepreciations === '100.00' && srcEC?.codesActif == null, `le poste source « en-cours de production » du projet 2050 reste 1000,00 / 100,00 (non réécrit, sans code de case) : les cases BN à BP ne s’y ajoutent pas`);
+const gcap = liasse.feuilles2058.find((g) => g.id === 'CHARGES-A-PAYER');
+ok(gcap.etat === 'saisi' && gcap.cadres[0].calculs[0].cellules.m.montant === '1640.00' && gcap.controles.every((x) => x.statut === 'non_verifie'), `relevé interne des frais à payer (D-175) : trois lignes justifiées, total ${gcap.cadres[0].calculs[0].cellules.m.montant}, aucun rapprochement (aucune relation énoncée par une source accessible)`);
 console.log(`\nLien local : ${WEB}/dossiers/${dossier}/fiscal?vue=liasse`);
 console.log(JSON.stringify({ dossier, exercice }));

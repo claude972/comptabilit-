@@ -81,6 +81,8 @@ test('reports 2059 → 2058-A, feuillets du 2056 et du 2057, rapprochement du 20
   for (const l of ['13', '14', '15', '16']) await tab('2059A_AUT', l, { c9: '0.00' });
   for (const l of ['18', '19']) await tab('2059A_AUT', l, { c10a: '0.00', c10b: '0.00', c10c: '0.00' });
   await tab('2059A_AUT', '20', { c9: '500.00', c10a: '0.00', c10b: '0.00', c10c: '0.00', c11: '10.00' });
+  await tab('CAP_RELEVE', '01', { origine: 'Honoraires à payer (fictifs)', m: '1200.00' });
+  await tab('CAP_RELEVE', '02', { origine: 'Électricité (fictive)', m: '350.50' });
   await tab('2059A_NOTE', '01', { origine: 'Ajustement comptable / fiscal (fictif)', c9: '300.00', c10a: '0.00', c10b: '0.00', c10c: '0.00', c11: '0.00' });
   await tab('2059A_NOTE', '02', { origine: 'Ajustement de calcul de plus-value (fictif)', c9: '200.00', c10a: '0.00', c10b: '0.00', c10c: '0.00', c11: '15.00' });
   await cas('A58_WV', '2000.00');
@@ -163,5 +165,12 @@ test('reports 2059 → 2058-A, feuillets du 2056 et du 2057, rapprochement du 20
   await expect(page.locator('[data-tableau-joint="2059-C/2059C_RAPPEL"]')).toContainText('2000.00');
   await expect(page.locator('[data-tableau-joint="2058-A"]')).toContainText('proposition non retenue : 20.00');
   await expect(page.locator('[data-tableau-joint="2059-D/2059D_I"]')).toContainText('50.00');
+  await page.getByTestId('lien-etat-charges').click();
+  await expect(page).toHaveURL(/vue=charges/);
+  await expect(page.locator('[data-tableau-joint]')).toHaveCount(1);
+  await expect(page.locator('[data-tableau-joint="CHARGES-A-PAYER/CAP_RELEVE"]')).toContainText('1550.50');
+  const csvCharges = decodeURIComponent((await page.getByTestId('export-csv-etat-joint').getAttribute('href'))!);
+  expect(csvCharges).toContain('1550.50');
+  expect(csvCharges).toContain('non officiel');
   await contexte.close();
 });

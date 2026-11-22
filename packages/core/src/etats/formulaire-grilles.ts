@@ -76,7 +76,7 @@ export interface CadreGrille {
   colonneCalculee?: { cle: string; libelle: string; termes: ReadonlyArray<{ col: string; signe: 1 | -1 }> };
 }
 export interface DefinitionGrille {
-  id: '2059-B' | '2059-C' | '2059-D' | '2065' | '2033-E-DATES' | '2057' | '2065-BIS' | '2033-D-982' | '2058-B-K4BIS' | '2058-A-FEUILLETS' | '2053-DETAIL' | '2058-B-COMPLEMENTS' | '2056-FEUILLETS' | '2057-FEUILLETS' | '2059-A-NOTE' | '2050-STOCKS';
+  id: '2059-B' | '2059-C' | '2059-D' | '2065' | '2033-E-DATES' | '2057' | '2065-BIS' | '2033-D-982' | '2058-B-K4BIS' | '2058-A-FEUILLETS' | '2053-DETAIL' | '2058-B-COMPLEMENTS' | '2056-FEUILLETS' | '2057-FEUILLETS' | '2059-A-NOTE' | '2050-STOCKS' | 'CHARGES-A-PAYER';
   titre: string;
   /** Tableau portant la ligne NEANT du formulaire ; absent si le formulaire n'a pas de « néant » (le 2065 est toujours servi). */
   neantSur?: string;
@@ -694,7 +694,7 @@ export const GRILLE_2056_FEUILLETS: DefinitionGrille = {
   nonPrepare: [
     'Le formulaire demande ces feuillets (note (1) : « à détailler sur feuillet séparé selon l’année de constitution de la provision ou selon l’objet de la provision ») sans en fixer le modèle : la disposition est propre à Comtaple et non officielle.',
     'Le rapprochement du détail avec la case du 2056 est INDICATIF et n’est fait que si la case est saisie ; il n’est jamais corrigé. Aucune décision de déductibilité n’est prise.',
-    'Au-delà de vingt lignes par feuillet : non préparé. Les charges à payer relèvent de l’état détaillé de l’article 38 II de l’annexe III au CGI : non préparé.',
+    'Au-delà de vingt lignes par feuillet : non préparé. Les frais à payer font l’objet d’un relevé interne distinct (grille CHARGES-A-PAYER, D-175).',
   ],
 };
 
@@ -795,7 +795,28 @@ export const GRILLE_2050_STOCKS: DefinitionGrille = {
   ],
 };
 
-const TOUTES: readonly DefinitionGrille[] = [...GRILLES_2059, GRILLE_2065, GRILLE_DATES_CVAE, GRILLE_2057, GRILLE_2065_BIS, GRILLE_2033D_982, GRILLE_2058B_K4BIS, GRILLE_2058A_FEUILLETS, GRILLE_2056_FEUILLETS, GRILLE_2057_FEUILLETS, GRILLE_2059A_NOTE, GRILLE_2053_DETAIL, GRILLE_2058B_COMPLEMENTS, GRILLE_2050_STOCKS];
+/**
+ * RELEVÉ INTERNE des frais (charges) à payer (D-175). Source établie (BOI-BIC-DECLA-30-10-10-30 §260, version en vigueur du 26/05/2021 « à aujourd'hui » sur la page
+ * BOFiP lue le 2026-11-22 ; la page ne mentionne ni abrogation ni remplacement, mais l'applicabilité en 2026 n'est confirmée que par cette page) : la tolérance qui
+ * écarte l'amende de l'article 1763 du CGI pour des frais à payer inscrits en « frais à payer » alors qu'ils auraient dû être des provisions est « subordonnée à la
+ * production d'un relevé détaillé de ces frais, en annexe à la déclaration des résultats ». La page ne fixe NI modèle, NI colonnes, NI seuil, et ne mentionne aucun
+ * formulaire dédié ; le renvoi du 2056 vise l'article 38 II de l'annexe III au CGI (Légifrance, accès refusé 403, non contourné). Ceci n'est donc PAS le formulaire
+ * officiel : c'est un relevé interne (nature ou tiers, montant), propre à Comtaple, justifié ligne par ligne, historisé, qui prépare les données.
+ * Aucun rapprochement chiffré : aucune source accessible n'énonce de relation entre ce relevé et le bilan ou les lignes 9K à 9S du 2058-B.
+ */
+export const GRILLE_CHARGES_A_PAYER: DefinitionGrille = {
+  id: 'CHARGES-A-PAYER',
+  neantSur: 'CAP_RELEVE',
+  titre: 'Relevé interne des frais à payer (annexe à la déclaration de résultats, tolérance du BOI-BIC-DECLA-30-10-10-30 §260)',
+  cadres: [FEUILLET_LIBRE('CAP_RELEVE', 'Relevé détaillé des frais à payer (nature ou tiers, montant)', 'Nature de la charge ou tiers', 'Total des frais à payer listés')],
+  nonPrepare: [
+    'Relevé INTERNE, non officiel : la source (BOFiP §260, version en vigueur du 26/05/2021) exige « un relevé détaillé de ces frais » en annexe sans en fixer le modèle, les colonnes ni les seuils ; le formulaire ou l’état de l’article 38 II de l’annexe III au CGI n’est pas lisible (Légifrance : accès refusé).',
+    'Aucune décision fiscale : Comtaple ne dit pas si une charge est un « frais à payer » ou une provision. Chaque ligne est une saisie justifiée du cabinet ; rien n’est déduit de la balance. Aucun rapprochement avec le bilan ni avec les lignes 9K à 9S du 2058-B (aucune relation énoncée par une source accessible).',
+    'Au-delà de vingt lignes : non préparé. Statut « projet » : ni validation professionnelle ni transmission.',
+  ],
+};
+
+const TOUTES: readonly DefinitionGrille[] = [...GRILLES_2059, GRILLE_2065, GRILLE_DATES_CVAE, GRILLE_2057, GRILLE_2065_BIS, GRILLE_2033D_982, GRILLE_2058B_K4BIS, GRILLE_2058A_FEUILLETS, GRILLE_2056_FEUILLETS, GRILLE_2057_FEUILLETS, GRILLE_2059A_NOTE, GRILLE_2053_DETAIL, GRILLE_2058B_COMPLEMENTS, GRILLE_2050_STOCKS, GRILLE_CHARGES_A_PAYER];
 export const TABLEAUX_GRILLES: readonly string[] = TOUTES.flatMap((g) => g.cadres.map((c) => c.tableau));
 
 /** Lignes admises pour un tableau en grille : `null` si le tableau n'est pas une grille. Utilisée par la validation de forme. */

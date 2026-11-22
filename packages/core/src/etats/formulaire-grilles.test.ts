@@ -1,7 +1,7 @@
 /** Recette des grilles 2059-B, 2059-C et 2059-D (D-122) : saisie ligne par ligne, calculs énoncés seulement à composantes saisies. */
 import { describe, expect, it } from 'vitest';
 import { reprendreVentilation2050 } from './reprise-2050-stocks.js';
-import { GRILLE_2050_STOCKS, GRILLE_2058B_COMPLEMENTS, GRILLE_2053_DETAIL, GRILLE_2033D_982, GRILLE_2058A_FEUILLETS, GRILLE_2058B_K4BIS, GRILLE_2056_FEUILLETS, GRILLE_2057, GRILLE_2057_FEUILLETS, GRILLE_2059A_NOTE, GRILLE_2065, GRILLE_2065_BIS, GRILLE_DATES_CVAE, GRILLES_2059, preparerGrille } from './formulaire-grilles.js';
+import { GRILLE_CHARGES_A_PAYER, GRILLE_2050_STOCKS, GRILLE_2058B_COMPLEMENTS, GRILLE_2053_DETAIL, GRILLE_2033D_982, GRILLE_2058A_FEUILLETS, GRILLE_2058B_K4BIS, GRILLE_2056_FEUILLETS, GRILLE_2057, GRILLE_2057_FEUILLETS, GRILLE_2059A_NOTE, GRILLE_2065, GRILLE_2065_BIS, GRILLE_DATES_CVAE, GRILLES_2059, preparerGrille } from './formulaire-grilles.js';
 import { type SaisieTableau, validerSaisieTableau } from './saisies-tableaux.js';
 
 const TRACE = { note: 'Suivi des plus-values (essai)', qualifieePar: 'u-1', le: '2026-12-31T10:00:00Z', versionDonnees: 7 };
@@ -158,6 +158,25 @@ describe('grilles 2059', () => {
     expect(d.cadres.map((c) => c.lignes.length)).toEqual([20, 20]);
     expect(validerSaisieTableau('2058A_DEDUC', 'NEANT', {}).join(' ')).toMatch(/Ligne inconnue/);
     expect(validerSaisieTableau('2058A_DEDUC', '01', { origine: 'Déduction (fictive)', m: '10.00' })).toEqual([]);
+  });
+  it('relevé interne des frais à payer (D-175) : saisie justifiée, total, néant explicite distinct de l’absence, aucun rapprochement', () => {
+    const l = (n: string, m: string) => s('CAP_RELEVE', n, { origine: `Frais ${n} (fictif)`, m });
+    const vide = preparerGrille(GRILLE_CHARGES_A_PAYER, { versionDonnees: 7, saisiesTableaux: [] });
+    expect(vide.etat).toBe('a_saisir');
+    expect(vide.cadres[0]!.calculs[0]!.cellules.m.statut).toBe('abstention');
+    const neant = preparerGrille(GRILLE_CHARGES_A_PAYER, { versionDonnees: 7, saisiesTableaux: [s('CAP_RELEVE', 'NEANT', {})] });
+    expect(neant.etat).toBe('neant');
+    const f = preparerGrille(GRILLE_CHARGES_A_PAYER, { versionDonnees: 7, saisiesTableaux: [l('01', '120.50'), l('02', '30.00')] });
+    expect(f.etat).toBe('saisi');
+    expect(f.cadres[0]!.calculs[0]!.cellules.m).toEqual({ statut: 'etabli', montant: '150.50' });
+    expect(f.controles.every((c) => c.statut === 'non_verifie')).toBe(true);
+    expect(f.controles.some((c) => c.code.includes('SOMME') || c.code.includes('EXTERNE'))).toBe(false);
+    expect(f.cadres[0]!.lignes).toHaveLength(20);
+    const perimee = preparerGrille(GRILLE_CHARGES_A_PAYER, { versionDonnees: 8, saisiesTableaux: [l('01', '120.50')] });
+    expect(perimee.cadres[0]!.calculs[0]!.cellules.m.statut).toBe('abstention');
+    expect(validerSaisieTableau('CAP_RELEVE', '21', { origine: 'x y', m: '1.00' }).join(' ')).toMatch(/Ligne inconnue/);
+    expect(validerSaisieTableau('CAP_RELEVE', '01', { origine: 'Honoraires (fictifs)', m: '1.00' })).toEqual([]);
+    expect(validerSaisieTableau('CAP_RELEVE', '01', { origine: 'x', m: 'abc' }).length).toBeGreaterThan(0);
   });
   it('2053 (7) et (8) : détails saisis, totaux calculés, rapprochés indicativement du 2053 et des cases 1G et 1H', () => {
     const l = (t: string, n: string, c: string, p: string) => s(t as 'IMMO_CELL', n, { origine: `Nature ${n}`, c, p });

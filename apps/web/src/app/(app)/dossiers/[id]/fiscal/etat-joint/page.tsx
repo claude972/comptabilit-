@@ -34,12 +34,14 @@ export default async function PageEtatJoint({ params, searchParams }: { params: 
   if (!liasse.ok) return <ErreurAcces statut={liasse.statut} message={liasse.message} retour={`/dossiers/${id}/fiscal?exercice=${exercice.id}`} />;
   // `?vue=essentiel` : bilan, comptes de résultat, immobilisations et amortissements seulement (D-163) ; sans paramètre, tous les tableaux préparés.
   // `?vue=stocks` : bilan (2050 actif, 2051 passif) et ventilation des stocks seulement (D-174) : grille 2050-STOCKS saisie, cases BN à BS retenues ou en abstention, écarts et justifications.
-  const vue = parametre(sp.vue) === 'essentiel' ? 'essentiel' : parametre(sp.vue) === 'stocks' ? 'stocks' : 'complet';
+  const vue = parametre(sp.vue) === 'essentiel' ? 'essentiel' : parametre(sp.vue) === 'stocks' ? 'stocks' : parametre(sp.vue) === 'charges' ? 'charges' : 'complet';
   const essentiel = vue === 'essentiel';
   const stocks = vue === 'stocks';
+  // `?vue=charges` : relevé interne des frais à payer seulement (D-175) : saisies justifiées, total, néant éventuel ; relevé propre à Comtaple, non officiel.
+  const charges = vue === 'charges';
   const tousTableaux = etatJointDe(liasse.donnees);
-  const tableaux = essentiel ? tousTableaux.filter((t) => /^(liasse-|2054\/|2055\/|2033-C\/)/.test(t.id)) : stocks ? tousTableaux.filter((t) => /^(liasse-2050|liasse-2051|liasse-2050-STOCKS-REPRISE)$|^2050-STOCKS\//.test(t.id)) : tousTableaux;
-  const perimetre = essentiel ? 'bilan, comptes de résultat, immobilisations et amortissements seulement' : stocks ? 'bilan (2050 actif, 2051 passif) et ventilation des stocks seulement (cases BN à BS)' : 'tous les tableaux préparés';
+  const tableaux = essentiel ? tousTableaux.filter((t) => /^(liasse-|2054\/|2055\/|2033-C\/)/.test(t.id)) : stocks ? tousTableaux.filter((t) => /^(liasse-2050|liasse-2051|liasse-2050-STOCKS-REPRISE)$|^2050-STOCKS\//.test(t.id)) : charges ? tousTableaux.filter((t) => t.id.startsWith('CHARGES-A-PAYER/')) : tousTableaux;
+  const perimetre = essentiel ? 'bilan, comptes de résultat, immobilisations et amortissements seulement' : stocks ? 'bilan (2050 actif, 2051 passif) et ventilation des stocks seulement (cases BN à BS)' : charges ? 'relevé interne des frais à payer seulement (non officiel)' : 'tous les tableaux préparés';
   const edition = formaterHorodatage(new Date().toISOString());
   const identification = [
     `Dossier : ${ctx.dossier.raisonSociale}${ctx.dossier.formeJuridique ? ` (${ctx.dossier.formeJuridique})` : ''} — SIREN ${liasse.donnees.identification?.siren ?? 'non renseigné au dossier'}`,
@@ -66,6 +68,11 @@ export default async function PageEtatJoint({ params, searchParams }: { params: 
         {vue !== 'essentiel' ? (
           <Link href={`/dossiers/${id}/fiscal/etat-joint?exercice=${exercice.id}&regime=${regime}&vue=essentiel`} prefetch={false} data-testid="lien-etat-essentiel">
             Bilan, comptes de résultat et immobilisations seulement
+          </Link>
+        ) : null}
+        {vue !== 'charges' && regime === 'reel_normal' ? (
+          <Link href={`/dossiers/${id}/fiscal/etat-joint?exercice=${exercice.id}&regime=${regime}&vue=charges`} prefetch={false} data-testid="lien-etat-charges">
+            Relevé des frais à payer
           </Link>
         ) : null}
         {vue !== 'stocks' ? (

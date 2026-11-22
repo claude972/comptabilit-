@@ -533,6 +533,13 @@
       "when": 1795345095123,
       "tag": "0075_ventilation_stocks_2050",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1795360498678,
+      "tag": "0076_releve_charges_a_payer",
+      "breakpoints": true
     }
   ]
 }

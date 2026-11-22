@@ -86,7 +86,7 @@ Marche à suivre (sans secret) :
   3. Descendre jusqu'à « 2050-STOCKS » : saisir les lignes « en cours de production de biens », « de services » et « produits intermédiaires et finis » (brut, amortissements et provisions) avec une justification.
   4. À la ligne « Décision du cabinet », choisir « Oui » avec une justification : les cases dont le montant égale le montant source du projet de bilan sont retenues, les autres restent en abstention avec l'écart.
   5. Ouvrir « État joint » puis « Bilan et ventilation des stocks » : vérifier le tableau « cases BN à BS retenues », puis Fichier > Imprimer (PDF A4 paysage) ou « Exporter en CSV ». « Voir tous les tableaux préparés » rouvre l'état complet.
-  Limite connue : l'état détaillé des charges à payer n'est pas préparé (aucune source officielle actuelle exploitable, voir docs/sources-officielles.md § 8).
+  Frais à payer : relevé interne séparé (voir LISEZ-MOI-releve-frais-a-payer.txt).
 
 Contrôles du script : ${verdicts.length} vérifications, toutes OK.
 `;

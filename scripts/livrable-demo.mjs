@@ -32,6 +32,12 @@ if (v2.status !== 0) {
   console.error(v2.stdout.slice(-3000), v2.stderr.slice(-1500));
   process.exit(1);
 }
+const v3 = spawnSync(process.execPath, [join(racine, 'scripts/livrable-releve-charges.mjs')], { encoding: 'utf8', maxBuffer: 1 << 26 });
+if (v3.status !== 0) {
+  console.error(v3.stdout.slice(-3000), v3.stderr.slice(-1500));
+  process.exit(1);
+}
 console.log(verdicts.join('\n'));
+console.log(v3.stdout.split('\n').filter((l) => /^(OK|ÉCHEC) /.test(l) || l.startsWith('LIVRABLE') || l.startsWith('  ')).join('\n'));
 console.log(v2.stdout.split('\n').filter((l) => /^(OK|ÉCHEC) /.test(l) || l.startsWith('LIVRABLE') || l.startsWith('  ')).join('\n'));
 console.log(`\nLIVRABLE PRÊT\n  dossier  : ${lien}\n  état joint : ${lienEtat}\n  PDF      : ${join(sortie, 'etat-joint-bilan-liasse-immobilisations.pdf')}\n  CSV      : ${join(sortie, 'etat-joint-bilan-liasse-immobilisations.csv')}`);

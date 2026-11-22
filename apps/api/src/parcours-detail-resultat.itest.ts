@@ -1005,7 +1005,7 @@ describe('feuillets du régime réel normal : déficits transférés (K4 bis du 
   const put = (tableau: string, ligne: string, valeurs: Record<string, string>) => api('remi', 'PUT', `/v1/exercices/${exN}/tableaux/${tableau}/${ligne}`, { valeurs, note: 'Feuillet de détail (essai)' });
 
   it('deux feuillets au régime normal, absents au régime simplifié ; K4 bis rapproché de la case saisie ; détails 2058-A totalisés', async () => {
-    expect((await feuilles()).map((f) => f.id)).toEqual(['2058-B-K4BIS', '2058-A-FEUILLETS', '2056-FEUILLETS', '2057-FEUILLETS', '2059-A-NOTE', '2058-B-COMPLEMENTS', '2050-STOCKS']);
+    expect((await feuilles()).map((f) => f.id)).toEqual(['2058-B-K4BIS', '2058-A-FEUILLETS', '2056-FEUILLETS', '2057-FEUILLETS', '2059-A-NOTE', '2058-B-COMPLEMENTS', '2050-STOCKS', 'CHARGES-A-PAYER']);
     expect((await liasse(exN, 'reel_simplifie')).json.feuilles2058).toBeNull();
     expect((await api('remi', 'PUT', `/v1/exercices/${exN}/qualifications/renvois/B58_K4BIS`, { montant: '700.00', note: 'Déficits transférés (essai)' })).statut).toBeLessThan(300);
     expect((await put('2058B_K4BIS', '01', { origine: 'Société d’origine (fictive)', siren: '123456789', date: '2025-03-01', m: '600.00' })).statut).toBeLessThan(300);
@@ -1126,6 +1126,34 @@ describe('2058-B : libellés de nature et méthode par composants saisis (D-139)
     expect((await put('2058B_NAT', '8X', { t: 'x1' }, 'chloe')).statut).toBeGreaterThanOrEqual(400);
     for (const [t, l] of [['2058B_NAT', '8X'], ['2058B_COMP', 'L1']]) expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/${t}/${l}`)).statut).toBeLessThan(300);
     expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/qualifications/renvois/B58_8X`)).statut).toBeLessThan(300);
+  }, 120_000);
+});
+
+describe('Relevé interne des frais à payer (D-175)', () => {
+  const cap = async () => ((await liasse(exN, 'reel_normal')).json.feuilles2058 as any[]).find((f) => f.id === 'CHARGES-A-PAYER');
+  const put = (ligne: string, valeurs: Record<string, string>, note = 'Relevé des frais à payer (essai)', qui = 'remi') => api(qui, 'PUT', `/v1/exercices/${exN}/tableaux/CAP_RELEVE/${ligne}`, { valeurs, note });
+  it('abstention sans saisie, néant explicite, lignes justifiées et historisées, total, refus ; régime simplifié sans relevé', async () => {
+    expect((await cap()).etat).toBe('a_saisir');
+    expect((await cap()).cadres[0].calculs[0].cellules.m.statut).toBe('abstention');
+    expect((await put('NEANT', {}, 'Aucun frais à payer à la clôture (essai)')).statut).toBeLessThan(300);
+    expect((await cap()).etat).toBe('neant');
+    expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/CAP_RELEVE/NEANT`)).statut).toBeLessThan(300);
+    expect((await put('01', { origine: 'Honoraires à recevoir (fictifs)', m: '120.50' })).statut).toBeLessThan(300);
+    expect((await put('02', { origine: 'Électricité (fictive)', m: '30.00' })).statut).toBeLessThan(300);
+    const g = await cap();
+    expect(g.etat).toBe('saisi');
+    expect(g.cadres[0].calculs[0].cellules.m).toMatchObject({ statut: 'etabli', montant: '150.50' });
+    expect((await put('02', { origine: 'Électricité (fictive)', m: '35.00' }, 'Facture reçue (essai)')).statut).toBeLessThan(300);
+    expect((await cap()).cadres[0].calculs[0].cellules.m.montant).toBe('155.50');
+    const hist = (await api('remi', 'GET', `/v1/exercices/${exN}/qualifications/historique?cle=CAP_RELEVE:02`)).json.evenements as any[];
+    expect(hist.length).toBeGreaterThanOrEqual(2);
+    expect((await put('21', { origine: 'Hors limite', m: '1.00' })).statut).toBe(404);
+    expect((await put('03', { origine: 'Sans montant valide', m: 'abc' })).statut).toBe(400);
+    expect((await put('03', { origine: 'Justification vide', m: '1.00' }, '')).statut).toBe(400);
+    expect((await put('03', { origine: 'Autre cabinet', m: '1.00' }, 'essai', 'chloe')).statut).toBeGreaterThanOrEqual(400);
+    expect((await liasse(exN, 'reel_simplifie')).json.feuilles2058).toBeNull();
+    for (const l of ['01', '02']) expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/CAP_RELEVE/${l}`)).statut).toBeLessThan(300);
+    expect((await cap()).etat).toBe('a_saisir');
   }, 120_000);
 });
 

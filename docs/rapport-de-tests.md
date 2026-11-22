@@ -267,3 +267,8 @@ Aucune mesure sur des pièces réelles. Sur les gabarits synthétiques, numéro,
 | Projet d'avenant automatique : pas de choix de la lettre signée de référence quand il y en a plusieurs | Ouvert |
 | Tests d'abonnement et d'isolation dépendant du nombre de dossiers présents en base | Corrigé (les attendus sont calculés d'après l'état réel) |
 | Base locale encombrée par les dossiers d'essai des parcours (dont 200 dossiers « Mesure » dans le cabinet Bêta) | Laissée en l'état pour préserver les données ; `scripts/reinitialiser-base-locale.sh` existe mais est destructif et n'a jamais été lancé |
+
+## Charge multi-cabinet bornée (D-167, 2026-11-22)
+
+Cible dérivée du cahier initial (§17) : plusieurs cabinets simultanés, FEC d'environ 100 000 lignes. Essai `parcours-charge.itest.ts` (3 cabinets neufs, API réelle, worker, PostgreSQL, S3 local, un seul poste) : un FEC de 100 673, 100 721 et 100 613 lignes déposé par chaque cabinet **en même temps**, avec une lecture concurrente par cabinet, puis contrôles. Résultats (première exécution) : lignes exactes par lot, aucune ligne portant un autre cabinet ou un autre exercice, contrôles terminés dans les trois cabinets, 0 réponse 5xx sur 4 961 lectures (p50 6 ms, p95 12 ms, max 1 441 ms), imports de 174 s, 64 s et 63 s (le premier cabinet attend ses voisins : un seul worker), total avec contrôles 180 s, 75 s, 71 s. Aucun défaut du produit révélé ; un défaut de l'essai lui-même (comptage par exercice au lieu du lot) corrigé. Ce n'est PAS une mesure sur l'environnement cible : un poste, un worker, des données synthétiques ; aucun engagement de performance n'en découle.
+

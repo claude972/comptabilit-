@@ -29,6 +29,7 @@ interface Cab { id: string; dossier: string; exercice: string }
 let editeur: pg.Client;
 const cabs: Cab[] = [];
 const mesures: Record<string, unknown> = {};
+const attendre_ = (ms: number) => new Promise((x) => setTimeout(x, ms));
 const lat = (m: Array<{ ms: number }>) => ({ n: m.length, p50: Math.round(percentile(m.map((x) => x.ms), 50)), p95: Math.round(percentile(m.map((x) => x.ms), 95)), max: Math.round(Math.max(...m.map((x) => x.ms))) });
 
 beforeAll(async () => {
@@ -264,6 +265,49 @@ describe('courses entre actions simultanées', () => {
     expect((await apiCabinet('alice', c.id, 'PUT', `/v1/dossiers/${c.dossier}/habilitations/${DEMO.chloe}`, { niveau: 'collaboration' })).statut).toBe(200);
     expect((await lire()).statut).toBe(200);
   });
+
+  it('TROIS cabinets importent chacun un FEC d’environ 100 000 lignes EN MÊME TEMPS (puis contrôles) : lignes exactes par cabinet, aucune ligne chez un autre, lectures sans erreur 5xx (D-167)', async () => {
+    const fini = (r: { json: any }) => ['termine', 'termine_avec_erreurs', 'echec'].includes(r.json?.statut);
+    const fecs = cabs.map((_, i) => genererFecSynthetique({ exercice: EX, nbEcritures: 38_000, graine: 9700 + i }));
+    let continuer = true;
+    const lectures: Array<{ ms: number }> = [];
+    const erreurs: number[] = [];
+    const lecteurs = cabs.map((c) => (async () => {
+      while (continuer) {
+        const r = await apiCabinet('chloe', c.id, 'GET', `/v1/dossiers/${c.dossier}`);
+        lectures.push(r);
+        if (r.statut >= 500) erreurs.push(r.statut);
+        await attendre_(100);
+      }
+    })());
+    const t = performance.now();
+    const res = await Promise.all(cabs.map(async (c, i) => {
+      const dep = await deposerCabinet('remi', c.id, c.dossier, Buffer.from(fecs[i]!.contenu), { usage: 'fec', exerciceId: c.exercice, statutDonnees: 'travail_avant_cloture' }, fecs[i]!.nomFichier);
+      expect(dep.fin?.statut, JSON.stringify(dep.fin?.json)).toBe(200);
+      const lot = await attendre(() => apiCabinet('remi', c.id, 'GET', `/v1/imports/${dep.fin!.json.lotImportId}`), fini, 900_000);
+      const msImport = performance.now() - t;
+      const revue = await attendre(() => apiCabinet('remi', c.id, 'GET', `/v1/exercices/${c.exercice}/revue`), (r) => ['termine', 'echec'].includes(r.json?.execution?.statut), 900_000);
+      return { lot, revue, msImport, msTotal: performance.now() - t };
+    }));
+    continuer = false;
+    await Promise.all(lecteurs);
+    const attendu = fecs.map((f) => f.nbLignes);
+    mesures.troisCabinets100k = { lignes: attendu, msImport: res.map((r) => Math.round(r.msImport)), msTotalAvecControles: res.map((r) => Math.round(r.msTotal)), lectures: lat(lectures), erreurs5xx: erreurs.length };
+    for (const [i, r] of res.entries()) {
+      expect(r.lot.json.statut, `cabinet ${i + 1}`).toBe('termine');
+      expect(r.lot.json.progression).toBe(attendu[i]);
+      expect(r.revue.json.execution.statut, `contrôles du cabinet ${i + 1}`).toBe('termine');
+      // Les lignes sont comptées PAR LOT (l'exercice peut porter l'import d'un essai précédent du même cabinet).
+      const lotId = (r.lot.json as { id: string }).id;
+      const n = Number((await editeur.query(`select count(*) as n from lignes_ecriture where lot_import_id = $1`, [lotId])).rows[0].n);
+      expect(n, `lignes du cabinet ${i + 1}`).toBe(attendu[i]);
+      // Isolation : aucune ligne de ce lot ne porte un autre cabinet ni un autre exercice.
+      const croise = Number((await editeur.query(`select count(*) as n from lignes_ecriture where lot_import_id = $1 and (cabinet_id <> $2 or exercice_id <> $3)`, [lotId, cabs[i]!.id, cabs[i]!.exercice])).rows[0].n);
+      expect(croise).toBe(0);
+    }
+    expect(erreurs).toEqual([]);
+    expect(Math.max(...res.map((r) => r.msTotal))).toBeLessThan(900_000);
+  }, 1_800_000);
 
   it('après toute cette charge : le journal d’audit de chaque cabinet est intègre et sans prédécesseur dupliqué', async () => {
     for (const [k, c] of cabs.entries()) {

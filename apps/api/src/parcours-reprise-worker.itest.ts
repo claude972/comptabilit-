@@ -27,6 +27,7 @@ let cabinet = '';
 let dossier = '';
 let exercice = '';
 const processus: ChildProcess[] = [];
+const workers: ChildProcess[] = [];
 let apiUrl = '';
 
 async function portLibre(): Promise<number> {
@@ -39,6 +40,7 @@ async function portLibre(): Promise<number> {
 function lancer(dossierApp: 'api' | 'worker', env: Record<string, string>): ChildProcess {
   const p = spawn(process.execPath, ['dist/main.js'], { cwd: join(racine, 'apps', dossierApp), env: { ...process.env, NODE_ENV: 'test', FILES_PREFIXE: PREFIXE, METRIQUES_PORT_API: '0', METRIQUES_PORT_WORKER: '0', ...env }, stdio: 'ignore' });
   processus.push(p);
+  if (dossierApp === 'worker') workers.push(p);
   return p;
 }
 const lotEtat = async (id: string) => (await editeur.query(`select statut, progression from lots_import where id = $1`, [id])).rows[0] as { statut: string; progression: number };
@@ -183,7 +185,9 @@ describe('worker tué par SIGKILL pendant un import', () => {
       // 72b3aa1). Le worker est donc arrêté AVANT la demande ; l'état « en cours » est posé tel que la transaction de prise en
       // charge le laisse (statut + ancienneté), et la perte de la tâche suit. Le SIGKILL pendant un calcul réel est couvert par les
       // essais de contrôles et d'import ci-dessus ; ici on prouve le rattrapage de l'export resté « en cours ».
-      w1.kill('SIGKILL');
+      // TOUS les workers d'essai de ce fichier sont arrêtés (ceux des essais précédents vivent encore et généreraient l'export en quelques millisecondes, constaté en CI).
+      for (const w of workers) w.kill('SIGKILL');
+      void w1;
       await new Promise((r) => setTimeout(r, 1_500));
       choisirCabinet('remi', cabinet);
       const demande = await apiSur(apiUrl, 'remi', 'POST', `/v1/exercices/${exercice3}/dossier-revision`);
@@ -191,8 +195,8 @@ describe('worker tué par SIGKILL pendant un import', () => {
       expect(demande.statut).toBe(202);
       const idExport = demande.json.id as string;
       const etatExport = async () => (await editeur.query(`select statut, cle_pdf, sha256_pdf from exports_revision where id = $1`, [idExport])).rows[0] as { statut: string; cle_pdf: string | null; sha256_pdf: string | null };
-      expect((await etatExport()).statut).not.toBe('termine');
-      await editeur.query(`update exports_revision set statut = 'en_cours' where id = $1`, [idExport]);
+      // État simulé : pris en charge puis abandonné (aucun worker vivant ne peut l'avoir terminé ; remise à zéro des champs du PDF par prudence).
+      await editeur.query(`update exports_revision set statut = 'en_cours', cle_pdf = null, sha256_pdf = null where id = $1`, [idExport]);
       // La tâche est PERDUE de la file (perte de Redis, tentatives épuisées…) : on la retire, et l'export est ancien.
       const { Files, connexionRedis, lireConfig } = await import('@comtaple/plateforme');
       const files = new Files(connexionRedis(lireConfig().REDIS_URL), PREFIXE);

@@ -295,4 +295,49 @@ describe('2033-B, partie B « Résultat fiscal » (D-110) : saisie justifiée, n
     const r = pf(demandeRf('0.00', [...AVANT.filter((x) => !['RF_316', 'RF_318'].includes(x.code)), rf('RF_316', '0.10'), rf('RF_318', '0.20')]));
     expect(r.avantImputation).toMatchObject({ statut: 'etabli', montant: '0.30' });
   });
+
+  describe('détail des totaux 330, 342 et 350 (D-111) : saisies justifiées, contrôle indicatif, jamais de correction du total', () => {
+    const base = [...AVANT.filter((x) => !['RF_330', 'RF_342'].includes(x.code))];
+    const detail = (r: ReturnType<typeof pf>, cle: string) => r.lignes.flatMap((l) => l.detail).find((x) => x.cle === cle)!;
+    const ligne = (r: ReturnType<typeof pf>, cle: string) => r.lignes.find((l) => l.cle === cle)!;
+
+    it('chaque total porte ses cases de détail, sans saisie au départ ; contrôle indicatif non vérifiable', () => {
+      const r = pf(demandeRf('1000.00', []));
+      expect(ligne(r, 'RF_330').detail.map((x) => x.codeCase)).toEqual(['247', '248', '251', '249']);
+      expect(ligne(r, 'RF_342').detail.map((x) => x.codeCase)).toEqual(['986', '987', '989', '127', '138', '991', '181', '345', '344', '992', '993']);
+      expect(ligne(r, 'RF_350').detail.map((x) => x.codeCase)).toEqual(['346', '655', '643', '645', '647', '648', '641', '990', '649']);
+      expect(ligne(r, 'RF_316').detail).toEqual([]);
+      expect(ligne(r, 'RF_330').detail.every((x) => x.statut === 'a_saisir' && x.montant === null && x.etatCodeCase === 'lu_verifie')).toBe(true);
+      expect(ligne(r, 'RF_330').controleDetail?.statut).toBe('non_verifie');
+    });
+
+    it('détail saisi et égal au total : contrôle cohérent ; la case 248 peut être négative ; la case 249 n’est pas additionnée', () => {
+      const r = pf(demandeRf('1000.00', [...base, rf('RF_330', '300.00'), rf('RF_342', '0.00'), rf('RF_247', '200.00'), rf('RF_248', '-50.00'), rf('RF_251', '150.00'), rf('RF_249', '999.00')]));
+      expect(detail(r, 'RF_248')).toMatchObject({ statut: 'saisi', montant: '-50.00', negatifPossible: true });
+      expect(detail(r, 'RF_249')).toMatchObject({ additionne: false, montant: '999.00' });
+      expect(ligne(r, 'RF_330').controleDetail).toMatchObject({ statut: 'coherent' });
+      // Le résultat fiscal repose sur le TOTAL saisi, jamais sur le détail.
+      expect(r.avantImputation).toMatchObject({ statut: 'etabli', montant: '1300.00' });
+    });
+
+    it('détail différent du total : écart affiché, total retenu inchangé', () => {
+      const r = pf(demandeRf('1000.00', [...base, rf('RF_330', '300.00'), rf('RF_342', '0.00'), rf('RF_247', '200.00'), rf('RF_248', '0.00'), rf('RF_251', '0.00')]));
+      expect(ligne(r, 'RF_330').controleDetail).toMatchObject({ statut: 'ecart', ecart: '100.00' });
+      expect(ligne(r, 'RF_330').montant).toBe('300.00');
+      expect(r.avantImputation).toMatchObject({ montant: '1300.00' });
+    });
+
+    it('détail incomplet : contrôle non vérifiable, rien n’est présumé nul ; un détail sans total saisi n’est pas rapproché', () => {
+      const r = pf(demandeRf('1000.00', [...base, rf('RF_330', '300.00'), rf('RF_342', '0.00'), rf('RF_247', '300.00')]));
+      expect(ligne(r, 'RF_330').controleDetail).toMatchObject({ statut: 'non_verifie' });
+      expect(ligne(r, 'RF_330').controleDetail?.message).toMatch(/248, 251/);
+      const sansTotal = pf(demandeRf('1000.00', [rf('RF_247', '300.00')]));
+      expect(ligne(sansTotal, 'RF_330').controleDetail?.message).toMatch(/total de la case 330 n’est pas saisi/);
+    });
+
+    it('détail saisi sur une autre version des données : « à revoir », non retenu', () => {
+      const r = pf(demandeRf('1000.00', [rf('RF_986', '10.00', { versionDonnees: 3 })]));
+      expect(detail(r, 'RF_986')).toMatchObject({ statut: 'a_revoir', montant: null });
+    });
+  });
 });

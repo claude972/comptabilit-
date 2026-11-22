@@ -71,7 +71,9 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
     const resultatFiscal = detailRsi.getByTestId('resultat-fiscal');
     await expect(resultatFiscal).toBeVisible();
     await expect(resultatFiscal).toContainText('Aucune décision fiscale n’est prise par Comtaple');
-    await expect(resultatFiscal.locator('li[data-ligne-rf]')).toHaveCount(9);
+    await expect(resultatFiscal.getByTestId('lignes-resultat-fiscal').locator(':scope > li[data-ligne-rf]')).toHaveCount(9);
+    await expect(resultatFiscal.getByTestId('detail-rf-RF_330')).toContainText('Détail de la case 330');
+    await expect(resultatFiscal.locator('li[data-ligne-rf="RF_248"]')).toHaveCount(1);
     await expect(resultatFiscal.getByTestId('rf-comptable')).toBeVisible();
     await expect(resultatFiscal.getByTestId('rf-avant')).toHaveAttribute('data-statut', /abstention|etabli/);
   }

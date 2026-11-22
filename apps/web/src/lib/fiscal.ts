@@ -331,6 +331,21 @@ export interface LigneResultatFiscal {
   montant: string | null;
   saisie: (TraceQualification & { code: string; montant: string }) | null;
   precision: string;
+  detail: LigneDetailResultatFiscal[];
+  controleDetail: { statut: 'coherent' | 'ecart' | 'non_verifie'; message: string; ecart?: string } | null;
+}
+export interface LigneDetailResultatFiscal {
+  cle: string;
+  codeCase: string;
+  etatCodeCase: string;
+  libelle: string;
+  statut: 'a_saisir' | 'saisi' | 'a_revoir';
+  neant: boolean;
+  montant: string | null;
+  saisie: (TraceQualification & { code: string; montant: string }) | null;
+  precision: string;
+  negatifPossible: boolean;
+  additionne: boolean;
 }
 export interface ResultatFiscalProjet {
   resultatComptable: ResultatSigne;

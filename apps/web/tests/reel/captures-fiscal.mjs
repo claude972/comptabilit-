@@ -90,6 +90,29 @@ if (process.argv.includes('--resultat-fiscal')) {
   await page.getByTestId('historique-RF_360').scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${sortie}fiscal-rf-historique.png` });
 }
+// Détail du total 330 (D-111) : saisies justifiées par les formulaires (MODIFIE le dossier fictif indiqué).
+if (process.argv.includes('--detail-330')) {
+  await page.goto(`${base}&vue=liasse&regime=reel_simplifie`);
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('detail-rf-RF_330').locator('summary').first().click();
+  const saisir = async (cle, montant, note) => {
+    const f = page.getByTestId(`renvoi-RF_${cle}`);
+    await f.scrollIntoViewIfNeeded();
+    await f.getByLabel('Montant').fill(montant);
+    await f.getByLabel('Justification (obligatoire)').fill(note);
+    await f.getByRole('button', { name: new RegExp(`Enregistrer le renvoi RF_${cle}`) }).click();
+    await f.getByText('Renvoi enregistré.').waitFor();
+  };
+  await saisir('247', '200.00', 'Intérêts excédentaires du compte courant de l’associé (démonstration fictive)');
+  await saisir('248', '-50.00', 'Écart net négatif de valeur liquidative sur OPC (démonstration fictive)');
+  await saisir('251', '150.00', 'Fraction des loyers de crédit-bail à réintégrer (démonstration fictive)');
+  await saisir('330', '300.00', 'Total de la ligne Divers établi par le cabinet (démonstration fictive)');
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('detail-rf-RF_330').locator('summary').first().click();
+  await page.getByTestId('detail-rf-RF_330').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-rf-detail-330.png` });
+}
 // 2033-B (D-107) : « dont export » et lignes « dont » du régime simplifié.
 await page.goto(`${base}&vue=liasse&regime=reel_simplifie`);
 await page.waitForLoadState('networkidle');

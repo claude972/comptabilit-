@@ -648,6 +648,40 @@ function DetailResultat({ d, fm, exerciceId, revision, evenements }: { d: Detail
                 ) : null}
                 <HistoriqueLigne evenements={evenements} cle={l.cle} fm={fm} />
                 {revision ? <SaisirRenvoi exerciceId={exerciceId} code={l.cle} proposition={null} saisie={l.saisie ? { montant: l.saisie.montant, note: l.saisie.note } : null} avecNeant /> : null}
+                {l.detail.length > 0 ? (
+                  <details className="mt-2 rounded border border-bordure p-2" data-testid={`detail-rf-${l.cle}`}>
+                    <summary className="cursor-pointer text-sm font-semibold">
+                      Détail de la case {l.codeCase} ({l.detail.filter((x) => x.statut === 'saisi').length} / {l.detail.length} saisies)
+                    </summary>
+                    {l.controleDetail ? (
+                      <p className="my-2 text-sm" data-testid={`controle-detail-${l.cle}`}>
+                        <Etiquette ton={l.controleDetail.statut === 'coherent' ? 'succes' : l.controleDetail.statut === 'ecart' ? 'danger' : 'attention'}>
+                          {l.controleDetail.statut === 'coherent' ? 'Cohérent (indicatif)' : l.controleDetail.statut === 'ecart' ? 'Écart (indicatif)' : 'Non vérifiable'}
+                        </Etiquette>{' '}
+                        {l.controleDetail.message}
+                        {l.controleDetail.ecart ? ` (écart : ${fm(l.controleDetail.ecart)})` : ''}
+                      </p>
+                    ) : null}
+                    <ul className="space-y-2">
+                      {l.detail.map((x) => (
+                        <li key={x.cle} className="rounded border border-bordure p-2" data-ligne-rf={x.cle}>
+                          <p className="text-sm">
+                            {x.libelle} <span className="text-texte-doux">(case {x.codeCase}, lue, vérifiée sur le PDF{x.additionne ? '' : ' ; non additionnée'})</span>{' '}
+                            <Etiquette ton={x.statut === 'saisi' ? 'succes' : 'attention'}>{x.statut === 'saisi' ? (x.neant ? 'Néant déclaré' : 'Saisi') : x.statut === 'a_revoir' ? 'À revoir : données modifiées' : 'À saisir'}</Etiquette>
+                          </p>
+                          <p className="text-xs text-texte-doux">{x.precision}</p>
+                          {x.saisie ? (
+                            <p className="text-xs text-texte-doux" data-testid={`trace-rf-${x.cle}`}>
+                              {x.neant ? 'Néant' : fm(x.saisie.montant)} · saisi le {formaterHorodatage(x.saisie.le)} sur la version {x.saisie.versionDonnees} des données · « {x.saisie.note} »
+                            </p>
+                          ) : null}
+                          <HistoriqueLigne evenements={evenements} cle={x.cle} fm={fm} />
+                          {revision ? <SaisirRenvoi exerciceId={exerciceId} code={x.cle} proposition={null} saisie={x.saisie ? { montant: x.saisie.montant, note: x.saisie.note } : null} avecNeant /> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                ) : null}
               </li>
             ))}
           </ul>

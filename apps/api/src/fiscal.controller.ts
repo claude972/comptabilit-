@@ -16,6 +16,7 @@ import {
   type QualificationVentilation,
   RENVOIS,
   RENVOIS_RSI,
+  DETAIL_RESULTAT_FISCAL,
   LIGNES_RESULTAT_FISCAL,
   LIGNES_CA,
   schemaChaineDecimale,
@@ -44,9 +45,10 @@ const montantSigne = schemaChaineDecimale;
 const ventilation = z.object({ montantFrance: montantSigne, montantExport: montantSigne, note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie la ventilation').max(2000) });
 const renvoiSaisie = z.object({ montant: montantSigne, note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie le montant').max(2000) });
 const COMPTE_CA = /^70[0-9A-Za-z]{1,13}$/;
-const CODE_RENVOI = /^[0-9A-Z_]{2,6}$/;
-const RENVOIS_CONNUS = [...RENVOIS, ...RENVOIS_RSI, ...LIGNES_RESULTAT_FISCAL.map((l) => ({ code: l.cle }))];
-const CLES_RESULTAT_FISCAL = new Set(LIGNES_RESULTAT_FISCAL.map((l) => l.cle));
+const CODE_RENVOI = /^[0-9A-Z_]{2,7}$/;
+const RENVOIS_CONNUS = [...RENVOIS, ...RENVOIS_RSI, ...LIGNES_RESULTAT_FISCAL.map((l) => ({ code: l.cle })), ...DETAIL_RESULTAT_FISCAL.map((l) => ({ code: l.cle }))];
+/** Lignes du résultat fiscal qui se saisissent en positif ; seule la case 248 (écart de valeurs liquidatives négatif, « entre parenthèses » selon la notice) peut être négative. */
+const CLES_RESULTAT_FISCAL = new Set([...LIGNES_RESULTAT_FISCAL.map((l) => l.cle), ...DETAIL_RESULTAT_FISCAL.filter((l) => !l.negatifPossible).map((l) => l.cle)]);
 const RUBRIQUE = /^ANX-[0-9A-Za-z-]{1,24}$/;
 const PROPOSITION = /^[A-Za-z0-9:_|.-]{1,200}$/;
 
@@ -202,7 +204,7 @@ export class FiscalController {
     exigerUuid(id);
     if (!CODE_RENVOI.test(code) || !RENVOIS_CONNUS.some((r) => r.code === code)) throw new NotFoundException('Renvoi inconnu : les renvois préparés sont ' + RENVOIS_CONNUS.map((r) => r.code).join(', '));
     const d = valider(renvoiSaisie, corps);
-    if (CLES_RESULTAT_FISCAL.has(code) && dec(d.montant).isNegative()) throw new BadRequestException('Les lignes du résultat fiscal se saisissent en positif (le sens est celui du formulaire) ; « néant » = 0.00');
+    if (CLES_RESULTAT_FISCAL.has(code) && dec(d.montant).isNegative()) throw new BadRequestException('Les lignes du résultat fiscal se saisissent en positif (le sens est celui du formulaire) ; « néant » = 0.00 ; seule la case 248 admet un montant négatif');
     return this.bd.avecContexte(acces, async (tx) => {
       const [exercice] = await tx.select().from(s.exercices).where(eq(s.exercices.id, id));
       if (!exercice) throw new NotFoundException('Exercice introuvable');

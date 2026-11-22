@@ -230,12 +230,58 @@ export const LIGNES_RESULTAT_FISCAL: readonly DefinitionLigneResultatFiscal[] = 
   { cle: 'RF_318', codeCase: '318', libelle: 'Réintégrations : amortissements excédentaires (art. 39-4 du CGI) et autres amortissements non déductibles', role: 'reintegration', precision: 'Peut se rapprocher du fichier des immobilisations, sans en être déduit.' },
   { cle: 'RF_322', codeCase: '322', libelle: 'Réintégrations : provisions non déductibles', role: 'reintegration', precision: 'Décision fiscale du cabinet.' },
   { cle: 'RF_324', codeCase: '324', libelle: 'Réintégrations : impôts et taxes non déductibles', role: 'reintegration', precision: 'Décision fiscale du cabinet (voir la notice 2033-NOT-SD, page 7).' },
-  { cle: 'RF_330', codeCase: '330', libelle: 'Réintégrations : divers (total de la ligne : intérêts excédentaires de comptes courants d’associés, écarts de valeurs liquidatives sur OPC, fraction des loyers de crédit-bail immobilier…)', role: 'reintegration', precision: 'Saisir le TOTAL de la ligne tel que le cabinet l’établit ; le détail (cases 247, 248, 249, 251) n’est pas préparé.' },
-  { cle: 'RF_342', codeCase: '342', libelle: 'Déductions : total des déductions de zones et régimes (entreprises nouvelles, ZFU-TE, JEI, ZRD, ZRR, bassins d’emploi, FRR, ZFANG, outre-mer, BUD, ZDP)', role: 'deduction', precision: 'Saisir le TOTAL de la case 342 ; le détail par régime (cases 986 à 993, 127, 138, 181, 344, 345) n’est pas préparé.' },
-  { cle: 'RF_350', codeCase: '350', libelle: 'Déductions : divers à déduire (total de la ligne : créance de report en arrière, déductions exceptionnelles 39 decies à 39 decies G…)', role: 'deduction', precision: 'Saisir le TOTAL de la case 350 ; le détail (cases 346, 655, 643, 645, 647, 648, 641, 990, 649) n’est pas préparé.' },
+  { cle: 'RF_330', codeCase: '330', libelle: 'Réintégrations : divers (total de la ligne : intérêts excédentaires de comptes courants d’associés, écarts de valeurs liquidatives sur OPC, fraction des loyers de crédit-bail immobilier…)', role: 'reintegration', precision: 'Saisir le TOTAL de la ligne tel que le cabinet l’établit ; le détail (cases 247, 248, 249, 251) se saisit ci-dessous, à titre de justification.' },
+  { cle: 'RF_342', codeCase: '342', libelle: 'Déductions : total des déductions de zones et régimes (entreprises nouvelles, ZFU-TE, JEI, ZRD, ZRR, bassins d’emploi, FRR, ZFANG, outre-mer, BUD, ZDP)', role: 'deduction', precision: 'Saisir le TOTAL de la case 342 ; le détail par régime se saisit ci-dessous, à titre de justification.' },
+  { cle: 'RF_350', codeCase: '350', libelle: 'Déductions : divers à déduire (total de la ligne : créance de report en arrière, déductions exceptionnelles 39 decies à 39 decies G…)', role: 'deduction', precision: 'Saisir le TOTAL de la case 350 ; le détail se saisit ci-dessous, à titre de justification.' },
   { cle: 'RF_356', codeCase: '356', libelle: 'Déficit de l’exercice reporté en arrière (option, art. 220 quinquies du CGI)', role: 'report_arriere', precision: 'Option du cabinet, formalisée dans le délai de dépôt de la déclaration n° 2065-SD.' },
   { cle: 'RF_360', codeCase: '360', libelle: 'Déficits antérieurs reportables : dont imputés sur le résultat', role: 'imputation', precision: 'Montant imputé après plafonnement (art. 209, I du CGI) ; le stock de déficits disponibles est tenu par le cabinet, hors balance.' },
 ];
+/**
+ * Détail des totaux 330, 342 et 350 (D-111) : cases lues sur le formulaire 2026 (rendu image vérifié le 2026-11-21) et expliquées par
+ * la notice 2033-NOT-SD (pages 10 à 12). Chaque case de détail est une saisie justifiée du cabinet. Le total (330, 342, 350) reste
+ * LUI AUSSI une saisie : le détail ne le remplace pas et ne le modifie pas ; un contrôle INDICATIF compare le total saisi à la somme des
+ * détails saisis (jamais bloquant, jamais corrigé). La disposition du formulaire rattache ces cases à leur total ; la notice n'en donne pas
+ * la formule : c'est une lecture, dite comme telle.
+ */
+interface DefinitionDetailResultatFiscal {
+  cle: string;
+  codeCase: string;
+  parent: 'RF_330' | 'RF_342' | 'RF_350';
+  libelle: string;
+  /** Sens de la somme de contrôle : la case 249 (loyers dispensés, entre parenthèses) n'est pas additionnée au 330. */
+  additionne: boolean;
+  /** Seule la case 248 peut être négative (« écart net négatif … entre parenthèses », notice). */
+  negatifPossible?: boolean;
+  precision: string;
+}
+
+export const DETAIL_RESULTAT_FISCAL: readonly DefinitionDetailResultatFiscal[] = [
+  { cle: 'RF_247', codeCase: '247', parent: 'RF_330', libelle: 'Divers à réintégrer : intérêts excédentaires des comptes courants d’associés', additionne: true, precision: 'Décision fiscale du cabinet.' },
+  { cle: 'RF_248', codeCase: '248', parent: 'RF_330', libelle: 'Divers à réintégrer : écarts de valeurs liquidatives sur OPC', additionne: true, negatifPossible: true, precision: 'Un écart net négatif se saisit en NÉGATIF (la notice le porte « entre parenthèses »).' },
+  { cle: 'RF_251', codeCase: '251', parent: 'RF_330', libelle: 'Divers à réintégrer : fraction des loyers à réintégrer (crédit-bail immobilier et levée d’option, art. 239 sexies du CGI)', additionne: true, precision: 'Décision fiscale du cabinet.' },
+  { cle: 'RF_249', codeCase: '249', parent: 'RF_330', libelle: 'Divers à réintégrer : part des loyers dispensée de réintégration (art. 239 sexies D du CGI)', additionne: false, precision: 'Case entre parenthèses sur le formulaire ; dispositif clos pour les opérations conclues après le 31 décembre 2015. Non additionnée au contrôle : sa relation arithmétique avec 251 et 330 n’est pas établie.' },
+  { cle: 'RF_986', codeCase: '986', parent: 'RF_342', libelle: 'Exonérations et abattements : entreprises nouvelles (art. 44 sexies du CGI)', additionne: true, precision: 'Décision fiscale du cabinet ; document annexé exigé par la notice.' },
+  { cle: 'RF_987', codeCase: '987', parent: 'RF_342', libelle: 'Exonérations et abattements : ZFU – territoire entrepreneur (art. 44 octies A)', additionne: true, precision: 'Décision fiscale du cabinet.' },
+  { cle: 'RF_989', codeCase: '989', parent: 'RF_342', libelle: 'Exonérations et abattements : jeunes entreprises innovantes (art. 44 sexies A)', additionne: true, precision: 'Décision fiscale du cabinet.' },
+  { cle: 'RF_127', codeCase: '127', parent: 'RF_342', libelle: 'Exonérations et abattements : zones de restructuration de la défense (art. 44 terdecies)', additionne: true, precision: 'Décision fiscale du cabinet.' },
+  { cle: 'RF_138', codeCase: '138', parent: 'RF_342', libelle: 'Exonérations et abattements : zones de revitalisation rurale (art. 44 quindecies)', additionne: true, precision: 'Décision fiscale du cabinet.' },
+  { cle: 'RF_991', codeCase: '991', parent: 'RF_342', libelle: 'Exonérations et abattements : bassins d’emploi à redynamiser (art. 44 duodecies)', additionne: true, precision: 'Décision fiscale du cabinet.' },
+  { cle: 'RF_181', codeCase: '181', parent: 'RF_342', libelle: 'Exonérations et abattements : France ruralités revitalisation (art. 44 quindecies A)', additionne: true, precision: 'Décision fiscale du cabinet.' },
+  { cle: 'RF_345', codeCase: '345', parent: 'RF_342', libelle: 'Exonérations et abattements : zones franches d’activité nouvelle génération (art. 44 quaterdecies)', additionne: true, precision: 'Montant amené en déduction (notice).' },
+  { cle: 'RF_344', codeCase: '344', parent: 'RF_342', libelle: 'Déduction : investissements et souscriptions outre-mer (art. 217 undecies et duodecies)', additionne: true, precision: 'Notice : montant des investissements et souscriptions réalisés outre-mer dans l’exercice.' },
+  { cle: 'RF_992', codeCase: '992', parent: 'RF_342', libelle: 'Exonérations et abattements : bassins urbains à dynamiser (art. 44 sexdecies)', additionne: true, precision: 'Décision fiscale du cabinet.' },
+  { cle: 'RF_993', codeCase: '993', parent: 'RF_342', libelle: 'Exonérations et abattements : zones de développement prioritaire (art. 44 septdecies)', additionne: true, precision: 'Décision fiscale du cabinet.' },
+  { cle: 'RF_346', codeCase: '346', parent: 'RF_350', libelle: 'Divers à déduire : créance due au titre du report en arrière du déficit (art. 220 quinquies)', additionne: true, precision: 'Calculée sur la déclaration spéciale 2039-SD, hors Comtaple.' },
+  { cle: 'RF_655', codeCase: '655', parent: 'RF_350', libelle: 'Divers à déduire : déduction exceptionnelle (art. 39 decies)', additionne: true, precision: 'Décision fiscale du cabinet.' },
+  { cle: 'RF_643', codeCase: '643', parent: 'RF_350', libelle: 'Divers à déduire : déduction exceptionnelle (art. 39 decies A)', additionne: true, precision: 'Décision fiscale du cabinet.' },
+  { cle: 'RF_645', codeCase: '645', parent: 'RF_350', libelle: 'Divers à déduire : déduction exceptionnelle (art. 39 decies B)', additionne: true, precision: 'Décision fiscale du cabinet.' },
+  { cle: 'RF_647', codeCase: '647', parent: 'RF_350', libelle: 'Divers à déduire : déduction exceptionnelle (art. 39 decies C)', additionne: true, precision: 'Décision fiscale du cabinet.' },
+  { cle: 'RF_648', codeCase: '648', parent: 'RF_350', libelle: 'Divers à déduire : déduction exceptionnelle (art. 39 decies D)', additionne: true, precision: 'Décision fiscale du cabinet.' },
+  { cle: 'RF_641', codeCase: '641', parent: 'RF_350', libelle: 'Divers à déduire : déduction exceptionnelle simulateur de conduite (art. 39 decies E)', additionne: true, precision: 'Décision fiscale du cabinet.' },
+  { cle: 'RF_990', codeCase: '990', parent: 'RF_350', libelle: 'Divers à déduire : déductions exceptionnelles (art. 39 decies F)', additionne: true, precision: 'Décision fiscale du cabinet.' },
+  { cle: 'RF_649', codeCase: '649', parent: 'RF_350', libelle: 'Divers à déduire : déduction exceptionnelle (art. 39 decies G)', additionne: true, precision: 'Décision fiscale du cabinet.' },
+];
+
 /** Lignes sans lesquelles le résultat fiscal AVANT imputation (352 / 354) n'est pas établi. */
 const CLES_AVANT_IMPUTATION: readonly string[] = ['RF_316', 'RF_318', 'RF_322', 'RF_324', 'RF_330', 'RF_342', 'RF_350'];
 /** Plafond d'imputation des déficits antérieurs (notice 2033-NOT-SD, page 13 ; art. 209, I du CGI) : 1 000 000 €, majoré de 50 % du bénéfice excédant ce montant. */
@@ -254,6 +300,26 @@ export interface LigneResultatFiscal {
   montant: ChaineDecimale | null;
   saisie: QualificationRenvoi | null;
   precision: string;
+  /** Détail de la case (330, 342, 350) : saisies justifiées du cabinet, indépendantes du total saisi (contrôle indicatif seulement). Vide pour les autres lignes. */
+  detail: LigneDetailResultatFiscal[];
+  /** Contrôle INDICATIF entre le total saisi et la somme des détails saisis ; null hors cases 330, 342, 350. */
+  controleDetail: { statut: 'coherent' | 'ecart' | 'non_verifie'; message: string; ecart?: ChaineDecimale } | null;
+}
+
+export interface LigneDetailResultatFiscal {
+  cle: string;
+  codeCase: string;
+  etatCodeCase: EtatCodeCase;
+  libelle: string;
+  statut: 'a_saisir' | 'saisi' | 'a_revoir';
+  neant: boolean;
+  montant: ChaineDecimale | null;
+  saisie: QualificationRenvoi | null;
+  precision: string;
+  /** Une valeur négative est admise (case 248 seule). */
+  negatifPossible: boolean;
+  /** Entre dans la somme du contrôle indicatif. */
+  additionne: boolean;
 }
 
 /** Résultat signé du formulaire : un bénéfice se porte en colonne 1, un déficit en colonne 2 (cases 312 / 314, 352 / 354, 370 / 372). */
@@ -422,7 +488,7 @@ function renvoisDetail(demande: DemandeDetailResultat): RenvoiDetail[] {
 }
 
 const NON_PREPARE_RESULTAT_FISCAL: readonly string[] = [
-  'Détail de la ligne « Divers » des réintégrations (cases 247, 248, 249, 251), des déductions de zones (cases 986 à 993, 127, 138, 181, 344, 345) et du détail des divers à déduire (cases 346, 655, 643, 645, 647, 648, 641, 990, 649) : seuls les TOTAUX de ligne (330, 342, 350) se saisissent.',
+  'Les cases de détail (247, 248, 249, 251 ; 986, 987, 989, 127, 138, 991, 181, 345, 344, 992, 993 ; 346, 655, 643, 645, 647, 648, 641, 990, 649) sont des saisies justifiées du cabinet, JAMAIS déduites ; le total de chaque ligne (330, 342, 350) reste une saisie distincte, rapprochée du détail par un contrôle indicatif seulement.',
   'Activité relevant du régime optionnel de taxation au tonnage des entreprises de transport maritime (cases 997, 998, 999) : non préparée ; si l’entreprise a opté pour ce régime, ce calcul ne s’applique pas.',
   'Aucune décision fiscale n’est prise par Comtaple : chaque réintégration ou déduction est une saisie justifiée du cabinet ; le calcul se borne à l’arithmétique du formulaire (résultat comptable + réintégrations − déductions, puis imputation saisie).',
 ];
@@ -433,7 +499,27 @@ function resultatFiscal(demande: DemandeDetailResultat): ResultatFiscalProjet {
     const saisie = saisies.get(def.cle) ?? null;
     const statut = saisie === null ? 'a_saisir' : saisie.versionDonnees !== demande.versionDonnees ? 'a_revoir' : 'saisi';
     const montant = statut === 'saisi' ? saisie!.montant : null;
-    return { cle: def.cle, codeCase: def.codeCase, etatCodeCase: 'lu_verifie', libelle: def.libelle, role: def.role, statut, neant: montant !== null && new Decimal(montant).isZero(), montant, saisie, precision: def.precision };
+    const detail: LigneDetailResultatFiscal[] = DETAIL_RESULTAT_FISCAL.filter((x) => x.parent === def.cle).map((x) => {
+      const sd = saisies.get(x.cle) ?? null;
+      const st = sd === null ? 'a_saisir' : sd.versionDonnees !== demande.versionDonnees ? 'a_revoir' : 'saisi';
+      const m = st === 'saisi' ? sd!.montant : null;
+      return { cle: x.cle, codeCase: x.codeCase, etatCodeCase: 'lu_verifie', libelle: x.libelle, statut: st, neant: m !== null && new Decimal(m).isZero(), montant: m, saisie: sd, precision: x.precision, negatifPossible: x.negatifPossible === true, additionne: x.additionne };
+    });
+    let controleDetail: LigneResultatFiscal['controleDetail'] = null;
+    if (detail.length > 0) {
+      const aSommer = detail.filter((x) => x.additionne);
+      const manquants = aSommer.filter((x) => x.statut !== 'saisi');
+      if (statut !== 'saisi') controleDetail = { statut: 'non_verifie', message: `Contrôle indicatif non vérifiable : le total de la case ${def.codeCase} n’est pas saisi.` };
+      else if (manquants.length > 0) controleDetail = { statut: 'non_verifie', message: `Contrôle indicatif non vérifiable : ${manquants.length} case(s) de détail sans saisie retenue (${manquants.map((x) => x.codeCase).join(', ')}) ; rien n’est présumé nul.` };
+      else {
+        const somme = aSommer.reduce((acc, x) => acc.plus(x.montant!), ZERO);
+        const ecart = new Decimal(montant!).minus(somme);
+        controleDetail = ecart.isZero()
+          ? { statut: 'coherent', message: `Contrôle indicatif : le total saisi (${montant}) égale la somme des détails saisis (${versChaine(somme)}). Lecture de la disposition du formulaire, non confirmée par la notice.` }
+          : { statut: 'ecart', message: `Contrôle indicatif : le total saisi (${montant}) diffère de la somme des détails saisis (${versChaine(somme)}). Rien n’est corrigé : le total retenu reste celui saisi.`, ecart: versChaine(ecart) };
+      }
+    }
+    return { cle: def.cle, codeCase: def.codeCase, etatCodeCase: 'lu_verifie', libelle: def.libelle, role: def.role, statut, neant: montant !== null && new Decimal(montant).isZero(), montant, saisie, precision: def.precision, detail, controleDetail };
   });
   const ligne = (cle: string) => lignes.find((l) => l.cle === cle)!;
   const controles: ControleDetail[] = [];

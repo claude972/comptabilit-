@@ -170,13 +170,37 @@ describe('2033-B partie B « Résultat fiscal » : saisie justifiée, néant exp
     expect((await rf('356', '0.00', 'Option abandonnée')).statut).toBeLessThan(300);
   }, 120_000);
 
+  it('détail des totaux 330 / 342 / 350 : saisies justifiées indépendantes du total, contrôle indicatif, 248 seule négative acceptée', async () => {
+    expect((await rf('247', '-1.00')).statut).toBe(400); // une réintégration négative est refusée
+    expect((await rf('248', '-50.00', 'Écart net négatif sur OPC (essai)')).statut).toBeLessThan(300); // la notice la porte entre parenthèses
+    expect((await rf('247', '200.00', 'Intérêts excédentaires du compte courant de l’associé (essai)')).statut).toBeLessThan(300);
+    expect((await rf('251', '150.00', 'Fraction des loyers à réintégrer (essai)')).statut).toBeLessThan(300);
+    expect((await rf('249', '999.00', 'Part dispensée, non additionnée (essai)')).statut).toBeLessThan(300);
+    expect((await rf('330', '300.00', 'Total de la ligne Divers établi par le cabinet (essai)')).statut).toBeLessThan(300);
+    let d = await rsi();
+    const l330 = d.resultatFiscal.lignes.find((l: any) => l.cle === 'RF_330');
+    expect(l330.detail.map((x: any) => [x.codeCase, x.statut, x.montant])).toEqual([['247', 'saisi', '200.00'], ['248', 'saisi', '-50.00'], ['251', 'saisi', '150.00'], ['249', 'saisi', '999.00']]);
+    expect(l330.controleDetail).toMatchObject({ statut: 'coherent' }); // 200 − 50 + 150 = 300 ; 249 non additionnée
+    // Le résultat fiscal repose sur le TOTAL saisi (jamais sur le détail) : 8 250 + 1 000 + 250 + 300 − 0 = 9 800 (342 retiré à l'essai précédent).
+    expect((await rf('342', '500.00', 'Déduction de zone rétablie (essai)')).statut).toBeLessThan(300);
+    d = await rsi();
+    expect(d.resultatFiscal.avantImputation).toMatchObject({ statut: 'etabli', montant: '9300.00', codeCase: '352' }); // 8 250 + 1 550 − 500
+    expect((await rf('330', '400.00', 'Total modifié, détail inchangé (essai)')).statut).toBeLessThan(300);
+    d = await rsi();
+    const l2 = d.resultatFiscal.lignes.find((l: any) => l.cle === 'RF_330');
+    expect(l2.controleDetail).toMatchObject({ statut: 'ecart', ecart: '100.00' });
+    expect(l2.montant).toBe('400.00'); // total inchangé par le contrôle
+    expect(d.resultatFiscal.lignes.find((l: any) => l.cle === 'RF_342').controleDetail.statut).toBe('non_verifie'); // détail 342 vide
+    expect((await evenements('248')).map((e) => [e.action, e.montant])).toEqual([['saisie', '-50.00']]);
+  }, 120_000);
+
   it('historique en ajout seul : chaque saisie, avec montant, note, auteur et version ; un retrait est journalisé ; rien n’est modifié', async () => {
     const h = await evenements('360');
     expect(h.map((e) => [e.action, e.montant])).toEqual([['saisie', '0.00'], ['saisie', '9000.01'], ['saisie', '2000.00']]); // plus récent d'abord
     expect(h[2]).toMatchObject({ nature: 'renvoi', cle: 'RF_360', note: 'Déficits antérieurs imputés (essai)', auteurId: DEMO.remi, versionDonnees: expect.any(Number) });
     expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/qualifications/renvois/RF_342`)).statut).toBeLessThan(300);
     const h342 = await evenements('342');
-    expect(h342.map((e) => e.action)).toEqual(['retrait', 'saisie']);
+    expect(h342.map((e) => e.action)).toEqual(['retrait', 'saisie', 'saisie']); // saisie initiale, nouvelle saisie du test du détail, retrait
     expect(h342[0]).toMatchObject({ montant: null, note: null });
     const d = await rsi();
     expect(d.resultatFiscal.lignes.find((l: any) => l.cle === 'RF_342')).toMatchObject({ statut: 'a_saisir', montant: null });

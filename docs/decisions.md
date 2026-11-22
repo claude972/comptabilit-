@@ -607,6 +607,13 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Limites** : la règle du plafond est reprise de la notice 2026 pour une société à l'IS ; ses cas particuliers (restructurations, déficits de groupe, etc.) ne sont pas traités. L'identité de l'auteur d'une saisie s'affiche par son identifiant (pas de nom).
 - **Preuves** : 11 tests du moteur (`detail-resultat.test.ts`), 5 tests d'intégration sur la pile réelle (`parcours-detail-resultat.itest.ts` : abstention sans saisie, refus, néant et calcul 8 250 + 1 250 − 500 = 9 000 puis 7 000 après imputation de 2 000, plafond dépassé, report en arrière, historique et privilèges de la base), Playwright `fiscal.spec.ts`, saisie complète jouée par les formulaires dans le navigateur, captures.
 
+### D-111 — Détail justifié des totaux 330, 342 et 350 du 2033-B (2026-11-21)
+
+- **Sources** : formulaire 2033-B (page 2, rendu image vérifié le 2026-11-21 : cases 247, 248, 249, 251 ; 986, 987, 989, 127, 138, 991, 181, 345, 344, 992, 993 ; 346, 655, 643, 645, 647, 648, 641, 990, 649) et notice 2033-NOT-SD (pages 10 à 12, explications des cases 330, 251, 249, 248, 342, 344, 345, 350).
+- **Fait** : 24 cases de détail en **saisie justifiée** (mêmes règles que D-110 : note obligatoire, néant explicite, trace, version des données, historique en ajout seul, niveau révision). Le TOTAL de chaque ligne (330, 342, 350) reste **une saisie distincte** : le détail ne le remplace ni ne le modifie, et le résultat fiscal repose sur le total saisi. Un **contrôle indicatif** compare le total saisi à la somme des détails saisis (cohérent, écart affiché sans correction, ou non vérifiable si un détail manque : rien n'est présumé nul). La case 248 admet un montant négatif (la notice la porte « entre parenthèses ») ; toute autre case se saisit en positif. La case 249 (loyers dispensés, entre parenthèses, dispositif clos après 2015) n'est pas additionnée.
+- **Lecture, non confirmée par la notice** : la disposition du formulaire rattache ces cases à leur total ; la notice ne donne pas la formule. Le contrôle est donc INDICATIF, jamais bloquant.
+- **Preuves** : 5 tests du moteur (36 au total pour le module), 1 test d'intégration sur la pile réelle (négatif refusé hors 248, détail, contrôle cohérent puis écart, total inchangé, historique), saisie jouée par les formulaires dans le navigateur (capture).
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

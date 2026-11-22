@@ -881,6 +881,13 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Constat** : l'étape « WebKit pile réelle » du run 1444e1b échoue sur `ouvrir()` (formulaire de connexion soumis avant l'hydratation de la page en WebKit CI) ; 8/8 passes locales avant correctif, donc cause non reproduite.
 - **Correctif, sans affaiblir d'assertion** : `waitForLoadState('networkidle')` après la connexion et `actionTimeout: 60 000 ms` dans les deux configurations Playwright. À confirmer par une lecture CI ; non confirmé à ce jour.
 
+### D-148 — Parcours de bout en bout sur dossier fictif à immobilisations et amortissements NON NULS (2026-11-22)
+- **Fait** : `scripts/demo-parcours-immobilisations.mjs` (pile locale démarrée) crée un dossier fictif, importe un FEC cohérent (à-nouveaux, acquisition, dotations), importe le fichier des immobilisations en **XLSX par l'interface** (aperçu sans écriture vérifié, confirmation explicite, rapport), lit la liasse par l'API, ouvre l'état joint dans un navigateur réel, puis compare **cellule par cellule** : écran ↔ API (220 cellules, 30 non nulles, 0 écart), CSV ↔ API (0 écart), PDF A4 paysage ↔ API (81 pages, 20 montants non nuls distincts tous présents, mention PROJET). Contrôles de la liasse : valeurs brutes et dotations égales à la balance, fichier et compte 6811 concordants.
+- **Rupture de parcours trouvée et corrigée** : l'écran de reprise s'intitulait « import CSV » alors que le classeur XLSX est accepté (D-124) ; intitulés, lien et tests alignés sur « import CSV ou XLSX ».
+- **Honnêteté du jeu** : avec une dotation comptabilisée différente de celle du moteur (première exécution, 4 000 + 6 000 + 4 000 au lieu de 15 300,93), la liasse AFFICHE l'écart (−1 300,93), sans le corriger ; le dossier final (« dotations concordantes ») reprend la dotation du moteur pour le nouveau poste. Dossiers fictifs laissés dans la base locale (noms « Atelier Démo Immobilisations SAS (fictive…) »), non supprimés.
+- **Preuves** : `var/captures/parcours-immo-*` (capture, CSV, PDF, JSON de la liasse, capture de l'import XLSX). Lien local : `http://localhost:3100/dossiers/<dossier>/fiscal?vue=liasse` (identifiants imprimés par le script).
+- **Limite dite** : régime réel normal ; le même moteur sert le 2033-C du régime simplifié (valeurs nulles seulement sur le dossier de démonstration général).
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

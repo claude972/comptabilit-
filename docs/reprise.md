@@ -1,6 +1,6 @@
 # État de reprise du chantier P5 (mis à jour le 2026-11-22)
 
-Document de passage pour reprendre le travail sans relire la conversation. À mettre à jour à chaque lot.
+Document de passage pour reprendre le travail sans relire la conversation. À mettre à jour à chaque lot. **Liste unique des exigences (livré / incomplet / dépendance externe) : `exigences.md`.**
 
 ## Livré (commits sur `main`, tous publiés)
 | Lot | Décision | Commit |

@@ -109,6 +109,8 @@ Le reste dépend d'une intervention extérieure : liste en tête de `acces-exter
 
 ### Tri des restes au 2026-11-20 : exigé, optionnel, bloqué
 
+> **Remplacé par la liste unique de `exigences.md` (réconciliée le 2026-11-22).** Depuis ce tri : fin de contrat (cycle complet, D-100), lecture XLSX et composants par import (D-124, D-125) sont FAITS ; l'isolation par conteneurs reste INCOMPLÈTE (ligne 11). Le texte ci-dessous est conservé pour l'historique.
+
 - **Exigé par le cahier des charges, local, encore ouvert (jamais reclassé en option)** : isolation des analyseurs par conteneurs dédiés sans réseau ni privilège (D-076, D-085) ; fin de contrat (D-078) — mécanismes paramétrables, simulations et essais sur stockage distinct à faire ; seules les durées juridiques sont externes, la purge réelle reste non écrite ; relecture humaine de la migration de sécurité 0047 (D-095).
 - **Optionnel (amélioration)** : recherche du plein texte précalculée (gain au-delà de 500 000 lignes) ; pagination de l'écran de revue ; lecture d'un classeur XLSX ; rattachement de composants par import ; archive répartie entre dossiers (D-096, définition à fixer) ; unités d'œuvre, dérogatoire, plus ou moins-value, coefficient majoré (amortissements).
 - **Bloqué par un accès extérieur ou une validation professionnelle** : tout ce qui figure dans `acces-externes.md` (jeton IA, OAuth, déploiement, prestataire bancaire, texte de loi, formulaires du millésime, validations expert-comptable/DPO/avocat) ; le dégressif reste NON ACTIVÉ.

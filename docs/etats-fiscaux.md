@@ -22,7 +22,7 @@ Périmètre explicite : **société commerciale soumise à l’impôt sur les so
 | 2033-B Compte de résultat simplifié | partiel | Partie comptable seulement | idem + **toute la partie « résultat fiscal »** |
 | 2054 Immobilisations (cadres A et B) | partiel (D-104) | Valeurs brutes à l’ouverture et à la clôture, augmentations (débits), diminutions totales, par ligne du formulaire, avec N-1 et rapprochement avec le fichier des immobilisations | Réévaluations, ventilation des diminutions et « dont composants » : saisies justifiées (D-134), contrôle indicatif avec la balance ; euros entiers à l’écran (D-105) ; codes de cases lus, à confirmer |
 | 2055 cadres B et C | partiel (D-113) | Saisie ligne par ligne, colonne 7, totaux, non ventilé et montant net à la fin calculés comme le formulaire | Origine des dotations et reprises (décision du cabinet) ; 2053 HG et HC, 2056 TM et TN non préparés |
-| 2055 Amortissements (cadre A) | partiel (D-104) | Amortissements à l’ouverture, dotations, diminutions, clôture, avec N-1 ; dotation du moteur comparée à la dotation comptabilisée | Cadres B (amortissements dérogatoires) et C (charges réparties) |
+| 2055 Amortissements (cadre A) | partiel (D-104) | Amortissements à l’ouverture, dotations, diminutions, clôture, avec N-1 ; dotation du moteur comparée à la dotation comptabilisée | Cadres B et C : voir la ligne « 2055 cadres B et C » (D-113) |
 | 2054 bis | partiel (D-112) | Saisie ligne par ligne (cadres A et B), écart, colonne ⑥ et totaux calculés comme le formulaire | Aucune donnée de la balance ; colonne ⑤ non reconstituée |
 | 2033-D | partiel (D-114) | Cadres I-A, I-B, I-C, II et III par saisie case par case ; totaux 870 et 780 calculés comme la notice ; contrôles indicatifs | Cadre IV (travailleurs indépendants), feuillets joints |
 | 2033-E | partiel (D-115) | Effectifs, produits et charges de la valeur ajoutée par saisie case par case ; totaux 106, 144, 152, valeur ajoutée 137 et case 117 calculés comme le formulaire, seulement si tout est saisi | Dates de période (024, 016), 1330-CVAE-SD |
@@ -38,7 +38,6 @@ Périmètre explicite : **société commerciale soumise à l’impôt sur les so
 | 2059-A | partiel (D-121) | Cessions (12 lignes) et rubrique II (7 lignes) par saisie ligne par ligne ; cadres A, B, C calculés comme le formulaire ; contrôles indicatifs | Divers (note annexe), report vers 2058-A |
 | 2059-B, 2059-C, 2059-D | partiel (D-122) | Grilles saisies ligne par ligne ; totaux, solde (2+3−4−5) et lignes 3, 6, 7 calculés comme les formulaires | En-têtes cochables, report entre tableaux |
 | 2033-C Immobilisations et amortissements (cadres I et II) | partiel (D-104) | Mêmes calculs que 2054 et 2055 au format simplifié, avec N-1 | Cadre III (plus-values et moins-values, prix de cession), colonne 5 (réévaluation) |
-| 2033-D à 2033-G | **non couvert** | — | Provisions et dérogatoires, valeur ajoutée, capital, filiales |
 | 2065 (page 1) | partiel (D-123) | Cadres C, D, E, F (CES), I (CTM) saisis rubrique par rubrique, deux régimes ; aucun calcul énoncé | Identification, cases à cocher, liquidation |
 | 2065 bis (annexe) | partiel (D-131) | Cadres G (total a à h calculé), H, I, J, K saisis ligne par ligne, deux régimes | Identification, état joint du cadre H |
 

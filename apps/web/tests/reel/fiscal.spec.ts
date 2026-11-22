@@ -152,7 +152,8 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
     await expect(d2033.getByTestId('derogatoires-2033-d').locator('tr[data-derogatoire]')).toHaveCount(9);
     await expect(d2033.getByTestId('total-870')).toContainText('870');
     await expect(d2033.getByTestId('2033-d-non-prepare')).toContainText('Cadre IV');
-    await expect(d2033.getByTestId('travailleurs-independants-2033-d').locator('li')).toHaveCount(4);
+    await expect(d2033.getByTestId('travailleurs-independants-2033-d').locator('li')).toHaveCount(5);
+    await expect(d2033.getByTestId('revenu-brut-social')).toContainText('Revenu brut social');
     // Cadre III du 2033-C (D-112) : dix lignes de cessions saisies par le cabinet, totaux en abstention sans saisie ni néant.
     await expect(page.getByTestId('cadre-iii')).toBeVisible();
     await expect(page.getByTestId('lignes-cessions').locator('tr[data-cession]')).toHaveCount(13);
@@ -160,7 +161,7 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
     const resultatFiscal = detailRsi.getByTestId('resultat-fiscal');
     await expect(resultatFiscal).toBeVisible();
     await expect(resultatFiscal).toContainText('Aucune décision fiscale n’est prise par Comtaple');
-    await expect(resultatFiscal.getByTestId('lignes-resultat-fiscal').locator(':scope > li[data-ligne-rf]')).toHaveCount(9);
+    await expect(resultatFiscal.getByTestId('lignes-resultat-fiscal').locator(':scope > li[data-ligne-rf]')).toHaveCount(13);
     await expect(resultatFiscal.getByTestId('detail-rf-RF_330')).toContainText('Détail de la case 330');
     await expect(resultatFiscal.locator('li[data-ligne-rf="RF_248"]')).toHaveCount(1);
     await expect(resultatFiscal.getByTestId('rf-comptable')).toBeVisible();

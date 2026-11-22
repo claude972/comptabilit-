@@ -1495,6 +1495,11 @@ function Formulaire2033D({ f, fm, exerciceId, revision, evenements }: { f: Formu
 
       <div className="space-y-2">
         <h3 className="font-semibold">IV — Travailleurs indépendants (revenu brut social)</h3>
+        {f.revenuBrutSocial ? (
+          <p className="text-sm" data-testid="revenu-brut-social">
+            Revenu brut social d’après la formule de la notice (cases 692 / 693) : <CelluleCalc c={f.revenuBrutSocial} fm={fm} />
+          </p>
+        ) : null}
         <ul className="space-y-2" data-testid="travailleurs-independants-2033-d">
           {f.cases.filter((c) => c.cadre === 'IV').map(aSaisir)}
         </ul>

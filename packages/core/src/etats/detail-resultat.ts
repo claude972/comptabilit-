@@ -208,6 +208,7 @@ export const RENVOIS_RSI: readonly DefinitionRenvoi[] = [
   { code: '259', renvoi: 'dont', tableau: '2033-B', libelle: 'Autres charges, dont provisions fiscales pour implantations commerciales à l’étranger', nature: 'charge', precision: 'Information fiscale non portée par la balance : à saisir.' },
   { code: '260', renvoi: 'dont', tableau: '2033-B', libelle: 'Autres charges, dont cotisations versées aux organisations syndicales et professionnelles', nature: 'charge', precision: 'La balance ne distingue pas ces cotisations des autres charges : à saisir.' },
   { code: '347', renvoi: 'dont', tableau: '2033-B', libelle: 'Charges exceptionnelles, dont amortissements des souscriptions dans des PME innovantes (art. 217 octies du CGI)', nature: 'charge', precision: 'Information fiscale non portée par la balance : à saisir.' },
+  { code: '380', renvoi: 'dont', tableau: '2033-B', libelle: 'Cotisations sociales, dont cotisation personnelle de l’exploitant (art. 154 bis du CGI : cotisations sociales personnelles obligatoires et facultatives, CSG déductible incluse)', nature: 'charge', precision: 'Notice 2033-NOT-SD, rubrique 380 : cotisations sociales personnelles, obligatoires et facultatives, de l’exploitant (art. 154 bis du CGI), CSG déductible incluse ; contrats Madelin et plans d’épargne retraite compris. La balance ne les distingue pas : à saisir.' },
   { code: '348', renvoi: 'dont', tableau: '2033-B', libelle: 'Charges exceptionnelles, dont amortissements exceptionnels de 25 % des constructions nouvelles (art. 39 quinquies D du CGI)', nature: 'charge', precision: 'Information fiscale non portée par la balance : à saisir.' },
 ];
 
@@ -230,7 +231,11 @@ export const LIGNES_RESULTAT_FISCAL: readonly DefinitionLigneResultatFiscal[] = 
   { cle: 'RF_318', codeCase: '318', libelle: 'Réintégrations : amortissements excédentaires (art. 39-4 du CGI) et autres amortissements non déductibles', role: 'reintegration', precision: 'Peut se rapprocher du fichier des immobilisations, sans en être déduit.' },
   { cle: 'RF_322', codeCase: '322', libelle: 'Réintégrations : provisions non déductibles', role: 'reintegration', precision: 'Décision fiscale du cabinet.' },
   { cle: 'RF_324', codeCase: '324', libelle: 'Réintégrations : impôts et taxes non déductibles', role: 'reintegration', precision: 'Décision fiscale du cabinet (voir la notice 2033-NOT-SD, page 7).' },
-  { cle: 'RF_330', codeCase: '330', libelle: 'Réintégrations : divers (total de la ligne : intérêts excédentaires de comptes courants d’associés, écarts de valeurs liquidatives sur OPC, fraction des loyers de crédit-bail immobilier…)', role: 'reintegration', precision: 'Saisir le TOTAL de la ligne tel que le cabinet l’établit ; le détail (cases 247, 248, 249, 251) se saisit ci-dessous, à titre de justification.' },
+  { cle: 'RF_330', codeCase: '330', libelle: 'Réintégrations : divers (total de la ligne : intérêts excédentaires de comptes courants d’associés, écarts de valeurs liquidatives sur OPC, la fraction des loyers de crédit-bail est la ligne 251, distincte)', role: 'reintegration', precision: 'Saisir le TOTAL de la ligne tel que le cabinet l’établit ; le détail (cases 247, 248) se saisit ci-dessous, à titre de justification.' },
+  { cle: 'RF_251', codeCase: '251', libelle: 'Réintégrations : fraction des loyers à réintégrer dans le cadre d’un crédit-bail immobilier et de levée d’option (art. 239 sexies du CGI)', role: 'reintegration', precision: 'Ligne distincte du 330 sur le formulaire (rendu image du 2026-11-22) : elle se saisit ici et NON dans le total 330. La part de loyers dispensée de réintégration (case 249) figure sur la même ligne.' },
+  { cle: 'RF_998', codeCase: '998', libelle: 'Réintégrations : charges afférentes à la taxation au tonnage', role: 'reintegration', precision: 'Notice 2033-NOT-SD : les sociétés ayant opté pour la taxation au tonnage réintègrent les charges affectées aux activités éligibles ; décision du cabinet.' },
+  { cle: 'RF_999', codeCase: '999', libelle: 'Réintégrations : résultat fiscal afférent à la taxation au tonnage', role: 'reintegration', precision: 'Notice 2033-NOT-SD : les sociétés ayant opté pour la taxation au tonnage réintègrent le résultat fiscal afférent aux activités éligibles ; décision du cabinet.' },
+  { cle: 'RF_997', codeCase: '997', libelle: 'Déductions : produits afférents à la taxation au tonnage', role: 'deduction', precision: 'Notice 2033-NOT-SD : les sociétés ayant opté pour la taxation au tonnage déduisent les produits affectés aux activités éligibles ; décision du cabinet.' },
   { cle: 'RF_342', codeCase: '342', libelle: 'Déductions : total des déductions de zones et régimes (entreprises nouvelles, ZFU-TE, JEI, ZRD, ZRR, bassins d’emploi, FRR, ZFANG, outre-mer, BUD, ZDP)', role: 'deduction', precision: 'Saisir le TOTAL de la case 342 ; le détail par régime se saisit ci-dessous, à titre de justification.' },
   { cle: 'RF_350', codeCase: '350', libelle: 'Déductions : divers à déduire (total de la ligne : créance de report en arrière, déductions exceptionnelles 39 decies à 39 decies G…)', role: 'deduction', precision: 'Saisir le TOTAL de la case 350 ; le détail se saisit ci-dessous, à titre de justification.' },
   { cle: 'RF_356', codeCase: '356', libelle: 'Déficit de l’exercice reporté en arrière (option, art. 220 quinquies du CGI)', role: 'report_arriere', precision: 'Option du cabinet, formalisée dans le délai de dépôt de la déclaration n° 2065-SD.' },
@@ -258,8 +263,7 @@ interface DefinitionDetailResultatFiscal {
 export const DETAIL_RESULTAT_FISCAL: readonly DefinitionDetailResultatFiscal[] = [
   { cle: 'RF_247', codeCase: '247', parent: 'RF_330', libelle: 'Divers à réintégrer : intérêts excédentaires des comptes courants d’associés', additionne: true, precision: 'Décision fiscale du cabinet.' },
   { cle: 'RF_248', codeCase: '248', parent: 'RF_330', libelle: 'Divers à réintégrer : écarts de valeurs liquidatives sur OPC', additionne: true, negatifPossible: true, precision: 'Un écart net négatif se saisit en NÉGATIF (la notice le porte « entre parenthèses »).' },
-  { cle: 'RF_251', codeCase: '251', parent: 'RF_330', libelle: 'Divers à réintégrer : fraction des loyers à réintégrer (crédit-bail immobilier et levée d’option, art. 239 sexies du CGI)', additionne: true, precision: 'Décision fiscale du cabinet.' },
-  { cle: 'RF_249', codeCase: '249', parent: 'RF_330', libelle: 'Divers à réintégrer : part des loyers dispensée de réintégration (art. 239 sexies D du CGI)', additionne: false, precision: 'Case entre parenthèses sur le formulaire ; dispositif clos pour les opérations conclues après le 31 décembre 2015. Non additionnée au contrôle : sa relation arithmétique avec 251 et 330 n’est pas établie.' },
+  { cle: 'RF_249', codeCase: '249', parent: 'RF_330', libelle: 'Ligne 251 (loyers de crédit-bail) : part des loyers dispensée de réintégration (art. 239 sexies D du CGI)', additionne: false, precision: 'Case entre parenthèses sur le formulaire ; dispositif clos pour les opérations conclues après le 31 décembre 2015. Non additionnée au contrôle : sa relation arithmétique avec 251 et 330 n’est pas établie.' },
   { cle: 'RF_986', codeCase: '986', parent: 'RF_342', libelle: 'Exonérations et abattements : entreprises nouvelles (art. 44 sexies du CGI)', additionne: true, precision: 'Décision fiscale du cabinet ; document annexé exigé par la notice.' },
   { cle: 'RF_987', codeCase: '987', parent: 'RF_342', libelle: 'Exonérations et abattements : ZFU – territoire entrepreneur (art. 44 octies A)', additionne: true, precision: 'Décision fiscale du cabinet.' },
   { cle: 'RF_989', codeCase: '989', parent: 'RF_342', libelle: 'Exonérations et abattements : jeunes entreprises innovantes (art. 44 sexies A)', additionne: true, precision: 'Décision fiscale du cabinet.' },
@@ -283,7 +287,9 @@ export const DETAIL_RESULTAT_FISCAL: readonly DefinitionDetailResultatFiscal[] =
 ];
 
 /** Lignes sans lesquelles le résultat fiscal AVANT imputation (352 / 354) n'est pas établi. */
-const CLES_AVANT_IMPUTATION: readonly string[] = ['RF_316', 'RF_318', 'RF_322', 'RF_324', 'RF_330', 'RF_342', 'RF_350'];
+const CLES_AVANT_IMPUTATION: readonly string[] = ['RF_316', 'RF_318', 'RF_322', 'RF_324', 'RF_330', 'RF_251', 'RF_342', 'RF_350'];
+/** Lignes du régime optionnel de taxation au tonnage (997, 998, 999) : comptées dans le résultat quand elles sont saisies, jamais exigées (l'option est propre à certaines entreprises de transport maritime). */
+const CLES_TONNAGE: readonly string[] = ['RF_998', 'RF_999', 'RF_997'];
 /** Plafond d'imputation des déficits antérieurs (notice 2033-NOT-SD, page 13 ; art. 209, I du CGI) : 1 000 000 €, majoré de 50 % du bénéfice excédant ce montant. */
 const SEUIL_IMPUTATION = new Decimal(1_000_000);
 
@@ -365,7 +371,7 @@ const RENVOIS_NON_PREPARES_RSN: readonly string[] = [
   'Renvois (7) et (8) du tableau 2053 : le détail des produits et charges sur exercices antérieurs n’est pas déduit ; seuls les montants des cases 1G et 1H se saisissent, l’explication va dans la note de la saisie.',
 ];
 const RENVOIS_NON_PREPARES_RSI: readonly string[] = [
-  'Ligne « dont cotisation personnelle de l’exploitant » (case 380) : propre aux exploitants individuels, hors périmètre (société commerciale).',
+
   'Partie « B – résultat fiscal » du tableau 2033-B (réintégrations, déductions, déficits) : non préparée, elle exige des décisions et des informations extra-comptables du cabinet.',
 ];
 export const RENVOIS_NON_PREPARES = RENVOIS_NON_PREPARES_RSN;
@@ -488,7 +494,7 @@ function renvoisDetail(demande: DemandeDetailResultat): RenvoiDetail[] {
 }
 
 const NON_PREPARE_RESULTAT_FISCAL: readonly string[] = [
-  'Les cases de détail (247, 248, 249, 251 ; 986, 987, 989, 127, 138, 991, 181, 345, 344, 992, 993 ; 346, 655, 643, 645, 647, 648, 641, 990, 649) sont des saisies justifiées du cabinet, JAMAIS déduites ; le total de chaque ligne (330, 342, 350) reste une saisie distincte, rapprochée du détail par un contrôle indicatif seulement.',
+  'Les cases de détail (247, 248, 249 ; 986, 987, 989, 127, 138, 991, 181, 345, 344, 992, 993 ; 346, 655, 643, 645, 647, 648, 641, 990, 649) sont des saisies justifiées du cabinet, JAMAIS déduites ; le total de chaque ligne (330, 342, 350) reste une saisie distincte, rapprochée du détail par un contrôle indicatif seulement.',
   'Activité relevant du régime optionnel de taxation au tonnage des entreprises de transport maritime (cases 997, 998, 999) : non préparée ; si l’entreprise a opté pour ce régime, ce calcul ne s’applique pas.',
   'Aucune décision fiscale n’est prise par Comtaple : chaque réintégration ou déduction est une saisie justifiée du cabinet ; le calcul se borne à l’arithmétique du formulaire (résultat comptable + réintégrations − déductions, puis imputation saisie).',
 ];
@@ -544,7 +550,7 @@ function resultatFiscal(demande: DemandeDetailResultat): ResultatFiscalProjet {
   let avantImputation: ResultatSigne = abst(motifsAvant, ['352', '354']);
   if (motifsAvant.length === 0 && resultatComptable.statut === 'etabli') {
     const b = new Decimal(rc!);
-    const somme = (role: RoleResultatFiscal) => lignes.filter((l) => l.role === role && CLES_AVANT_IMPUTATION.includes(l.cle)).reduce((s, l) => s.plus(l.montant!), ZERO);
+    const somme = (role: RoleResultatFiscal) => lignes.filter((l) => l.role === role && (CLES_AVANT_IMPUTATION.includes(l.cle) || (CLES_TONNAGE.includes(l.cle) && l.statut === 'saisi' && l.montant !== null))).reduce((s, l) => s.plus(l.montant!), ZERO);
     avantImputation = signe(b.plus(somme('reintegration')).minus(somme('deduction')), '352', '354');
   }
   controles.push(avantImputation.statut === 'etabli'

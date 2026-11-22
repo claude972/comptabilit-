@@ -90,7 +90,7 @@ describe('2033-B (régime simplifié) : « dont export » et renvois, mêmes qua
     expect(ligneCA(d, 'BIENS').total).toMatchObject({ montant: '4000.00', codeCase: '214' });
     expect(ligneCA(d, 'SERVICES').total).toMatchObject({ montant: '2000.00', codeCase: '218' });
     expect(ligneCA(d, 'BIENS').export).toMatchObject({ statut: 'abstention', codeCase: '215' });
-    expect(d.renvois.map((r: any) => r.code)).toEqual(['CB_MOB', 'CB_IMM', '243', '255', '259', '260', '347', '348']);
+    expect(d.renvois.map((r: any) => r.code)).toEqual(['CB_MOB', 'CB_IMM', '243', '255', '259', '260', '347', '380', '348']);
     expect(d.renvois.find((r: any) => r.code === 'CB_MOB')).toMatchObject({ codeCase: null, proposition: { montant: '2400.00' } });
   }, 120_000);
 
@@ -113,13 +113,13 @@ describe('2033-B partie B « Résultat fiscal » : saisie justifiée, néant exp
   const rf = (cle: string, montant: string, note = 'Saisie du cabinet pour l’essai', qui = 'remi') => api(qui, 'PUT', `/v1/exercices/${exN}/qualifications/renvois/RF_${cle}`, { montant, note });
   const evenements = async (cle: string) => (await api('remi', 'GET', `/v1/exercices/${exN}/qualifications/historique?cle=RF_${cle}`)).json.evenements as any[];
 
-  it('sans saisie : résultat comptable reporté (312), résultat fiscal en abstention listant les sept cases manquantes, rien n’est présumé nul', async () => {
+  it('sans saisie : résultat comptable reporté (312), résultat fiscal en abstention listant les huit cases manquantes, rien n’est présumé nul', async () => {
     const d = await rsi();
     expect(d.resultatFiscal.resultatComptable).toMatchObject({ statut: 'etabli', sens: 'benefice', montant: '8250.00', codeCase: '312' });
     expect(d.resultatFiscal.avantImputation.statut).toBe('abstention');
-    expect(JSON.stringify(d.resultatFiscal.avantImputation)).toMatch(/316, 318, 322, 324, 330, 342, 350/);
+    expect(JSON.stringify(d.resultatFiscal.avantImputation)).toMatch(/316, 318, 322, 324, 330, 251, 342, 350/);
     expect(d.resultatFiscal.apresImputation.statut).toBe('abstention');
-    expect(d.resultatFiscal.lignes.map((l: any) => l.statut)).toEqual(Array(9).fill('a_saisir'));
+    expect(d.resultatFiscal.lignes.map((l: any) => l.statut)).toEqual(Array(13).fill('a_saisir'));
     expect((await liasse(exN, 'reel_normal')).json.detailResultat.resultatFiscal).toBeNull();
   }, 120_000);
 
@@ -127,14 +127,14 @@ describe('2033-B partie B « Résultat fiscal » : saisie justifiée, néant exp
     expect((await rf('316', '10.00', 'ok')).statut).toBe(400);
     expect((await rf('316', '-10.00')).statut).toBe(400);
     expect((await rf('316', '10,00')).statut).toBe(400);
-    expect((await api('remi', 'PUT', `/v1/exercices/${exN}/qualifications/renvois/RF_999`, { montant: '1.00', note: 'clé inconnue ici' })).statut).toBe(404);
+    expect((await api('remi', 'PUT', `/v1/exercices/${exN}/qualifications/renvois/RF_000`, { montant: '1.00', note: 'clé inconnue ici' })).statut).toBe(404);
     expect((await rf('316', '10.00', 'Essai collaborateur', 'chloe')).statut).toBeGreaterThanOrEqual(400);
     expect((await rf('316', '10.00', 'Essai déposant', 'client')).statut).toBe(404);
     expect((await rsi()).resultatFiscal.lignes.every((l: any) => l.statut === 'a_saisir')).toBe(true);
   });
 
   it('néant explicite + réintégrations et déductions saisies : bénéfice fiscal (352) puis imputation (370), trace complète', async () => {
-    for (const c of ['318', '322', '330', '350']) expect((await rf(c, '0.00', 'Néant : aucune opération de cette nature')).statut, c).toBeLessThan(300);
+    for (const c of ['318', '322', '330', '251', '350']) expect((await rf(c, '0.00', 'Néant : aucune opération de cette nature')).statut, c).toBeLessThan(300);
     expect((await rf('316', '1000.00', 'Rémunération de l’exploitant non déductible (essai)')).statut).toBeLessThan(300);
     expect((await rf('324', '250.00', 'Amendes et pénalités du compte 6712')).statut).toBeLessThan(300);
     let d = await rsi();
@@ -176,11 +176,11 @@ describe('2033-B partie B « Résultat fiscal » : saisie justifiée, néant exp
     expect((await rf('247', '200.00', 'Intérêts excédentaires du compte courant de l’associé (essai)')).statut).toBeLessThan(300);
     expect((await rf('251', '150.00', 'Fraction des loyers à réintégrer (essai)')).statut).toBeLessThan(300);
     expect((await rf('249', '999.00', 'Part dispensée, non additionnée (essai)')).statut).toBeLessThan(300);
-    expect((await rf('330', '300.00', 'Total de la ligne Divers établi par le cabinet (essai)')).statut).toBeLessThan(300);
+    expect((await rf('330', '150.00', 'Total de la ligne Divers établi par le cabinet (essai)')).statut).toBeLessThan(300);
     let d = await rsi();
     const l330 = d.resultatFiscal.lignes.find((l: any) => l.cle === 'RF_330');
-    expect(l330.detail.map((x: any) => [x.codeCase, x.statut, x.montant])).toEqual([['247', 'saisi', '200.00'], ['248', 'saisi', '-50.00'], ['251', 'saisi', '150.00'], ['249', 'saisi', '999.00']]);
-    expect(l330.controleDetail).toMatchObject({ statut: 'coherent' }); // 200 − 50 + 150 = 300 ; 249 non additionnée
+    expect(l330.detail.map((x: any) => [x.codeCase, x.statut, x.montant])).toEqual([['247', 'saisi', '200.00'], ['248', 'saisi', '-50.00'], ['249', 'saisi', '999.00']]);
+    expect(l330.controleDetail).toMatchObject({ statut: 'coherent' }); // 200 − 50 = 150 ; 249 (ligne 251) non additionnée ; 251 est une ligne distincte
     // Le résultat fiscal repose sur le TOTAL saisi (jamais sur le détail) : 8 250 + 1 000 + 250 + 300 − 0 = 9 800 (342 retiré à l'essai précédent).
     expect((await rf('342', '500.00', 'Déduction de zone rétablie (essai)')).statut).toBeLessThan(300);
     d = await rsi();
@@ -188,7 +188,7 @@ describe('2033-B partie B « Résultat fiscal » : saisie justifiée, néant exp
     expect((await rf('330', '400.00', 'Total modifié, détail inchangé (essai)')).statut).toBeLessThan(300);
     d = await rsi();
     const l2 = d.resultatFiscal.lignes.find((l: any) => l.cle === 'RF_330');
-    expect(l2.controleDetail).toMatchObject({ statut: 'ecart', ecart: '100.00' });
+    expect(l2.controleDetail).toMatchObject({ statut: 'ecart', ecart: '250.00' });
     expect(l2.montant).toBe('400.00'); // total inchangé par le contrôle
     expect(d.resultatFiscal.lignes.find((l: any) => l.cle === 'RF_342').controleDetail.statut).toBe('non_verifie'); // détail 342 vide
     expect((await evenements('248')).map((e) => [e.action, e.montant])).toEqual([['saisie', '-50.00']]);
@@ -362,14 +362,14 @@ describe('2033-D (régime simplifié) : cases saisies, néant, abstention, calcu
   const dd = (cle: string, montant: string, note = 'Saisie du cabinet pour l’essai', qui = 'remi') => api(qui, 'PUT', `/v1/exercices/${exN}/qualifications/renvois/D_${cle}`, { montant, note });
   const lc = (ligne: string, valeurs: Record<string, string>, note = 'Dotation non déductible (essai)') => api('remi', 'PUT', `/v1/exercices/${exN}/tableaux/2033D_C/${ligne}`, { valeurs, note });
 
-  it('sans saisie : 72 cases à saisir, 870 et 780 en abstention sans chiffre ; absent au régime normal', async () => {
+  it('sans saisie : 73 cases à saisir, 870 et 780 en abstention sans chiffre ; absent au régime normal', async () => {
     const f = await f2033d();
     expect(f.statut).toBe('projet');
-    expect(f.cases).toHaveLength(72);
+    expect(f.cases).toHaveLength(73);
     expect(f.cases.every((c: any) => c.statut === 'a_saisir' && c.montant === null && c.etatCodeCase === 'lu_verifie')).toBe(true);
     expect(f.total870).toMatchObject({ statut: 'abstention', codeCase: '870' });
     expect(f.cadreC.total780).toMatchObject({ statut: 'abstention', codeCase: '780' });
-    expect(f.cases.filter((c: any) => c.cadre === 'IV').map((c: any) => c.codeCase)).toEqual(['690', '691', '692', '693']);
+    expect(f.cases.filter((c: any) => c.cadre === 'IV').map((c: any) => c.codeCase)).toEqual(['qualité', '690', '691', '692', '693']);
     expect((await liasse(exN, 'reel_normal')).json.formulaire2033D).toBeNull();
     // 983 est proposée à partir de la case 360 du 2033-B quand elle est saisie (cas ici : néant), jamais retenue.
     expect(cas(f, '983')).toMatchObject({ statut: 'a_saisir', montant: null });
@@ -1096,6 +1096,29 @@ describe('2058-B : libellés de nature et méthode par composants saisis (D-139)
     for (const [t, l] of [['2058B_NAT', '8X'], ['2058B_COMP', 'L1']]) expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/${t}/${l}`)).statut).toBeLessThan(300);
     expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/qualifications/renvois/B58_8X`)).statut).toBeLessThan(300);
   }, 120_000);
+});
+
+describe('2033-D : revenu brut social calculé d’après la notice quand tout est saisi, jamais retenu (D-141)', () => {
+  const f2033d = async () => (await liasse(exN, 'reel_simplifie')).json.formulaire2033D;
+  const put = (code: string, montant: string) => api('remi', 'PUT', `/v1/exercices/${exN}/qualifications/renvois/${code}`, { montant, note: 'Saisie du cabinet pour le revenu brut social (essai)' });
+  const del = (code: string) => api('remi', 'DELETE', `/v1/exercices/${exN}/qualifications/renvois/${code}`);
+  const CODES = ['RF_316', 'RF_318', 'RF_322', 'RF_324', 'RF_330', 'RF_251', 'RF_350', 'RF_655', 'RF_643', 'RF_645', 'RF_647', 'RF_648', 'RF_641', 'RF_990', 'RF_649', '380', '348', 'D_690', 'D_691', 'D_RBSQ'];
+
+  it('abstention tant que tout n’est pas saisi ; puis proposition en regard de la case 693 ; contrôle indicatif ; retrait', async () => {
+    expect((await f2033d()).revenuBrutSocial.statut).toBe('abstention');
+    const valeurs: Record<string, string> = { RF_316: '1000.00', RF_324: '250.00', '380': '600.00', D_690: '80.00', D_691: '20.00', D_RBSQ: '0' };
+    for (const c of CODES.slice(0, -1)) expect((await put(c, valeurs[c] ?? '0.00')).statut, c).toBeLessThan(300);
+    expect((await f2033d()).revenuBrutSocial.statut).toBe('abstention'); // qualité du déclarant non saisie
+    expect((await put('D_RBSQ', '0')).statut).toBeLessThan(300);
+    const f = await f2033d();
+    // résultat comptable 8 250 + 600 + 1 000 + 250 + 80 − 20 = 10 160
+    expect(f.revenuBrutSocial).toMatchObject({ statut: 'etabli', montant: '10160.00', codeCase: '693' });
+    expect(f.cases.find((c: any) => c.codeCase === '693')).toMatchObject({ statut: 'a_saisir', montant: null, proposition: { montant: '10160.00' } });
+    expect((await put('D_693', '10000.00')).statut).toBeLessThan(300);
+    expect((await f2033d()).controles.find((c: any) => c.code === 'D_RBS_FORMULE')).toMatchObject({ statut: 'ecart', ecart: '-160.00' });
+    for (const c of [...CODES, 'D_693']) expect((await del(c)).statut, c).toBeLessThan(300);
+    expect((await f2033d()).revenuBrutSocial.statut).toBe('abstention');
+  }, 180_000);
 });
 
 describe('détail du compte de résultat : qualification tracée, abstention sans qualification', () => {

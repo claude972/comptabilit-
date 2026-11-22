@@ -24,8 +24,8 @@ const prep = (renvois: QualificationRenvoi[] = [], saisiesTableaux: SaisieTablea
 const cas = (f: ReturnType<typeof prep>, code: string) => f.cases.find((c) => c.codeCase === code)!;
 
 describe('2033-D : définition des cases', () => {
-  it('72 cases lues sur le formulaire (cadres I-A, I-B, II, III, IV), clés uniques', () => {
-    expect(CASES_2033_D.length).toBe(36 + 18 + 7 + 7 + 4); // I-A : 9 lignes × 4 ; I-B : 9 lignes × 2 ; II : 7 ; III : 7 ; IV : 4
+  it('73 cases lues sur le formulaire (cadres I-A, I-B, II, III, IV), clés uniques', () => {
+    expect(CASES_2033_D.length).toBe(36 + 18 + 7 + 7 + 5); // I-A : 9 lignes × 4 ; I-B : 9 lignes × 2 ; II : 7 ; III : 7 ; IV : 4
     expect(new Set(CASES_2033_D.map((c) => c.cle)).size).toBe(CASES_2033_D.length);
     expect(CASES_2033_D.map((c) => c.codeCase)).toEqual(expect.arrayContaining(['600', '606', '680', '686', '681', '683', '770', '775', '982', '982 bis', '982 ter', '983', '984', '860', '381', '325', '327', '374', '378', '399', '398', '397']));
   });
@@ -93,7 +93,7 @@ describe('2033-D : contrôles indicatifs du cadre I', () => {
     expect(prep([...lignes, rv('770', '70.00')]).controles.find((c) => c.code === 'D_DEROG_770')).toMatchObject({ statut: 'ecart', ecart: '-10.00' });
   });
 
-  it('cadre IV (690 à 693) : saisi case par case ; revenu brut social jamais calculé ; 692 et 693 exclusifs', () => {
+  it('cadre IV (690 à 693) : saisi case par case ; 692 et 693 exclusifs', () => {
     const f = prep([rv('690', '1200.00'), rv('691', '0.00'), rv('693', '5000.00')]);
     expect(cas(f, '690')).toMatchObject({ statut: 'saisi', montant: '1200.00', cadre: 'IV', etatCodeCase: 'lu_verifie' });
     expect(cas(f, '691').neant).toBe(true);
@@ -101,7 +101,8 @@ describe('2033-D : contrôles indicatifs du cadre I', () => {
     expect(f.controles.some((c) => c.code === 'D_RBS_EXCLUSIF')).toBe(false);
     expect(prep([rv('692', '10.00'), rv('693', '5000.00')]).controles.find((c) => c.code === 'D_RBS_EXCLUSIF')?.statut).toBe('ecart');
     expect(prep([rv('692', '0.00'), rv('693', '5000.00')]).controles.some((c) => c.code === 'D_RBS_EXCLUSIF')).toBe(false);
-    expect(prep().nonPrepare.join(' ')).toMatch(/n’est PAS calculé/);
+    expect(prep().nonPrepare.join(' ')).toMatch(/CALCULÉ d’après la formule/);
+    expect(prep().revenuBrutSocial.statut).toBe('abstention');
   });
   it('transfert de plein droit sans opération : signalé', () => {
     expect(prep([rv('982B', '500.00'), rv('982T', '0.00')]).controles.some((c) => c.code === 'D_982_OPERATIONS')).toBe(true);
@@ -117,3 +118,41 @@ describe('2033-D : forme des saisies du cadre C', () => {
     expect(validerSaisieTableau('2033D_C', 'NEANT', {})).toEqual([]);
   });
 });
+
+describe('2033-D : revenu brut social (D-141), formule de la notice seulement si tout est saisi', () => {
+  const ligneRf = (cle: string, code: string, montant: string) => ({ cle, codeCase: code, etatCodeCase: 'lu_verifie' as const, libelle: cle, role: 'reintegration' as const, statut: 'saisi' as const, neant: false, montant, saisie: null, precision: '', detail: [], controleDetail: null });
+  const detail = (code: string, montant: string) => ({ cle: `RF_${code}`, codeCase: code, etatCodeCase: 'lu_verifie' as const, libelle: code, statut: 'saisi' as const, neant: false, montant, saisie: null, precision: '', negatifPossible: false, additionne: true });
+  const rfComplet = (): ResultatFiscalProjet => ({
+    ...rf(),
+    resultatComptable: { statut: 'etabli', sens: 'benefice', montant: '10000.00', codeCase: '312', etatCodeCase: 'lu_verifie' },
+    lignes: [
+      ligneRf('RF_316', '316', '1000.00'), ligneRf('RF_318', '318', '200.00'), ligneRf('RF_322', '322', '300.00'), ligneRf('RF_324', '324', '100.00'),
+      { ...ligneRf('RF_330', '330', '400.00'), detail: [detail('247', '150.00')] },
+      ligneRf('RF_251', '251', '50.00'),
+      { ...ligneRf('RF_350', '350', '700.00'), detail: ['655', '643', '645', '647', '648', '641', '990', '649'].map((c) => detail(c, c === '655' ? '100.00' : '0.00')) },
+    ] as ResultatFiscalProjet['lignes'],
+  });
+  const renvois = (q: string) => [rv('690', '80.00'), rv('691', '20.00'), rv('RBSQ', q), { code: '380', montant: '600.00', ...TRACE }, { code: '348', montant: '0.00', ...TRACE }];
+  it('entreprise individuelle ou EURL : 10000 + 600 + 0 + 1000 + 200 + 300 + 100 + 400 + 50 − 700 + 100 + 80 − 20 = 12110 → case 693 proposée, jamais retenue', () => {
+    const f = prep(renvois('0'), [], rfComplet());
+    expect(f.revenuBrutSocial).toMatchObject({ statut: 'etabli', montant: '12110.00', codeCase: '693' });
+    expect(cas(f, '693')).toMatchObject({ statut: 'a_saisir', montant: null, proposition: { montant: '12110.00' } });
+    expect(cas(f, '692').proposition).toBeNull();
+  });
+  it('gérant ou associé : 316 et 247 déduits en plus (12110 − 1000 − 150 = 10960) ; contrôle indicatif avec la case saisie', () => {
+    const f = prep([...renvois('1'), rv('693', '10000.00')], [], rfComplet());
+    expect(f.revenuBrutSocial).toMatchObject({ statut: 'etabli', montant: '10960.00' });
+    expect(f.controles.find((c) => c.code === 'D_RBS_FORMULE')).toMatchObject({ statut: 'ecart', ecart: '-960.00' });
+    expect(prep([...renvois('1'), rv('693', '10960.00')], [], rfComplet()).controles.find((c) => c.code === 'D_RBS_FORMULE')?.statut).toBe('coherent');
+  });
+  it('déficit comptable : signe négatif, case 692 ; composante manquante ou qualité non saisie : abstention nommant les manques', () => {
+    const neg = { ...rfComplet(), resultatComptable: { statut: 'etabli' as const, sens: 'deficit' as const, montant: '30000.00', codeCase: '314', etatCodeCase: 'lu_verifie' as const } };
+    const f = prep(renvois('0'), [], neg);
+    expect(f.revenuBrutSocial).toMatchObject({ statut: 'etabli', montant: '27890.00', codeCase: '692' });
+    const sans = prep([rv('690', '0.00'), rv('691', '0.00')], [], rfComplet());
+    expect(sans.revenuBrutSocial.statut).toBe('abstention');
+    expect(JSON.stringify(sans.revenuBrutSocial)).toMatch(/380.*348|qualité/);
+    expect(prep(renvois('0'), [], null).revenuBrutSocial.statut).toBe('abstention');
+  });
+});
+

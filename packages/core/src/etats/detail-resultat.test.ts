@@ -181,7 +181,7 @@ describe('régime simplifié — tableau 2033-B : « dont export » (209, 215, 2
 
   it('renvois du 2033-B : cases lues et vérifiées, propositions de la balance pour le crédit-bail seul, aucun code pour les pointillés', () => {
     const r = rsi().renvois;
-    expect(r.map((x) => x.code)).toEqual(['CB_MOB', 'CB_IMM', '243', '255', '259', '260', '347', '348']);
+    expect(r.map((x) => x.code)).toEqual(['CB_MOB', 'CB_IMM', '243', '255', '259', '260', '347', '380', '348']);
     expect(r.every((x) => x.tableau === '2033-B' && x.statut === 'a_saisir' && x.montant === null && x.etatCodeCase === 'lu_verifie')).toBe(true);
     expect(r.find((x) => x.code === 'CB_MOB')).toMatchObject({ codeCase: null, proposition: { montant: '2400.00', comptes: ['612200'] } });
     expect(r.find((x) => x.code === 'CB_IMM')?.proposition).toBeNull();
@@ -212,24 +212,24 @@ describe('périmètre : abstention motivée, sans chiffre', () => {
 describe('2033-B, partie B « Résultat fiscal » (D-110) : saisie justifiée, néant explicite, abstention, aucune décision inventée', () => {
   // Résultat comptable de la balance d'essai : produits 11 800 + 800 − charges (2 400 + 300 + 1 500 + 150) = 8 250 + ... voir resultatComptable fourni explicitement.
   const rf = (cle: string, montant: string, s: Partial<QualificationRenvoi> = {}): QualificationRenvoi => ({ code: cle, montant, ...TRACE, ...s });
-  const AVANT = ['316', '318', '322', '324', '330', '342', '350'].map((c) => rf(`RF_${c}`, '0.00'));
+  const AVANT = ['316', '318', '322', '324', '330', '251', '342', '350'].map((c) => rf(`RF_${c}`, '0.00'));
   const demandeRf = (resultatComptable: string | null, renvois: QualificationRenvoi[]) => demande({ regime: 'reel_simplifie', resultatComptable, renvois });
   const pf = (d: DemandeDetailResultat) => projet(d).resultatFiscal!;
 
   it('absent au régime réel normal ; présent au régime simplifié', () => {
     expect(projet(demande()).resultatFiscal).toBeNull();
-    expect(pf(demandeRf('1000.00', [])).lignes.map((l) => l.codeCase)).toEqual(['316', '318', '322', '324', '330', '342', '350', '356', '360']);
+    expect(pf(demandeRf('1000.00', [])).lignes.map((l) => l.codeCase)).toEqual(['316', '318', '322', '324', '330', '251', '998', '999', '997', '342', '350', '356', '360']);
   });
 
   it('sans aucune saisie : abstention explicite, rien n’est présumé nul, le motif liste les cases manquantes', () => {
     const r = pf(demandeRf('1000.00', []));
     expect(r.resultatComptable).toMatchObject({ statut: 'etabli', sens: 'benefice', montant: '1000.00', codeCase: '312' });
     expect(r.avantImputation).toMatchObject({ statut: 'abstention', codesCases: ['352', '354'] });
-    expect(JSON.stringify(r.avantImputation)).toMatch(/316, 318, 322, 324, 330, 342, 350/);
+    expect(JSON.stringify(r.avantImputation)).toMatch(/316, 318, 322, 324, 330, 251, 342, 350/);
     expect(JSON.stringify(r.avantImputation)).not.toMatch(/"montant"/);
     expect(r.apresImputation.statut).toBe('abstention');
     expect(r.lignes.every((l) => l.statut === 'a_saisir' && l.montant === null && !l.neant)).toBe(true);
-    expect(r.lignesManquantes).toHaveLength(7);
+    expect(r.lignesManquantes).toHaveLength(8);
   });
 
   it('un « néant » explicite (0,00 saisi) est distinct d’une case non renseignée ; la saisie est retenue avec sa trace', () => {
@@ -303,7 +303,7 @@ describe('2033-B, partie B « Résultat fiscal » (D-110) : saisie justifiée, n
 
     it('chaque total porte ses cases de détail, sans saisie au départ ; contrôle indicatif non vérifiable', () => {
       const r = pf(demandeRf('1000.00', []));
-      expect(ligne(r, 'RF_330').detail.map((x) => x.codeCase)).toEqual(['247', '248', '251', '249']);
+      expect(ligne(r, 'RF_330').detail.map((x) => x.codeCase)).toEqual(['247', '248', '249']);
       expect(ligne(r, 'RF_342').detail.map((x) => x.codeCase)).toEqual(['986', '987', '989', '127', '138', '991', '181', '345', '344', '992', '993']);
       expect(ligne(r, 'RF_350').detail.map((x) => x.codeCase)).toEqual(['346', '655', '643', '645', '647', '648', '641', '990', '649']);
       expect(ligne(r, 'RF_316').detail).toEqual([]);
@@ -312,8 +312,8 @@ describe('2033-B, partie B « Résultat fiscal » (D-110) : saisie justifiée, n
     });
 
     it('détail saisi et égal au total : contrôle cohérent ; la case 248 peut être négative ; la case 249 n’est pas additionnée', () => {
-      const r = pf(demandeRf('1000.00', [...base, rf('RF_330', '300.00'), rf('RF_342', '0.00'), rf('RF_247', '200.00'), rf('RF_248', '-50.00'), rf('RF_251', '150.00'), rf('RF_249', '999.00')]));
-      expect(detail(r, 'RF_248')).toMatchObject({ statut: 'saisi', montant: '-50.00', negatifPossible: true });
+      const r = pf(demandeRf('1000.00', [...base, rf('RF_330', '300.00'), rf('RF_342', '0.00'), rf('RF_247', '200.00'), rf('RF_248', '100.00'), rf('RF_249', '999.00')]));
+      expect(detail(r, 'RF_248')).toMatchObject({ statut: 'saisi', montant: '100.00', negatifPossible: true });
       expect(detail(r, 'RF_249')).toMatchObject({ additionne: false, montant: '999.00' });
       expect(ligne(r, 'RF_330').controleDetail).toMatchObject({ statut: 'coherent' });
       // Le résultat fiscal repose sur le TOTAL saisi, jamais sur le détail.
@@ -321,7 +321,7 @@ describe('2033-B, partie B « Résultat fiscal » (D-110) : saisie justifiée, n
     });
 
     it('détail différent du total : écart affiché, total retenu inchangé', () => {
-      const r = pf(demandeRf('1000.00', [...base, rf('RF_330', '300.00'), rf('RF_342', '0.00'), rf('RF_247', '200.00'), rf('RF_248', '0.00'), rf('RF_251', '0.00')]));
+      const r = pf(demandeRf('1000.00', [...base, rf('RF_330', '300.00'), rf('RF_342', '0.00'), rf('RF_247', '200.00'), rf('RF_248', '0.00')]));
       expect(ligne(r, 'RF_330').controleDetail).toMatchObject({ statut: 'ecart', ecart: '100.00' });
       expect(ligne(r, 'RF_330').montant).toBe('300.00');
       expect(r.avantImputation).toMatchObject({ montant: '1300.00' });
@@ -330,7 +330,7 @@ describe('2033-B, partie B « Résultat fiscal » (D-110) : saisie justifiée, n
     it('détail incomplet : contrôle non vérifiable, rien n’est présumé nul ; un détail sans total saisi n’est pas rapproché', () => {
       const r = pf(demandeRf('1000.00', [...base, rf('RF_330', '300.00'), rf('RF_342', '0.00'), rf('RF_247', '300.00')]));
       expect(ligne(r, 'RF_330').controleDetail).toMatchObject({ statut: 'non_verifie' });
-      expect(ligne(r, 'RF_330').controleDetail?.message).toMatch(/248, 251/);
+      expect(ligne(r, 'RF_330').controleDetail?.message).toMatch(/248/);
       const sansTotal = pf(demandeRf('1000.00', [rf('RF_247', '300.00')]));
       expect(ligne(sansTotal, 'RF_330').controleDetail?.message).toMatch(/total de la case 330 n’est pas saisi/);
     });

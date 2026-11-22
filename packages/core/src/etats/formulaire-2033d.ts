@@ -80,6 +80,7 @@ const casesDefinitions = (): DefinitionCase2033D[] => {
     { cle: 'D_378', codeCase: '378', libelle: 'Montant de la TVA déductible sur biens et services (sauf immobilisations)', cadre: 'III', type: 'montant' },
     { cle: 'D_399', codeCase: '399', libelle: 'Montant des prélèvements personnels de l’exploitant', cadre: 'III', type: 'montant', precision: 'Notice : prélèvements de marchandises ou financiers effectués par l’exploitant ou le dirigeant pour ses besoins personnels ou ceux de ses salariés.' },
     { cle: 'D_398', codeCase: '398', libelle: 'Aides perçues ayant donné droit à la réduction d’impôt prévue au 4 de l’article 238 bis du CGI pour l’entreprise donatrice', cadre: 'III', type: 'montant' },
+    { cle: 'D_RBSQ', codeCase: 'qualité', libelle: 'Qualité du déclarant pour le revenu brut social : 0 = entreprise individuelle ou EURL ; 1 = gérant ou associé d’une société (hors entreprise individuelle et EURL)', cadre: 'IV', type: 'entier', precision: 'Décision du cabinet : notice 2033-NOT-SD, § 692/693 : pour les gérants de société et leurs associés (hors entreprises individuelles et EURL), les rubriques 316 et 247 sont déduites en plus. Sans cette saisie, le revenu brut social n’est pas calculé.' },
     { cle: 'D_690', codeCase: '690', libelle: 'Sommes à réintégrer pour la détermination du revenu brut social', cadre: 'IV', type: 'montant', precision: 'Notice : somme des montants exonérés au titre de dispositifs d’incitation fiscale non déductibles pour le revenu brut social (majorations et amortissements exceptionnels, provisions réglementées, déductions exceptionnelles…), des plus-values à court terme exonérées déduites en 350, des revenus de brevets à 10 %, de la participation et de l’intéressement de l’entrepreneur individuel, du bénéfice d’une activité non professionnelle déduit en 350.' },
     { cle: 'D_691', codeCase: '691', libelle: 'Sommes à déduire pour la détermination du revenu brut social', cadre: 'IV', type: 'montant', precision: 'Notice : indemnités journalières (sécurité sociale, contrat Madelin) incluses dans les produits comptables et déficit ou charges d’une activité non professionnelle réintégrés en 330.' },
     { cle: 'D_692', codeCase: '692', libelle: 'Revenu brut social (si le montant est négatif)', cadre: 'IV', type: 'montant', precision: 'Notice : cumul de 312 ou − 314, 380, 348, 316, 318, 322, 324, 330, 251, − 350, 655, 643, 645, 647, 648, 641, 990, 649, + 690, − 691 ; pour les gérants et associés (hors entreprises individuelles et EURL), déduire en plus 316 et 247. Montant négatif : case 692, saisi en valeur absolue.' },
@@ -126,6 +127,8 @@ export interface Formulaire2033DProjet {
   cadreC: { etat: 'a_saisir' | 'neant' | 'saisi'; lignes: LigneCadreC[]; total780: CelluleCalculee2033D; neant: TraceSaisie | null };
   /** Case 870 = 984 + 860 (notice). */
   total870: CelluleCalculee2033D;
+  /** Revenu brut social (692 si négatif, 693 si positif) calculé d'après la notice, seulement si toutes les composantes et la qualité du déclarant sont saisies ; jamais retenu sans saisie des cases 692 ou 693 (D-141). */
+  revenuBrutSocial: CelluleCalculee2033D;
   controles: ControleDetail[];
   nonPrepare: string[];
   limites: string[];
@@ -167,6 +170,47 @@ export function preparerFormulaire2033D(demande: DemandeFormulaire2033D): Formul
     return { cle: def.cle, codeCase: def.codeCase, etatCodeCase: 'lu_verifie', libelle: def.libelle, cadre: def.cadre, type: def.type, statut, neant: montant !== null && new Decimal(montant).isZero(), montant, saisie: s, precision: def.precision ?? null, proposition: statut === 'saisi' ? null : propositionPour(def.cle) };
   });
   const parCode = (code: string) => cases.find((c) => c.codeCase === code)!;
+  // Revenu brut social (cases 692 / 693), D-141 : formule de la notice 2033-NOT-SD (§ 692/693), calculée seulement si TOUTES ses composantes sont saisies.
+  const revenuBrutSocial = ((): { resultat: CelluleCalculee2033D; signe: 'positif' | 'negatif' | null; montant: Decimal | null } => {
+    const abst = (motifs: string[]) => ({ resultat: abstention(motifs, '692/693'), signe: null, montant: null });
+    if (rf === null) return abst(['Résultat fiscal (partie B du 2033-B) non établi : rien n’est calculé.']);
+    const manques: string[] = [];
+    const de = (code: string): Decimal | null => {
+      const r = demande.renvois.find((x) => x.code === code && x.versionDonnees === demande.versionDonnees);
+      if (r === undefined) { manques.push(code); return null; }
+      return new Decimal(r.montant);
+    };
+    const ligneRf = (cle: string, code: string): Decimal | null => {
+      const l = rf.lignes.find((x) => x.cle === cle);
+      if (l === undefined || l.statut !== 'saisi' || l.montant === null) { manques.push(code); return null; }
+      return new Decimal(l.montant);
+    };
+    const detail = (code: string): Decimal | null => {
+      const d = rf.lignes.flatMap((x) => x.detail).find((x) => x.codeCase === code);
+      if (d === undefined || d.statut !== 'saisi' || d.montant === null) { manques.push(code); return null; }
+      return new Decimal(d.montant);
+    };
+    const rc = rf.resultatComptable;
+    if (rc.statut !== 'etabli') manques.push('312/314');
+    const cas = (c: string): Decimal | null => { const x = cases.find((y) => y.codeCase === c); if (x === undefined || x.statut !== 'saisi') { manques.push(c); return null; } return new Decimal(x.montant!); };
+    const qualite = cases.find((y) => y.codeCase === 'qualité');
+    if (qualite === undefined || qualite.statut !== 'saisi') manques.push('qualité du déclarant (D_RBSQ)');
+    const composantes = [de('380'), de('348'), ligneRf('RF_316', '316'), ligneRf('RF_318', '318'), ligneRf('RF_322', '322'), ligneRf('RF_324', '324'), ligneRf('RF_330', '330'), ligneRf('RF_251', '251'), ligneRf('RF_350', '350')];
+    const deductions = ['655', '643', '645', '647', '648', '641', '990', '649'].map(detail);
+    const a690 = cas('690'), a691 = cas('691');
+    const gerant = qualite?.statut === 'saisi' ? qualite.montant === '1' : null;
+    const a247 = gerant === true ? detail('247') : null;
+    if (manques.length > 0 || rc.statut !== 'etabli') return abst([`Composantes sans saisie retenue : ${[...new Set(manques)].join(', ')}. Rien n’est présumé nul ; saisir un montant ou déclarer « néant ».`]);
+    const [c380, c348, c316, c318, c322, c324, c330, c251, c350] = composantes as Decimal[];
+    let total = (rc.sens === 'benefice' ? new Decimal(rc.montant) : new Decimal(rc.montant).negated()).plus(c380!).plus(c348!).plus(c316!).plus(c318!).plus(c322!).plus(c324!).plus(c330!).plus(c251!).minus(c350!);
+    total = deductions.reduce((t: Decimal, x) => t.plus(x!), total).plus(a690!).minus(a691!);
+    if (gerant === true) total = total.minus(c316!).minus(a247!);
+    return { resultat: etabli(total.abs(), total.isNegative() ? '692' : '693', `Formule de la notice 2033-NOT-SD (§ 692/693) : ${total.toFixed(2)}${gerant === true ? ', gérant ou associé : 316 et 247 déduits en plus' : ''}`), signe: total.isNegative() ? 'negatif' : 'positif', montant: total.abs() };
+  })();
+  for (const c of cases) {
+    if (revenuBrutSocial.signe !== null && revenuBrutSocial.montant !== null && c.codeCase === (revenuBrutSocial.signe === 'negatif' ? '692' : '693')) c.proposition = { montant: versChaine(revenuBrutSocial.montant), origine: 'Formule de la notice 2033-NOT-SD (§ 692/693) appliquée aux saisies du cabinet' };
+  }
+
   const valeur = (code: string): Decimal | null => {
     const c = parCode(code);
     return c.statut === 'saisi' ? new Decimal(c.montant!) : null;
@@ -251,6 +295,12 @@ export function preparerFormulaire2033D(demande: DemandeFormulaire2033D): Formul
     }
   }
   const c692 = valeur('692'), c693 = valeur('693');
+  if (revenuBrutSocial.signe !== null && revenuBrutSocial.montant !== null) {
+    const attendue = revenuBrutSocial.signe === 'negatif' ? c692 : c693;
+    const autre = revenuBrutSocial.signe === 'negatif' ? c693 : c692;
+    if (attendue !== null && !attendue.equals(revenuBrutSocial.montant)) controles.push({ code: 'D_RBS_FORMULE', statut: 'ecart', message: `La case ${revenuBrutSocial.signe === 'negatif' ? '692' : '693'} saisie (${versChaine(attendue)}) diffère de la formule de la notice appliquée à vos saisies (${versChaine(revenuBrutSocial.montant)}). Rien n’est corrigé. Contrôle indicatif.`, ecart: versChaine(attendue.minus(revenuBrutSocial.montant)) });
+    else if (attendue !== null && (autre === null || autre.isZero())) controles.push({ code: 'D_RBS_FORMULE', statut: 'coherent', message: 'Le revenu brut social saisi égale la formule de la notice appliquée à vos saisies. Contrôle indicatif.' });
+  }
   if (c692 !== null && c693 !== null && !c692.isZero() && !c693.isZero()) controles.push({ code: 'D_RBS_EXCLUSIF', statut: 'ecart', message: 'Cases 692 (revenu brut social négatif) et 693 (positif) toutes deux non nulles : la notice n’en admet qu’une. Rien n’est corrigé. Contrôle indicatif.' });
   const ctrl982B = parCode('982 bis'), ctrl982T = parCode('982 ter');
   if (ctrl982B.statut === 'saisi' && !new Decimal(ctrl982B.montant!).isZero() && ctrl982T.statut === 'saisi' && new Decimal(ctrl982T.montant!).isZero()) controles.push({ code: 'D_982_OPERATIONS', statut: 'ecart', message: 'Des déficits sont transférés de plein droit (982 bis) mais le nombre d’opérations (982 ter) est nul : à vérifier.' });
@@ -262,9 +312,10 @@ export function preparerFormulaire2033D(demande: DemandeFormulaire2033D): Formul
     cases,
     cadreC: { etat: etatC, lignes: lignesC, total780, neant: neantC ? { note: neantC.note, qualifieePar: neantC.qualifieePar, le: neantC.le, versionDonnees: neantC.versionDonnees } : null },
     total870,
+    revenuBrutSocial: revenuBrutSocial.resultat,
     controles,
     nonPrepare: [
-      'Cadre IV « Travailleurs indépendants » (690 à 693, revenu brut social) : saisi case par case, justifié ; le revenu brut social n’est PAS calculé : la formule de la notice dépend de la rubrique 380 (cotisations personnelles de l’exploitant), non préparée, et de la qualité du déclarant (déduction supplémentaire des rubriques 316 et 247 hors entreprises individuelles et EURL, que le dossier ne détermine pas). Seule l’exclusivité 692 / 693 est contrôlée.',
+      'Cadre IV « Travailleurs indépendants » (690 à 693, revenu brut social) : cases saisies, justifiées ; le revenu brut social est CALCULÉ d’après la formule de la notice (§ 692/693) seulement si toutes ses composantes (312/314, 380, 348, 316, 318, 322, 324, 330, 251, 350, déductions exceptionnelles 655 à 649, 690, 691) et la qualité du déclarant (décision du cabinet : la déduction supplémentaire de 316 et 247 ne vaut que pour un gérant ou associé hors entreprise individuelle et EURL) sont saisies ; il n’est proposé qu’en regard des cases 692 / 693, jamais retenu sans saisie ; la CSG, l’abattement de 26 % et les cotisations elles-mêmes ne sont pas calculés.',
       'Feuillet séparé des déficits transférés de plein droit (identification de la société d’origine, opération par opération) : non préparé.',
       'L’état joint papier du cadre C (exigé au-delà de sept lignes) : non produit ; les lignes 8 à 20 sont saisies comme lignes d’état joint (même saisie, même total 780).',
       'Explications de la notice sur chaque case (nature des provisions, calcul du déductible) : consultables dans la notice 2033-NOT-SD ; aucune décision fiscale n’est prise par Comtaple.',

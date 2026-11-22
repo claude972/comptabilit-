@@ -553,6 +553,8 @@ export interface Formulaire2033DProjet {
   cases: CaseSaisie2033D[];
   cadreC: { etat: 'a_saisir' | 'neant' | 'saisi'; lignes: Array<{ ligne: string; statut: StatutLigneSaisie; trace: TraceSaisie | null; nature: string | null; montant: string | null }>; total780: CelluleCalculee2033D; neant: TraceSaisie | null };
   total870: CelluleCalculee2033D;
+  /** Revenu brut social calculé d'après la notice si tout est saisi (D-141). */
+  revenuBrutSocial?: CelluleCalculee2033D;
   controles: Array<{ code: string; statut: 'coherent' | 'ecart' | 'non_verifie'; message: string; ecart?: string }>;
   nonPrepare: string[];
   limites: string[];

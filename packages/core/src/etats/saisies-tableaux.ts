@@ -75,7 +75,7 @@ export function validerSaisieTableau(tableau: string, ligne: string, valeurs: un
     for (const k of cles) if (!(k in v)) e.push(`${k} : champ obligatoire.`);
   };
   if (tableau === '2033C_III') {
-    if (/^(0[1-9]|10)$/.test(ligne)) {
+    if (/^(0[1-9]|[12][0-9]|30)$/.test(ligne)) {
       exactement(['nature', ...POSITIFS_III, 'classement']);
       if (typeof v.nature !== 'string' || v.nature.trim().length < 2 || v.nature.length > 200) e.push('nature : libellé de 2 à 200 caractères.');
       for (const k of POSITIFS_III) decimal(k, true);
@@ -110,7 +110,7 @@ export function validerSaisieTableau(tableau: string, ligne: string, valeurs: un
     } else if (ligne === 'NEANT') exactement([]);
     else e.push(`Ligne inconnue pour le cadre C du 2055 : ${ligne}.`);
   } else if (tableau === '2033D_C') {
-    if (/^0[1-7]$/.test(ligne)) {
+    if (/^(0[1-9]|1[0-9]|20)$/.test(ligne)) {
       exactement(['nature', 'montant']);
       if (typeof v.nature !== 'string' || v.nature.trim().length < 2 || v.nature.length > 200) e.push('nature : libellé de 2 à 200 caractères.');
       decimal('montant', true);
@@ -124,8 +124,8 @@ export function validerSaisieTableau(tableau: string, ligne: string, valeurs: un
     else e.push(`Ligne inconnue pour le tableau 2033-F : ${ligne}.`);
   } else if (tableau === '2033F_PM' || tableau === '2033F_PP') {
     const pm = tableau === '2033F_PM';
-    const maxLigne = pm ? 4 : 2;
-    if (/^0[1-9]$/.test(ligne) && Number(ligne) <= maxLigne) {
+    const maxLigne = pm ? CAPACITES_LIGNES.associesPM.max : CAPACITES_LIGNES.associesPP.max;
+    if (/^(0[1-9]|1[0-9]|20)$/.test(ligne) && Number(ligne) <= maxLigne) {
       const textes = pm ? ['formeJuridique', 'denomination', 'siren', 'adresseNumero', 'adresseVoie', 'codePostal', 'commune', 'pays'] : ['titre', 'nomFamille', 'nomUsage', 'prenoms', 'naissanceDate', 'naissanceDepartement', 'naissanceCommune', 'naissancePays', 'adresseNumero', 'adresseVoie', 'codePostal', 'commune', 'pays'];
       exactement([...textes, 'pourcentage', 'parts']);
       for (const k of textes) if (typeof v[k] !== 'string' || (v[k] as string).length > 200) e.push(`${k} : texte de 200 caractères au plus (peut être vide si l'information n'existe pas).`);
@@ -146,7 +146,7 @@ export function validerSaisieTableau(tableau: string, ligne: string, valeurs: un
     } else if (ligne === 'NEANT') exactement([]);
     else e.push(`Ligne inconnue pour le tableau 2033-G : ${ligne}.`);
   } else if (tableau === '2033G_FIL') {
-    if (/^0[1-7]$/.test(ligne)) {
+    if (/^(0[1-9]|[12][0-9]|30)$/.test(ligne)) {
       const textes = ['formeJuridique', 'denomination', 'siren', 'adresseNumero', 'adresseVoie', 'codePostal', 'commune', 'pays'];
       exactement([...textes, 'pourcentage']);
       for (const k of textes) if (typeof v[k] !== 'string' || (v[k] as string).length > 200) e.push(`${k} : texte de 200 caractères au plus (peut être vide si l'information n'existe pas).`);
@@ -211,7 +211,20 @@ export interface TraceSaisie {
 
 export type CelluleMontant = { statut: 'etabli'; montant: ChaineDecimale; codeCase: string | null; etatCodeCase: EtatCodeCase } | { statut: 'abstention'; motifs: string[]; codeCase: string | null; etatCodeCase: EtatCodeCase };
 
-export const LIGNES_CESSIONS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10'] as const;
+/** Numéros de ligne « 01 », « 02 »… jusqu'à `n` (inclus). */
+export const lignesNumerotees = (n: number): string[] => Array.from({ length: n }, (_, i) => String(i + 1).padStart(2, '0'));
+/**
+ * Capacités (D-128) : lignes du FORMULAIRE, puis lignes d'« état joint » (même modèle, feuillet supplémentaire exigé au-delà) jusqu'au maximum accepté.
+ * Les lignes au-delà de la capacité du formulaire sont saisies, justifiées et historisées comme les autres, et comptées dans les totaux.
+ */
+export const CAPACITES_LIGNES = {
+  cessions: { formulaire: 10, max: 30 },
+  cadreC2033D: { formulaire: 7, max: 20 },
+  filiales: { formulaire: 7, max: 30 },
+  associesPM: { formulaire: 4, max: 20 },
+  associesPP: { formulaire: 2, max: 20 },
+} as const;
+export const LIGNES_CESSIONS = lignesNumerotees(CAPACITES_LIGNES.cessions.max);
 
 export interface LigneCession {
   ligne: string;
@@ -497,7 +510,7 @@ function cadreIII(demande: DemandeSaisiesTableaux): CadreIIIProjet {
     limites: [
       'Le classement d’une plus ou moins-value (court terme, long terme à 19 %, à 15 % ou 12,8 %, à 0 %) est une décision du cabinet : Comtaple ne la déduit pas ; pour une société à l’IS le régime du long terme vise des cas précis (notice 2033-NOT-SD, page 13).',
       'Seul le calcul que le formulaire porte est fait (valeur résiduelle, plus ou moins-value, totaux de colonnes, totaux avec régularisations) ; la nature fiscale de chaque cession n’est pas vérifiée.',
-      'Au-delà de dix lignes, le formulaire demande un état du même modèle joint : non préparé.',
+      'L’état joint papier du cadre III (exigé au-delà de dix lignes) : non produit ; les lignes 11 à 30 sont saisies comme lignes d’état joint (même saisie, mêmes totaux).',
       'Le contrôle avec la balance (comptes 775 et 675) est indicatif : une cession de titres ou une cession portée à d’autres comptes l’écarte légitimement.',
     ],
     neant: neantSaisie ? trace(neantSaisie) : null,

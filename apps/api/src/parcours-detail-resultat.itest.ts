@@ -232,8 +232,8 @@ describe('cadre III du 2033-C et 2054 bis : saisies ligne par ligne, tracées, h
     expect((await lig('2033C_III', '01', { ...CESSION, classement: 'inconnu' })).statut).toBe(400);
     expect((await lig('2033C_III', '01', { ...CESSION, valeurActif: '-3.00' })).statut).toBe(400);
     expect((await lig('2033C_III', '01', CESSION, 'ok')).statut).toBe(400);
-    expect((await lig('2033C_III', '11', CESSION)).statut).toBe(400); // ligne bien formée mais inconnue de ce tableau
-    expect((await lig('2033C_III', '14', CESSION)).statut).toBe(404); // identifiant de ligne mal formé
+    expect((await lig('2033C_III', '31', CESSION)).statut).toBe(404); // au-delà des lignes d'état joint (30 au plus)
+    expect((await lig('2033C_III', '99', CESSION)).statut).toBe(404); // identifiant de ligne mal formé
     expect((await lig('autre', '01', CESSION)).statut).toBe(404);
     expect((await lig('2033C_III', '01', CESSION, 'Essai collaborateur', 'chloe')).statut).toBeGreaterThanOrEqual(400);
     expect((await lig('2033C_III', '01', CESSION, 'Essai déposant', 'client')).statut).toBe(404);
@@ -406,7 +406,7 @@ describe('2033-D (régime simplifié) : cases saisies, néant, abstention, calcu
   it('cadre C : sept lignes par saisie de tableau, total 780 calculé, néant, historique', async () => {
     expect((await lc('01', { nature: 'Indemnités de congés à payer', montant: '200.00' })).statut).toBeLessThan(300);
     expect((await lc('02', { nature: 'Charges à payer non déductibles', montant: '100.50' })).statut).toBeLessThan(300);
-    expect((await lc('08', { nature: 'Congés', montant: '1.00' })).statut).toBe(400); // la ligne 08 n'existe pas au cadre C (sept lignes)
+    expect((await lc('21', { nature: 'Congés', montant: '1.00' })).statut).toBe(400); // au-delà des lignes d'état joint du cadre C (20 au plus)
     expect((await lc('03', { nature: 'x', montant: '-1.00' })).statut).toBe(400);
     let f = await f2033d();
     expect(f.cadreC.etat).toBe('saisi');
@@ -493,8 +493,8 @@ describe('2033-F (régime simplifié) : composition du capital par saisie ligne 
     const f = await f2033f();
     expect(f).toMatchObject({ statut: 'projet', etat: 'a_saisir' });
     expect(f.nombres.total905).toMatchObject({ statut: 'abstention', codeCase: '905' });
-    expect(f.personnesMorales).toHaveLength(4);
-    expect(f.personnesPhysiques).toHaveLength(2);
+    expect(f.personnesMorales).toHaveLength(20); // 4 du formulaire + lignes d'état joint
+    expect(f.personnesPhysiques).toHaveLength(20);
     // Au régime réel normal, le même tableau est le 2059-F : mêmes saisies, mêmes contrôles (D-120).
     expect((await liasse(exN, 'reel_normal')).json.formulaire2033F).toMatchObject({ statut: 'projet', etat: 'a_saisir' });
   }, 120_000);
@@ -503,7 +503,7 @@ describe('2033-F (régime simplifié) : composition du capital par saisie ligne 
     expect((await tf('2033F_PM', '01', { ...PM, siren: '12' })).statut).toBe(400);
     expect((await tf('2033F_PM', '01', { ...PM, pourcentage: '101.00' })).statut).toBe(400);
     expect((await tf('2033F_PP', '01', { ...PP, titre: 'X' })).statut).toBe(400);
-    expect((await tf('2033F_PM', '05', PM)).statut).toBe(400);
+    expect((await tf('2033F_PM', '21', PM)).statut).toBe(400); // au-delà des lignes d'état joint (20 au plus)
     expect((await tf('2033F_PM', '01', PM, 'Essai collaborateur', 'chloe')).statut).toBeGreaterThanOrEqual(400);
     expect((await tf('2033F_PM', '01', PM, 'Essai déposant', 'client')).statut).toBe(404);
     expect((await f2033f()).etat).toBe('a_saisir');
@@ -541,10 +541,10 @@ describe('2033-G (régime simplifié) : filiales et participations par saisie li
   it('sans saisie : à saisir, sept lignes ; absent au régime normal ; refus de forme et de droits', async () => {
     const f = await f2033g();
     expect(f).toMatchObject({ statut: 'projet', etat: 'a_saisir' });
-    expect(f.filiales).toHaveLength(7);
+    expect(f.filiales).toHaveLength(30); // 7 du formulaire + lignes d'état joint
     expect((await liasse(exN, 'reel_normal')).json.formulaire2033G).toMatchObject({ statut: 'projet', etat: 'a_saisir' }); // 2059-G (D-120)
     expect((await tg('2033G_FIL', '01', { ...FIL, denomination: '' })).statut).toBe(400);
-    expect((await tg('2033G_FIL', '08', FIL)).statut).toBe(400);
+    expect((await tg('2033G_FIL', '31', FIL)).statut).toBe(404);
     expect((await tg('2033G_FIL', '01', FIL, 'Essai collaborateur', 'chloe')).statut).toBeGreaterThanOrEqual(400);
     expect((await tg('2033G_FIL', '01', FIL, 'Essai déposant', 'client')).statut).toBe(404);
     expect((await f2033g()).etat).toBe('a_saisir');
@@ -845,6 +845,28 @@ describe('2033-E / 2059-E : dates (période de référence, cessation) saisies a
     expect((await dates('reel_normal')).cadres[0].lignes[1].valeurs).toEqual({ cessation: '2025-06-30' });
     for (const l of ['PER', 'CES']) expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/2033E_DATES/${l}`)).statut).toBeLessThan(300);
     expect((await dates('reel_normal')).etat).toBe('a_saisir');
+  }, 120_000);
+});
+
+describe('états joints : lignes au-delà de la capacité du formulaire, saisies comme les autres (D-128)', () => {
+  const put = (tableau: string, ligne: string, valeurs: Record<string, string>) => api('remi', 'PUT', `/v1/exercices/${exN}/tableaux/${tableau}/${ligne}`, { valeurs, note: 'Ligne d’état joint (essai)' });
+  it('une 8e filiale est saisie, retenue, comptée ; une 11e cession entre dans le total ; retrait', async () => {
+    const FIL = { formeJuridique: 'SARL', denomination: 'Huitième filiale (fictive)', siren: '', adresseNumero: '', adresseVoie: '', codePostal: '', commune: '', pays: 'France', pourcentage: '25.00' };
+    expect((await put('2033G_FIL', '08', FIL)).statut).toBeLessThan(300);
+    let g = (await liasse(exN, 'reel_simplifie')).json.formulaire2033G;
+    expect(g.filiales[7]).toMatchObject({ ligne: '08', statut: 'saisi', valeurs: { denomination: 'Huitième filiale (fictive)' } });
+    expect(g.etat).toBe('saisi');
+    expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/2033G_FIL/08`)).statut).toBeLessThan(300);
+    g = (await liasse(exN, 'reel_simplifie')).json.formulaire2033G;
+    expect(g.filiales[7].statut).toBe('a_saisir');
+    const CESSION = { nature: 'Matériel cédé (fictif)', valeurActif: '1000.00', amortissements: '400.00', prixCession: '900.00', classement: 'court_terme' };
+    expect((await put('2033C_III', '11', CESSION)).statut).toBeLessThan(300);
+    const c = (await liasse(exN, 'reel_simplifie')).json.tableauxSaisis.cadreIII;
+    expect(c.lignes).toHaveLength(30);
+    expect(c.lignes[10]).toMatchObject({ ligne: '11', statut: 'saisi', nature: 'Matériel cédé (fictif)' });
+    expect(c.totaux.prixCession).toMatchObject({ statut: 'etabli', montant: '900.00' });
+    expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/2033C_III/11`)).statut).toBeLessThan(300);
+    expect((await put('2033G_FIL', '31', FIL)).statut).toBe(404);
   }, 120_000);
 });
 

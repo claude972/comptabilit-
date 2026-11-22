@@ -112,7 +112,8 @@ describe('2033-D : forme des saisies du cadre C', () => {
   it('lignes 01 à 07 : nature et montant positif ; néant sans valeur', () => {
     expect(validerSaisieTableau('2033D_C', '03', { nature: 'Congés à payer', montant: '100.00' })).toEqual([]);
     expect(validerSaisieTableau('2033D_C', '03', { nature: 'x', montant: '-1.00' }).join(' ')).toMatch(/nature|positif/);
-    expect(validerSaisieTableau('2033D_C', '08', { nature: 'Congés', montant: '1.00' }).join(' ')).toMatch(/Ligne inconnue/);
+    expect(validerSaisieTableau('2033D_C', '08', { nature: 'Congés', montant: '1.00' })).toEqual([]); // ligne d’état joint
+    expect(validerSaisieTableau('2033D_C', '21', { nature: 'Congés', montant: '1.00' }).join(' ')).toMatch(/Ligne inconnue/);
     expect(validerSaisieTableau('2033D_C', 'NEANT', {})).toEqual([]);
   });
 });

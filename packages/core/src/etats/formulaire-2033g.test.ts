@@ -13,7 +13,7 @@ describe('2033-G', () => {
     const f = prep();
     expect(f.etat).toBe('a_saisir');
     expect(f.nombre).toMatchObject({ codeCase: '905', statut: 'a_saisir', montant: null, etatCodeCase: 'lu_verifie' });
-    expect(f.filiales).toHaveLength(7);
+    expect(f.filiales).toHaveLength(30); // 7 du formulaire + lignes d’état joint
     expect(f.filiales.every((l) => l.statut === 'a_saisir' && l.valeurs === null)).toBe(true);
   });
   it('nombre et lignes saisis : retenus avec leur trace ; néant du tableau ; à revoir', () => {
@@ -34,7 +34,8 @@ describe('2033-G', () => {
   });
   it('forme des saisies : dénomination obligatoire, SIREN, pourcentage, sept lignes seulement, nombre positif', () => {
     expect(validerSaisieTableau('2033G_FIL', '07', FIL)).toEqual([]);
-    expect(validerSaisieTableau('2033G_FIL', '08', FIL).join(' ')).toMatch(/Ligne inconnue/);
+    expect(validerSaisieTableau('2033G_FIL', '08', FIL)).toEqual([]); // ligne d’état joint
+    expect(validerSaisieTableau('2033G_FIL', '31', FIL).join(' ')).toMatch(/Ligne inconnue/);
     expect(validerSaisieTableau('2033G_FIL', '01', { ...FIL, denomination: '' }).join(' ')).toMatch(/denomination/);
     expect(validerSaisieTableau('2033G_FIL', '01', { ...FIL, siren: '1' }).join(' ')).toMatch(/siren/);
     expect(validerSaisieTableau('2033G_FIL', '01', { ...FIL, pourcentage: '101.00' }).join(' ')).toMatch(/au plus 100/);

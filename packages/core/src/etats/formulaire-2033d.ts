@@ -20,7 +20,7 @@ import { Decimal } from 'decimal.js';
 import { type ChaineDecimale, versChaine } from '../montant.js';
 import type { ControleDetail, EtatCodeCase, QualificationRenvoi, ResultatFiscalProjet } from './detail-resultat.js';
 import { MENTION_PROJET } from './sources-fiscales.js';
-import type { SaisieTableau, TraceSaisie } from './saisies-tableaux.js';
+import { CAPACITES_LIGNES, lignesNumerotees, type SaisieTableau, type TraceSaisie } from './saisies-tableaux.js';
 
 const ZERO = new Decimal(0);
 
@@ -90,7 +90,7 @@ const casesDefinitions = (): DefinitionCase2033D[] => {
 };
 export const CASES_2033_D: readonly DefinitionCase2033D[] = casesDefinitions();
 export const CLES_2033_D: readonly string[] = CASES_2033_D.map((c) => c.cle);
-export const LIGNES_CADRE_C = ['01', '02', '03', '04', '05', '06', '07'] as const;
+export const LIGNES_CADRE_C: readonly string[] = lignesNumerotees(CAPACITES_LIGNES.cadreC2033D.max);
 
 export interface CaseSaisie2033D {
   cle: string;
@@ -266,7 +266,7 @@ export function preparerFormulaire2033D(demande: DemandeFormulaire2033D): Formul
     nonPrepare: [
       'Cadre IV « Travailleurs indépendants » (690 à 693, revenu brut social) : saisi case par case, justifié ; le revenu brut social n’est PAS calculé : la formule de la notice dépend de la rubrique 380 (cotisations personnelles de l’exploitant), non préparée, et de la qualité du déclarant (déduction supplémentaire des rubriques 316 et 247 hors entreprises individuelles et EURL, que le dossier ne détermine pas). Seule l’exclusivité 692 / 693 est contrôlée.',
       'Feuillet séparé des déficits transférés de plein droit (identification de la société d’origine, opération par opération) : non préparé.',
-      'Au-delà de sept lignes, le cadre C exige un état du même modèle joint : non préparé.',
+      'L’état joint papier du cadre C (exigé au-delà de sept lignes) : non produit ; les lignes 8 à 20 sont saisies comme lignes d’état joint (même saisie, même total 780).',
       'Explications de la notice sur chaque case (nature des provisions, calcul du déductible) : consultables dans la notice 2033-NOT-SD ; aucune décision fiscale n’est prise par Comtaple.',
     ],
     limites: [

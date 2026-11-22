@@ -18,7 +18,7 @@
 import { Decimal } from 'decimal.js';
 import { type ChaineDecimale, versChaine } from '../montant.js';
 import type { ControleDetail, EtatCodeCase } from './detail-resultat.js';
-import type { SaisieTableau, TraceSaisie } from './saisies-tableaux.js';
+import { CAPACITES_LIGNES, lignesNumerotees, type SaisieTableau, type TraceSaisie } from './saisies-tableaux.js';
 import { MENTION_PROJET } from './sources-fiscales.js';
 
 const ZERO = new Decimal(0);
@@ -82,8 +82,8 @@ export function preparerFormulaire2033F(demande: DemandeFormulaire2033F): Formul
     const statut = statutDe(s, v);
     return { ligne: l, statut, trace: s ? trace(s) : null, valeurs: statut === 'saisi' ? s!.valeurs : null };
   };
-  const personnesMorales = ['01', '02', '03', '04'].map((l) => ligne(pmM, l));
-  const personnesPhysiques = ['01', '02'].map((l) => ligne(ppM, l));
+  const personnesMorales = lignesNumerotees(CAPACITES_LIGNES.associesPM.max).map((l) => ligne(pmM, l));
+  const personnesPhysiques = lignesNumerotees(CAPACITES_LIGNES.associesPP.max).map((l) => ligne(ppM, l));
   const sNb = nb.get('NB');
   const statutNb = statutDe(sNb, v);
   const cases: CaseNombre[] = LIBELLES_NOMBRES.map((x) => {
@@ -130,7 +130,7 @@ export function preparerFormulaire2033F(demande: DemandeFormulaire2033F): Formul
     controles,
     nonPrepare: [
       'Identification de l’entreprise (SIREN, dénomination, adresse), numéro de dépôt et exercice : repris du dossier, non ressaisis ici.',
-      'Tableaux supplémentaires au-delà de 4 personnes morales et 2 personnes physiques (formulaire, renvoi 1) : non préparés.',
+      'L’état joint papier (tableau supplémentaire exigé au-delà de 4 personnes morales et 2 personnes physiques, formulaire renvoi 1) : non produit ; les lignes 5 à 20 (personnes morales) et 3 à 20 (personnes physiques) sont saisies comme lignes d’état joint.',
       'Le registre des associés est tenu par la société : aucune donnée n’est tirée de la balance.',
     ],
     limites: [

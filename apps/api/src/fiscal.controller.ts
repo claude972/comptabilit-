@@ -73,9 +73,12 @@ const TABLEAU_SAISI = /^(2033C_III|2054BIS_A|2054BIS_B|2055_B|2055_C|2033D_C|203
 /** Lignes admises par la route, selon la famille de tableau : historiques (01 à 13…), 2059-A (01 à 20), grilles 2059-B à D, 2065 et dates du 2033-E (identifiants courts, forme validée contre la définition). */
 const LIGNE_HISTORIQUE = /^(0[1-9]|1[0-3]|REG|PV19|NEANT|B1|B2|NB)$/;
 const LIGNE_2059A = /^(0[1-9]|1[0-9]|20|NEANT)$/;
+/** Tableaux dont les lignes d'état joint (au-delà du formulaire, D-128) sont admises ; la forme exacte et le maximum de chacun sont validés par le moteur. */
+const LIGNE_ETAT_JOINT = /^(0[1-9]|[12][0-9]|30|REG|PV19|NEANT|NB)$/;
+const AVEC_ETAT_JOINT = /^(2033C_III|2033D_C|2033F_PM|2033F_PP|2033G_FIL)$/;
 const LIGNE_GRILLE = /^[0-9A-Z]{1,8}$/;
 const estGrille = (tableau: string) => TABLEAUX_GRILLES.includes(tableau);
-const ligneAdmise = (tableau: string, ligne: string) => (estGrille(tableau) ? LIGNE_GRILLE : tableau.startsWith('2059A_') ? LIGNE_2059A : LIGNE_HISTORIQUE).test(ligne);
+const ligneAdmise = (tableau: string, ligne: string) => (estGrille(tableau) ? LIGNE_GRILLE : tableau.startsWith('2059A_') ? LIGNE_2059A : AVEC_ETAT_JOINT.test(tableau) ? LIGNE_ETAT_JOINT : LIGNE_HISTORIQUE).test(ligne);
 const COMPTE_CA = /^70[0-9A-Za-z]{1,13}$/;
 /** Formulaires du régime réel normal servis par saisie case par case (moteur générique, D-118). */
 const FORMULAIRES_CASES: readonly DefinitionFormulaire[] = [FORMULAIRE_2058_A, FORMULAIRE_2058_B, FORMULAIRE_2058_C, FORMULAIRE_2059_E];

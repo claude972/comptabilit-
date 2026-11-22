@@ -742,6 +742,13 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Limite, dite** : la correspondance comptes → lignes du 2052 est interne et non validée par un professionnel ; un écart peut venir d'un rattachement de compte différent, pas d'une erreur de saisie.
 - **Preuves** : 2 tests du moteur (`formulaire-cases.test.ts`, 17 verts), essai d'intégration étendu (3 verts).
 
+### D-128 — États joints : lignes au-delà de la capacité des formulaires 2033 (2026-11-22)
+
+- **Besoin** : au-delà de dix cessions (cadre III du 2033-C), de sept lignes (cadre C du 2033-D), de sept filiales (2033-G / 2059-G), de quatre personnes morales ou deux personnes physiques associées (2033-F / 2059-F), le formulaire exige un état ou un tableau supplémentaire du même modèle joint.
+- **Décision** : ces lignes sont saisies **comme des lignes ordinaires** (même validation, même justification obligatoire, même trace, même historique, mêmes totaux), jusqu'à des maxima explicites (`CAPACITES_LIGNES` : 30 cessions, 20 lignes du cadre C, 30 filiales, 20 personnes morales, 20 personnes physiques), et repliées à l'écran sous « Lignes d'état joint » (ouvertes dès qu'une ligne y est saisie). Aucune migration (contraintes de forme déjà généralisées par D-122). Au-delà du maximum : refus (404 à la route ou 400 de validation, selon le tableau).
+- **Ce qui n'est PAS fait, dit** : l'**état papier joint lui-même** n'est pas produit (mise en page du feuillet) ; les contrôles de nombre (case 905 contre lignes listées) portent sur toutes les lignes saisies ; les maxima sont un choix d'ingénierie, relevables.
+- **Preuves** : tests du moteur adaptés (923 verts), essai d'intégration d'un état joint (8e filiale, 11e cession entrant dans le total 584) et adaptation des essais de refus (55 verts), Playwright `fiscal.spec.ts`.
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

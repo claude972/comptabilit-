@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { ChoixExercice } from '@/components/dossier';
 import { ErreurAcces } from '@/components/erreurs';
@@ -370,6 +371,27 @@ function CelluleSigne({ r, fm, testid }: { r: ResultatSigne; fm: Fm; testid: str
 }
 
 /** Historique en ajout seul d'une qualification : chaque saisie et chaque retrait, avec auteur, date, note et version des données. */
+/** Liste de lignes de saisie : les lignes du formulaire d'abord, puis les lignes d'ÉTAT JOINT (au-delà de la capacité du formulaire, même saisie) repliées (D-128). */
+function ListeEtatJoint<T>({ items, capacite, rendu, classe, testid }: { items: readonly T[]; capacite: number; rendu: (x: T) => ReactNode; classe: string; testid?: string }) {
+  const jointes = items.slice(capacite);
+  const nonVides = jointes.filter((x) => (x as { statut?: string }).statut !== 'a_saisir').length;
+  return (
+    <>
+      <ul className={classe} {...(testid ? { 'data-testid': testid } : {})}>
+        {items.slice(0, capacite).map(rendu)}
+      </ul>
+      {jointes.length > 0 ? (
+        <details className="mt-2" data-testid={testid ? `${testid}-etat-joint` : 'etat-joint'} open={nonVides > 0}>
+          <summary className="cursor-pointer text-sm font-medium">
+            Lignes d’état joint, {capacite + 1} à {capacite + jointes.length} (au-delà du formulaire, même saisie ; {nonVides} saisie(s))
+          </summary>
+          <ul className={`${classe} mt-2`}>{jointes.map(rendu)}</ul>
+        </details>
+      ) : null}
+    </>
+  );
+}
+
 function HistoriqueLigne({ evenements, cle, fm }: { evenements: EvenementQualification[]; cle: string; fm: Fm }) {
   const e = evenements.filter((x) => x.cle === cle);
   if (e.length === 0) return null;
@@ -777,7 +799,7 @@ function CadreIII({ c, fm, exerciceId, revision, evenements }: { c: CadreIIIProj
           </tr>
         </thead>
         <tbody data-testid="lignes-cessions">
-          {c.lignes.map((l) => (
+          {c.lignes.filter((l, i) => i < 10 || l.statut !== 'a_saisir').map((l) => (
             <tr key={l.ligne} data-cession={l.ligne}>
               <th scope="row">{Number(l.ligne)}</th>
               <td>{l.statut === 'saisi' ? l.nature : badge(l.statut)}</td>
@@ -835,8 +857,7 @@ function CadreIII({ c, fm, exerciceId, revision, evenements }: { c: CadreIIIProj
       {revision ? (
         <div className="space-y-3">
           <NeantTableau exerciceId={exerciceId} tableau="2033C_III" declare={c.etat === 'neant'} etiquette="cadre III du 2033-C (aucune cession)" />
-          <ul className="space-y-3">
-            {c.lignes.map((l) => (
+          <ListeEtatJoint classe="space-y-3" capacite={10} items={c.lignes} rendu={(l) => (
               <li key={l.ligne} className="rounded-lg border border-bordure p-3" data-saisie-cession={l.ligne}>
                 <p className="text-sm font-semibold">Cession n° {Number(l.ligne)} {badge(l.statut)}</p>
                 {l.trace ? (
@@ -861,7 +882,8 @@ function CadreIII({ c, fm, exerciceId, revision, evenements }: { c: CadreIIIProj
                   ]}
                 />
               </li>
-            ))}
+            )} />
+          <ul className="space-y-3">
             <li className="rounded-lg border border-bordure p-3" data-saisie-cession="REG">
               <p className="text-sm font-semibold">Régularisations {badge(c.regularisations.statut)}</p>
               <HistoriqueLigne evenements={evenements} cle="2033C_III:REG" fm={fm} />
@@ -1389,8 +1411,7 @@ function Formulaire2033D({ f, fm, exerciceId, revision, evenements }: { f: Formu
         <p className="text-sm" data-testid="cadre-c-2033-d">
           Total à reporter ligne 322 du 2033-B (case 780) : <CelluleCalc c={f.cadreC.total780} fm={fm} /> · état : <strong>{f.cadreC.etat === 'saisi' ? 'lignes saisies' : f.cadreC.etat === 'neant' ? 'néant déclaré' : 'à saisir (ni ligne ni néant)'}</strong>
         </p>
-        <ul className="space-y-1">
-          {f.cadreC.lignes.map((l) => (
+        <ListeEtatJoint classe="space-y-1" capacite={7} items={f.cadreC.lignes} rendu={(l) => (
             <li key={l.ligne} className="text-sm" data-ligne-c={l.ligne}>
               {Number(l.ligne)} — {l.statut === 'saisi' ? `${l.nature} : ${fm(l.montant)}` : badge(l.statut)}
               {l.trace ? <span className="text-xs text-texte-doux"> · saisie le {formaterHorodatage(l.trace.le)} sur la version {l.trace.versionDonnees} des données · « {l.trace.note} »</span> : null}
@@ -1410,8 +1431,7 @@ function Formulaire2033D({ f, fm, exerciceId, revision, evenements }: { f: Formu
                 />
               ) : null}
             </li>
-          ))}
-        </ul>
+          )} />
         {revision ? <NeantTableau exerciceId={exerciceId} tableau="2033D_C" declare={f.cadreC.etat === 'neant'} etiquette="cadre C du 2033-D (aucune dotation non déductible)" /> : null}
       </div>
 
@@ -1625,8 +1645,7 @@ function Formulaire2033F({ f, fm, exerciceId, revision, evenements, numero = '20
       ) : null}
       <div className="space-y-2">
         <h3 className="font-semibold">I — Capital détenu par les personnes morales</h3>
-        <ul className="space-y-2" data-testid="personnes-morales-2033-f">
-          {f.personnesMorales.map((l) => (
+        <ListeEtatJoint classe="space-y-2" testid="personnes-morales-2033-f" capacite={4} items={f.personnesMorales} rendu={(l) => (
             <li key={l.ligne} className="rounded-lg border border-bordure p-3" data-associe-pm={l.ligne}>
               <p className="text-sm">
                 Personne morale {Number(l.ligne)} — {l.statut === 'saisi' ? <strong>{l.valeurs!.denomination}</strong> : badge(l.statut)}
@@ -1657,13 +1676,11 @@ function Formulaire2033F({ f, fm, exerciceId, revision, evenements, numero = '20
                 />
               ) : null}
             </li>
-          ))}
-        </ul>
+          )} />
       </div>
       <div className="space-y-2">
         <h3 className="font-semibold">II — Capital détenu par les personnes physiques</h3>
-        <ul className="space-y-2" data-testid="personnes-physiques-2033-f">
-          {f.personnesPhysiques.map((l) => (
+        <ListeEtatJoint classe="space-y-2" testid="personnes-physiques-2033-f" capacite={2} items={f.personnesPhysiques} rendu={(l) => (
             <li key={l.ligne} className="rounded-lg border border-bordure p-3" data-associe-pp={l.ligne}>
               <p className="text-sm">
                 Personne physique {Number(l.ligne)} — {l.statut === 'saisi' ? <strong>{l.valeurs!.titre} {l.valeurs!.nomFamille} {l.valeurs!.prenoms}</strong> : badge(l.statut)}
@@ -1699,8 +1716,7 @@ function Formulaire2033F({ f, fm, exerciceId, revision, evenements, numero = '20
                 />
               ) : null}
             </li>
-          ))}
-        </ul>
+          )} />
       </div>
       <ul className="list-disc pl-5 text-sm text-texte-doux" data-testid="2033-f-non-prepare">
         {f.nonPrepare.map((n) => (
@@ -1750,8 +1766,7 @@ function Formulaire2033G({ f, fm, exerciceId, revision, evenements, numero = '20
           <NeantTableau exerciceId={exerciceId} tableau="2033G_NB" declare={f.etat === 'neant'} etiquette="tableau 2033-G (aucune filiale détenue à 10 % ou plus)" />
         </div>
       ) : null}
-      <ul className="space-y-2" data-testid="filiales-2033-g">
-        {f.filiales.map((l) => (
+      <ListeEtatJoint classe="space-y-2" testid="filiales-2033-g" capacite={7} items={f.filiales} rendu={(l) => (
           <li key={l.ligne} className="rounded-lg border border-bordure p-3" data-filiale={l.ligne}>
             <p className="text-sm">
               Filiale {Number(l.ligne)} — {l.statut === 'saisi' ? <strong>{l.valeurs!.denomination}</strong> : badge(l.statut)}
@@ -1785,8 +1800,7 @@ function Formulaire2033G({ f, fm, exerciceId, revision, evenements, numero = '20
               />
             ) : null}
           </li>
-        ))}
-      </ul>
+        )} />
       <ul className="list-disc pl-5 text-sm text-texte-doux" data-testid="2033-g-non-prepare">
         {f.nonPrepare.map((n) => (
           <li key={n}>Non préparé — {n}</li>

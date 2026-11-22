@@ -14,7 +14,7 @@
 import { Decimal } from 'decimal.js';
 import { type ChaineDecimale, versChaine } from '../montant.js';
 import type { ControleDetail, EtatCodeCase } from './detail-resultat.js';
-import type { SaisieTableau, TraceSaisie } from './saisies-tableaux.js';
+import { CAPACITES_LIGNES, lignesNumerotees, type SaisieTableau, type TraceSaisie } from './saisies-tableaux.js';
 import { MENTION_PROJET } from './sources-fiscales.js';
 
 export type StatutLigneG = 'a_saisir' | 'saisi' | 'a_revoir';
@@ -47,7 +47,7 @@ export function preparerFormulaire2033G(demande: DemandeFormulaire2033G): Formul
   const v = demande.versionDonnees;
   const nb = new Map(demande.saisiesTableaux.filter((s) => s.tableau === '2033G_NB').map((s) => [s.ligne, s]));
   const fil = new Map(demande.saisiesTableaux.filter((s) => s.tableau === '2033G_FIL').map((s) => [s.ligne, s]));
-  const filiales: LigneFiliale[] = ['01', '02', '03', '04', '05', '06', '07'].map((l) => {
+  const filiales: LigneFiliale[] = lignesNumerotees(CAPACITES_LIGNES.filiales.max).map((l) => {
     const s = fil.get(l);
     const statut = statutDe(s, v);
     return { ligne: l, statut, trace: s ? trace(s) : null, valeurs: statut === 'saisi' ? s!.valeurs : null };
@@ -64,8 +64,8 @@ export function preparerFormulaire2033G(demande: DemandeFormulaire2033G): Formul
   if (montant !== null && retenues.length > Number(montant)) controles.push({ code: 'G_LIGNES_NOMBRE', statut: 'ecart', message: `${retenues.length} filiale(s) listée(s) pour un nombre total de ${versChaine(new Decimal(montant))} (case 905). Contrôle indicatif.`, ecart: versChaine(new Decimal(retenues.length).minus(montant)) });
   const sous10 = retenues.filter((l) => new Decimal(l.valeurs!.pourcentage ?? '0').lessThan(10));
   if (sous10.length > 0) controles.push({ code: 'G_SEUIL_10', statut: 'ecart', message: `Ligne(s) ${sous10.map((l) => Number(l.ligne)).join(', ')} : pourcentage de détention inférieur à 10 % : le tableau ne liste que les détentions directes d’au moins 10 % du capital (formulaire). Contrôle indicatif.` });
-  if (montant !== null && retenues.length < Number(montant) && Number(montant) <= 7) controles.push({ code: 'G_LIGNES_MANQUANTES', statut: 'non_verifie', message: `Le nombre total de filiales (${versChaine(new Decimal(montant))}) excède le nombre de lignes saisies (${retenues.length}) : lignes à saisir.` });
-  controles.push({ code: 'G_SANS_SAISIE', statut: 'non_verifie', message: `${7 - retenues.length} ligne(s) sur 7 sans saisie retenue : aucune n’est présumée vide ; le nombre total est à saisir ou le tableau à déclarer « néant ».` });
+  if (montant !== null && retenues.length < Number(montant) && Number(montant) <= CAPACITES_LIGNES.filiales.max) controles.push({ code: 'G_LIGNES_MANQUANTES', statut: 'non_verifie', message: `Le nombre total de filiales (${versChaine(new Decimal(montant))}) excède le nombre de lignes saisies (${retenues.length}) : lignes à saisir.` });
+  controles.push({ code: 'G_SANS_SAISIE', statut: 'non_verifie', message: `${CAPACITES_LIGNES.filiales.formulaire - Math.min(retenues.length, CAPACITES_LIGNES.filiales.formulaire)} ligne(s) sur ${CAPACITES_LIGNES.filiales.formulaire} du formulaire sans saisie retenue : aucune n’est présumée vide ; le nombre total est à saisir ou le tableau à déclarer « néant ».` });
   return {
     statut: 'projet',
     etat,
@@ -75,7 +75,7 @@ export function preparerFormulaire2033G(demande: DemandeFormulaire2033G): Formul
     controles,
     nonPrepare: [
       'Identification de l’entreprise (SIREN, dénomination, adresse), numéro de dépôt et exercice : repris du dossier, non ressaisis ici.',
-      'Tableaux supplémentaires au-delà de sept filiales (formulaire, renvoi 1) : non préparés.',
+      'L’état joint papier (tableau supplémentaire exigé au-delà de sept filiales, formulaire renvoi 1) : non produit ; les lignes 8 à 30 sont saisies comme lignes d’état joint.',
       'Le portefeuille de titres de participation relève du registre de la société : aucune donnée n’est tirée de la balance.',
     ],
     limites: [

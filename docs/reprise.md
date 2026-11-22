@@ -27,13 +27,14 @@ Document de passage pour reprendre le travail sans relire la conversation. À me
 | Import XLSX des immobilisations | D-124 | df60b4f |
 | Composants par import | D-125 | 048039f |
 | Cadre IV du 2033-D (saisie), dates du 2033-E / 2059-E | D-126 | 1c506a3 |
-| Rapprochement ZJ/YX du 2058-C avec FW/FX du 2052 | D-127 | (ce commit) |
+| Rapprochement ZJ/YX du 2058-C avec FW/FX du 2052 | D-127 | d84485d |
+| États joints (lignes au-delà de la capacité des formulaires 2033) | D-128 | (ce commit) |
 
 ## Restes explicites (ordre de travail)
 1. ~~2059-A à D~~ FAIT (D-121, D-122).
 2. ~~2065~~ page 1 FAIT (D-123) ; restes : annexe 2065 bis-SD, cases à cocher, identification.
 3. ~~Import XLSX~~ FAIT (D-124) ; composants par import FAIT (D-125).
-4. **Restes des séries 2033 et 2058** : cadre IV du 2033-D (690 à 693), dates du 2033-E (024, 016, cessation), tableaux supplémentaires des 2033-F et G (et 2059-F et G), états joints du cadre III du 2033-C (> 10 cessions) et du cadre C du 2033-D (> 7 lignes), feuillet des déficits transférés de plein droit ; 2058-A : feuillets joints ; 2058-B : libellés de nature des provisions, cellules sans code du cadre « méthode par composants » ; 2058-C : rapprochement de ZJ et YX avec les lignes FW et FX du 2052.
+4. **Restes des séries 2033 et 2058** (la série 2033 n'est PAS déclarée complète) : formule du revenu brut social (cadre IV du 2033-D saisi seulement, D-126) ; état papier joint lui-même (lignes d'état joint saisies, D-128) ; feuillet des déficits transférés de plein droit ; 2058-A feuillets joints ; 2058-B libellés de nature des provisions et cellules sans code ; cadre « méthode par composants » du 2058-B ; annexe 2065 bis-SD et cases à cocher du 2065 ; en attente de vérification : CI et défaut WebKit (une seule lecture groupée après le reset du quota GitHub, 2026-11-22 07:03 UTC environ).
 5. Restes antérieurs : 2054 (réévaluation, ventilation des diminutions, composants), 2056, 2057, renvois des tableaux 2050, 2051, 2054, 2055, 2033-A, scission biens / services des comptes 70 (convention à valider), détail (8) des exercices antérieurs du 2053.
 
 ## Sources officielles (SHA-256 vérifiés, millésime 2026)

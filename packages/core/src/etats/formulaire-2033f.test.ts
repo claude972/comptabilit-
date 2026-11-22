@@ -18,8 +18,8 @@ describe('2033-F : abstention, néant, calcul de la notice', () => {
     expect(f.nombres.total906).toMatchObject({ statut: 'abstention', codeCase: '906' });
     expect(JSON.stringify([f.nombres.total905, f.nombres.total906])).not.toMatch(/"montant"/);
     expect([...f.personnesMorales, ...f.personnesPhysiques].every((l) => l.statut === 'a_saisir' && l.valeurs === null)).toBe(true);
-    expect(f.personnesMorales).toHaveLength(4);
-    expect(f.personnesPhysiques).toHaveLength(2);
+    expect(f.personnesMorales).toHaveLength(20); // 4 du formulaire + lignes d’état joint
+    expect(f.personnesPhysiques).toHaveLength(20);
   });
   it('901 à 904 saisies : 905 = 901 + 903 et 906 = 902 + 904 (formulaire)', () => {
     const f = prep([NB('1', '600.00', '1', '400.00')]);
@@ -63,14 +63,16 @@ describe('2033-F : forme des saisies', () => {
     expect(validerSaisieTableau('2033F_PM', '01', { ...PM, siren: '12345' }).join(' ')).toMatch(/siren/);
     expect(validerSaisieTableau('2033F_PM', '01', { ...PM, denomination: '' }).join(' ')).toMatch(/denomination/);
     expect(validerSaisieTableau('2033F_PM', '01', { ...PM, pourcentage: '120.00' }).join(' ')).toMatch(/au plus 100/);
-    expect(validerSaisieTableau('2033F_PM', '05', PM).join(' ')).toMatch(/Ligne inconnue/);
+    expect(validerSaisieTableau('2033F_PM', '05', PM)).toEqual([]); // ligne d’état joint
+    expect(validerSaisieTableau('2033F_PM', '21', PM).join(' ')).toMatch(/Ligne inconnue/);
     expect(validerSaisieTableau('2033F_PM', '01', { ...PM, inconnu: 'x' }).join(' ')).toMatch(/inconnu/);
   });
   it('personne physique : titre M ou MME, date de naissance ISO, lignes 01 et 02 seulement', () => {
     expect(validerSaisieTableau('2033F_PP', '02', PP)).toEqual([]);
     expect(validerSaisieTableau('2033F_PP', '01', { ...PP, titre: 'X' }).join(' ')).toMatch(/titre/);
     expect(validerSaisieTableau('2033F_PP', '01', { ...PP, naissanceDate: '17/05/1980' }).join(' ')).toMatch(/naissanceDate/);
-    expect(validerSaisieTableau('2033F_PP', '03', PP).join(' ')).toMatch(/Ligne inconnue/);
+    expect(validerSaisieTableau('2033F_PP', '03', PP)).toEqual([]); // ligne d’état joint
+    expect(validerSaisieTableau('2033F_PP', '21', PP).join(' ')).toMatch(/Ligne inconnue/);
     expect(validerSaisieTableau('2033F_NB', 'NB', { c901: '1', c902: '2', c903: '3', c904: '4' })).toEqual([]);
     expect(validerSaisieTableau('2033F_NB', 'NB', { c901: '-1', c902: '2', c903: '3', c904: '4' }).join(' ')).toMatch(/positif/);
   });

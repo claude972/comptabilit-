@@ -46,7 +46,8 @@ describe('validation d’une saisie (forme seulement)', () => {
     expect(validerSaisieTableau('2033C_III', '01', { ...CESSION, classement: 'long_terme_42' }).join(' ')).toMatch(/classement/);
     expect(validerSaisieTableau('2033C_III', '01', { nature: 'x', valeurActif: '1.00' }).join(' ')).toMatch(/obligatoire/);
     expect(validerSaisieTableau('2033C_III', '01', { ...CESSION, inconnu: '1' }).join(' ')).toMatch(/inconnu/);
-    expect(validerSaisieTableau('2033C_III', '11', CESSION).join(' ')).toMatch(/Ligne inconnue/);
+    expect(validerSaisieTableau('2033C_III', '11', CESSION)).toEqual([]); // ligne d’état joint
+    expect(validerSaisieTableau('2033C_III', '31', CESSION).join(' ')).toMatch(/Ligne inconnue/);
   });
   it('régularisations signées, case 579 positive, néant sans valeur ; 2054 bis : colonnes positives, cadre B', () => {
     expect(validerSaisieTableau('2033C_III', 'REG', { c5: '-10.00', c6: '0.00', c7: '0.00', c8: '5.00' })).toEqual([]);

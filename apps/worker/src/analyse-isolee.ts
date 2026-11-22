@@ -205,6 +205,11 @@ function lancer(options: OptionsAnalyse): Lancement {
           // Le conteneur est constaté puis supprimé AVANT de rendre l'issue : aucun conteneur ne survit à son analyse.
           const etat = await conteneur.nettoyer();
           if (etat.memoire) arret ??= 'memoire'; // arrêté par le noyau pour dépassement de mémoire (OOM)
+          // Sur certains moteurs (exécuteur GitHub, constaté en CI le 2026-11-21) l'indicateur OOMKilled n'est pas positionné alors que le noyau a
+          // bien tué le processus : un SIGKILL (code 137) que le worker n'a PAS demandé, dans un conteneur dont la mémoire est bornée et sans
+          // swap, ou une erreur d'allocation écrite par l'enfant, est rangé sous « memoire ». INTERPRÉTATION, signalée comme telle : un
+          // SIGKILL extérieur (administrateur) serait rangé de la même façon ; le message n'engage que la cause affichée, pas la sécurité.
+          if (arret === null && !etat.absent && (code === 137 || /MemoryError|Cannot allocate memory/i.test(erreurs))) arret = 'memoire';
           if (etat.absent && arret === null && code !== 0) {
             // Aucun conteneur n'a existé : le moteur a refusé le lancement (image absente, moteur injoignable) : tâche retentée.
             finir();

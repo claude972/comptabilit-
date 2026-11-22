@@ -2284,6 +2284,13 @@ export default async function PageFiscal({ params, searchParams }: { params: Pro
               Liasse — {LIBELLE_REGIME.reel_simplifie}
             </Link>
           </li>
+          {vue === 'liasse' ? (
+            <li>
+              <Link href={`/dossiers/${id}/fiscal/etat-joint?exercice=${exercice.id}&regime=${regime}`} prefetch={false} data-testid="lien-etat-joint">
+                État joint imprimable / exportable
+              </Link>
+            </li>
+          ) : null}
           <li>
             <Link href={`${base}&vue=annexe`} prefetch={false} aria-current={vue === 'annexe' ? 'page' : undefined}>
               Projet d’annexe

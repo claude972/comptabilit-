@@ -176,6 +176,17 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2)).toBe(true);
 
+  // État joint imprimable / exportable (D-138) : identification, statut PROJET, limites, tableaux saisis, export CSV.
+  await page.goto(`/dossiers/${DOSSIER_DEMO}/fiscal?vue=liasse`);
+  await page.getByTestId('lien-etat-joint').click();
+  await expect(page.getByTestId('etat-joint')).toBeVisible();
+  await expect(page.getByTestId('identification-etat-joint')).toContainText('PROJET, non validé');
+  await expect(page.getByTestId('identification-etat-joint')).toContainText('Exercice : du');
+  await expect(page.getByTestId('limites-etat-joint')).toContainText('aucune signature, aucune transmission, aucune validation professionnelle');
+  expect(await page.locator('[data-tableau-joint]').count()).toBeGreaterThan(10);
+  await expect(page.getByTestId('export-csv-etat-joint')).toHaveAttribute('download', /^etat-joint-.*\.csv$/);
+  await page.goto(`/dossiers/${DOSSIER_DEMO}/fiscal`);
+
   // Inventaire : les propositions du moteur sont annoncées comme calculées sans IA et non enregistrées d'office.
   await page.goto(`/dossiers/${DOSSIER_DEMO}/inventaire`);
   const propositions = page.getByTestId('propositions-moteur');

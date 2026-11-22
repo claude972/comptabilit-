@@ -816,6 +816,13 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Non préparé, dit** : identification de l'entreprise, adresses, date d'entrée dans le groupe, société mère (reprises du dossier) ; signatures, professionnel de l'expertise comptable, conseil, identité du déclarant, examen de conformité fiscale. Statut « projet ».
 - **Preuves** : tests du moteur (939 verts), essai d'intégration (65 verts), Playwright (38 lignes du 2065).
 
+### D-138 — État joint imprimable et exportable (2026-11-22)
+
+- **Besoin** : un état joint utilisable hors écran, produit uniquement à partir des saisies existantes. Page `/dossiers/:id/fiscal/etat-joint?exercice=&regime=` (lecture seule, mêmes droits que l'écran fiscal) ; module `apps/web/src/lib/etat-joint.ts` qui NORMALISE la réponse de la liasse sans recalcul ni déduction : grilles (2059-B à D, 2057, 2065, 2065 bis, 2053 (7) et (8), feuillets 2058 et déficits transférés, dates 2033-E / 2059-E), 2059-A, filiales (2033-G / 2059-G), associés (2033-F / 2059-F).
+- **Contenu** : en-tête répété sur chaque page (statut PROJET non validé, dossier, forme juridique, exercice, régime, version des données, date d'édition) ; encadré « Statut et limites » ; pour chaque tableau : état, lignes avec statut (saisi, à saisir, à revoir), totaux **tels que calculés par l'API** ou leur abstention motivée, limites et non-préparé du tableau ; pied de page fixe « PROJET — non validé — aucune signature ni transmission » ; impression A4 paysage, un tableau par page, lignes non coupées. **Export CSV** (UTF-8 avec BOM, séparateur « ; », valeurs commençant par = + - @ neutralisées) en lien de téléchargement local, sans appel réseau.
+- **Limites, dites** : la pagination « Page x / y » dépend du navigateur (le PDF de preuve la porte) ; disposition propre à Comtaple, non officielle ; le SIREN n'est pas encore repris (sujet de l'identification 2065) ; les tableaux à structure propre non listés ci-dessus (2033-C cadre III, 2054 bis, 2055, 2058-A à C, 2059-E, 2056) restent visibles à l'écran fiscal mais ne figurent pas encore dans l'état joint. Aucune signature, aucune transmission, aucune validation professionnelle.
+- **Preuves** : 2 tests unitaires, Playwright `fiscal.spec.ts`, script `tests/reel/capture-etat-joint.mjs` : sur le dossier fictif, 36 tableaux (réel normal, PDF de 40 pages avec « Page 1 / 40 », en-tête et pied PROJET répétés) et 21 (réel simplifié) ; captures et CSV dans `var/captures/etat-joint-*`.
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

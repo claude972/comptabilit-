@@ -163,4 +163,56 @@ describe('worker tué par SIGKILL pendant un import', () => {
       exercice = ancienExercice;
     }
   }, 900_000);
+
+  it('worker tué par SIGKILL pendant la GÉNÉRATION d’un dossier de révision, tâche PERDUE de la file : le rattrapage reprend l’export resté « en cours » (D-165)', async () => {
+    const dossier3 = (await apiCabinet('alice', cabinet, 'POST', '/v1/dossiers', { raisonSociale: `Société reprise export ${SEL} (fictive)`, territoireFiscal: 'metropole', formeJuridique: 'SAS', regimeFiscal: 'IS' })).json.id as string;
+    for (const [u, n] of [[DEMO.alice, 'validation'], [DEMO.remi, 'revision']] as const) expect((await apiCabinet('alice', cabinet, 'PUT', `/v1/dossiers/${dossier3}/habilitations/${u}`, { niveau: n })).statut).toBeLessThan(300);
+    const exercice3 = (await apiCabinet('alice', cabinet, 'POST', `/v1/dossiers/${dossier3}/exercices`, EX)).json.id as string;
+    const [ancienDossier, ancienExercice] = [dossier, exercice];
+    dossier = dossier3;
+    exercice = exercice3;
+    const { choisirCabinet } = await import('./essais/outils.js');
+    try {
+      const fec = genererFecSynthetique({ exercice: EX, nbEcritures: 20_000, graine: 9803 });
+      const w1 = lancer('worker', { NODE_OPTIONS: '--max-old-space-size=2048' });
+      await new Promise((r) => setTimeout(r, 4_000));
+      const lot = await deposerSurApiEssai(Buffer.from(fec.contenu), { usage: 'fec', exerciceId: exercice3, statutDonnees: 'travail_avant_cloture' }, fec.nomFichier);
+      await attendre(() => lotEtat(lot), fini, 240_000);
+      await attendre(async () => (await editeur.query(`select statut from executions_controles where lot_import_id = $1`, [lot])).rows[0] as { statut: string } | undefined, (e) => e?.statut === 'termine', 240_000);
+      choisirCabinet('remi', cabinet);
+      const demande = await apiSur(apiUrl, 'remi', 'POST', `/v1/exercices/${exercice3}/dossier-revision`);
+      choisirCabinet('remi', null);
+      expect(demande.statut).toBe(202);
+      const idExport = demande.json.id as string;
+      const etatExport = async () => (await editeur.query(`select statut, cle_pdf, sha256_pdf from exports_revision where id = $1`, [idExport])).rows[0] as { statut: string; cle_pdf: string | null; sha256_pdf: string | null };
+      // Dès que l'export est « en cours » (transaction de prise en charge validée, génération du PDF en route) : SIGKILL.
+      await attendre(etatExport, (e) => e.statut === 'en_cours', 120_000);
+      w1.kill('SIGKILL');
+      await new Promise((r) => setTimeout(r, 1_500));
+      // La tâche est PERDUE de la file (perte de Redis, tentatives épuisées…) : on la retire, et l'export est ancien.
+      const { Files, connexionRedis, lireConfig } = await import('@comtaple/plateforme');
+      const files = new Files(connexionRedis(lireConfig().REDIS_URL), PREFIXE);
+      try {
+        await files.exports.obliterate({ force: true });
+      } finally {
+        await files.fermer();
+      }
+      const avant = await etatExport();
+      expect(avant.statut).not.toBe('termine');
+      await editeur.query(`update exports_revision set cree_le = now() - interval '40 minutes' where id = $1`, [idExport]);
+      // Nouveau worker : le rattrapage périodique (5 minutes) remet l'export « en cours » en file ; le verrou de session de l'ancien worker a disparu avec lui.
+      lancer('worker', { NODE_OPTIONS: '--max-old-space-size=2048' });
+      const t = Date.now();
+      const fin = await attendre(etatExport, (e) => e.statut === 'termine' || e.statut === 'echec', 480_000);
+      console.log(`[mesure] export repris par le rattrapage après SIGKILL et perte de la tâche : ${fin.statut} en ${Date.now() - t} ms ; état au coup : ${avant.statut}`);
+      expect(fin.statut).toBe('termine');
+      expect(fin.cle_pdf).toBeTruthy();
+      expect(fin.sha256_pdf).toMatch(/^[0-9a-f]{64}$/);
+      expect(Number((await editeur.query(`select count(*) as n from exports_revision where exercice_id = $1`, [exercice3])).rows[0].n)).toBe(1);
+    } finally {
+      choisirCabinet('remi', null);
+      dossier = ancienDossier;
+      exercice = ancienExercice;
+    }
+  }, 900_000);
 });

@@ -87,6 +87,27 @@ describe('rattrapage des traitements en attente', () => {
     }
   });
 
+  it('D-165 : une restitution, une restitution de cabinet et un dossier de révision restés « en cours » depuis longtemps sont remis en file ; les récents ne le sont pas', async () => {
+    const [ancienne, recente, ancienneCab, recenteCab] = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
+    try {
+      for (const [id, age] of [[ancienne, '40 minutes'], [recente, '1 minute']] as const) await admin.query(`insert into restitutions (id, cabinet_id, entite_id, statut, demande_par, cree_le) values ($1, $2, $3, 'en_cours', $4, now() - $5::interval)`, [id, DEMO.cabinetB, DEMO.leroy, DEMO.bruno, age]);
+      for (const [id, age] of [[ancienneCab, '40 minutes'], [recenteCab, '1 minute']] as const) await admin.query(`insert into restitutions_cabinet (id, cabinet_id, statut, perimetre, demande_par, cree_le) values ($1, $2, 'en_cours', '{"inclus":[],"ecartes":[]}'::jsonb, $3, now() - $4::interval)`, [id, DEMO.cabinetB, DEMO.bruno, age]);
+      const bilan = await rattraper(c);
+      expect(bilan.traitements.restitution).toBeGreaterThanOrEqual(1);
+      expect(bilan.traitements.restitution_cabinet).toBeGreaterThanOrEqual(1);
+      const enFile = await c.taches.exports.getJobs(['waiting', 'delayed', 'prioritized']);
+      const rest = enFile.filter((j) => j.name === 'restitution').map((j) => j.data.restitutionId);
+      const cab = enFile.filter((j) => j.name === 'restitution-cabinet').map((j) => j.data.restitutionCabinetId);
+      expect(rest).toContain(ancienne);
+      expect(rest).not.toContain(recente);
+      expect(cab).toContain(ancienneCab);
+      expect(cab).not.toContain(recenteCab);
+    } finally {
+      await admin.query('delete from restitutions where id = any($1)', [[ancienne, recente]]);
+      await admin.query('delete from restitutions_cabinet where id = any($1)', [[ancienneCab, recenteCab]]);
+    }
+  });
+
   it('le rôle du worker ne peut appeler que ses fonctions de rattrapage, qui ne renvoient que des identifiants', async () => {
     const r = await c.bd.pool.query('select * from worker_traitements_en_attente(10, 5)');
     for (const ligne of r.rows) expect(Object.keys(ligne).sort()).toEqual(['cabinet_id', 'identifiant', 'nature']);

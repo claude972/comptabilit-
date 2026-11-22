@@ -1,3 +1,4 @@
+import { avecVerrouTraitement } from './verrou-traitement.js';
 import { and, asc, eq, gt, inArray, isNull, journaliser, notifier, or, schema as s, sql } from '@comtaple/db';
 import { cles, type TacheRestitution } from '@comtaple/plateforme';
 import { COLONNES_ECRITURES, MOTIF_ORIGINAL_NON_CONFORME, ajouterOriginalVerifie, csv, objetJson, ouvrirArchive, tableauJson } from './archive.js';
@@ -32,6 +33,11 @@ const TRANCHE = 1000;
  * empreinte est enregistrée. Aucune donnée d'un autre dossier n'y entre.
  */
 export async function genererRestitution(c: Contexte, t: TacheRestitution): Promise<void> {
+  // Verrou de session (D-165) : un worker vivant garde sa restitution ; une restitution laissée « en cours » par un worker mort est reprise.
+  await avecVerrouTraitement(c, `export:${t.restitutionId}`, () => genererRestitutionVerrouillee(c, t));
+}
+
+async function genererRestitutionVerrouillee(c: Contexte, t: TacheRestitution): Promise<void> {
   const ctx = { cabinetId: t.cabinetId };
   const debut = await c.bd.avecContexte(ctx, async (tx) => {
     const [r] = await tx.select().from(s.restitutions).where(eq(s.restitutions.id, t.restitutionId));

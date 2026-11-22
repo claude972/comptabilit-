@@ -1,3 +1,4 @@
+import { avecVerrouTraitement } from './verrou-traitement.js';
 import { createHash } from 'node:crypto';
 import { asc, eq, journaliser, schema as s, sql } from '@comtaple/db';
 import { cles, type TacheDossierRevision } from '@comtaple/plateforme';
@@ -37,6 +38,11 @@ const montantFr = (v: string | null) => (v === null ? '—' : `${v.replace('.', 
  * Tout le contenu provient de la base (résultats du moteur, décisions humaines) ; rien n'est rédigé par une IA.
  */
 export async function genererDossierRevision(c: Contexte, t: TacheDossierRevision): Promise<void> {
+  // Un worker VIVANT qui génère déjà ce dossier garde le verrou : une tâche en double s'efface ; un worker mort l'a perdu avec sa session et l'export resté « en cours » est repris (D-165).
+  await avecVerrouTraitement(c, `export:${t.exportId}`, () => genererDossierRevisionVerrouille(c, t));
+}
+
+async function genererDossierRevisionVerrouille(c: Contexte, t: TacheDossierRevision): Promise<void> {
   const ctx = { cabinetId: t.cabinetId };
   const d = await c.bd.avecContexte(ctx, async (tx) => {
     const [exp] = await tx.select().from(s.exportsRevision).where(eq(s.exportsRevision.id, t.exportId));

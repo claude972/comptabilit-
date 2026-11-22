@@ -1,3 +1,4 @@
+import { avecVerrouTraitement } from './verrou-traitement.js';
 import { Readable } from 'node:stream';
 import { and, asc, eq, getTableColumns, getTableName, gt, inArray, journaliser, notifier, schema as s, sql } from '@comtaple/db';
 import { cles, type TacheRestitutionCabinet } from '@comtaple/plateforme';
@@ -74,13 +75,18 @@ function tablesDuCabinet(): Array<{ nom: string; table: never; colonnes: Colonne
  * part dans le stockage au fil de sa construction. Aucune donnée d'un dossier hors périmètre, ni d'un autre cabinet.
  */
 export async function genererRestitutionCabinet(c: Contexte, t: TacheRestitutionCabinet): Promise<void> {
+  // Verrou de session (D-165) : un worker vivant garde sa restitution ; une restitution laissée « en cours » par un worker mort est reprise.
+  await avecVerrouTraitement(c, `export:${t.restitutionCabinetId}`, () => genererRestitutionCabinetVerrouillee(c, t));
+}
+
+async function genererRestitutionCabinetVerrouillee(c: Contexte, t: TacheRestitutionCabinet): Promise<void> {
   const ctx = { cabinetId: t.cabinetId };
   // Prise en charge atomique : une tâche en double s'efface.
   const debut = await c.bd.avecContexte(ctx, async (tx) => {
     const [r] = await tx
       .update(s.restitutionsCabinet)
       .set({ statut: 'en_cours', erreur: null })
-      .where(and(eq(s.restitutionsCabinet.id, t.restitutionCabinetId), eq(s.restitutionsCabinet.cabinetId, t.cabinetId), inArray(s.restitutionsCabinet.statut, ['en_attente', 'echec'])))
+      .where(and(eq(s.restitutionsCabinet.id, t.restitutionCabinetId), eq(s.restitutionsCabinet.cabinetId, t.cabinetId), inArray(s.restitutionsCabinet.statut, ['en_attente', 'echec', 'en_cours'])))
       .returning();
     return r ?? null;
   });

@@ -9,6 +9,8 @@ import { estDateIso } from '../dates.js';
 import { dec, schemaChaineDecimale } from '../montant.js';
 
 export const MODES_AMORTISSEMENT = ['lineaire', 'degressif'] as const;
+/** Longueur minimale de la justification écrite du cabinet (sans les espaces de bord). */
+export const JUSTIFICATION_DEGRESSIF_MIN = 20;
 export const COEFFICIENTS_DEGRESSIFS = ['1.25', '1.75', '2.25'] as const;
 
 /** Coefficient du dégressif selon la durée en années (CGI art. 39 A, BOFiP BOI-BIC-AMT-20-20-30 § 120) : 3-4 ans 1,25 ; 5-6 ans 1,75 ; au-delà 2,25. */
@@ -28,6 +30,8 @@ export const schemaImmobilisationBase = z.object({
   modeAmortissement: z.enum(MODES_AMORTISSEMENT).default('lineaire'),
   coefficientDegressif: schemaChaineDecimale.nullable().optional(),
   eligibiliteDegressifConfirmee: z.boolean().nullable().optional(),
+  /** Justification écrite du cabinet (D-150) : pourquoi ce bien est éligible et pourquoi ce mode. Exigée en dégressif, jamais déduite ; elle est conservée avec l'auteur et la date de saisie. */
+  justificationDegressif: z.string().max(1000).nullable().optional(),
   valeurResiduelle: schemaChaineDecimale.nullable().optional(),
   dateSortie: DATE.nullable().optional(),
   composantDe: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, 'identifiant invalide').nullable().optional(),
@@ -61,6 +65,9 @@ export const schemaImmobilisation = schemaImmobilisationBase.superRefine((d, ctx
     if (!d.compteImmobilisation.startsWith('21')) erreur('compteImmobilisation', 'Le dégressif ne vise que des immobilisations corporelles (compte de la classe 21)');
     if (d.dureeMois % 12 !== 0 || d.dureeMois < 36 || d.dureeMois > 600) erreur('dureeMois', 'Dégressif : durée en années entières, de 3 à 50 ans (36 à 600 mois)');
     if (d.eligibiliteDegressifConfirmee === undefined || d.eligibiliteDegressifConfirmee === null) erreur('eligibiliteDegressifConfirmee', 'Dégressif : le cabinet doit confirmer (true) ou infirmer (false) l’éligibilité du bien ; elle n’est jamais devinée');
+    const justification = (d.justificationDegressif ?? '').trim();
+    if (justification.length < JUSTIFICATION_DEGRESSIF_MIN) erreur('justificationDegressif', `Dégressif : une justification écrite du cabinet est exigée (au moins ${JUSTIFICATION_DEGRESSIF_MIN} caractères) : nature du bien, bien neuf, durée normale d’utilisation, motif du mode dégressif`);
+    if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(d.justificationDegressif ?? '')) erreur('justificationDegressif', 'caractères de contrôle interdits');
     if (d.coefficientDegressif === undefined || d.coefficientDegressif === null) erreur('coefficientDegressif', 'Dégressif : le coefficient est à déclarer');
     else if (!(COEFFICIENTS_DEGRESSIFS as readonly string[]).includes(d.coefficientDegressif)) erreur('coefficientDegressif', 'Coefficient attendu : 1.25, 1.75 ou 2.25');
     else if (d.dureeMois % 12 === 0 && d.dureeMois >= 36 && d.dureeMois <= 600 && d.coefficientDegressif !== coefficientDegressifAttendu(d.dureeMois / 12)) {
@@ -69,6 +76,7 @@ export const schemaImmobilisation = schemaImmobilisationBase.superRefine((d, ctx
   } else {
     if (d.coefficientDegressif != null) erreur('coefficientDegressif', 'Le coefficient n’a de sens qu’en mode dégressif');
     if (d.eligibiliteDegressifConfirmee != null) erreur('eligibiliteDegressifConfirmee', 'L’éligibilité au dégressif n’a de sens qu’en mode dégressif');
+    if (d.justificationDegressif != null && d.justificationDegressif.trim() !== '') erreur('justificationDegressif', 'La justification du dégressif n’a de sens qu’en mode dégressif');
   }
 });
 

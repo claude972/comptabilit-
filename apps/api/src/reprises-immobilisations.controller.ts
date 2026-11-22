@@ -321,7 +321,7 @@ export class ReprisesImmobilisationsController {
             cibleType: 'immobilisation',
             cibleId: idParLigne.get(l.ligne)!,
             entiteId,
-            details: { origine: 'reprise', repriseId: reprise!.id, ligne: l.ligne, compte: l.immobilisation!.compteImmobilisation, acquisition: l.immobilisation!.dateAcquisition, dureeMois: l.immobilisation!.dureeMois, mode: l.immobilisation!.modeAmortissement, coefficient: l.immobilisation!.coefficientDegressif, eligibiliteConfirmee: l.immobilisation!.eligibiliteDegressifConfirmee, valeurResiduelle: l.immobilisation!.valeurResiduelle != null, sortie: l.immobilisation!.dateSortie, composant: l.composant ? { designation: l.composant.designation, versBienDuFichier: l.composant.vers.type === 'fichier' } : null },
+            details: { origine: 'reprise', repriseId: reprise!.id, ligne: l.ligne, compte: l.immobilisation!.compteImmobilisation, acquisition: l.immobilisation!.dateAcquisition, dureeMois: l.immobilisation!.dureeMois, mode: l.immobilisation!.modeAmortissement, coefficient: l.immobilisation!.coefficientDegressif, eligibiliteConfirmee: l.immobilisation!.eligibiliteDegressifConfirmee, justifiee: l.immobilisation!.justificationDegressif != null, valeurResiduelle: l.immobilisation!.valeurResiduelle != null, sortie: l.immobilisation!.dateSortie, composant: l.composant ? { designation: l.composant.designation, versBienDuFichier: l.composant.vers.type === 'fichier' } : null },
           })),
         );
       }

@@ -190,7 +190,7 @@ export { PAGE_POUSSEE, PHRASES_POUSSEES, SERVICES_NOTIFICATION, TITRE_POUSSEE, T
 export type { ChargeUtilePoussee, RefusPointAcces, ServiceNotification, TypePousse, VerificationPointAcces } from './notifications-poussees.js';
 
 // Reprise du fichier des immobilisations par import CSV (D-092) : schéma commun à la saisie, lecture, correspondance, contrôle.
-export { COEFFICIENTS_DEGRESSIFS, MODES_AMORTISSEMENT, coefficientDegressifAttendu, schemaImmobilisation, schemaImmobilisationBase } from './immobilisations/schema.js';
+export { COEFFICIENTS_DEGRESSIFS, JUSTIFICATION_DEGRESSIF_MIN, MODES_AMORTISSEMENT, coefficientDegressifAttendu, schemaImmobilisation, schemaImmobilisationBase } from './immobilisations/schema.js';
 export type { ImmobilisationSaisie } from './immobilisations/schema.js';
 export {
   CHAMPS_REPRISE,

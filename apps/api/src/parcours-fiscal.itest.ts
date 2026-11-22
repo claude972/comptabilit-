@@ -246,7 +246,7 @@ describe('états fiscaux — projets, jamais validés', () => {
   }, 180_000);
   it('dégressif NON ACTIVÉ par défaut : saisie possible, aucun calcul, aucune proposition, abstention motivée, aucune reprise', async () => {
     const saisir = (corps: unknown, qui = 'chloe') => api(qui, 'POST', `/v1/dossiers/${dossier}/immobilisations`, corps);
-    const machine = { libelle: 'Machine-outil (défaut)', compteImmobilisation: '215400', baseAmortissable: '10000.00', dateAcquisition: '2025-11-05', dateMiseEnService: '2025-11-15', dureeMois: 120, modeAmortissement: 'degressif', coefficientDegressif: '2.25', eligibiliteDegressifConfirmee: true };
+    const machine = { libelle: 'Machine-outil (défaut)', compteImmobilisation: '215400', baseAmortissable: '10000.00', dateAcquisition: '2025-11-05', dateMiseEnService: '2025-11-15', dureeMois: 120, modeAmortissement: 'degressif', coefficientDegressif: '2.25', eligibiliteDegressifConfirmee: true, justificationDegressif: 'Matériel neuf, durée normale de 10 ans, bien visé selon le cabinet (fiche fictive).' };
     // La date d'acquisition est obligatoire en dégressif, jamais postérieure à la mise en service, facultative en linéaire.
     expect((await saisir({ ...machine, dateAcquisition: undefined })).statut).toBe(400);
     expect((await saisir({ ...machine, dateAcquisition: null })).statut).toBe(400);
@@ -283,7 +283,7 @@ describe('états fiscaux — projets, jamais validés', () => {
   it('amortissements (dégressif ACTIVÉ sur une seconde API) : dégressif déclaré, valeur résiduelle, composants, sortie d’actif, rapprochement avec une dotation déjà comptabilisée, droits', async () => {
     const saisir = (corps: unknown, qui = 'chloe') => api(qui, 'POST', `/v1/dossiers/${dossier}/immobilisations`, corps);
     const propositions = async () => (await apiDegressifActif('chloe', 'GET', `/v1/exercices/${exercice}/inventaire/propositions`)).json;
-    const machine = { libelle: 'Machine-outil', compteImmobilisation: '215400', baseAmortissable: '10000.00', dateAcquisition: '2025-11-05', dateMiseEnService: '2025-11-15', dureeMois: 120, modeAmortissement: 'degressif', coefficientDegressif: '2.25', eligibiliteDegressifConfirmee: true };
+    const machine = { libelle: 'Machine-outil', compteImmobilisation: '215400', baseAmortissable: '10000.00', dateAcquisition: '2025-11-05', dateMiseEnService: '2025-11-15', dureeMois: 120, modeAmortissement: 'degressif', coefficientDegressif: '2.25', eligibiliteDegressifConfirmee: true, justificationDegressif: 'Matériel neuf, durée normale de 10 ans, bien visé selon le cabinet (fiche fictive).' };
     // Saisies refusées : le dégressif ne se devine pas ; chaque règle croisée est vérifiée côté serveur.
     const refus: Array<[string, Record<string, unknown>]> = [
       ['date d’acquisition manquante', { dateAcquisition: undefined }],
@@ -292,6 +292,8 @@ describe('états fiscaux — projets, jamais validés', () => {
       ['coefficient incohérent avec la durée', { coefficientDegressif: '1.75' }],
       ['coefficient inconnu', { coefficientDegressif: '2.5' }],
       ['éligibilité non confirmée', { eligibiliteDegressifConfirmee: null }],
+      ['justification manquante', { justificationDegressif: undefined }],
+      ['justification trop courte', { justificationDegressif: 'court' }],
       ['durée non annuelle', { dureeMois: 54, coefficientDegressif: '1.75' }],
       ['durée inférieure à trois ans', { dureeMois: 24, coefficientDegressif: '1.25' }],
       ['compte incorporel', { compteImmobilisation: '205000' }],
@@ -314,7 +316,7 @@ describe('états fiscaux — projets, jamais validés', () => {
     // Dégressif accepté : proposition équilibrée, plan année par année, point dérogatoire signalé, aucune écriture dérogatoire.
     const creee = await saisir(machine);
     expect(creee.statut).toBe(201);
-    expect(creee.json).toMatchObject({ modeAmortissement: 'degressif', coefficientDegressif: '2.25', eligibiliteDegressifConfirmee: true, valeurResiduelle: null, dateSortie: null, composantDe: null });
+    expect(creee.json).toMatchObject({ modeAmortissement: 'degressif', coefficientDegressif: '2.25', eligibiliteDegressifConfirmee: true, justificationDegressif: 'Matériel neuf, durée normale de 10 ans, bien visé selon le cabinet (fiche fictive).',  valeurResiduelle: null, dateSortie: null, composantDe: null });
     const liste = await propositions();
     const deg = liste.propositions.find((p: any) => p.type === 'dotation_amortissement_degressif');
     expect(deg, JSON.stringify(liste.abstentions).slice(0, 600)).toMatchObject({ equilibree: true, totalDebit: '375.00', origine: { regle: 'INV-AMORT-DEG', versionRegle: '1.1.0' }, reprise: null });

@@ -1532,6 +1532,8 @@ export const immobilisations = pgTable(
     coefficientDegressif: numeric('coefficient_degressif', { precision: 4, scale: 2 }),
     /** Le cabinet confirme que le bien remplit les conditions du dégressif ; jamais déduit. */
     eligibiliteDegressifConfirmee: boolean('eligibilite_degressif_confirmee'),
+    /** Justification écrite du cabinet pour le dégressif (D-150) ; saisie par `saisiePar` à `creeLe` (ajout seul : retirer puis ressaisir). Null pour un bien linéaire ou antérieur à 0070. */
+    justificationDegressif: text('justification_degressif'),
     /** Valeur résiduelle, strictement inférieure à la valeur brute ; null = aucune. */
     valeurResiduelle: montant('valeur_residuelle'),
     /** Date de sortie de l'actif (cession, mise au rebut) : le moteur s'abstient quand elle tombe dans ou avant l'exercice. */

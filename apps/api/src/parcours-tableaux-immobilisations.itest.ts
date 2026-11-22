@@ -138,7 +138,7 @@ describe('tableaux 2054, 2055 et 2033-C — projets déduits de la balance et du
     const bureau = await saisir({ libelle: 'Ordinateurs', compteImmobilisation: '218300', baseAmortissable: '10000.00', dateMiseEnService: '2024-06-01', dureeMois: 60, amortissementsAnterieurs: '3500.00' });
     const machine = await saisir({ libelle: 'Machine A', compteImmobilisation: '215000', baseAmortissable: '30000.00', dateMiseEnService: '2025-03-10', dureeMois: 120, amortissementsAnterieurs: '2500.00' });
     const sortie = await saisir({ libelle: 'Presse cédée', compteImmobilisation: '215000', baseAmortissable: '1000.00', dateMiseEnService: '2025-03-10', dureeMois: 60, dateSortie: '2026-04-30' });
-    const degressif = await saisir({ libelle: 'Compresseur dégressif', compteImmobilisation: '215000', baseAmortissable: '9000.00', dateAcquisition: '2026-01-10', dateMiseEnService: '2026-01-10', dureeMois: 60, modeAmortissement: 'degressif', coefficientDegressif: '1.75', eligibiliteDegressifConfirmee: true });
+    const degressif = await saisir({ libelle: 'Compresseur dégressif', compteImmobilisation: '215000', baseAmortissable: '9000.00', dateAcquisition: '2026-01-10', dateMiseEnService: '2026-01-10', dureeMois: 60, modeAmortissement: 'degressif', coefficientDegressif: '1.75', eligibiliteDegressifConfirmee: true, justificationDegressif: 'Matériel neuf, durée normale de 10 ans, bien visé selon le cabinet (fiche fictive).' });
     for (const c of [bureau, machine, sortie, degressif]) expect(c.statut, JSON.stringify(c.json)).toBeLessThan(300);
     const t = (await liasse(exN)).json.tableauxImmobilisations;
     expect(t.fichier).toMatchObject({ fourni: true, nbImmobilisations: 4, degressif: { active: false } });

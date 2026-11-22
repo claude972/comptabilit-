@@ -491,6 +491,13 @@
       "when": 1795328737796,
       "tag": "0069_identification_2065",
       "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1795335276160,
+      "tag": "0070_justification_degressif",
+      "breakpoints": true
     }
   ]
 }

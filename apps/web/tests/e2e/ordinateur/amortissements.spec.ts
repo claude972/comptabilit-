@@ -50,6 +50,7 @@ test.describe('amortissements — saisie, dégressif, rapprochement', () => {
     await f.getByLabel('Durée d’amortissement (mois)').fill('120');
     await f.getByLabel('Coefficient dégressif déclaré').selectOption('2.25');
     await f.getByLabel('Je confirme que le bien remplit les conditions du dégressif').check();
+    await f.getByTestId('justification-degressif').fill('Matériel neuf, durée normale de 10 ans, bien visé selon le cabinet (fiche fictive).');
     const envoi = page.waitForRequest((r) => r.method() === 'POST' && r.url().includes('/immobilisations'));
     await f.getByRole('button', { name: 'Enregistrer l’immobilisation' }).click();
     expect((await envoi).postDataJSON()).toMatchObject({ modeAmortissement: 'degressif', dateAcquisition: '2025-11-05', dateMiseEnService: '2025-11-15' });
@@ -103,6 +104,7 @@ test.describe('amortissements — saisie, dégressif, rapprochement', () => {
     // Coefficient incohérent avec la durée : refusé par le serveur, rien n'est enregistré.
     await f.getByLabel('Coefficient dégressif déclaré').selectOption('1.75');
     await f.getByLabel('Je confirme que le bien remplit les conditions du dégressif').check();
+    await f.getByTestId('justification-degressif').fill('Matériel neuf, durée normale de 10 ans, bien visé selon le cabinet (fiche fictive).');
     await f.getByRole('button', { name: 'Enregistrer l’immobilisation' }).click();
     await expect(f.getByRole('alert')).toContainText('Coefficient incohérent avec la durée de 10 ans');
     await expect(page.locator('[data-immobilisation]')).toHaveCount(0);

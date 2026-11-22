@@ -230,17 +230,24 @@ describe('contrôle d’une ligne : mêmes règles que la saisie manuelle', () =
     expect(a('A;218300;100,00;01/03/2024;15/03/2024;60;20,00;;50,00').immobilisation).toMatchObject({ valeurResiduelle: '20.00', amortissementsAnterieurs: '50.00', dateAcquisition: '2024-03-01' });
   });
 
-  const EDEG = 'Désignation;Compte;Valeur brute;Date d’acquisition;Date de mise en service;Durée (mois);Mode d’amortissement;Coefficient dégressif;Éligibilité dégressif';
-  const deg = (l: string) => analyser(`${EDEG}\n${l}\n`).lignes[0]!;
+  const EDEG = 'Désignation;Compte;Valeur brute;Date d’acquisition;Date de mise en service;Durée (mois);Mode d’amortissement;Coefficient dégressif;Éligibilité dégressif;Justification dégressif';
+  // La justification du cabinet est exigée en dégressif (D-150) : fournie par défaut sur les lignes dégressives, vide sinon.
+  const deg = (l: string, justification = /;d[ée]gressif;/i.test(l) ? 'Matériel neuf, durée normale de 10 ans (fictif)' : '') => analyser(`${EDEG}\n${l};${justification}\n`).lignes[0]!;
 
   it('dégressif : la date d’acquisition est OBLIGATOIRE, comme à la saisie manuelle', () => {
     expect(deg('Four;215400;10000,00;;15/11/2025;120;dégressif;2,25;oui').motifs.join(' ')).toMatch(/Dégressif : la date d’acquisition \(ou de construction\) est obligatoire/);
   });
 
+  it('dégressif sans justification écrite, ou trop courte : refusé avec un motif explicite ; justification sur un bien linéaire : refusée (D-150)', () => {
+    expect(deg('Four;215400;10000,00;05/11/2025;15/11/2025;120;dégressif;2,25;oui', '').motifs.join(' ')).toMatch(/justification écrite du cabinet est exigée/);
+    expect(deg('Four;215400;10000,00;05/11/2025;15/11/2025;120;dégressif;2,25;oui', 'trop court').motifs.join(' ')).toMatch(/au moins 20 caractères/);
+    expect(deg('Four;215400;10000,00;05/11/2025;15/11/2025;120;linéaire;;', 'Justification sur un bien linéaire').motifs.join(' ')).toMatch(/n’a de sens qu’en mode dégressif/);
+  });
+
   it('dégressif complet : enregistré tel que déclaré (coefficient et éligibilité inclus), aucun calcul ici', () => {
     const l = deg('Four;215400;10000,00;05/11/2025;15/11/2025;120;Dégressif;2,25;oui');
     expect(l.statut).toBe('valide');
-    expect(l.immobilisation).toMatchObject({ modeAmortissement: 'degressif', coefficientDegressif: '2.25', eligibiliteDegressifConfirmee: true, dateAcquisition: '2025-11-05', dureeMois: 120 });
+    expect(l.immobilisation).toMatchObject({ justificationDegressif: 'Matériel neuf, durée normale de 10 ans (fictif)', modeAmortissement: 'degressif', coefficientDegressif: '2.25', eligibiliteDegressifConfirmee: true, dateAcquisition: '2025-11-05', dureeMois: 120 });
   });
 
   it('dégressif : coefficient incohérent, éligibilité absente, compte hors classe 21, durée non entière en années : rejets', () => {

@@ -344,6 +344,8 @@ test('(f) rentabilité : honoraires et temps observés affichés ; marge « non 
   await expect(ligne.getByLabel('Mission de ce travail')).toHaveValue('');
   await ligne.getByLabel('Mission de ce travail').selectOption(mission.json.id);
   await expect(ligne.getByText('Travail affecté.')).toBeVisible({ timeout: 20_000 });
+  // Aucune requête en vol avant le rechargement (D-151) : Firefox en CI a interrompu ce rechargement (NS_BINDING_ABORTED) ; hypothèse non confirmée.
+  await chloe.waitForLoadState('networkidle');
   await chloe.reload();
   await expect(chloe.locator('tr[data-travail]', { hasText: 'Saisie de février' }).getByLabel('Mission de ce travail')).toHaveValue(mission.json.id);
   // Une collaboratrice n'accède pas à la rentabilité.

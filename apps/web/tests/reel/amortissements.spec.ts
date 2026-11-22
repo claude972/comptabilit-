@@ -63,6 +63,7 @@ test('amortissements : dégressif déclaré, explications, rapprochement, sans d
     // Un coefficient incohérent avec la durée est refusé par l'API réelle ; rien n'est enregistré.
     await f.getByLabel('Coefficient dégressif déclaré').selectOption('1.75');
     await f.getByLabel('Je confirme que le bien remplit les conditions du dégressif').check();
+    await f.getByTestId('justification-degressif').fill('Matériel neuf, durée normale de 10 ans, bien visé selon le cabinet (fiche fictive).');
     await f.getByRole('button', { name: 'Enregistrer l’immobilisation' }).click();
     await expect(f.getByRole('alert')).toContainText('incohérent');
     await expect(page.locator('[data-immobilisation]', { hasText: libelle })).toHaveCount(0);

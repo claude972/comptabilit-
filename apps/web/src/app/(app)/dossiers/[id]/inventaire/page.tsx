@@ -237,6 +237,11 @@ export default async function PageInventaire({ params, searchParams }: { params:
                   <td>
                     {LIBELLE_MODE_AMORTISSEMENT[i.modeAmortissement ?? 'lineaire'] ?? i.modeAmortissement}
                     {i.modeAmortissement === 'degressif' ? ` (coefficient ${(i.coefficientDegressif ?? '').replace('.', ',')}${i.eligibiliteDegressifConfirmee ? ', éligibilité confirmée' : ', éligibilité non confirmée'})` : ''}
+                    {i.modeAmortissement === 'degressif' ? (
+                      <span className="block text-sm text-texte-doux" data-testid="justification-immobilisation">
+                        {i.justificationDegressif ? `Justification du cabinet : ${i.justificationDegressif}` : 'Justification du cabinet absente : aucune dotation dégressive n’est calculée.'}
+                      </span>
+                    ) : null}
                   </td>
                   <td className="text-right tabular-nums">{i.valeurResiduelle ? formaterMontant(i.valeurResiduelle) : '—'}</td>
                   <td>{i.dateAcquisition ? formaterDate(i.dateAcquisition) : '—'}</td>

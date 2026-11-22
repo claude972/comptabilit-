@@ -43,6 +43,7 @@ export const CODES_CHAMPS_REPRISE = [
   'modeAmortissement',
   'coefficientDegressif',
   'eligibiliteDegressifConfirmee',
+  'justificationDegressif',
   'valeurResiduelle',
   'dateSortie',
   'composantDe',
@@ -61,6 +62,7 @@ export const CHAMPS_REPRISE: readonly ChampReprise[] = [
   { code: 'amortissementsAnterieurs', libelle: 'Amortissements antérieurs (€)', obligatoire: false, aide: 'Cumul déjà pratiqué avant l’exercice ; vide = non renseigné.' },
   { code: 'modeAmortissement', libelle: 'Mode d’amortissement', obligatoire: false, aide: 'Linéaire ou dégressif ; vide = linéaire, comme à la saisie manuelle.' },
   { code: 'coefficientDegressif', libelle: 'Coefficient dégressif', obligatoire: false, aide: '1,25 ; 1,75 ou 2,25, seulement pour un bien dégressif.' },
+  { code: 'justificationDegressif', libelle: 'Justification du dégressif', obligatoire: false, aide: 'Texte du cabinet (20 caractères au moins), exigé pour un bien dégressif : jamais rédigé à votre place.' },
   { code: 'eligibiliteDegressifConfirmee', libelle: 'Éligibilité au dégressif confirmée', obligatoire: false, aide: 'Oui/non, seulement pour un bien dégressif : jamais devinée.' },
   { code: 'valeurResiduelle', libelle: 'Valeur résiduelle (€)', obligatoire: false, aide: 'Strictement inférieure à la valeur brute.' },
   { code: 'dateSortie', libelle: 'Date de sortie', obligatoire: false, aide: 'Cession ou mise au rebut.' },
@@ -285,6 +287,7 @@ const SYNONYMES: Partial<Record<CodeChampReprise, readonly string[]>> = {
   modeAmortissement: ['mode amortissement', 'mode d amortissement', 'mode', 'type amortissement', 'type d amortissement', 'methode d amortissement', 'methode amortissement'],
   coefficientDegressif: ['coefficient degressif', 'coefficient', 'coef degressif', 'coef'],
   eligibiliteDegressifConfirmee: ['eligibilite degressif', 'eligibilite au degressif', 'degressif eligible', 'eligible degressif', 'eligibilite degressif confirmee', 'eligible au degressif'],
+  justificationDegressif: ['justification degressif', 'justification du degressif', 'justification', 'motif degressif', 'justification eligibilite'],
   valeurResiduelle: ['valeur residuelle', 'valeur resid', 'residuelle', 'vr', 'valeur residuelle eur'],
   composantDe: ['composant de', 'composant du bien', 'bien principal', 'structure', 'rattache a', 'rattache au bien', 'immobilisation principale', 'designation structure', 'designation du bien principal'],
   dateSortie: ['date sortie', 'date de sortie', 'sortie', 'date cession', 'date de cession', 'date de mise au rebut', 'date rebut', 'date de sortie de l actif'],
@@ -383,6 +386,7 @@ export interface ImmobilisationReprise {
   modeAmortissement: 'lineaire' | 'degressif';
   coefficientDegressif: string | null;
   eligibiliteDegressifConfirmee: boolean | null;
+  justificationDegressif: string | null;
   valeurResiduelle: string | null;
   dateSortie: string | null;
 }
@@ -527,6 +531,7 @@ export function controlerLigne(numero: number, cellules: readonly string[], ente
     false,
   );
   const eligible = lire('eligibiliteDegressifConfirmee', lireBooleen, false);
+  const justification = lire('justificationDegressif', (t) => (CONTROLE.test(t) ? ko('caractères de contrôle interdits') : t.length > 1000 ? ko('1 000 caractères au plus') : ok(t)), false);
   const residuelle = lire('valeurResiduelle', lireMontant, false);
   const sortie = lire('dateSortie', lireDate, false);
   lire('composantDe', (t) => (CONTROLE.test(t) ? ko('caractères de contrôle interdits') : t.length > 200 ? ko('200 caractères au plus') : ok(t)), false);
@@ -543,6 +548,7 @@ export function controlerLigne(numero: number, cellules: readonly string[], ente
     ...(anterieurs !== undefined ? { amortissementsAnterieurs: anterieurs } : {}),
     ...(coefficient !== undefined ? { coefficientDegressif: coefficient } : {}),
     ...(eligible !== undefined ? { eligibiliteDegressifConfirmee: eligible } : {}),
+    ...(justification !== undefined ? { justificationDegressif: justification } : {}),
     ...(residuelle !== undefined ? { valeurResiduelle: residuelle } : {}),
     ...(sortie !== undefined ? { dateSortie: sortie } : {}),
   };
@@ -572,6 +578,7 @@ export function controlerLigne(numero: number, cellules: readonly string[], ente
     modeAmortissement: d.modeAmortissement,
     coefficientDegressif: d.modeAmortissement === 'degressif' ? (d.coefficientDegressif as string) : null,
     eligibiliteDegressifConfirmee: d.modeAmortissement === 'degressif' ? (d.eligibiliteDegressifConfirmee as boolean) : null,
+    justificationDegressif: d.modeAmortissement === 'degressif' ? (d.justificationDegressif as string).trim() : null,
     valeurResiduelle: d.valeurResiduelle ?? null,
     dateSortie: d.dateSortie ?? null,
   };

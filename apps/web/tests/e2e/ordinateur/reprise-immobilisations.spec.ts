@@ -9,15 +9,15 @@ import { ID, etatDe, journal, simulateur, statutBff, surveiller } from '../outil
 
 const CHLOE = '11111111-1111-4111-8111-111111111103';
 const reprise = `/dossiers/${ID.dupain}/inventaire/reprise`;
-const ENTETE = 'Désignation;Compte;Valeur brute;Date d’acquisition;Date de mise en service;Durée (mois);Mode d’amortissement;Coefficient dégressif;Éligibilité dégressif';
+const ENTETE = 'Désignation;Compte;Valeur brute;Date d’acquisition;Date de mise en service;Durée (mois);Mode d’amortissement;Coefficient dégressif;Éligibilité dégressif;Justification dégressif';
 const FICHIER = [
   ENTETE,
-  'Serveur de fichiers;218300;12 345,60;;15/03/2024;60;;;',
-  'Four mixte;215400;10000,00;05/11/2025;15/11/2025;120;dégressif;2,25;oui',
-  'Machine sans date;215400;10000,00;;15/11/2025;120;dégressif;2,25;oui',
-  'serveur  de fichiers;218300;12345,60;;15/03/2024;36;;;',
-  '=HYPERLINK("http://exemple.test","x");218400;100,00;;01/01/2024;12;;;',
-  'Montant ambigu;218400;1.234;;01/01/2024;12;;;',
+  'Serveur de fichiers;218300;12 345,60;;15/03/2024;60;;;;',
+  'Four mixte;215400;10000,00;05/11/2025;15/11/2025;120;dégressif;2,25;oui;Matériel neuf, durée normale de 10 ans (fiche fictive)',
+  'Machine sans date;215400;10000,00;;15/11/2025;120;dégressif;2,25;oui;Matériel neuf, durée normale de 10 ans (fiche fictive)',
+  'serveur  de fichiers;218300;12345,60;;15/03/2024;36;;;;',
+  '=HYPERLINK("http://exemple.test","x");218400;100,00;;01/01/2024;12;;;;',
+  'Montant ambigu;218400;1.234;;01/01/2024;12;;;;',
 ].join('\r\n');
 /** Alerte de l'écran (hors annonceur de navigation de Next). */
 const alerte = (page: import('@playwright/test').Page) => page.locator('[role="alert"]:not(#__next-route-announcer__)');
@@ -163,7 +163,7 @@ test.describe('reprise des immobilisations — collaborateur', () => {
 
   test('aperçu obsolète à la validation (une immobilisation identique apparaît entre-temps) : 409 expliqué, aperçu recalculé, rien d’importé', async ({ page }) => {
     await page.goto(reprise);
-    await page.getByLabel('Fichier des immobilisations (CSV ou XLSX)').setInputFiles(fichier([ENTETE, 'Bureau;218400;500,00;;01/01/2024;60;;;'].join('\n')));
+    await page.getByLabel('Fichier des immobilisations (CSV ou XLSX)').setInputFiles(fichier([ENTETE, 'Bureau;218400;500,00;;01/01/2024;60;;;;'].join('\n')));
     await expect(page.getByTestId('decomptes-apercu')).toContainText('Valides : 1');
     await page.getByRole('checkbox', { name: /J’ai relu l’aperçu/ }).check();
     // Pendant ce temps, une personne saisit la même immobilisation à la main.
@@ -185,7 +185,7 @@ test.describe('reprise des immobilisations — collaborateur', () => {
   test('un lecteur voit les rapports mais ne peut pas importer ; le déposant est refusé', async ({ page, browser }) => {
     // Une première reprise par la collaboratrice.
     await page.goto(reprise);
-    await page.getByLabel('Fichier des immobilisations (CSV ou XLSX)').setInputFiles(fichier([ENTETE, 'Bureau;218400;500,00;;01/01/2024;60;;;'].join('\n')));
+    await page.getByLabel('Fichier des immobilisations (CSV ou XLSX)').setInputFiles(fichier([ENTETE, 'Bureau;218400;500,00;;01/01/2024;60;;;;'].join('\n')));
     await page.getByRole('checkbox', { name: /J’ai relu l’aperçu/ }).check();
     await page.getByRole('button', { name: /Valider l’import/ }).click();
     await expect(page.getByTestId('rapport-reprise')).toBeVisible();
@@ -198,7 +198,7 @@ test.describe('reprise des immobilisations — collaborateur', () => {
     await expect(page.getByTestId('import-reserve')).toContainText('réservé au niveau « collaboration »');
     await expect(page.getByLabel('Fichier des immobilisations (CSV ou XLSX)')).toHaveCount(0);
     await expect(page.getByRole('region', { name: 'Reprises du fichier des immobilisations de ce dossier' })).toContainText('immobilisations.csv');
-    expect(await statutBff(page, 'POST', `v1/dossiers/${ID.dupain}/reprises-immobilisations/apercu`, { nomFichier: 'a.csv', contenuBase64: Buffer.from(`${ENTETE}\nA;218300;1,00;;01/01/2024;12;;;`).toString('base64') })).toBe(403);
+    expect(await statutBff(page, 'POST', `v1/dossiers/${ID.dupain}/reprises-immobilisations/apercu`, { nomFichier: 'a.csv', contenuBase64: Buffer.from(`${ENTETE}\nA;218300;1,00;;01/01/2024;12;;;;`).toString('base64') })).toBe(403);
     // Le lien de l'inventaire devient une simple consultation des rapports.
     await page.goto(`/dossiers/${ID.dupain}/inventaire`);
     await expect(page.getByTestId('lien-reprise')).toHaveText('Rapports des reprises du fichier d’immobilisations');

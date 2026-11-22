@@ -255,7 +255,7 @@ describe('fichier des immobilisations : rapprochement affiché, jamais corrigé'
   it('signale sortie d’actif et composants sans les traiter, et garde le dégressif non activé', () => {
     const sortie: ImmobilisationAAmortir = { ...technique, id: 'I-SORTIE', libelle: 'Machine B', baseAmortissable: '10000.00', dateSortie: '2026-04-30' };
     const composant: ImmobilisationAAmortir = { ...base, id: 'I-COMP', libelle: 'Composant', compteImmobilisation: '213500', baseAmortissable: '1000.00', composantDe: 'I-STRUCTURE' };
-    const degressif: ImmobilisationAAmortir = { ...base, id: 'I-DEG', libelle: 'Matériel dégressif', compteImmobilisation: '215000', baseAmortissable: '9000.00', dateAcquisition: '2026-01-10', modeAmortissement: 'degressif', coefficientDegressif: '1.75', eligibiliteDegressifConfirmee: true, dureeMois: 60, dateMiseEnService: '2026-01-10' };
+    const degressif: ImmobilisationAAmortir = { ...base, id: 'I-DEG', libelle: 'Matériel dégressif', compteImmobilisation: '215000', baseAmortissable: '9000.00', dateAcquisition: '2026-01-10', modeAmortissement: 'degressif', coefficientDegressif: '1.75', eligibiliteDegressifConfirmee: true, justificationDegressif: 'Matériel neuf de 5 ans, fiche fictive du cabinet.', dureeMois: 60, dateMiseEnService: '2026-01-10' };
     const p = projet(preparerTableauxImmobilisations(demande({ immobilisations: [technique, sortie, composant, degressif] })));
     const t = ligne(p, '2054', 'A', 'INST_TECH').fichierBrut;
     expect(t?.sortiesDansExercice).toEqual({ nombre: 1, valeurBrute: '10000.00' });

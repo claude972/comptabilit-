@@ -116,17 +116,17 @@ describe('aperçu, validation, rapport', () => {
 
   it('APERÇU : mapping proposé, statuts par ligne (valide, invalide avec motif, doublon du dossier, doublon du fichier) et AUCUNE écriture', async () => {
     texte = [
-      ENTETE,
-      'Serveur de fichiers;218300;12 345,60;;15/03/2024;60;;;;',
-      'Four mixte;215400;10000,00;05/11/2025;15/11/2025;120;dégressif;2,25;oui;',
-      'Machine sans date;215400;10000,00;;15/11/2025;120;dégressif;2,25;oui;',
-      '  CAMION  benne ;218200;45000,00;;01/06/2023;60;;;;',
-      'Serveur de fichiers;218300;12345,60;;15/03/2024;36;;;;',
-      '=HYPERLINK("http://exemple.test","x");218400;100,00;;01/01/2024;12;;;;',
-      'Compte hors classe;231000;100,00;;01/01/2024;12;;;;',
-      'Montant ambigu;218400;1.234;;01/01/2024;12;;;;',
-      'Date impossible;218400;100,00;;30/02/2024;12;;;;',
-      'Logiciel métier;205000;2 000,00;;01/02/2024;36;;;;50,00',
+      `${ENTETE};Justification dégressif`,
+      'Serveur de fichiers;218300;12 345,60;;15/03/2024;60;;;;;',
+      'Four mixte;215400;10000,00;05/11/2025;15/11/2025;120;dégressif;2,25;oui;;Matériel neuf, durée normale de 10 ans (fiche fictive)',
+      'Machine sans date;215400;10000,00;;15/11/2025;120;dégressif;2,25;oui;;Matériel neuf, durée normale de 10 ans (fiche fictive)',
+      '  CAMION  benne ;218200;45000,00;;01/06/2023;60;;;;;',
+      'Serveur de fichiers;218300;12345,60;;15/03/2024;36;;;;;',
+      '=HYPERLINK("http://exemple.test","x");218400;100,00;;01/01/2024;12;;;;;',
+      'Compte hors classe;231000;100,00;;01/01/2024;12;;;;;',
+      'Montant ambigu;218400;1.234;;01/01/2024;12;;;;;',
+      'Date impossible;218400;100,00;;30/02/2024;12;;;;;',
+      'Logiciel métier;205000;2 000,00;;01/02/2024;36;;;;50,00;',
       'Colonnes manquantes;218400;100,00',
     ].join('\r\n');
     const [nbImmo, nbReprises, nbLignes, nbFichiers, nbJournal] = [await compter('immobilisations'), await compter('reprises_immobilisations'), await compter('lignes_reprise_immobilisations'), Number((await editeur.query('select count(*)::int as n from fichiers where cabinet_id = $1', [cabinet])).rows[0].n), (await journalDe()).length];
@@ -279,7 +279,7 @@ describe('aperçu, validation, rapport', () => {
   });
 
   it('DOUBLONS jamais écrasants : un fichier enrichi d’une ligne nouvelle ignore les lignes déjà présentes et ne modifie rien', async () => {
-    const enrichi = `${texte}\r\nImprimante;218400;350,00;;01/09/2025;36;;;;`;
+    const enrichi = `${texte}\r\nImprimante;218400;350,00;;01/09/2025;36;;;;;`;
     const ap4 = await apercu('chloe', dossier, enrichi);
     expect(ap4.json.comptes).toMatchObject({ total: 12, valides: 1, doublons: 6 });
     const avantImport = await instantane();

@@ -21,6 +21,7 @@ import { Decimal } from 'decimal.js';
 import { creditDe, debitDe } from '../controles/outils.js';
 import type { Constat, LigneEcriture, SourceRegle } from '../controles/types.js';
 import { dateCivileValide, ecartEnJours, estBissextile, estDateIso, isoDepuisJours, joursDepuisEpoque, versIso } from '../dates.js';
+import { JUSTIFICATION_DEGRESSIF_MIN } from '../immobilisations/schema.js';
 import { type ChaineDecimale, estChaineDecimale, versChaine } from '../montant.js';
 import { MENTION_PROJET, SOURCES_FISCALES } from './sources-fiscales.js';
 
@@ -61,6 +62,8 @@ export interface ImmobilisationAAmortir {
   coefficientDegressif?: ChaineDecimale | null;
   /** Le cabinet confirme que le bien remplit les conditions du dégressif (neuf, durée d'au moins trois ans, bien visé par l'art. 39 A du CGI, hors exclusions). */
   eligibiliteDegressifConfirmee?: boolean | null;
+  /** Justification écrite du cabinet (D-150) : exigée pour tout calcul dégressif ; reprise telle quelle dans les hypothèses de la proposition. */
+  justificationDegressif?: string | null;
   /** Valeur résiduelle (PCG art. 214-4 : prise en compte seulement si significative et mesurable), strictement inférieure à la valeur brute. */
   valeurResiduelle?: ChaineDecimale | null;
   /** Date de sortie de l'actif (cession, mise au rebut) : si elle tombe dans ou avant l'exercice, le moteur s'abstient. */
@@ -793,6 +796,7 @@ export function proposerEcrituresInventaire(demande: DemandeInventaire): Resulta
     suivis.push(suivi);
     if (modeDemande !== 'lineaire' && modeDemande !== 'degressif') { sAbstenir(type, 'mode_invalide', `${mention} : mode d’amortissement « ${String(modeDemande)} » non géré (linéaire ou dégressif attendu) : aucune dotation n’est estimée.`, src); continue; }
     if (mode === 'degressif' && !degressifActive) { sAbstenir(type, 'degressif_non_active', `${mention} : ${MOTIF_DEGRESSIF_NON_ACTIVE}`, src); continue; }
+    if (mode === 'degressif' && (immo.justificationDegressif ?? '').trim().length < JUSTIFICATION_DEGRESSIF_MIN) { sAbstenir(type, 'justification_degressif_manquante', `${mention} : le dégressif est déclaré sans justification écrite du cabinet (au moins ${JUSTIFICATION_DEGRESSIF_MIN} caractères : nature du bien, bien neuf, durée normale d’utilisation, motif du mode). Aucune dotation n’est calculée : le choix et l’éligibilité doivent être justifiés par le cabinet, le moteur ne les présume pas.`, src); continue; }
     if (mode === 'degressif') {
       signalements.push({
         code: 'amortissement_derogatoire', immobilisation: immo.id, titre: `Amortissement dérogatoire éventuel — ${immo.libelle}`,
@@ -904,6 +908,7 @@ export function proposerEcrituresInventaire(demande: DemandeInventaire): Resulta
       const lignesPlan: LignePlanAmortissement[] = plan.lignes.map((l) => ({ rang: l.rang, exerciceFin: l.exerciceFin, methode: l.methode, baseCalcul: m2(l.baseCalcul), dotation: m2(l.dotation), cumul: m2(l.cumul), vnc: m2(l.vnc), formule: l.formule, exerciceCourant: l.rang === plan.rangCourant }));
       const hypotheses = [
         'Mode dégressif DÉCLARÉ par le cabinet comme mode du plan d’amortissement comptable (PCG art. 214-13 : le mode doit traduire au mieux la consommation des avantages économiques) ; il n’est jamais deviné.',
+        `Justification écrite du cabinet : « ${(immo.justificationDegressif ?? '').trim()} » (reprise telle quelle, non évaluée par le moteur ; auteur et date : fiche de l’immobilisation).`,
         'Éligibilité au dégressif CONFIRMÉE par le cabinet (bien neuf, durée d’au moins trois ans, bien visé par l’art. 39 A du CGI, hors exclusions : voitures de tourisme, mobilier de bureau, locaux professionnels…) : le moteur ne la vérifie pas, le cabinet en répond.',
         `Coefficient ${plan.coefficient.toString()} déclaré, cohérent avec la durée de ${plan.nbAnnees} ans (1,25 pour 3 ou 4 ans, 1,75 pour 5 ou 6 ans, 2,25 au-delà de 6 ans) ; un coefficient différent de la règle générale provoque une abstention.`,
         `Point de départ : le premier jour du mois d’acquisition ou de construction (${acquisition as string} saisie), mois d’acquisition compris (BOFiP BOI-BIC-AMT-20-20-30 § 190 à 200), et non la mise en service.`,

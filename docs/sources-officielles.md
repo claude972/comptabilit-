@@ -62,7 +62,7 @@ vigueur est bien celle-là. Deux documents ont été republiés en août 2026 (2
 
 | Source | Résultat | Conséquence |
 |---|---|---|
-| CGI art. 39 A (Légifrance) | Accès automatisé refusé (HTTP 403). Le texte de loi en vigueur n'a pas été consulté | Le dégressif est **non vérifié et non activé par défaut** (variable `AMORTISSEMENT_DEGRESSIF_ACTIVE` à faux) : aucune proposition de dotation dégressive n'est affichée tant que l'éditeur ne l'a pas activée après vérification du texte de loi et validation par un professionnel |
+| CGI art. 39 A (Légifrance) | Accès automatisé refusé (HTTP 403), de nouveau le 2026-11-22. Le texte de loi en vigueur n'a pas été consulté ; BOI-BIC-AMT-20-20-20-10 relu le même jour (version du 12/09/2012 à aujourd'hui) : il renvoie les conditions générales à l'article 22 de l'annexe II et au 2 de l'article 39 A | Le dégressif est **non vérifié et non activé par défaut** (variable `AMORTISSEMENT_DEGRESSIF_ACTIVE` à faux) : aucune proposition de dotation dégressive n'est affichée tant que l'éditeur ne l'a pas activée après vérification du texte de loi et validation par un professionnel |
 | API officielle de Légifrance (PISTE) | Exige un compte et des identifiants | Dépendance externe réelle, listée dans `acces-externes.md` ; aucun compte créé |
 
 Aucun contournement n'a été tenté : ni changement d'identité du navigateur, ni miroir non officiel présenté comme officiel.

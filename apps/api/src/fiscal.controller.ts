@@ -148,7 +148,7 @@ export class FiscalController {
       .filter((i) => i.dateMiseEnService <= fin)
       .map((i) => ({
         id: i.id, libelle: i.libelle, compteImmobilisation: i.compteImmobilisation, baseAmortissable: i.baseAmortissable, dateAcquisition: i.dateAcquisition, dateMiseEnService: i.dateMiseEnService, dureeMois: i.dureeMois, amortissementsAnterieurs: i.amortissementsAnterieurs,
-        modeAmortissement: i.modeAmortissement as 'lineaire' | 'degressif', coefficientDegressif: i.coefficientDegressif, eligibiliteDegressifConfirmee: i.eligibiliteDegressifConfirmee, valeurResiduelle: i.valeurResiduelle, dateSortie: i.dateSortie, composantDe: i.composantDe,
+        modeAmortissement: i.modeAmortissement as 'lineaire' | 'degressif', coefficientDegressif: i.coefficientDegressif, eligibiliteDegressifConfirmee: i.eligibiliteDegressifConfirmee, justificationDegressif: i.justificationDegressif, valeurResiduelle: i.valeurResiduelle, dateSortie: i.dateSortie, composantDe: i.composantDe,
       }));
     return { nbImmobilisations: fichier.length, immobilisations };
   }
@@ -615,7 +615,7 @@ export class FiscalController {
     description:
       'baseAmortissable est la VALEUR BRUTE à amortir (chaîne décimale strictement positive) ; valeurResiduelle, si elle est saisie, lui est strictement inférieure et se déduit du montant amortissable. ' +
       'dateAcquisition (ou de construction) : obligatoire en mode dégressif (le point de départ du dégressif est le premier jour du mois d’acquisition, BOFiP BOI-BIC-AMT-20-20-30), facultative sinon, jamais postérieure à la mise en service. ' +
-      'modeAmortissement : « lineaire » (défaut) ou « degressif ». La saisie du mode dégressif reste possible (déclaration du cabinet) mais AUCUN calcul n’en découle tant que l’éditeur n’a pas activé la fonction (AMORTISSEMENT_DEGRESSIF_ACTIVE, défaut faux : voir « degressif » dans les propositions). Le mode dégressif n’est jamais deviné : il exige un coefficient cohérent avec la durée (1.25 pour 3 ou 4 ans, 1.75 pour 5 ou 6 ans, 2.25 au-delà), la confirmation de l’éligibilité par le cabinet (bien neuf, durée d’au moins trois ans, bien visé par l’art. 39 A du CGI : le cabinet en répond) et une durée en années entières ; les coefficients majorés ou diminués de certains biens d’équipement ne sont pas pris en charge ; les règles correspondantes ne sont pas validées par un professionnel. ' +
+      'modeAmortissement : « lineaire » (défaut) ou « degressif ». En dégressif, le cabinet DÉCLARE le mode, le coefficient et l’éligibilité, et JUSTIFIE par écrit (justificationDegressif, 20 caractères au moins ; conservée avec l’auteur et la date) ; la saisie reste possible mais AUCUN calcul n’en découle tant que l’éditeur n’a pas activé la fonction (AMORTISSEMENT_DEGRESSIF_ACTIVE, défaut faux : voir « degressif » dans les propositions). Le mode dégressif n’est jamais deviné : il exige un coefficient cohérent avec la durée (1.25 pour 3 ou 4 ans, 1.75 pour 5 ou 6 ans, 2.25 au-delà), la confirmation de l’éligibilité par le cabinet (bien neuf, durée d’au moins trois ans, bien visé par l’art. 39 A du CGI : le cabinet en répond) et une durée en années entières ; les coefficients majorés ou diminués de certains biens d’équipement ne sont pas pris en charge ; les règles correspondantes ne sont pas validées par un professionnel. ' +
       'dateSortie : si elle tombe dans ou avant l’exercice, le moteur s’abstient (il ne calcule pas la plus ou moins-value). composantDe : identifiant de l’immobilisation « structure » du même dossier (PCG art. 214-9), chaque composant ayant son propre plan. ' +
       'Aucune écriture n’est créée : seules des PROPOSITIONS de dotation en découleront.',
   })
@@ -645,13 +645,14 @@ export class FiscalController {
           modeAmortissement: d.modeAmortissement,
           coefficientDegressif: d.modeAmortissement === 'degressif' ? (d.coefficientDegressif as string) : null,
           eligibiliteDegressifConfirmee: d.modeAmortissement === 'degressif' ? (d.eligibiliteDegressifConfirmee as boolean) : null,
+          justificationDegressif: d.modeAmortissement === 'degressif' ? (d.justificationDegressif as string).trim() : null,
           valeurResiduelle: d.valeurResiduelle != null ? versChaine(dec(d.valeurResiduelle)) : null,
           dateSortie: d.dateSortie ?? null,
           composantDe: d.composantDe ?? null,
           saisiePar: acces.utilisateurId,
         })
         .returning();
-      await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'immobilisation.saisie', cibleType: 'immobilisation', cibleId: i!.id, entiteId, details: { compte: d.compteImmobilisation, acquisition: d.dateAcquisition ?? null, dureeMois: d.dureeMois, mode: d.modeAmortissement, coefficient: d.coefficientDegressif ?? null, eligibiliteConfirmee: d.eligibiliteDegressifConfirmee ?? null, valeurResiduelle: d.valeurResiduelle != null, sortie: d.dateSortie ?? null, composant: d.composantDe ?? null } });
+      await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'immobilisation.saisie', cibleType: 'immobilisation', cibleId: i!.id, entiteId, details: { compte: d.compteImmobilisation, acquisition: d.dateAcquisition ?? null, dureeMois: d.dureeMois, mode: d.modeAmortissement, coefficient: d.coefficientDegressif ?? null, eligibiliteConfirmee: d.eligibiliteDegressifConfirmee ?? null, justifiee: d.modeAmortissement === 'degressif',  valeurResiduelle: d.valeurResiduelle != null, sortie: d.dateSortie ?? null, composant: d.composantDe ?? null } });
       return i;
     });
   }

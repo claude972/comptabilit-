@@ -364,6 +364,8 @@ export interface Immobilisation {
   modeAmortissement?: 'lineaire' | 'degressif';
   coefficientDegressif?: string | null;
   eligibiliteDegressifConfirmee?: boolean | null;
+  /** Justification écrite du cabinet (D-150) ; saisie par `saisiePar` à `creeLe`. */
+  justificationDegressif?: string | null;
   valeurResiduelle?: string | null;
   dateSortie?: string | null;
   composantDe?: string | null;
@@ -386,7 +388,7 @@ const EXPLICATION_MODE: Record<'lineaire' | 'degressif', string> = {
 /** Saisie d'une immobilisation dans le fichier du dossier (`POST v1/dossiers/:id/immobilisations`). */
 export function SaisirImmobilisation({ dossierId, structures = [], degressifActive = false }: { dossierId: string; structures?: Immobilisation[]; degressifActive?: boolean }) {
   const appel = useAppel();
-  const vide = { libelle: '', compte: '', base: '', acquisition: '', date: '', duree: '', anterieurs: '', mode: 'lineaire', coefficient: '', eligible: false, residuelle: '', sortie: '', composant: '' };
+  const vide = { libelle: '', compte: '', base: '', acquisition: '', date: '', duree: '', anterieurs: '', mode: 'lineaire', coefficient: '', eligible: false, justification: '', residuelle: '', sortie: '', composant: '' };
   const [f, setF] = useState(vide);
   const id = useId();
   const maj = (m: Partial<typeof vide>) => setF((v) => ({ ...v, ...m }));
@@ -412,7 +414,7 @@ export function SaisirImmobilisation({ dossierId, structures = [], degressifActi
           ...(f.residuelle.trim() ? { valeurResiduelle: decimal(f.residuelle) } : {}),
           ...(f.sortie ? { dateSortie: f.sortie } : {}),
           ...(f.composant ? { composantDe: f.composant } : {}),
-          ...(degressif ? { coefficientDegressif: f.coefficient, eligibiliteDegressifConfirmee: f.eligible } : {}),
+          ...(degressif ? { coefficientDegressif: f.coefficient, eligibiliteDegressifConfirmee: f.eligible, justificationDegressif: f.justification.trim() } : {}),
         };
         const r = await appel.executer(`v1/dossiers/${dossierId}/immobilisations`, { method: 'POST', json: corps }, 'Immobilisation enregistrée : la dotation de l’exercice figure dans les propositions du moteur.');
         if (r) setF(vide);
@@ -480,7 +482,7 @@ export function SaisirImmobilisation({ dossierId, structures = [], degressifActi
       <div className="sm:col-span-2 lg:col-span-3 space-y-2 rounded-lg border border-bordure p-3" data-testid="choix-mode">
         <div className="max-w-md">
           <Libelle htmlFor={`${id}-mode`}>Mode d’amortissement (plan comptable)</Libelle>
-          <Liste id={`${id}-mode`} value={f.mode} onChange={(e) => maj({ mode: e.target.value, ...(e.target.value === 'lineaire' ? { coefficient: '', eligible: false } : {}) })}>
+          <Liste id={`${id}-mode`} value={f.mode} onChange={(e) => maj({ mode: e.target.value, ...(e.target.value === 'lineaire' ? { coefficient: '', eligible: false, justification: '' } : {}) })}>
             <option value="lineaire">Linéaire (par défaut)</option>
             <option value="degressif">{degressifActive ? 'Dégressif (sur déclaration du cabinet)' : 'Dégressif (déclaration du cabinet — calcul non activé)'}</option>
           </Liste>
@@ -517,6 +519,13 @@ export function SaisirImmobilisation({ dossierId, structures = [], degressifActi
                   <span className="block text-sm text-texte-doux">Le cabinet en répond : Comtaple ne le vérifie pas. Sans cette confirmation, le moteur s’abstient.</span>
                 </span>
               </label>
+            </div>
+            <div className="sm:col-span-2">
+              <Libelle htmlFor={`${id}-justif`}>Justification du cabinet (20 caractères au moins)</Libelle>
+              <ZoneTexte id={`${id}-justif`} rows={3} required minLength={20} maxLength={1000} value={f.justification} onChange={(e) => maj({ justification: e.target.value })} aria-describedby={`${id}-aide-justif`} data-testid="justification-degressif" />
+              <p id={`${id}-aide-justif`} className="mt-1 text-sm text-texte-doux">
+                Nature du bien, bien neuf, durée normale d’utilisation, motif du mode dégressif. Ce texte est de votre responsabilité : il est conservé avec votre nom et la date, repris tel quel dans la proposition, et n’est jamais rédigé ni évalué par Comtaple.
+              </p>
             </div>
           </div>
         ) : null}

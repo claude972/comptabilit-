@@ -3037,6 +3037,7 @@ function routerSuite(r: Requete, a: Acces): unknown {
         if (typeof eligible !== 'boolean') throw invalide('eligibiliteDegressifConfirmee', 'Dégressif : le cabinet doit confirmer (true) ou infirmer (false) l’éligibilité du bien ; elle n’est jamais devinée');
         const annees = d.dureeMois / 12;
         const attendu = annees <= 4 ? '1.25' : annees <= 6 ? '1.75' : '2.25';
+        if (typeof d.justificationDegressif !== 'string' || d.justificationDegressif.trim().length < 20) throw invalide('justificationDegressif', 'Dégressif : une justification écrite du cabinet est exigée (au moins 20 caractères) : nature du bien, bien neuf, durée normale d’utilisation, motif du mode dégressif');
         if (coefficient === null) throw invalide('coefficientDegressif', 'Dégressif : le coefficient est à déclarer');
         if (coefficient !== attendu) throw invalide('coefficientDegressif', `Coefficient incohérent avec la durée de ${annees} ans : ${attendu} attendu (1.25 pour 3 ou 4 ans, 1.75 pour 5 ou 6 ans, 2.25 au-delà de 6 ans)`);
       } else if (coefficient !== null || eligible !== null) throw invalide('coefficientDegressif', 'Le coefficient et l’éligibilité n’ont de sens qu’en mode dégressif');
@@ -3048,7 +3049,7 @@ function routerSuite(r: Requete, a: Acces): unknown {
       exigerNiveau(a, entiteId, 'collaboration');
       const i = {
         id: randomUUID(), cabinetId: a.cabinetId, entiteId, libelle, compteImmobilisation: d.compteImmobilisation, baseAmortissable: versChaine(dec(base)), dateAcquisition: acquisition, dateMiseEnService: mes, dureeMois: d.dureeMois,
-        amortissementsAnterieurs: anterieurs !== null ? versChaine(dec(anterieurs)) : null, modeAmortissement: mode, coefficientDegressif: mode === 'degressif' ? coefficient : null, eligibiliteDegressifConfirmee: mode === 'degressif' ? eligible : null,
+        amortissementsAnterieurs: anterieurs !== null ? versChaine(dec(anterieurs)) : null, modeAmortissement: mode, coefficientDegressif: mode === 'degressif' ? coefficient : null, eligibiliteDegressifConfirmee: mode === 'degressif' ? eligible : null, justificationDegressif: mode === 'degressif' ? String(d.justificationDegressif).trim() : null,
         valeurResiduelle: residuelle !== null ? versChaine(dec(residuelle)) : null, dateSortie: sortie, composantDe: d.composantDe ?? null, saisiePar: a.utilisateurId, creeLe: instant(),
       };
       suite.immobilisations.push(i);
@@ -3077,7 +3078,7 @@ function routerSuite(r: Requete, a: Acces): unknown {
     })) as unknown as LigneEcriture[];
     const resultat = proposerEcrituresInventaire({
       lignes, exercice: { debut: exercice.debut, fin: exercice.fin }, lireLibelles: true, options: { amortissementDegressifActive: suite.degressifActive },
-      immobilisations: fichier.filter((i) => i.dateMiseEnService <= exercice.fin).map((i) => ({ id: i.id, libelle: i.libelle, compteImmobilisation: i.compteImmobilisation, baseAmortissable: i.baseAmortissable, dateAcquisition: i.dateAcquisition, dateMiseEnService: i.dateMiseEnService, dureeMois: i.dureeMois, amortissementsAnterieurs: i.amortissementsAnterieurs, modeAmortissement: i.modeAmortissement, coefficientDegressif: i.coefficientDegressif, eligibiliteDegressifConfirmee: i.eligibiliteDegressifConfirmee, valeurResiduelle: i.valeurResiduelle, dateSortie: i.dateSortie, composantDe: i.composantDe })),
+      immobilisations: fichier.filter((i) => i.dateMiseEnService <= exercice.fin).map((i) => ({ id: i.id, libelle: i.libelle, compteImmobilisation: i.compteImmobilisation, baseAmortissable: i.baseAmortissable, dateAcquisition: i.dateAcquisition, dateMiseEnService: i.dateMiseEnService, dureeMois: i.dureeMois, amortissementsAnterieurs: i.amortissementsAnterieurs, modeAmortissement: i.modeAmortissement, coefficientDegressif: i.coefficientDegressif, eligibiliteDegressifConfirmee: i.eligibiliteDegressifConfirmee, justificationDegressif: i.justificationDegressif, valeurResiduelle: i.valeurResiduelle, dateSortie: i.dateSortie, composantDe: i.composantDe })),
     });
     return {
       ...resultat,

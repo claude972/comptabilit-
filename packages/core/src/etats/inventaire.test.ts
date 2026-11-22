@@ -383,7 +383,7 @@ const immoDeg = (surcharge: Partial<ImmobilisationAAmortir> = {}): Immobilisatio
   id: 'DEG-1', libelle: 'Machine-outil', compteImmobilisation: '215400', baseAmortissable: '10000.00', dateMiseEnService: '2025-11-15', dureeMois: 120,
   // Date d'acquisition par défaut : novembre (BOFiP § 350 et 360) ; si le test déplace la mise en service, l'acquisition la suit (même date), sauf si elle est fixée.
   dateAcquisition: surcharge.dateMiseEnService ?? '2025-11-05',
-  modeAmortissement: 'degressif', coefficientDegressif: '2.25', eligibiliteDegressifConfirmee: true, ...surcharge,
+  modeAmortissement: 'degressif', coefficientDegressif: '2.25', eligibiliteDegressifConfirmee: true, justificationDegressif: 'Matériel neuf, durée normale de 10 ans, selon le cabinet (fiche fictive).', ...surcharge,
 });
 /** Le calcul du dégressif est ACTIVÉ EXPLICITEMENT ici : il est désactivé par défaut (aucune validation fiscale n'est revendiquée). */
 const unDeg = (i: ImmobilisationAAmortir, exercice = EXERCICE, lignes: LigneEcriture[] = [], active = true): ResultatInventaire =>
@@ -487,6 +487,8 @@ describe('dotations aux amortissements dégressifs', () => {
       [{ eligibiliteDegressifConfirmee: null }, 'eligibilite_degressif_non_confirmee', /éligibilité non confirmée/],
       [{ eligibiliteDegressifConfirmee: undefined }, 'eligibilite_degressif_non_confirmee', /éligibilité non confirmée/],
       [{ eligibiliteDegressifConfirmee: false }, 'conditions_degressif_non_remplies', /ne remplit pas les conditions/],
+      [{ justificationDegressif: null }, 'justification_degressif_manquante', /sans justification écrite du cabinet/],
+      [{ justificationDegressif: '   court  ' }, 'justification_degressif_manquante', /au moins 20 caractères/],
       [{ coefficientDegressif: null }, 'coefficient_manquant', /2\.25 attendu/],
       [{ coefficientDegressif: '1.75' }, 'coefficient_incoherent', /différent de la règle générale pour une durée de 10 ans/],
       [{ coefficientDegressif: '2.5' }, 'coefficient_incoherent', /2\.25 attendu/],
@@ -604,6 +606,9 @@ describe('dotations aux amortissements dégressifs', () => {
     expect(h).toMatch(/Bascule au linéaire appliquée dès qu’elle devient plus favorable ; c’est une faculté de l’entreprise/);
     expect(h).toMatch(/BOI-BIC-AMT-20-20-50, non analysé\) ne sont pas gérés/);
     expect(h).toMatch(/n’ont pas été validées par un professionnel/);
+    // La justification du cabinet est reprise TELLE QUELLE, sans évaluation (D-150).
+    expect(h).toContain('Justification écrite du cabinet : « Matériel neuf, durée normale de 10 ans, selon le cabinet (fiche fictive). »');
+    expect(h).toMatch(/non évaluée par le moteur/);
     expect(p.sourcesComplementaires.map((c) => c.verification)).toContain('non_verifiee');
   });
 });

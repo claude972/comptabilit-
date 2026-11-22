@@ -300,6 +300,8 @@ export interface DetailResultatProjet {
   };
   detailExceptionnel: null | { produits: Array<{ compteNum: string; compteLib: string; montant: string }>; charges: Array<{ compteNum: string; compteLib: string; montant: string }>; totalProduits: string; totalCharges: string; resultatExceptionnel: string; origine: string };
   renvois: RenvoiDetail[];
+  /** Partie B du 2033-B ; null au régime réel normal. */
+  resultatFiscal: ResultatFiscalProjet | null;
   renvoisNonPrepares: string[];
   controles: Array<{ code: string; statut: 'coherent' | 'ecart' | 'non_verifie'; message: string; ecart?: string }>;
   limites: string[];
@@ -313,3 +315,45 @@ export const LIBELLE_ETAT_QUALIFICATION: Record<string, string> = {
   ecart: 'Écart : somme ≠ solde',
   a_revoir: 'À revoir : données modifiées',
 };
+
+/** Partie B « Résultat fiscal » du 2033-B (D-110). */
+export type ResultatSigne =
+  | { statut: 'etabli'; sens: 'benefice' | 'deficit' | 'nul'; montant: string; codeCase: string; etatCodeCase: string }
+  | { statut: 'abstention'; motifs: string[]; codesCases: string[]; etatCodeCase: string };
+export interface LigneResultatFiscal {
+  cle: string;
+  codeCase: string;
+  etatCodeCase: string;
+  libelle: string;
+  role: 'reintegration' | 'deduction' | 'report_arriere' | 'imputation';
+  statut: 'a_saisir' | 'saisi' | 'a_revoir';
+  neant: boolean;
+  montant: string | null;
+  saisie: (TraceQualification & { code: string; montant: string }) | null;
+  precision: string;
+}
+export interface ResultatFiscalProjet {
+  resultatComptable: ResultatSigne;
+  lignes: LigneResultatFiscal[];
+  avantImputation: ResultatSigne;
+  plafondImputation: { montant: string; regle: string } | null;
+  apresImputation: ResultatSigne;
+  controles: Array<{ code: string; statut: 'coherent' | 'ecart' | 'non_verifie'; message: string; ecart?: string }>;
+  lignesManquantes: string[];
+  nonPrepare: string[];
+}
+export interface EvenementQualification {
+  nature: 'ventilation_ca' | 'renvoi';
+  cle: string;
+  action: 'saisie' | 'retrait';
+  montant: string | null;
+  montantExport: string | null;
+  note: string | null;
+  versionDonnees: number;
+  auteurId: string;
+  le: string;
+}
+export interface ReponseHistorique {
+  exerciceId: string;
+  evenements: EvenementQualification[];
+}

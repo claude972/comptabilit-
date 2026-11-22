@@ -67,6 +67,13 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
     await expect(detailRsi).toContainText('Détail du compte de résultat simplifié (2033-B)');
     await expect(detailRsi.getByTestId('renvois-detail').locator('li[data-renvoi="255"]')).toBeVisible();
     await expect(detailRsi.locator('#titre-2053')).toHaveCount(0);
+    // Partie B (D-110) : résultat fiscal en saisie justifiée ; sans saisie, abstention explicite (jamais un résultat inventé).
+    const resultatFiscal = detailRsi.getByTestId('resultat-fiscal');
+    await expect(resultatFiscal).toBeVisible();
+    await expect(resultatFiscal).toContainText('Aucune décision fiscale n’est prise par Comtaple');
+    await expect(resultatFiscal.locator('li[data-ligne-rf]')).toHaveCount(9);
+    await expect(resultatFiscal.getByTestId('rf-comptable')).toBeVisible();
+    await expect(resultatFiscal.getByTestId('rf-avant')).toHaveAttribute('data-statut', /abstention|etabli/);
   }
 
   // Annexe : incomplète tant que les rubriques requises ne sont pas confirmées par une personne.

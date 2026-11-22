@@ -54,6 +54,42 @@ if (process.argv.includes('--qualifier')) {
   await page.getByTestId('renvois-detail').scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${sortie}fiscal-detail-renvois.png` });
 }
+// Partie B du 2033-B (D-110) : saisie par les formulaires (MODIFIE le dossier fictif indiqué), avant / après.
+if (process.argv.includes('--resultat-fiscal')) {
+  const url = `${base}&vue=liasse&regime=reel_simplifie`;
+  await page.goto(url);
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('resultat-fiscal').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-rf-avant.png` });
+  const saisir = async (cle, montant, note) => {
+    const f = page.getByTestId(`renvoi-RF_${cle}`);
+    await f.scrollIntoViewIfNeeded();
+    await f.getByLabel('Montant').fill(montant);
+    await f.getByLabel('Justification (obligatoire)').fill(note);
+    await f.getByRole('button', { name: new RegExp(`Enregistrer le renvoi RF_${cle}`) }).click();
+    await f.getByText('Renvoi enregistré.').waitFor();
+  };
+  const neant = async (cle) => {
+    const f = page.getByTestId(`renvoi-RF_${cle}`);
+    await f.scrollIntoViewIfNeeded();
+    await f.getByRole('button', { name: new RegExp(`Déclarer néant pour RF_${cle}`) }).click();
+    await f.getByText('Néant enregistré.').waitFor();
+  };
+  await saisir('316', '1000.00', 'Rémunération de l’exploitant non déductible (démonstration fictive)');
+  await saisir('324', '250.00', 'Amendes et pénalités du compte 6712 (démonstration fictive)');
+  await saisir('342', '500.00', 'Déduction de zone (démonstration fictive)');
+  for (const c of ['318', '322', '330', '350', '356']) await neant(c);
+  await saisir('360', '2000.00', 'Déficits antérieurs imputés dans la limite du plafond (démonstration fictive)');
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('resultat-fiscal').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-rf-apres.png` });
+  await page.getByRole('region', { name: 'Calcul du résultat fiscal du tableau 2033-B' }).screenshot({ path: `${sortie}fiscal-rf-calcul.png` });
+  await page.getByTestId('historique-RF_360').locator('summary').click();
+  await page.getByTestId('lignes-resultat-fiscal').scrollIntoViewIfNeeded();
+  await page.getByTestId('historique-RF_360').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-rf-historique.png` });
+}
 // 2033-B (D-107) : « dont export » et lignes « dont » du régime simplifié.
 await page.goto(`${base}&vue=liasse&regime=reel_simplifie`);
 await page.waitForLoadState('networkidle');

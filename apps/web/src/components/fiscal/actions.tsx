@@ -118,18 +118,19 @@ export function QualifierCompte({ exerciceId, compte, solde, qualification }: { 
 }
 
 /** Saisie d'un renvoi de bas de tableau (`PUT`/`DELETE v1/exercices/:id/qualifications/renvois/:code`). */
-export function SaisirRenvoi({ exerciceId, code, proposition, saisie }: { exerciceId: string; code: string; proposition: string | null; saisie: { montant: string; note: string } | null }) {
+export function SaisirRenvoi({ exerciceId, code, proposition, saisie, avecNeant = false }: { exerciceId: string; code: string; proposition: string | null; saisie: { montant: string; note: string } | null; avecNeant?: boolean }) {
   const appel = useAppel();
   const [montant, setMontant] = useState(saisie?.montant ?? '');
   const [note, setNote] = useState(saisie?.note ?? '');
   const id = useId();
+  const envoyer = (m: string, n: string, message: string) => void appel.executer(`v1/exercices/${exerciceId}/qualifications/renvois/${code}`, { method: 'PUT', json: { montant: m.trim(), note: n.trim() } }, message);
   return (
     <form
       className="grid gap-2 sm:grid-cols-[8rem_1fr_auto] sm:items-end"
       data-testid={`renvoi-${code}`}
       onSubmit={(e) => {
         e.preventDefault();
-        void appel.executer(`v1/exercices/${exerciceId}/qualifications/renvois/${code}`, { method: 'PUT', json: { montant: montant.trim(), note: note.trim() } }, 'Renvoi enregistré.');
+        envoyer(montant, note, 'Renvoi enregistré.');
       }}
     >
       <div>
@@ -140,10 +141,21 @@ export function SaisirRenvoi({ exerciceId, code, proposition, saisie }: { exerci
         <Libelle htmlFor={`${id}-n`}>Justification (obligatoire)</Libelle>
         <Saisie id={`${id}-n`} maxLength={2000} value={note} onChange={(e) => setNote(e.target.value)} required minLength={5} />
       </div>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <Bouton type="submit" variante="secondaire" disabled={appel.occupe} aria-label={`Enregistrer le renvoi ${code}`}>
           Enregistrer
         </Bouton>
+        {avecNeant ? (
+          <Bouton
+            type="button"
+            variante="contour"
+            disabled={appel.occupe}
+            onClick={() => envoyer('0.00', note.trim().length >= 5 ? note : 'Néant : aucune opération de cette nature, déclaré par le cabinet', 'Néant enregistré.')}
+            aria-label={`Déclarer néant pour ${code}`}
+          >
+            Déclarer néant
+          </Bouton>
+        ) : null}
         {saisie ? (
           <Bouton type="button" variante="contour" disabled={appel.occupe} onClick={() => void appel.executer(`v1/exercices/${exerciceId}/qualifications/renvois/${code}`, { method: 'DELETE' }, 'Saisie retirée.')} aria-label={`Retirer la saisie du renvoi ${code}`}>
             Retirer

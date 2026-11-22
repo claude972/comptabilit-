@@ -1,7 +1,7 @@
 {
   "format": "comtaple.rls-reference/1",
   "note": "Référence de la revue des changements RLS (scripts/revue-rls.mjs). Réécrite SEULEMENT après relecture humaine d'un changement voulu. Ce n'est pas un audit indépendant.",
-  "migrations": 51,
+  "migrations": 52,
   "tablesACabinet": {
     "abonnements": {
       "rls": true,
@@ -280,6 +280,14 @@
         "ecriture_habilitations_u": "79081d6f4071",
         "isolation_cabinet": "828e5c572b82",
         "lecture_habilitations": "a6b9535eb6a0"
+      }
+    },
+    "historique_qualifications": {
+      "rls": true,
+      "force": true,
+      "politiques": {
+        "acces_dossier": "19afe52e1be5",
+        "isolation_cabinet": "828e5c572b82"
       }
     },
     "immobilisations": {

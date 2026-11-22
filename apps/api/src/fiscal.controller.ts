@@ -16,6 +16,7 @@ import {
   type QualificationVentilation,
   RENVOIS,
   RENVOIS_RSI,
+  LIGNES_RESULTAT_FISCAL,
   LIGNES_CA,
   schemaChaineDecimale,
   MOTIF_DEGRESSIF_NON_ACTIVE,
@@ -44,7 +45,8 @@ const ventilation = z.object({ montantFrance: montantSigne, montantExport: monta
 const renvoiSaisie = z.object({ montant: montantSigne, note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie le montant').max(2000) });
 const COMPTE_CA = /^70[0-9A-Za-z]{1,13}$/;
 const CODE_RENVOI = /^[0-9A-Z_]{2,6}$/;
-const RENVOIS_CONNUS = [...RENVOIS, ...RENVOIS_RSI];
+const RENVOIS_CONNUS = [...RENVOIS, ...RENVOIS_RSI, ...LIGNES_RESULTAT_FISCAL.map((l) => ({ code: l.cle }))];
+const CLES_RESULTAT_FISCAL = new Set(LIGNES_RESULTAT_FISCAL.map((l) => l.cle));
 const RUBRIQUE = /^ANX-[0-9A-Za-z-]{1,24}$/;
 const PROPOSITION = /^[A-Za-z0-9:_|.-]{1,200}$/;
 
@@ -100,7 +102,7 @@ export class FiscalController {
   }
 
   /** Détail du compte de résultat (2052 / 2053 ou 2033-B, D-106 / D-107) : qualifications du cabinet lues pour l'exercice, moteur appliqué à la balance. */
-  private async detailResultat(tx: Tx, c: { exercice: typeof s.exercices.$inferSelect; entite: typeof s.entites.$inferSelect; lignes: LigneEcriture[]; regime: RegimeLiasse }) {
+  private async detailResultat(tx: Tx, c: { exercice: typeof s.exercices.$inferSelect; entite: typeof s.entites.$inferSelect; lignes: LigneEcriture[]; regime: RegimeLiasse; resultatComptable: string | null }) {
     const rows = await tx.select().from(s.qualificationsResultat).where(eq(s.qualificationsResultat.exerciceId, c.exercice.id));
     const trace = (r: (typeof rows)[number]) => ({ note: r.note, qualifieePar: r.qualifieePar, le: new Date(r.creeLe).toISOString(), versionDonnees: r.versionDonnees });
     const ventilations: QualificationVentilation[] = rows.filter((r) => r.nature === 'ventilation_ca').map((r) => ({ compte: r.cle, montantFrance: r.montant, montantExport: r.montantExport ?? '0.00', ...trace(r) }));
@@ -115,8 +117,40 @@ export class FiscalController {
       devise: 'EUR',
       societeCommerciale: societeCommerciale(c.entite.formeJuridique),
       versionDonnees: c.exercice.versionDonnees,
+      resultatComptable: c.resultatComptable,
       ventilations,
       renvois,
+    });
+  }
+
+  /** Ajoute une ligne à l'historique (AJOUT SEUL, D-110) : chaque saisie et chaque retrait, avec son auteur, sa note et la version des données. */
+  private async historiser(tx: Tx, acces: Acces, exercice: typeof s.exercices.$inferSelect, nature: 'ventilation_ca' | 'renvoi', cle: string, action: 'saisie' | 'retrait', v?: { montant: string; montantExport?: string | null; note: string }) {
+    await tx.insert(s.historiqueQualifications).values({
+      cabinetId: acces.cabinetId, entiteId: exercice.entiteId, exerciceId: exercice.id, nature, cle, action,
+      montant: v?.montant ?? null, montantExport: v?.montantExport ?? null, note: v?.note ?? null, versionDonnees: exercice.versionDonnees, auteurId: acces.utilisateurId,
+    });
+  }
+
+  @Get('exercices/:id/qualifications/historique')
+  @ApiQuery({ name: 'cle', required: false })
+  @ApiOperation({
+    summary: 'Historique des qualifications du détail du compte de résultat : chaque saisie et chaque retrait, avec auteur, date, note et version des données',
+    description: 'Journal en ajout seul : une ligne n’est jamais modifiée ni supprimée par l’application. Sans « cle », toutes les qualifications de l’exercice (plus récentes d’abord, 500 au plus).',
+  })
+  async historique(@AccesCourant() acces: Acces, @Param('id') id: string, @Query('cle') cle?: string) {
+    exigerUuid(id);
+    if (cle !== undefined && !/^[0-9A-Za-z_]{2,20}$/.test(cle)) throw new BadRequestException('cle invalide');
+    return this.bd.avecContexte(acces, async (tx) => {
+      const [exercice] = await tx.select().from(s.exercices).where(eq(s.exercices.id, id));
+      if (!exercice) throw new NotFoundException('Exercice introuvable');
+      await exigerNiveau(tx, exercice.entiteId, 'lecture');
+      const lignes = await tx
+        .select({ nature: s.historiqueQualifications.nature, cle: s.historiqueQualifications.cle, action: s.historiqueQualifications.action, montant: s.historiqueQualifications.montant, montantExport: s.historiqueQualifications.montantExport, note: s.historiqueQualifications.note, versionDonnees: s.historiqueQualifications.versionDonnees, auteurId: s.historiqueQualifications.auteurId, le: s.historiqueQualifications.creeLe })
+        .from(s.historiqueQualifications)
+        .where(cle === undefined ? eq(s.historiqueQualifications.exerciceId, id) : and(eq(s.historiqueQualifications.exerciceId, id), eq(s.historiqueQualifications.cle, cle)))
+        .orderBy(desc(s.historiqueQualifications.creeLe))
+        .limit(500);
+      return { exerciceId: id, evenements: lignes };
     });
   }
 
@@ -145,6 +179,7 @@ export class FiscalController {
         .insert(s.qualificationsResultat)
         .values({ cabinetId: acces.cabinetId, entiteId: exercice.entiteId, exerciceId: id, nature: 'ventilation_ca', cle: compte, montant: versChaine(dec(d.montantFrance)), montantExport: versChaine(dec(d.montantExport)), note: d.note, versionDonnees: exercice.versionDonnees, qualifieePar: acces.utilisateurId })
         .returning();
+      await this.historiser(tx, acces, exercice, 'ventilation_ca', compte, 'saisie', { montant: q!.montant, montantExport: q!.montantExport, note: d.note });
       await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'resultat.ventilation_qualifiee', cibleType: 'exercice', cibleId: id, entiteId: exercice.entiteId, details: { compte, montantFrance: q!.montant, montantExport: q!.montantExport, versionDonnees: exercice.versionDonnees } });
       return q;
     });
@@ -167,6 +202,7 @@ export class FiscalController {
     exigerUuid(id);
     if (!CODE_RENVOI.test(code) || !RENVOIS_CONNUS.some((r) => r.code === code)) throw new NotFoundException('Renvoi inconnu : les renvois préparés sont ' + RENVOIS_CONNUS.map((r) => r.code).join(', '));
     const d = valider(renvoiSaisie, corps);
+    if (CLES_RESULTAT_FISCAL.has(code) && dec(d.montant).isNegative()) throw new BadRequestException('Les lignes du résultat fiscal se saisissent en positif (le sens est celui du formulaire) ; « néant » = 0.00');
     return this.bd.avecContexte(acces, async (tx) => {
       const [exercice] = await tx.select().from(s.exercices).where(eq(s.exercices.id, id));
       if (!exercice) throw new NotFoundException('Exercice introuvable');
@@ -176,6 +212,7 @@ export class FiscalController {
         .insert(s.qualificationsResultat)
         .values({ cabinetId: acces.cabinetId, entiteId: exercice.entiteId, exerciceId: id, nature: 'renvoi', cle: code, montant: versChaine(dec(d.montant)), note: d.note, versionDonnees: exercice.versionDonnees, qualifieePar: acces.utilisateurId })
         .returning();
+      await this.historiser(tx, acces, exercice, 'renvoi', code, 'saisie', { montant: q!.montant, note: d.note });
       await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'resultat.renvoi_saisi', cibleType: 'exercice', cibleId: id, entiteId: exercice.entiteId, details: { code, montant: q!.montant, versionDonnees: exercice.versionDonnees } });
       return q;
     });
@@ -196,6 +233,7 @@ export class FiscalController {
       await exigerNiveau(tx, exercice.entiteId, 'revision');
       const retirees = await tx.delete(s.qualificationsResultat).where(and(eq(s.qualificationsResultat.exerciceId, id), eq(s.qualificationsResultat.nature, nature), eq(s.qualificationsResultat.cle, cle))).returning({ id: s.qualificationsResultat.id });
       if (!retirees.length) throw new NotFoundException('Aucune qualification pour cet élément');
+      await this.historiser(tx, acces, exercice, nature, cle, 'retrait');
       await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: nature === 'renvoi' ? 'resultat.renvoi_retire' : 'resultat.ventilation_retiree', cibleType: 'exercice', cibleId: id, entiteId: exercice.entiteId, details: { cle } });
       return { cle, retiree: true };
     });
@@ -228,7 +266,9 @@ export class FiscalController {
         motifPrecedentAbsent: motifPrecedent,
       });
       const { immobilisations } = await this.fichierEnService(tx, entite.id, exercice.fin);
-      const detailResultat = await this.detailResultat(tx, { exercice, entite, lignes, regime });
+      // Résultat comptable de la ligne 310 du 2033-B (produits − charges, signé) : base de la partie B « résultat fiscal » (régime simplifié).
+      const resultatComptable = resultat.statut === 'projet' && regime === 'reel_simplifie' ? (resultat.tableaux.flatMap((t) => t.lignes).find((l) => l.ligne === 'RSI_2033B_RESULTAT')?.montant ?? null) : null;
+      const detailResultat = await this.detailResultat(tx, { exercice, entite, lignes, regime, resultatComptable });
       const tableauxImmobilisations = preparerTableauxImmobilisations({
         lignes,
         exercice: { debut: exercice.debut, fin: exercice.fin },

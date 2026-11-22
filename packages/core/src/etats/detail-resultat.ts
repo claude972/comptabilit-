@@ -64,6 +64,8 @@ export interface DemandeDetailResultat {
   societeCommerciale: boolean | null;
   /** Version courante des données de l'exercice : une qualification donnée sur une autre version est « à revoir ». */
   versionDonnees: number;
+  /** Résultat comptable de la ligne 310 du 2033-B (produits − charges, signé : bénéfice > 0, déficit < 0) ; null si la liasse s'abstient. Sert à la partie B (régime simplifié). */
+  resultatComptable?: ChaineDecimale | null;
   ventilations: readonly QualificationVentilation[];
   renvois: readonly QualificationRenvoi[];
 }
@@ -209,6 +211,72 @@ export const RENVOIS_RSI: readonly DefinitionRenvoi[] = [
   { code: '348', renvoi: 'dont', tableau: '2033-B', libelle: 'Charges exceptionnelles, dont amortissements exceptionnels de 25 % des constructions nouvelles (art. 39 quinquies D du CGI)', nature: 'charge', precision: 'Information fiscale non portée par la balance : à saisir.' },
 ];
 
+// ── 2033-B, partie B « Résultat fiscal » (D-110) ─────────────────────────────────────────────────────────────────────────
+
+/** Rôle d'une ligne de la partie B dans le calcul, tel que le formulaire le porte (réintégrations en colonne 1, déductions en colonne 2). */
+type RoleResultatFiscal = 'reintegration' | 'deduction' | 'report_arriere' | 'imputation';
+
+interface DefinitionLigneResultatFiscal {
+  /** Clé de saisie (préfixe RF_ + code de case) ; la case est `codeCase`. */
+  cle: string;
+  codeCase: string;
+  libelle: string;
+  role: RoleResultatFiscal;
+  precision: string;
+}
+
+export const LIGNES_RESULTAT_FISCAL: readonly DefinitionLigneResultatFiscal[] = [
+  { cle: 'RF_316', codeCase: '316', libelle: 'Réintégrations : rémunérations et avantages personnels non déductibles', role: 'reintegration', precision: 'Décision fiscale du cabinet : la balance ne distingue pas ce qui n’est pas déductible.' },
+  { cle: 'RF_318', codeCase: '318', libelle: 'Réintégrations : amortissements excédentaires (art. 39-4 du CGI) et autres amortissements non déductibles', role: 'reintegration', precision: 'Peut se rapprocher du fichier des immobilisations, sans en être déduit.' },
+  { cle: 'RF_322', codeCase: '322', libelle: 'Réintégrations : provisions non déductibles', role: 'reintegration', precision: 'Décision fiscale du cabinet.' },
+  { cle: 'RF_324', codeCase: '324', libelle: 'Réintégrations : impôts et taxes non déductibles', role: 'reintegration', precision: 'Décision fiscale du cabinet (voir la notice 2033-NOT-SD, page 7).' },
+  { cle: 'RF_330', codeCase: '330', libelle: 'Réintégrations : divers (total de la ligne : intérêts excédentaires de comptes courants d’associés, écarts de valeurs liquidatives sur OPC, fraction des loyers de crédit-bail immobilier…)', role: 'reintegration', precision: 'Saisir le TOTAL de la ligne tel que le cabinet l’établit ; le détail (cases 247, 248, 249, 251) n’est pas préparé.' },
+  { cle: 'RF_342', codeCase: '342', libelle: 'Déductions : total des déductions de zones et régimes (entreprises nouvelles, ZFU-TE, JEI, ZRD, ZRR, bassins d’emploi, FRR, ZFANG, outre-mer, BUD, ZDP)', role: 'deduction', precision: 'Saisir le TOTAL de la case 342 ; le détail par régime (cases 986 à 993, 127, 138, 181, 344, 345) n’est pas préparé.' },
+  { cle: 'RF_350', codeCase: '350', libelle: 'Déductions : divers à déduire (total de la ligne : créance de report en arrière, déductions exceptionnelles 39 decies à 39 decies G…)', role: 'deduction', precision: 'Saisir le TOTAL de la case 350 ; le détail (cases 346, 655, 643, 645, 647, 648, 641, 990, 649) n’est pas préparé.' },
+  { cle: 'RF_356', codeCase: '356', libelle: 'Déficit de l’exercice reporté en arrière (option, art. 220 quinquies du CGI)', role: 'report_arriere', precision: 'Option du cabinet, formalisée dans le délai de dépôt de la déclaration n° 2065-SD.' },
+  { cle: 'RF_360', codeCase: '360', libelle: 'Déficits antérieurs reportables : dont imputés sur le résultat', role: 'imputation', precision: 'Montant imputé après plafonnement (art. 209, I du CGI) ; le stock de déficits disponibles est tenu par le cabinet, hors balance.' },
+];
+/** Lignes sans lesquelles le résultat fiscal AVANT imputation (352 / 354) n'est pas établi. */
+const CLES_AVANT_IMPUTATION: readonly string[] = ['RF_316', 'RF_318', 'RF_322', 'RF_324', 'RF_330', 'RF_342', 'RF_350'];
+/** Plafond d'imputation des déficits antérieurs (notice 2033-NOT-SD, page 13 ; art. 209, I du CGI) : 1 000 000 €, majoré de 50 % du bénéfice excédant ce montant. */
+const SEUIL_IMPUTATION = new Decimal(1_000_000);
+
+export interface LigneResultatFiscal {
+  cle: string;
+  codeCase: string;
+  etatCodeCase: EtatCodeCase;
+  libelle: string;
+  role: RoleResultatFiscal;
+  /** a_saisir : aucune saisie ; saisi : retenu ; a_revoir : saisi sur une autre version des données (non retenu). */
+  statut: 'a_saisir' | 'saisi' | 'a_revoir';
+  /** Vrai si la saisie retenue est un NÉANT explicite (montant 0,00 déclaré par le cabinet). */
+  neant: boolean;
+  montant: ChaineDecimale | null;
+  saisie: QualificationRenvoi | null;
+  precision: string;
+}
+
+/** Résultat signé du formulaire : un bénéfice se porte en colonne 1, un déficit en colonne 2 (cases 312 / 314, 352 / 354, 370 / 372). */
+export type ResultatSigne =
+  | { statut: 'etabli'; sens: 'benefice' | 'deficit' | 'nul'; montant: ChaineDecimale; codeCase: string; etatCodeCase: EtatCodeCase }
+  | { statut: 'abstention'; motifs: string[]; codesCases: string[]; etatCodeCase: EtatCodeCase };
+
+export interface ResultatFiscalProjet {
+  /** Résultat comptable reporté (cases 312 bénéfice / 314 déficit). */
+  resultatComptable: ResultatSigne;
+  lignes: LigneResultatFiscal[];
+  /** Résultat fiscal avant imputation des déficits antérieurs (352 bénéfice / 354 déficit). */
+  avantImputation: ResultatSigne;
+  /** Plafond d'imputation des déficits antérieurs sur ce bénéfice ; null si le bénéfice n'est pas établi ou nul. */
+  plafondImputation: { montant: ChaineDecimale; regle: string } | null;
+  /** Résultat fiscal après imputation des déficits (370 bénéfice / 372 déficit). */
+  apresImputation: ResultatSigne;
+  controles: ControleDetail[];
+  /** Clés des lignes requises pour le résultat avant imputation et qui n'ont pas de saisie retenue. */
+  lignesManquantes: string[];
+  nonPrepare: string[];
+}
+
 export interface RenvoiDetail {
   code: string;
   renvoi: string;
@@ -258,6 +326,8 @@ export interface DetailResultatProjet {
   /** Cadre (7) du tableau 2053 ; null au régime simplifié (le tableau 2033-B n'a pas ce cadre). */
   detailExceptionnel: DetailExceptionnel | null;
   renvois: RenvoiDetail[];
+  /** Partie B du 2033-B ; null au régime réel normal. */
+  resultatFiscal: ResultatFiscalProjet | null;
   renvoisNonPrepares: readonly string[];
   controles: ControleDetail[];
   limites: string[];
@@ -351,6 +421,90 @@ function renvoisDetail(demande: DemandeDetailResultat): RenvoiDetail[] {
   });
 }
 
+const NON_PREPARE_RESULTAT_FISCAL: readonly string[] = [
+  'Détail de la ligne « Divers » des réintégrations (cases 247, 248, 249, 251), des déductions de zones (cases 986 à 993, 127, 138, 181, 344, 345) et du détail des divers à déduire (cases 346, 655, 643, 645, 647, 648, 641, 990, 649) : seuls les TOTAUX de ligne (330, 342, 350) se saisissent.',
+  'Activité relevant du régime optionnel de taxation au tonnage des entreprises de transport maritime (cases 997, 998, 999) : non préparée ; si l’entreprise a opté pour ce régime, ce calcul ne s’applique pas.',
+  'Aucune décision fiscale n’est prise par Comtaple : chaque réintégration ou déduction est une saisie justifiée du cabinet ; le calcul se borne à l’arithmétique du formulaire (résultat comptable + réintégrations − déductions, puis imputation saisie).',
+];
+
+function resultatFiscal(demande: DemandeDetailResultat): ResultatFiscalProjet {
+  const saisies = new Map(demande.renvois.map((r) => [r.code, r]));
+  const lignes: LigneResultatFiscal[] = LIGNES_RESULTAT_FISCAL.map((def) => {
+    const saisie = saisies.get(def.cle) ?? null;
+    const statut = saisie === null ? 'a_saisir' : saisie.versionDonnees !== demande.versionDonnees ? 'a_revoir' : 'saisi';
+    const montant = statut === 'saisi' ? saisie!.montant : null;
+    return { cle: def.cle, codeCase: def.codeCase, etatCodeCase: 'lu_verifie', libelle: def.libelle, role: def.role, statut, neant: montant !== null && new Decimal(montant).isZero(), montant, saisie, precision: def.precision };
+  });
+  const ligne = (cle: string) => lignes.find((l) => l.cle === cle)!;
+  const controles: ControleDetail[] = [];
+  const abst = (motifs: string[], codes: string[]): ResultatSigne => ({ statut: 'abstention', motifs, codesCases: codes, etatCodeCase: 'lu_verifie' });
+  const signe = (v: Decimal, codeBenefice: string, codeDeficit: string): ResultatSigne =>
+    v.isNegative() ? { statut: 'etabli', sens: 'deficit', montant: versChaine(v.negated()), codeCase: codeDeficit, etatCodeCase: 'lu_verifie' } : { statut: 'etabli', sens: v.isZero() ? 'nul' : 'benefice', montant: versChaine(v), codeCase: codeBenefice, etatCodeCase: 'lu_verifie' };
+
+  // Résultat comptable (ligne 310 du 2033-B) reporté en 312 / 314.
+  const rc = demande.resultatComptable ?? null;
+  const resultatComptable: ResultatSigne = rc === null ? abst(['Le résultat comptable (ligne 310 du tableau 2033-B) n’est pas établi : la liasse s’abstient ou n’est pas préparée pour cet exercice.'], ['312', '314']) : signe(new Decimal(rc), '312', '314');
+
+  // Valeurs négatives : une réintégration ou une déduction se saisit en positif (le sens est celui du formulaire).
+  const negatives = lignes.filter((l) => l.montant !== null && new Decimal(l.montant).isNegative());
+  for (const l of negatives) controles.push({ code: `RF_NEGATIF_${l.codeCase}`, statut: 'ecart', message: `Case ${l.codeCase} : un montant négatif est refusé (réintégrations et déductions se saisissent en positif).`, ecart: l.montant! });
+
+  // Avant imputation : requiert le résultat comptable et les sept lignes (néant explicite accepté).
+  const manquantes = CLES_AVANT_IMPUTATION.filter((c) => ligne(c).statut !== 'saisi');
+  const motifsAvant: string[] = [];
+  if (resultatComptable.statut === 'abstention') motifsAvant.push(...resultatComptable.motifs);
+  if (manquantes.length > 0) motifsAvant.push(`${manquantes.length} ligne(s) sans saisie retenue (${manquantes.map((c) => ligne(c).codeCase).join(', ')}) : rien n’est présumé nul ; saisir un montant ou déclarer « néant ».`);
+  if (negatives.length > 0) motifsAvant.push('Au moins un montant négatif saisi : à corriger.');
+  let avantImputation: ResultatSigne = abst(motifsAvant, ['352', '354']);
+  if (motifsAvant.length === 0 && resultatComptable.statut === 'etabli') {
+    const b = new Decimal(rc!);
+    const somme = (role: RoleResultatFiscal) => lignes.filter((l) => l.role === role && CLES_AVANT_IMPUTATION.includes(l.cle)).reduce((s, l) => s.plus(l.montant!), ZERO);
+    avantImputation = signe(b.plus(somme('reintegration')).minus(somme('deduction')), '352', '354');
+  }
+  controles.push(avantImputation.statut === 'etabli'
+    ? { code: 'RF_AVANT_IMPUTATION', statut: 'coherent', message: `Résultat fiscal avant imputation : ${avantImputation.sens === 'deficit' ? 'déficit' : avantImputation.sens === 'nul' ? 'nul' : 'bénéfice'} de ${avantImputation.montant} (case ${avantImputation.codeCase}) = résultat comptable + réintégrations − déductions saisies.` }
+    : { code: 'RF_AVANT_IMPUTATION', statut: 'non_verifie', message: 'Résultat fiscal avant imputation non établi (abstention) : voir les motifs.' });
+
+  // Plafond d'imputation des déficits antérieurs (notice 2033-NOT-SD p. 13).
+  let plafond: ResultatFiscalProjet['plafondImputation'] = null;
+  if (avantImputation.statut === 'etabli' && avantImputation.sens === 'benefice') {
+    const ben = new Decimal(avantImputation.montant);
+    const p = SEUIL_IMPUTATION.plus(Decimal.max(ZERO, ben.minus(SEUIL_IMPUTATION)).times('0.5'));
+    plafond = { montant: versChaine(Decimal.min(p, ben)), regle: 'Déficits antérieurs imputables dans la limite de 1 000 000 €, majorée de 50 % du bénéfice excédant ce montant, sans excéder le bénéfice (notice 2033-NOT-SD, page 13 ; art. 209, I du CGI).' };
+  }
+
+  // Après imputation : requiert 356 et 360 saisis ; l'effet d'un report en arrière n'est pas établi.
+  const motifsApres: string[] = [];
+  if (avantImputation.statut === 'abstention') motifsApres.push('Le résultat avant imputation n’est pas établi.');
+  const manquantesApres = ['RF_356', 'RF_360'].filter((c) => ligne(c).statut !== 'saisi');
+  if (manquantesApres.length > 0) motifsApres.push(`Ligne(s) sans saisie retenue (${manquantesApres.map((c) => ligne(c).codeCase).join(', ')}) : saisir un montant ou déclarer « néant ».`);
+  const reporte = ligne('RF_356').montant;
+  if (reporte !== null && !new Decimal(reporte).isZero()) motifsApres.push('Un déficit est reporté en arrière (case 356) : son effet sur le résultat après imputation n’est pas établi par Comtaple (créance, déclaration 2039-SD) : abstention.');
+  const imputes = ligne('RF_360').montant;
+  let apresImputation: ResultatSigne = abst(motifsApres, ['370', '372']);
+  if (motifsApres.length === 0 && avantImputation.statut === 'etabli') {
+    const i = new Decimal(imputes!);
+    if (avantImputation.sens === 'benefice') {
+      const ben = new Decimal(avantImputation.montant);
+      if (i.greaterThan(new Decimal(plafond!.montant))) {
+        controles.push({ code: 'RF_IMPUTATION', statut: 'ecart', message: `Déficits imputés (${versChaine(i)}) supérieurs au plafond d’imputation (${plafond!.montant}) : non retenu, à corriger.`, ecart: versChaine(i.minus(plafond!.montant)) });
+        apresImputation = abst([`Les déficits imputés dépassent le plafond d’imputation de ${plafond!.montant}.`], ['370', '372']);
+      } else {
+        apresImputation = signe(ben.minus(i), '370', '372');
+        controles.push({ code: 'RF_IMPUTATION', statut: 'coherent', message: `Imputation de ${versChaine(i)} (plafond ${plafond!.montant}) : résultat fiscal après imputation ${versChaine(ben.minus(i))}.` });
+      }
+    } else if (!i.isZero()) {
+      controles.push({ code: 'RF_IMPUTATION', statut: 'ecart', message: `Des déficits sont imputés (${versChaine(i)}) alors que le résultat avant imputation n’est pas un bénéfice : non retenu.`, ecart: versChaine(i) });
+      apresImputation = abst(['Des déficits sont imputés alors que le résultat avant imputation n’est pas un bénéfice.'], ['370', '372']);
+    } else apresImputation = signe(avantImputation.sens === 'deficit' ? new Decimal(avantImputation.montant).negated() : ZERO, '370', '372');
+  }
+  controles.push(apresImputation.statut === 'etabli'
+    ? { code: 'RF_APRES_IMPUTATION', statut: 'coherent', message: `Résultat fiscal après imputation : ${apresImputation.sens === 'deficit' ? 'déficit' : apresImputation.sens === 'nul' ? 'nul' : 'bénéfice'} de ${apresImputation.montant} (case ${apresImputation.codeCase}).` }
+    : { code: 'RF_APRES_IMPUTATION', statut: 'non_verifie', message: 'Résultat fiscal après imputation non établi (abstention) : voir les motifs.' });
+
+  return { resultatComptable, lignes, avantImputation, plafondImputation: plafond, apresImputation, controles, lignesManquantes: manquantes.map((c) => ligne(c).codeCase), nonPrepare: [...NON_PREPARE_RESULTAT_FISCAL] };
+}
+
 export function preparerDetailResultat(demande: DemandeDetailResultat): ResultatDetailResultat {
   const motifs = motifsAbstention({ exercice: demande.exercice, regime: demande.regime, territoire: demande.territoire, impotSurLeResultat: demande.impotSurLeResultat, referentielComptable: demande.referentielComptable, devise: demande.devise, societeCommerciale: demande.societeCommerciale });
   if (motifs.length > 0) return { statut: 'abstention', motifs, perimetreCouvert: PERIMETRE_LIASSE, mention: MENTION_PROJET };
@@ -407,6 +561,7 @@ export function preparerDetailResultat(demande: DemandeDetailResultat): Resultat
     ventilationChiffreAffaires: ventilation,
     detailExceptionnel: exceptionnel,
     renvois,
+    resultatFiscal: simplifie ? resultatFiscal(demande) : null,
     renvoisNonPrepares: simplifie ? RENVOIS_NON_PREPARES_RSI : RENVOIS_NON_PREPARES_RSN,
     controles,
     limites: [

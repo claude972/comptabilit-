@@ -1453,6 +1453,33 @@ export const qualificationsResultat = pgTable(
 );
 
 /**
+ * HISTORIQUE des qualifications du détail du compte de résultat (D-110) : journal en AJOUT SEUL de chaque saisie et de chaque retrait
+ * (la table `qualifications_resultat` ne garde que l'état courant). Une ligne n'est jamais modifiée ni supprimée par l'application.
+ */
+export const historiqueQualifications = pgTable(
+  'historique_qualifications',
+  {
+    id: id(),
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    entiteId: uuid('entite_id').notNull().references(() => entites.id),
+    exerciceId: uuid('exercice_id').notNull().references(() => exercices.id),
+    /** ventilation_ca | renvoi */
+    nature: text('nature').notNull(),
+    cle: text('cle').notNull(),
+    /** saisie | retrait */
+    action: text('action').notNull(),
+    /** Montants au moment de la saisie (null pour un retrait). */
+    montant: text('montant'),
+    montantExport: text('montant_export'),
+    note: text('note'),
+    versionDonnees: integer('version_donnees').notNull(),
+    auteurId: uuid('auteur_id').notNull().references(() => utilisateurs.id),
+    creeLe: creeLe(),
+  },
+  (t) => [index('historique_qualifications_exercice').on(t.exerciceId, t.nature, t.cle)],
+);
+
+/**
  * Fichier des immobilisations d'un dossier, SAISI par le cabinet (aucune donnée importée ne le fournit). Il ne sert qu'à
  * proposer les dotations aux amortissements (linéaires, ou dégressifs sur déclaration du cabinet) ; il ne remplace pas le
  * fichier des immobilisations du logiciel de production comptable, qui reste la référence. Une immobilisation retirée ici

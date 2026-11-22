@@ -63,7 +63,7 @@ Politique versionnée (`POLITIQUE_FIN_DE_CONTRAT`, version `2026-11-20.3`), repr
 | Écritures importées | `campagnes_import`, `lots_import`, `lignes_ecriture` | restituer puis supprimer | — |
 | Relevés, mouvements, rapprochements | `releves_bancaires`, `mouvements_bancaires`, `mouvements_lots`, `executions_rapprochement`, `rapprochements` | restituer puis supprimer | — |
 | Contrôles et constats | `executions_controles`, `resultats_controles`, `constats`, `exports_revision` | restituer puis supprimer | — |
-| Décisions et validations | `decisions`, `commentaires`, `ecritures_inventaire`, `confirmations_annexe`, `qualifications_resultat`, `immobilisations`, `reprises_immobilisations`, `lignes_reprise_immobilisations`, `suivis_evolution`, `liens_tiers`, `liens_factures` | restituer puis supprimer | — |
+| Décisions et validations | `decisions`, `commentaires`, `ecritures_inventaire`, `confirmations_annexe`, `qualifications_resultat`, `historique_qualifications`, `immobilisations`, `reprises_immobilisations`, `lignes_reprise_immobilisations`, `suivis_evolution`, `liens_tiers`, `liens_factures` | restituer puis supprimer | — |
 | Missions et conseils | `missions`, `lettres_mission`, `travaux`, `baremes_temps`, `conseils`, `evenements_conseil` | restituer puis supprimer | — |
 | Règles et paramètres, réglages de la tolérance de montant des tiers et factures (historique, motif, auteur), suggestions d'amélioration écartées | `regles_cabinet`, `parametres_cabinet`, `reglages_tiers_factures`, `suggestions_ecartees` | restituer puis supprimer | — |
 | Messagerie et jetons | `connexions_mail`, `demandes_connexion_mail`, `pieces_mail_vues`, `pieces_a_qualifier`, `signalements_mail`, `messages_mail` | supprimer | Les jetons ne sont jamais restitués |

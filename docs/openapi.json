@@ -5690,6 +5690,44 @@
         ]
       }
     },
+    "/v1/exercices/{id}/qualifications/historique": {
+      "get": {
+        "description": "Journal en ajout seul : une ligne n’est jamais modifiée ni supprimée par l’application. Sans « cle », toutes les qualifications de l’exercice (plus récentes d’abord, 500 au plus).",
+        "operationId": "FiscalController_historique",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cle",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Historique des qualifications du détail du compte de résultat : chaque saisie et chaque retrait, avec auteur, date, note et version des données",
+        "tags": [
+          "États fiscaux (projets)"
+        ]
+      }
+    },
     "/v1/exercices/{id}/qualifications/ventilation/{compte}": {
       "put": {
         "description": "La balance ne dit pas où se trouve le client : la qualification est une déclaration du cabinet, tracée (auteur, date, version des données, note obligatoire). France + exportations doivent être EXACTEMENT égaux au solde créditeur du compte (un compte de rabais, remises et ristournes se qualifie avec des montants négatifs) ; sinon la saisie est refusée en 409 avec l’écart. Elle devient « à revoir » dès que les données changent. Elle ne vaut pas validation professionnelle.",

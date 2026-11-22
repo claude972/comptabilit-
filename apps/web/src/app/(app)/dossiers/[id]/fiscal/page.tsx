@@ -4,7 +4,7 @@ import { ChoixExercice } from '@/components/dossier';
 import { ErreurAcces } from '@/components/erreurs';
 import { CategorieAnnexe, ConfirmerRubrique, QualifierCompte, SaisirRenvoi } from '@/components/fiscal/actions';
 import { Alerte, Carte, Etiquette, MentionProjet, SousTitre, Tableau } from '@/components/ui/base';
-import { type Abstention, type AnnexeProjet, type CelluleImmobilisation, type CelluleVentilation, type DetailResultatProjet, LIBELLE_CATEGORIE, LIBELLE_ETAT_QUALIFICATION, type LiasseProjet, type ReponseAnnexe, type ReponseLiasse, type TableauxImmobilisationsProjet } from '@/lib/fiscal';
+import { type Abstention, type AnnexeProjet, type CelluleImmobilisation, type CelluleVentilation, type DetailResultatProjet, type EvenementQualification, type ReponseHistorique, type ResultatSigne, LIBELLE_CATEGORIE, LIBELLE_ETAT_QUALIFICATION, type LiasseProjet, type ReponseAnnexe, type ReponseLiasse, type TableauxImmobilisationsProjet } from '@/lib/fiscal';
 import { formaterHorodatage, formaterMontant, formaterMontantEuros } from '@/lib/montants';
 
 type Fm = (valeur: string | null | undefined) => string;
@@ -319,8 +319,48 @@ function CelluleVentil({ c, fm }: { c: CelluleVentilation; fm: Fm }) {
   );
 }
 
+function CelluleSigne({ r, fm, testid }: { r: ResultatSigne; fm: Fm; testid: string }) {
+  if (r.statut === 'abstention') {
+    return (
+      <div data-testid={testid} data-statut="abstention">
+        <Etiquette ton="attention">Abstention</Etiquette> <span className="text-xs text-texte-doux">(cases {r.codesCases.join(' / ')})</span>
+        <ul className="list-disc pl-5 text-sm">
+          {r.motifs.map((m) => (
+            <li key={m}>{m}</li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+  return (
+    <div data-testid={testid} data-statut="etabli" data-sens={r.sens}>
+      <strong className="tabular-nums">{r.sens === 'nul' ? fm('0.00') : fm(r.montant)}</strong> — {r.sens === 'benefice' ? 'bénéfice' : r.sens === 'deficit' ? 'déficit' : 'résultat nul'}{' '}
+      <span className="text-xs text-texte-doux">(case {r.codeCase}, lue, vérifiée sur le PDF)</span>
+    </div>
+  );
+}
+
+/** Historique en ajout seul d'une qualification : chaque saisie et chaque retrait, avec auteur, date, note et version des données. */
+function HistoriqueLigne({ evenements, cle, fm }: { evenements: EvenementQualification[]; cle: string; fm: Fm }) {
+  const e = evenements.filter((x) => x.cle === cle);
+  if (e.length === 0) return null;
+  return (
+    <details className="text-xs text-texte-doux" data-testid={`historique-${cle}`}>
+      <summary>Historique ({e.length})</summary>
+      <ol className="list-decimal pl-5">
+        {e.map((x, i) => (
+          <li key={`${x.le}-${i}`}>
+            {formaterHorodatage(x.le)} — {x.action === 'retrait' ? 'retrait de la saisie' : x.nature === 'renvoi' && x.montant === '0.00' ? 'néant déclaré' : `saisie de ${fm(x.montant)}${x.montantExport !== null ? ` (export ${fm(x.montantExport)})` : ''}`} · version {x.versionDonnees} des données · utilisateur {x.auteurId.slice(0, 8)}
+            {x.note ? ` · « ${x.note} »` : ''}
+          </li>
+        ))}
+      </ol>
+    </details>
+  );
+}
+
 /** Détail du compte de résultat (D-106) : ventilation France / exportations qualifiée par le cabinet, détail exceptionnel, renvois. */
-function DetailResultat({ d, fm, exerciceId, revision }: { d: DetailResultatProjet | Abstention; fm: Fm; exerciceId: string; revision: boolean }) {
+function DetailResultat({ d, fm, exerciceId, revision, evenements }: { d: DetailResultatProjet | Abstention; fm: Fm; exerciceId: string; revision: boolean; evenements: EvenementQualification[] }) {
   if (d.statut === 'abstention') return <BlocAbstention a={d} quoi="Détail des tableaux 2052 et 2053" />;
   const v = d.ventilationChiffreAffaires;
   const net = v.chiffreAffairesNet;
@@ -444,6 +484,7 @@ function DetailResultat({ d, fm, exerciceId, revision }: { d: DetailResultatProj
                   {c.ecart ? ` · écart avec le solde : ${fm(c.ecart)}` : ''}
                 </p>
               ) : null}
+              <HistoriqueLigne evenements={evenements} cle={c.compteNum} fm={fm} />
               {revision ? (
                 <QualifierCompte exerciceId={exerciceId} compte={c.compteNum} solde={c.solde} qualification={c.qualification ? { montantFrance: c.qualification.montantFrance, montantExport: c.qualification.montantExport, note: c.qualification.note } : null} />
               ) : null}
@@ -522,6 +563,7 @@ function DetailResultat({ d, fm, exerciceId, revision }: { d: DetailResultatProj
                   {fm(r.saisie.montant)} · saisi le {formaterHorodatage(r.saisie.le)} sur la version {r.saisie.versionDonnees} des données · « {r.saisie.note} »
                 </p>
               ) : null}
+              <HistoriqueLigne evenements={evenements} cle={r.code} fm={fm} />
               {revision ? <SaisirRenvoi exerciceId={exerciceId} code={r.code} proposition={r.proposition?.montant ?? null} saisie={r.saisie ? { montant: r.saisie.montant, note: r.saisie.note } : null} /> : null}
             </li>
           ))}
@@ -532,6 +574,90 @@ function DetailResultat({ d, fm, exerciceId, revision }: { d: DetailResultatProj
           ))}
         </ul>
       </div>
+      {d.resultatFiscal === null ? null : (
+        <div className="space-y-3" data-testid="resultat-fiscal">
+          <h3 className="font-semibold" id="titre-resultat-fiscal">
+            2033-B — B. Résultat fiscal (réintégrations, déductions, déficits) : saisie justifiée et historisée
+          </h3>
+          <Alerte ton="attention" titre="Aucune décision fiscale n’est prise par Comtaple">
+            <p className="text-sm">
+              Chaque réintégration ou déduction est une saisie justifiée du cabinet (montant en positif, justification obligatoire, historique conservé). « Néant » est une déclaration explicite ; une case sans saisie n’est jamais présumée nulle et rend le résultat
+              fiscal en abstention. Le calcul se borne à l’arithmétique du formulaire : résultat comptable + réintégrations − déductions (cases 352 / 354), puis imputation saisie dans la limite du plafond de la notice (cases 370 / 372). Projet, sans validation professionnelle ni transmission.
+            </p>
+          </Alerte>
+          <Tableau legende="Calcul du résultat fiscal du tableau 2033-B">
+            <thead>
+              <tr>
+                <th scope="col">Étape</th>
+                <th scope="col">Résultat</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Résultat comptable reporté (312 / 314)</th>
+                <td>
+                  <CelluleSigne r={d.resultatFiscal.resultatComptable} fm={fm} testid="rf-comptable" />
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">Résultat fiscal avant imputation des déficits (352 / 354)</th>
+                <td>
+                  <CelluleSigne r={d.resultatFiscal.avantImputation} fm={fm} testid="rf-avant" />
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">Plafond d’imputation des déficits antérieurs</th>
+                <td data-testid="rf-plafond">
+                  {d.resultatFiscal.plafondImputation ? (
+                    <>
+                      <strong className="tabular-nums">{fm(d.resultatFiscal.plafondImputation.montant)}</strong> <span className="text-xs text-texte-doux">{d.resultatFiscal.plafondImputation.regle}</span>
+                    </>
+                  ) : (
+                    <span className="text-texte-doux">sans objet (pas de bénéfice établi)</span>
+                  )}
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">Résultat fiscal après imputation des déficits (370 / 372)</th>
+                <td>
+                  <CelluleSigne r={d.resultatFiscal.apresImputation} fm={fm} testid="rf-apres" />
+                </td>
+              </tr>
+            </tbody>
+          </Tableau>
+          <ul className="space-y-1" aria-label="Contrôles du résultat fiscal" data-testid="controles-resultat-fiscal">
+            {d.resultatFiscal.controles.map((c) => (
+              <li key={c.code}>
+                <Etiquette ton={c.statut === 'coherent' ? 'succes' : c.statut === 'ecart' ? 'danger' : 'attention'}>{c.statut === 'coherent' ? 'Cohérent' : c.statut === 'ecart' ? 'Écart' : 'Non vérifiable'}</Etiquette> {c.message}
+                {c.ecart ? ` (écart : ${fm(c.ecart)})` : ''}
+              </li>
+            ))}
+          </ul>
+          <ul className="space-y-3" data-testid="lignes-resultat-fiscal">
+            {d.resultatFiscal.lignes.map((l) => (
+              <li key={l.cle} className="rounded-lg border border-bordure p-3" data-ligne-rf={l.cle}>
+                <p className="text-sm">
+                  <strong>{l.libelle}</strong> <span className="text-texte-doux">(case {l.codeCase}, lue, vérifiée sur le PDF)</span>{' '}
+                  <Etiquette ton={l.statut === 'saisi' ? 'succes' : 'attention'}>{l.statut === 'saisi' ? (l.neant ? 'Néant déclaré' : 'Saisi') : l.statut === 'a_revoir' ? 'À revoir : données modifiées' : 'À saisir'}</Etiquette>
+                </p>
+                <p className="text-xs text-texte-doux">{l.precision}</p>
+                {l.saisie ? (
+                  <p className="text-xs text-texte-doux" data-testid={`trace-rf-${l.cle}`}>
+                    {l.neant ? 'Néant' : fm(l.saisie.montant)} · saisi le {formaterHorodatage(l.saisie.le)} sur la version {l.saisie.versionDonnees} des données · « {l.saisie.note} »
+                  </p>
+                ) : null}
+                <HistoriqueLigne evenements={evenements} cle={l.cle} fm={fm} />
+                {revision ? <SaisirRenvoi exerciceId={exerciceId} code={l.cle} proposition={null} saisie={l.saisie ? { montant: l.saisie.montant, note: l.saisie.note } : null} avecNeant /> : null}
+              </li>
+            ))}
+          </ul>
+          <ul className="list-disc pl-5 text-sm text-texte-doux" data-testid="resultat-fiscal-non-prepare">
+            {d.resultatFiscal.nonPrepare.map((n) => (
+              <li key={n}>Non préparé — {n}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       <details className="text-sm">
         <summary>Sources officielles lues</summary>
         <ul className="list-disc pl-5">
@@ -660,6 +786,8 @@ export default async function PageFiscal({ params, searchParams }: { params: Pro
   const lienMontants = `${base}&vue=${vue}&regime=${regime}${euros ? '' : '&montants=euros'}`;
   const revision = auMoins(ctx.niveau, 'revision');
   const liasse = vue === 'liasse' ? await tenter<ReponseLiasse>(`v1/exercices/${exercice.id}/liasse?regime=${regime}`) : null;
+  const historique = liasse?.ok && liasse.donnees.detailResultat ? await tenter<ReponseHistorique>(`v1/exercices/${exercice.id}/qualifications/historique`) : null;
+  const evenements = historique?.ok ? historique.donnees.evenements : [];
   const annexe = vue === 'annexe' ? await tenter<ReponseAnnexe>(`v1/exercices/${exercice.id}/annexe`) : null;
   const reponse = liasse ?? annexe;
 
@@ -721,7 +849,7 @@ export default async function PageFiscal({ params, searchParams }: { params: Pro
       ) : null}
       {liasse?.ok ? liasse.donnees.resultat.statut === 'abstention' ? <BlocAbstention a={liasse.donnees.resultat} quoi="Liasse fiscale" /> : <Liasse l={liasse.donnees.resultat} fm={fm} /> : null}
       {liasse?.ok && liasse.donnees.tableauxImmobilisations ? <ImmobilisationsLiasse t={liasse.donnees.tableauxImmobilisations} fm={fm} /> : null}
-      {liasse?.ok && liasse.donnees.detailResultat ? <DetailResultat d={liasse.donnees.detailResultat} fm={fm} exerciceId={exercice.id} revision={revision} /> : null}
+      {liasse?.ok && liasse.donnees.detailResultat ? <DetailResultat d={liasse.donnees.detailResultat} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {annexe?.ok ? (
         annexe.donnees.resultat.statut === 'abstention' ? (
           <BlocAbstention a={annexe.donnees.resultat} quoi="Projet d’annexe" />

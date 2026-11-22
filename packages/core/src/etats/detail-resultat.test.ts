@@ -208,3 +208,91 @@ describe('périmètre : abstention motivée, sans chiffre', () => {
     expect(JSON.stringify(r)).not.toMatch(/montant/);
   });
 });
+
+describe('2033-B, partie B « Résultat fiscal » (D-110) : saisie justifiée, néant explicite, abstention, aucune décision inventée', () => {
+  // Résultat comptable de la balance d'essai : produits 11 800 + 800 − charges (2 400 + 300 + 1 500 + 150) = 8 250 + ... voir resultatComptable fourni explicitement.
+  const rf = (cle: string, montant: string, s: Partial<QualificationRenvoi> = {}): QualificationRenvoi => ({ code: cle, montant, ...TRACE, ...s });
+  const AVANT = ['316', '318', '322', '324', '330', '342', '350'].map((c) => rf(`RF_${c}`, '0.00'));
+  const demandeRf = (resultatComptable: string | null, renvois: QualificationRenvoi[]) => demande({ regime: 'reel_simplifie', resultatComptable, renvois });
+  const pf = (d: DemandeDetailResultat) => projet(d).resultatFiscal!;
+
+  it('absent au régime réel normal ; présent au régime simplifié', () => {
+    expect(projet(demande()).resultatFiscal).toBeNull();
+    expect(pf(demandeRf('1000.00', [])).lignes.map((l) => l.codeCase)).toEqual(['316', '318', '322', '324', '330', '342', '350', '356', '360']);
+  });
+
+  it('sans aucune saisie : abstention explicite, rien n’est présumé nul, le motif liste les cases manquantes', () => {
+    const r = pf(demandeRf('1000.00', []));
+    expect(r.resultatComptable).toMatchObject({ statut: 'etabli', sens: 'benefice', montant: '1000.00', codeCase: '312' });
+    expect(r.avantImputation).toMatchObject({ statut: 'abstention', codesCases: ['352', '354'] });
+    expect(JSON.stringify(r.avantImputation)).toMatch(/316, 318, 322, 324, 330, 342, 350/);
+    expect(JSON.stringify(r.avantImputation)).not.toMatch(/"montant"/);
+    expect(r.apresImputation.statut).toBe('abstention');
+    expect(r.lignes.every((l) => l.statut === 'a_saisir' && l.montant === null && !l.neant)).toBe(true);
+    expect(r.lignesManquantes).toHaveLength(7);
+  });
+
+  it('un « néant » explicite (0,00 saisi) est distinct d’une case non renseignée ; la saisie est retenue avec sa trace', () => {
+    const r = pf(demandeRf('1000.00', [...AVANT, rf('RF_316', '0.00')]));
+    expect(r.lignes.find((l) => l.cle === 'RF_316')).toMatchObject({ statut: 'saisi', neant: true, montant: '0.00', saisie: { qualifieePar: 'u-1', versionDonnees: 7 } });
+    expect(r.lignes.find((l) => l.cle === 'RF_356')).toMatchObject({ statut: 'a_saisir', neant: false });
+    expect(r.avantImputation).toMatchObject({ statut: 'etabli', sens: 'benefice', montant: '1000.00', codeCase: '352' });
+  });
+
+  it('bénéfice fiscal = résultat comptable + réintégrations − déductions saisies (cases 352) ; après imputation saisie (370)', () => {
+    const r = pf(demandeRf('1000.00', [...AVANT.filter((x) => !['RF_316', 'RF_324', 'RF_342'].includes(x.code)), rf('RF_316', '200.50'), rf('RF_324', '99.50'), rf('RF_342', '300.00'), rf('RF_356', '0.00'), rf('RF_360', '400.00')]));
+    expect(r.avantImputation).toMatchObject({ statut: 'etabli', sens: 'benefice', montant: '1000.00', codeCase: '352' });
+    expect(r.plafondImputation?.montant).toBe('1000.00'); // plafond 1 000 000 > bénéfice : borné au bénéfice
+    expect(r.apresImputation).toMatchObject({ statut: 'etabli', sens: 'benefice', montant: '600.00', codeCase: '370' });
+  });
+
+  it('déficit fiscal (case 354) quand les déductions excèdent le résultat comptable plus les réintégrations ; aucune imputation possible', () => {
+    const r = pf(demandeRf('100.00', [...AVANT.filter((x) => x.code !== 'RF_350'), rf('RF_350', '350.00'), rf('RF_356', '0.00'), rf('RF_360', '0.00')]));
+    expect(r.avantImputation).toMatchObject({ statut: 'etabli', sens: 'deficit', montant: '250.00', codeCase: '354' });
+    expect(r.plafondImputation).toBeNull();
+    expect(r.apresImputation).toMatchObject({ statut: 'etabli', sens: 'deficit', montant: '250.00', codeCase: '372' });
+    const avecImputes = pf(demandeRf('100.00', [...AVANT.filter((x) => x.code !== 'RF_350'), rf('RF_350', '350.00'), rf('RF_356', '0.00'), rf('RF_360', '10.00')]));
+    expect(avecImputes.apresImputation.statut).toBe('abstention');
+    expect(avecImputes.controles.find((c) => c.code === 'RF_IMPUTATION')?.statut).toBe('ecart');
+  });
+
+  it('plafond d’imputation : 1 000 000 € majoré de 50 % du bénéfice excédant ; une imputation au-delà est refusée avec l’écart', () => {
+    const base = [...AVANT, rf('RF_356', '0.00')];
+    const r = pf(demandeRf('3000000.00', [...base, rf('RF_360', '2000000.00')]));
+    expect(r.plafondImputation?.montant).toBe('2000000.00'); // 1 000 000 + 50 % × 2 000 000
+    expect(r.apresImputation).toMatchObject({ statut: 'etabli', montant: '1000000.00', codeCase: '370' });
+    const trop = pf(demandeRf('3000000.00', [...base, rf('RF_360', '2000000.01')]));
+    expect(trop.apresImputation.statut).toBe('abstention');
+    expect(trop.controles.find((c) => c.code === 'RF_IMPUTATION')).toMatchObject({ statut: 'ecart', ecart: '0.01' });
+  });
+
+  it('un déficit reporté en arrière (356 > 0) : l’effet sur le résultat après imputation n’est pas établi, abstention', () => {
+    const r = pf(demandeRf('1000.00', [...AVANT, rf('RF_356', '500.00'), rf('RF_360', '0.00')]));
+    expect(r.avantImputation.statut).toBe('etabli');
+    expect(r.apresImputation.statut).toBe('abstention');
+    expect(JSON.stringify(r.apresImputation)).toMatch(/report(é)? en arrière/);
+  });
+
+  it('une saisie donnée sur une autre version des données est « à revoir » et ne compte plus : abstention', () => {
+    const r = pf(demandeRf('1000.00', [...AVANT.filter((x) => x.code !== 'RF_330'), rf('RF_330', '0.00', { versionDonnees: 6 })]));
+    expect(r.lignes.find((l) => l.cle === 'RF_330')).toMatchObject({ statut: 'a_revoir', montant: null });
+    expect(r.avantImputation.statut).toBe('abstention');
+  });
+
+  it('résultat comptable absent (liasse en abstention) : aucun résultat fiscal', () => {
+    const r = pf(demandeRf(null, AVANT));
+    expect(r.resultatComptable.statut).toBe('abstention');
+    expect(r.avantImputation.statut).toBe('abstention');
+  });
+
+  it('un montant négatif saisi est refusé par le moteur (écart, abstention)', () => {
+    const r = pf(demandeRf('1000.00', [...AVANT.filter((x) => x.code !== 'RF_316'), rf('RF_316', '-5.00')]));
+    expect(r.avantImputation.statut).toBe('abstention');
+    expect(r.controles.some((c) => c.code === 'RF_NEGATIF_316' && c.statut === 'ecart')).toBe(true);
+  });
+
+  it('décimaux exacts : 0,1 + 0,2 réintégrés à un résultat de 0,00', () => {
+    const r = pf(demandeRf('0.00', [...AVANT.filter((x) => !['RF_316', 'RF_318'].includes(x.code)), rf('RF_316', '0.10'), rf('RF_318', '0.20')]));
+    expect(r.avantImputation).toMatchObject({ statut: 'etabli', montant: '0.30' });
+  });
+});

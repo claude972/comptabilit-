@@ -108,6 +108,87 @@ describe('2033-B (régime simplifié) : « dont export » et renvois, mêmes qua
   }, 120_000);
 });
 
+describe('2033-B partie B « Résultat fiscal » : saisie justifiée, néant explicite, historique en ajout seul, abstention (D-110)', () => {
+  const rsi = async () => (await liasse(exN, 'reel_simplifie')).json.detailResultat;
+  const rf = (cle: string, montant: string, note = 'Saisie du cabinet pour l’essai', qui = 'remi') => api(qui, 'PUT', `/v1/exercices/${exN}/qualifications/renvois/RF_${cle}`, { montant, note });
+  const evenements = async (cle: string) => (await api('remi', 'GET', `/v1/exercices/${exN}/qualifications/historique?cle=RF_${cle}`)).json.evenements as any[];
+
+  it('sans saisie : résultat comptable reporté (312), résultat fiscal en abstention listant les sept cases manquantes, rien n’est présumé nul', async () => {
+    const d = await rsi();
+    expect(d.resultatFiscal.resultatComptable).toMatchObject({ statut: 'etabli', sens: 'benefice', montant: '8250.00', codeCase: '312' });
+    expect(d.resultatFiscal.avantImputation.statut).toBe('abstention');
+    expect(JSON.stringify(d.resultatFiscal.avantImputation)).toMatch(/316, 318, 322, 324, 330, 342, 350/);
+    expect(d.resultatFiscal.apresImputation.statut).toBe('abstention');
+    expect(d.resultatFiscal.lignes.map((l: any) => l.statut)).toEqual(Array(9).fill('a_saisir'));
+    expect((await liasse(exN, 'reel_normal')).json.detailResultat.resultatFiscal).toBeNull();
+  }, 120_000);
+
+  it('refus : note trop courte, montant négatif, montant mal formé, clé inconnue ; droits (collaboration : refus, déposant : 404)', async () => {
+    expect((await rf('316', '10.00', 'ok')).statut).toBe(400);
+    expect((await rf('316', '-10.00')).statut).toBe(400);
+    expect((await rf('316', '10,00')).statut).toBe(400);
+    expect((await api('remi', 'PUT', `/v1/exercices/${exN}/qualifications/renvois/RF_999`, { montant: '1.00', note: 'clé inconnue ici' })).statut).toBe(404);
+    expect((await rf('316', '10.00', 'Essai collaborateur', 'chloe')).statut).toBeGreaterThanOrEqual(400);
+    expect((await rf('316', '10.00', 'Essai déposant', 'client')).statut).toBe(404);
+    expect((await rsi()).resultatFiscal.lignes.every((l: any) => l.statut === 'a_saisir')).toBe(true);
+  });
+
+  it('néant explicite + réintégrations et déductions saisies : bénéfice fiscal (352) puis imputation (370), trace complète', async () => {
+    for (const c of ['318', '322', '330', '350']) expect((await rf(c, '0.00', 'Néant : aucune opération de cette nature')).statut, c).toBeLessThan(300);
+    expect((await rf('316', '1000.00', 'Rémunération de l’exploitant non déductible (essai)')).statut).toBeLessThan(300);
+    expect((await rf('324', '250.00', 'Amendes et pénalités du compte 6712')).statut).toBeLessThan(300);
+    let d = await rsi();
+    expect(d.resultatFiscal.avantImputation.statut).toBe('abstention'); // 342 non renseignée
+    expect(JSON.stringify(d.resultatFiscal.avantImputation)).toMatch(/342/);
+    expect((await rf('342', '500.00', 'Déduction de zone (essai)')).statut).toBeLessThan(300);
+    d = await rsi();
+    // 8 250 + (1 000 + 250) − (500 + 0) = 9 000
+    expect(d.resultatFiscal.avantImputation).toMatchObject({ statut: 'etabli', sens: 'benefice', montant: '9000.00', codeCase: '352' });
+    expect(d.resultatFiscal.plafondImputation.montant).toBe('9000.00');
+    expect(d.resultatFiscal.apresImputation.statut).toBe('abstention'); // 356 et 360 non saisies
+    const l318 = d.resultatFiscal.lignes.find((l: any) => l.cle === 'RF_318');
+    expect(l318).toMatchObject({ statut: 'saisi', neant: true, montant: '0.00', saisie: { qualifieePar: DEMO.remi } });
+    expect(d.resultatFiscal.lignes.find((l: any) => l.cle === 'RF_356')).toMatchObject({ statut: 'a_saisir', neant: false });
+    expect((await rf('356', '0.00', 'Aucun report en arrière')).statut).toBeLessThan(300);
+    expect((await rf('360', '2000.00', 'Déficits antérieurs imputés (essai)')).statut).toBeLessThan(300);
+    d = await rsi();
+    expect(d.resultatFiscal.apresImputation).toMatchObject({ statut: 'etabli', sens: 'benefice', montant: '7000.00', codeCase: '370' });
+    expect(d.resultatFiscal.controles.find((c: any) => c.code === 'RF_IMPUTATION').statut).toBe('coherent');
+  }, 120_000);
+
+  it('imputation au-delà du plafond : abstention avec l’écart ; un déficit reporté en arrière : abstention ; jamais de chiffre inventé', async () => {
+    expect((await rf('360', '9000.01', 'Imputation excessive (essai)')).statut).toBeLessThan(300);
+    let d = await rsi();
+    expect(d.resultatFiscal.apresImputation.statut).toBe('abstention');
+    expect(d.resultatFiscal.controles.find((c: any) => c.code === 'RF_IMPUTATION')).toMatchObject({ statut: 'ecart', ecart: '0.01' });
+    expect((await rf('360', '0.00', 'Aucun déficit imputé')).statut).toBeLessThan(300);
+    expect((await rf('356', '100.00', 'Option de report en arrière (essai)')).statut).toBeLessThan(300);
+    d = await rsi();
+    expect(d.resultatFiscal.apresImputation.statut).toBe('abstention');
+    expect(JSON.stringify(d.resultatFiscal.apresImputation)).toMatch(/report(é)? en arrière/);
+    expect(d.resultatFiscal.avantImputation.statut).toBe('etabli'); // le résultat avant imputation reste établi
+    expect((await rf('356', '0.00', 'Option abandonnée')).statut).toBeLessThan(300);
+  }, 120_000);
+
+  it('historique en ajout seul : chaque saisie, avec montant, note, auteur et version ; un retrait est journalisé ; rien n’est modifié', async () => {
+    const h = await evenements('360');
+    expect(h.map((e) => [e.action, e.montant])).toEqual([['saisie', '0.00'], ['saisie', '9000.01'], ['saisie', '2000.00']]); // plus récent d'abord
+    expect(h[2]).toMatchObject({ nature: 'renvoi', cle: 'RF_360', note: 'Déficits antérieurs imputés (essai)', auteurId: DEMO.remi, versionDonnees: expect.any(Number) });
+    expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/qualifications/renvois/RF_342`)).statut).toBeLessThan(300);
+    const h342 = await evenements('342');
+    expect(h342.map((e) => e.action)).toEqual(['retrait', 'saisie']);
+    expect(h342[0]).toMatchObject({ montant: null, note: null });
+    const d = await rsi();
+    expect(d.resultatFiscal.lignes.find((l: any) => l.cle === 'RF_342')).toMatchObject({ statut: 'a_saisir', montant: null });
+    expect(d.resultatFiscal.avantImputation.statut).toBe('abstention');
+    // La base refuse toute modification ou suppression de l'historique par le rôle applicatif.
+    const refus = await editeur.query(`select has_table_privilege('comtaple_app', 'historique_qualifications', 'UPDATE') as maj, has_table_privilege('comtaple_app', 'historique_qualifications', 'DELETE') as sup, has_table_privilege('comtaple_worker', 'historique_qualifications', 'INSERT') as ins_worker`);
+    expect(refus.rows[0]).toEqual({ maj: false, sup: false, ins_worker: false });
+    expect((await api('chloe', 'GET', `/v1/exercices/${exN}/qualifications/historique`)).statut).toBe(200);
+    expect((await api('client', 'GET', `/v1/exercices/${exN}/qualifications/historique`)).statut).toBe(404);
+  }, 120_000);
+});
+
 describe('détail du compte de résultat : qualification tracée, abstention sans qualification', () => {
   it('sans qualification : totaux de la balance, France et exportations en abstention, renvois à saisir, exceptionnel détaillé', async () => {
     const d = await detail();

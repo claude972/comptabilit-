@@ -531,6 +531,45 @@ describe('2033-F (régime simplifié) : composition du capital par saisie ligne 
   }, 120_000);
 });
 
+describe('2033-G (régime simplifié) : filiales et participations par saisie ligne par ligne (D-117)', () => {
+  const f2033g = async () => (await liasse(exN, 'reel_simplifie')).json.formulaire2033G;
+  const tg = (tableau: string, ligne: string, valeurs: Record<string, string>, note = 'Registre des titres de participation (essai)', qui = 'remi') => api(qui, 'PUT', `/v1/exercices/${exN}/tableaux/${tableau}/${ligne}`, { valeurs, note });
+  const FIL = { formeJuridique: 'SARL', denomination: 'Filiale Exemple (fictive)', siren: '987654321', adresseNumero: '5', adresseVoie: 'rue du Test', codePostal: '33000', commune: 'Bordeaux', pays: 'France', pourcentage: '55.00' };
+
+  it('sans saisie : à saisir, sept lignes ; absent au régime normal ; refus de forme et de droits', async () => {
+    const f = await f2033g();
+    expect(f).toMatchObject({ statut: 'projet', etat: 'a_saisir' });
+    expect(f.filiales).toHaveLength(7);
+    expect((await liasse(exN, 'reel_normal')).json.formulaire2033G).toBeNull();
+    expect((await tg('2033G_FIL', '01', { ...FIL, denomination: '' })).statut).toBe(400);
+    expect((await tg('2033G_FIL', '08', FIL)).statut).toBe(400);
+    expect((await tg('2033G_FIL', '01', FIL, 'Essai collaborateur', 'chloe')).statut).toBeGreaterThanOrEqual(400);
+    expect((await tg('2033G_FIL', '01', FIL, 'Essai déposant', 'client')).statut).toBe(404);
+    expect((await f2033g()).etat).toBe('a_saisir');
+  }, 120_000);
+
+  it('nombre de filiales et lignes : retenus avec leur trace, contrôles indicatifs, historique, retrait', async () => {
+    expect((await tg('2033G_NB', 'NB', { c905: '2' })).statut).toBeLessThan(300);
+    expect((await tg('2033G_FIL', '01', FIL)).statut).toBeLessThan(300);
+    let f = await f2033g();
+    expect(f.etat).toBe('saisi');
+    expect(f.nombre).toMatchObject({ codeCase: '905', statut: 'saisi', montant: '2' });
+    expect(f.filiales[0]).toMatchObject({ statut: 'saisi', valeurs: { denomination: 'Filiale Exemple (fictive)' }, trace: { qualifieePar: DEMO.remi } });
+    expect(f.controles.find((c: any) => c.code === 'G_LIGNES_MANQUANTES').statut).toBe('non_verifie');
+    expect((await tg('2033G_FIL', '02', { ...FIL, denomination: 'Petite participation (fictive)', pourcentage: '5.00' })).statut).toBeLessThan(300);
+    f = await f2033g();
+    expect(f.controles.find((c: any) => c.code === 'G_SEUIL_10').statut).toBe('ecart');
+    const h = (await api('remi', 'GET', `/v1/exercices/${exN}/qualifications/historique?cle=2033G_FIL:01`)).json.evenements as any[];
+    expect(h).toHaveLength(1);
+    expect(JSON.parse(h[0].montant)).toMatchObject({ siren: '987654321' });
+    for (const [t, l] of [['2033G_FIL', '02'], ['2033G_FIL', '01'], ['2033G_NB', 'NB']]) expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/${t}/${l}`)).statut).toBeLessThan(300);
+    expect((await f2033g()).etat).toBe('a_saisir');
+    expect((await tg('2033G_NB', 'NEANT', {}, 'Aucune filiale détenue à 10 % ou plus (essai)')).statut).toBeLessThan(300);
+    expect((await f2033g()).etat).toBe('neant');
+    expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/2033G_NB/NEANT`)).statut).toBeLessThan(300);
+  }, 120_000);
+});
+
 describe('détail du compte de résultat : qualification tracée, abstention sans qualification', () => {
   it('sans qualification : totaux de la balance, France et exportations en abstention, renvois à saisir, exceptionnel détaillé', async () => {
     const d = await detail();

@@ -29,8 +29,8 @@ import { MENTION_PROJET } from './sources-fiscales.js';
 
 const ZERO = new Decimal(0);
 
-export type TableauSaisi = '2033C_III' | '2054BIS_A' | '2054BIS_B' | '2055_B' | '2055_C' | '2033D_C' | '2033F_NB' | '2033F_PM' | '2033F_PP';
-export const TABLEAUX_SAISIS: readonly TableauSaisi[] = ['2033C_III', '2054BIS_A', '2054BIS_B', '2055_B', '2055_C', '2033D_C', '2033F_NB', '2033F_PM', '2033F_PP'];
+export type TableauSaisi = '2033C_III' | '2054BIS_A' | '2054BIS_B' | '2055_B' | '2055_C' | '2033D_C' | '2033F_NB' | '2033F_PM' | '2033F_PP' | '2033G_NB' | '2033G_FIL';
+export const TABLEAUX_SAISIS: readonly TableauSaisi[] = ['2033C_III', '2054BIS_A', '2054BIS_B', '2055_B', '2055_C', '2033D_C', '2033F_NB', '2033F_PM', '2033F_PP', '2033G_NB', '2033G_FIL'];
 
 export interface SaisieTableau {
   tableau: TableauSaisi;
@@ -138,6 +138,23 @@ export function validerSaisieTableau(tableau: string, ligne: string, valeurs: un
       decimal('parts', true);
     } else if (ligne === 'NEANT') exactement([]);
     else e.push(`Ligne inconnue pour le tableau 2033-F : ${ligne}.`);
+  } else if (tableau === '2033G_NB') {
+    if (ligne === 'NB') {
+      exactement(['c905']);
+      decimal('c905', true);
+    } else if (ligne === 'NEANT') exactement([]);
+    else e.push(`Ligne inconnue pour le tableau 2033-G : ${ligne}.`);
+  } else if (tableau === '2033G_FIL') {
+    if (/^0[1-7]$/.test(ligne)) {
+      const textes = ['formeJuridique', 'denomination', 'siren', 'adresseNumero', 'adresseVoie', 'codePostal', 'commune', 'pays'];
+      exactement([...textes, 'pourcentage']);
+      for (const k of textes) if (typeof v[k] !== 'string' || (v[k] as string).length > 200) e.push(`${k} : texte de 200 caractères au plus (peut être vide si l'information n'existe pas).`);
+      if (typeof v.denomination !== 'string' || v.denomination.trim().length < 1) e.push('denomination : obligatoire.');
+      if (typeof v.siren === 'string' && v.siren !== '' && !/^\d{9}$/.test(v.siren)) e.push('siren : 9 chiffres ou vide (société non établie en France).');
+      decimal('pourcentage', true);
+      if (typeof v.pourcentage === 'string' && estChaineDecimale(v.pourcentage) && new Decimal(v.pourcentage).greaterThan(100)) e.push('pourcentage : au plus 100.');
+    } else if (ligne === 'NEANT') exactement([]);
+    else e.push(`Ligne inconnue pour le tableau 2033-G : ${ligne}.`);
   } else if (tableau === '2054BIS_B') {
     if (ligne === 'B1' || ligne === 'B2') {
       exactement(['montant']);

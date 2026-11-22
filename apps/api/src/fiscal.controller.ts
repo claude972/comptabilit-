@@ -16,6 +16,7 @@ import {
   CLES_2033_E,
   preparerFormulaire2033E,
   preparerFormulaire2033F,
+  preparerFormulaire2033G,
   preparerSaisiesTableaux,
   validerSaisieTableau,
   type SaisieTableau,
@@ -53,7 +54,7 @@ const montantSigne = schemaChaineDecimale;
 const ventilation = z.object({ montantFrance: montantSigne, montantExport: montantSigne, note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie la ventilation').max(2000) });
 const renvoiSaisie = z.object({ montant: montantSigne, note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie le montant').max(2000) });
 const saisieTableau = z.object({ valeurs: z.record(z.string().max(40), z.string().max(200)), note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie la saisie').max(2000) });
-const TABLEAU_SAISI = /^(2033C_III|2054BIS_A|2054BIS_B|2055_B|2055_C|2033D_C|2033F_NB|2033F_PM|2033F_PP)$/;
+const TABLEAU_SAISI = /^(2033C_III|2054BIS_A|2054BIS_B|2055_B|2055_C|2033D_C|2033F_NB|2033F_PM|2033F_PP|2033G_NB|2033G_FIL)$/;
 const LIGNE_TABLEAU = /^(0[1-9]|1[0-3]|REG|PV19|NEANT|B1|B2|NB)$/;
 const COMPTE_CA = /^70[0-9A-Za-z]{1,13}$/;
 const CODE_RENVOI = /^[0-9A-Z_]{2,7}$/;
@@ -347,6 +348,8 @@ export class FiscalController {
       const formulaire2033E = regime === 'reel_simplifie' ? preparerFormulaire2033E({ versionDonnees: exercice.versionDonnees, exercice: { debut: exercice.debut, fin: exercice.fin }, renvois: renvoisSaisis }) : null;
       // Tableau 2033-F (composition du capital, régime simplifié, D-116) : saisie ligne par ligne.
       const formulaire2033F = regime === 'reel_simplifie' ? preparerFormulaire2033F({ versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies }) : null;
+      // Tableau 2033-G (filiales et participations, régime simplifié, D-117) : saisie ligne par ligne.
+      const formulaire2033G = regime === 'reel_simplifie' ? preparerFormulaire2033G({ versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies }) : null;
       const tableauxImmobilisations = preparerTableauxImmobilisations({
         lignes,
         exercice: { debut: exercice.debut, fin: exercice.fin },
@@ -380,6 +383,8 @@ export class FiscalController {
         formulaire2033E,
         /** Tableau 2033-F (composition du capital social) : saisie ligne par ligne, régime simplifié (D-116) ; null sinon. */
         formulaire2033F,
+        /** Tableau 2033-G (filiales et participations) : saisie ligne par ligne, régime simplifié (D-117) ; null sinon. */
+        formulaire2033G,
       };
     });
   }

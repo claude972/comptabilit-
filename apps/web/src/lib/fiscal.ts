@@ -123,6 +123,8 @@ export interface ReponseLiasse {
   formulaire2033E?: Formulaire2033EProjet | null;
   /** Tableau 2033-F (composition du capital social) ; null au régime réel normal (D-116). */
   formulaire2033F?: Formulaire2033FProjet | null;
+  /** Tableau 2033-G (filiales et participations) ; null au régime réel normal (D-117). */
+  formulaire2033G?: Formulaire2033GProjet | null;
 }
 export interface RubriqueAnnexe {
   id: string;
@@ -599,6 +601,19 @@ export interface Formulaire2033FProjet {
   nombres: { cases: Array<{ code: string; libelle: string; etatCodeCase: string; statut: StatutLigneSaisie; montant: string | null; neant: boolean }>; trace: TraceSaisie | null; statut: StatutLigneSaisie; total905: CelluleCalculee2033D; total906: CelluleCalculee2033D };
   personnesMorales: LigneAssocie[];
   personnesPhysiques: LigneAssocie[];
+  neant: TraceSaisie | null;
+  controles: Array<{ code: string; statut: 'coherent' | 'ecart' | 'non_verifie'; message: string; ecart?: string }>;
+  nonPrepare: string[];
+  limites: string[];
+  mention: string;
+}
+
+/** Tableau 2033-G (D-117) : champ `formulaire2033G` de la réponse de la liasse. */
+export interface Formulaire2033GProjet {
+  statut: 'projet';
+  etat: 'a_saisir' | 'neant' | 'saisi';
+  nombre: { codeCase: string; etatCodeCase: string; statut: StatutLigneSaisie; montant: string | null; neant: boolean; trace: TraceSaisie | null };
+  filiales: LigneAssocie[];
   neant: TraceSaisie | null;
   controles: Array<{ code: string; statut: 'coherent' | 'ecart' | 'non_verifie'; message: string; ecart?: string }>;
   nonPrepare: string[];

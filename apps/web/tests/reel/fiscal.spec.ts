@@ -75,6 +75,11 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
     await expect(detailRsi).toContainText('Détail du compte de résultat simplifié (2033-B)');
     await expect(detailRsi.getByTestId('renvois-detail').locator('li[data-renvoi="255"]')).toBeVisible();
     await expect(detailRsi.locator('#titre-2053')).toHaveCount(0);
+    // 2033-G (D-117) : filiales et participations par saisie ligne par ligne.
+    const g2033 = page.getByTestId('formulaire-2033-g');
+    await expect(g2033).toBeVisible();
+    await expect(g2033.getByTestId('filiales-2033-g').locator('li[data-filiale]')).toHaveCount(7);
+    await expect(g2033.getByTestId('2033-g-non-prepare')).toContainText('Tableaux supplémentaires');
     // 2033-F (D-116) : composition du capital par saisie ligne par ligne ; 905 et 906 en abstention sans saisie.
     const f2033 = page.getByTestId('formulaire-2033-f');
     await expect(f2033).toBeVisible();

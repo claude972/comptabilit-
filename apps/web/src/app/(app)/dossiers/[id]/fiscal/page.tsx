@@ -4,7 +4,7 @@ import { ChoixExercice } from '@/components/dossier';
 import { ErreurAcces } from '@/components/erreurs';
 import { CategorieAnnexe, ConfirmerRubrique, NeantTableau, QualifierCompte, SaisieCases, SaisieLigneTableau, SaisirRenvoi } from '@/components/fiscal/actions';
 import { Alerte, Carte, Etiquette, MentionProjet, SousTitre, Tableau } from '@/components/ui/base';
-import { type Abstention, type AnnexeProjet, type CelluleImmobilisation, type CelluleVentilation, type AmortissementsDerogatoiresProjet, type CadreIIIProjet, type CaseSaisie2033D, type CaseSaisie2033E, type CelluleCalculee2033D, type Formulaire2033EProjet, type Formulaire2033FProjet, type CelluleMontantSaisie, type Formulaire2033DProjet, LIGNES_DEROGATOIRES_2033D, LIGNES_PROVISIONS_2033D, type ChargesRepartiesProjet, LIBELLES_COLONNES_2055_B, type DetailResultatProjet, type EcartsReevaluationProjet, type EvenementQualification, LIBELLE_CLASSEMENT, type TableauxSaisisProjet, type ReponseHistorique, type ResultatSigne, LIBELLE_CATEGORIE, LIBELLE_ETAT_QUALIFICATION, type LiasseProjet, type ReponseAnnexe, type ReponseLiasse, type TableauxImmobilisationsProjet } from '@/lib/fiscal';
+import { type Abstention, type AnnexeProjet, type CelluleImmobilisation, type CelluleVentilation, type AmortissementsDerogatoiresProjet, type CadreIIIProjet, type CaseSaisie2033D, type CaseSaisie2033E, type CelluleCalculee2033D, type Formulaire2033EProjet, type Formulaire2033FProjet, type Formulaire2033GProjet, type CelluleMontantSaisie, type Formulaire2033DProjet, LIGNES_DEROGATOIRES_2033D, LIGNES_PROVISIONS_2033D, type ChargesRepartiesProjet, LIBELLES_COLONNES_2055_B, type DetailResultatProjet, type EcartsReevaluationProjet, type EvenementQualification, LIBELLE_CLASSEMENT, type TableauxSaisisProjet, type ReponseHistorique, type ResultatSigne, LIBELLE_CATEGORIE, LIBELLE_ETAT_QUALIFICATION, type LiasseProjet, type ReponseAnnexe, type ReponseLiasse, type TableauxImmobilisationsProjet } from '@/lib/fiscal';
 import { formaterHorodatage, formaterMontant, formaterMontantEuros } from '@/lib/montants';
 
 type Fm = (valeur: string | null | undefined) => string;
@@ -1704,6 +1704,91 @@ function Formulaire2033F({ f, fm, exerciceId, revision, evenements }: { f: Formu
   );
 }
 
+/** Tableau 2033-G (filiales et participations) : saisie ligne par ligne, justifiée et historisée (D-117). */
+function Formulaire2033G({ f, fm, exerciceId, revision, evenements }: { f: Formulaire2033GProjet; fm: Fm; exerciceId: string; revision: boolean; evenements: EvenementQualification[] }) {
+  const badge = (statut: string) => <Etiquette ton={statut === 'saisi' ? 'succes' : 'attention'}>{statut === 'saisi' ? 'Saisi' : statut === 'a_revoir' ? 'À revoir : données modifiées' : 'À saisir'}</Etiquette>;
+  const t = (cle: string, libelle: string, valeur: string | undefined, optionnel = false) => ({ cle, libelle, type: 'texte' as const, valeur: valeur ?? '', optionnel });
+  return (
+    <section className="space-y-4" aria-labelledby="titre-2033-g" data-testid="formulaire-2033-g">
+      <SousTitre id="titre-2033-g" className="text-base">
+        2033-G — Filiales et participations (détention directe d’au moins 10 % du capital) <MentionProjet />
+      </SousTitre>
+      <Alerte ton="attention" titre="Saisie du cabinet : le portefeuille de titres relève du registre de la société, rien ne se déduit de la balance">
+        <p className="text-sm">
+          Le nombre total de filiales (case 905) et chaque filiale (sept lignes) se saisissent avec une justification obligatoire, tracée et historisée ; « néant » est une déclaration explicite du tableau. Le formulaire n’énonce aucun calcul : les rapprochements sont indicatifs.
+        </p>
+        {f.limites.map((l) => (
+          <p key={l} className="text-sm">
+            {l}
+          </p>
+        ))}
+      </Alerte>
+      <ul className="space-y-1" aria-label="Contrôles du 2033-G" data-testid="controles-2033-g">
+        {f.controles.map((x) => (
+          <li key={x.code}>
+            <Etiquette ton={x.statut === 'coherent' ? 'succes' : x.statut === 'ecart' ? 'danger' : 'attention'}>{x.statut === 'coherent' ? 'Cohérent' : x.statut === 'ecart' ? 'Écart' : 'Non vérifiable'}</Etiquette> {x.message}
+            {x.ecart ? ` (écart : ${fm(x.ecart)})` : ''}
+          </li>
+        ))}
+      </ul>
+      <p className="text-sm" data-testid="etat-2033-g">
+        État du tableau : <strong>{f.etat === 'saisi' ? 'saisies présentes' : f.etat === 'neant' ? 'néant déclaré' : 'à saisir (ni saisie ni néant)'}</strong>
+        {f.neant ? ` — déclaré le ${formaterHorodatage(f.neant.le)} sur la version ${f.neant.versionDonnees} des données` : ''}. Nombre total de filiales détenues (case {f.nombre.codeCase}) :{' '}
+        <strong data-testid="nombre-filiales">{f.nombre.montant !== null ? (f.nombre.neant ? 'néant' : String(Number(f.nombre.montant))) : f.nombre.statut === 'a_revoir' ? 'à revoir' : 'à saisir'}</strong> {badge(f.nombre.statut)}
+      </p>
+      {revision ? (
+        <div className="space-y-2" data-testid="saisie-nombre-2033-g">
+          <HistoriqueLigne evenements={evenements} cle="2033G_NB:NB" fm={fm} />
+          <SaisieLigneTableau exerciceId={exerciceId} tableau="2033G_NB" ligne="NB" etiquette="le nombre de filiales" saisie={f.nombre.statut !== 'a_saisir'} noteCourante={f.nombre.trace?.note ?? null} champs={[{ cle: 'c905', libelle: 'Nombre total de filiales (905)', type: 'montant', valeur: f.nombre.montant ?? '' }]} />
+          <NeantTableau exerciceId={exerciceId} tableau="2033G_NB" declare={f.etat === 'neant'} etiquette="tableau 2033-G (aucune filiale détenue à 10 % ou plus)" />
+        </div>
+      ) : null}
+      <ul className="space-y-2" data-testid="filiales-2033-g">
+        {f.filiales.map((l) => (
+          <li key={l.ligne} className="rounded-lg border border-bordure p-3" data-filiale={l.ligne}>
+            <p className="text-sm">
+              Filiale {Number(l.ligne)} — {l.statut === 'saisi' ? <strong>{l.valeurs!.denomination}</strong> : badge(l.statut)}
+              {l.statut === 'saisi' ? <span className="text-texte-doux"> · {l.valeurs!.formeJuridique} · SIREN {l.valeurs!.siren || 'non applicable'} · {fm(l.valeurs!.pourcentage)} %</span> : null}
+            </p>
+            {l.trace ? (
+              <p className="text-xs text-texte-doux" data-testid={`trace-filiale-${l.ligne}`}>
+                saisie le {formaterHorodatage(l.trace.le)} sur la version {l.trace.versionDonnees} des données · « {l.trace.note} »
+              </p>
+            ) : null}
+            <HistoriqueLigne evenements={evenements} cle={`2033G_FIL:${l.ligne}`} fm={fm} />
+            {revision ? (
+              <SaisieLigneTableau
+                exerciceId={exerciceId}
+                tableau="2033G_FIL"
+                ligne={l.ligne}
+                etiquette={`la filiale ${Number(l.ligne)}`}
+                saisie={l.statut !== 'a_saisir'}
+                noteCourante={l.trace?.note ?? null}
+                champs={[
+                  t('formeJuridique', 'Forme juridique', l.valeurs?.formeJuridique, true),
+                  t('denomination', 'Dénomination', l.valeurs?.denomination),
+                  t('siren', 'N° SIREN (si établie en France)', l.valeurs?.siren, true),
+                  { cle: 'pourcentage', libelle: '% de détention', type: 'montant', valeur: l.valeurs?.pourcentage ?? '' },
+                  t('adresseNumero', 'N°', l.valeurs?.adresseNumero, true),
+                  t('adresseVoie', 'Voie', l.valeurs?.adresseVoie, true),
+                  t('codePostal', 'Code postal', l.valeurs?.codePostal, true),
+                  t('commune', 'Commune', l.valeurs?.commune, true),
+                  t('pays', 'Pays', l.valeurs?.pays, true),
+                ]}
+              />
+            ) : null}
+          </li>
+        ))}
+      </ul>
+      <ul className="list-disc pl-5 text-sm text-texte-doux" data-testid="2033-g-non-prepare">
+        {f.nonPrepare.map((n) => (
+          <li key={n}>Non préparé — {n}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function Annexe({ a, reponse, exerciceId, revision }: { a: AnnexeProjet; reponse: ReponseAnnexe; exerciceId: string; revision: boolean }) {
   const confirmations = new Map(reponse.confirmations.map((c) => [c.rubrique, c]));
   const requises = a.rubriques.filter((r) => r.requise);
@@ -1898,6 +1983,7 @@ export default async function PageFiscal({ params, searchParams }: { params: Pro
       {liasse?.ok && liasse.donnees.formulaire2033D ? <Formulaire2033D f={liasse.donnees.formulaire2033D} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.formulaire2033E ? <Formulaire2033E f={liasse.donnees.formulaire2033E} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.formulaire2033F ? <Formulaire2033F f={liasse.donnees.formulaire2033F} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
+      {liasse?.ok && liasse.donnees.formulaire2033G ? <Formulaire2033G f={liasse.donnees.formulaire2033G} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.detailResultat ? <DetailResultat d={liasse.donnees.detailResultat} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {annexe?.ok ? (
         annexe.donnees.resultat.statut === 'abstention' ? (

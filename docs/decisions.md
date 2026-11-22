@@ -656,6 +656,13 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Non préparé, dit** : identification de l'entreprise, numéro de dépôt et exercice (repris du dossier) ; tableaux supplémentaires au-delà de 4 personnes morales et 2 personnes physiques (renvoi 1 du formulaire). Le registre des associés est tenu par la société : rien ne se déduit de la balance. Statut « projet ».
 - **Preuves** : 8 tests du moteur (`formulaire-2033f.test.ts`), 3 tests d'intégration sur la pile réelle (refus de forme et de droits, nombres, une personne morale et une personne physique, 905 = 2 et 906 = 1 000, contrôle des pourcentages, historique, retraits), Playwright `fiscal.spec.ts`, saisies jouées par les formulaires (captures).
 
+### D-117 — Tableau 2033-G (filiales et participations) : saisie ligne par ligne (2026-11-22)
+
+- **Sources** : `2033-sd_5394.pdf` (SHA-256 ce4c5190…b6cb), page 7 (2033-G-SD) : « liste des personnes ou groupements de personnes de droit ou de fait dont la société détient directement au moins 10 % du capital », case 905 (nombre total de filiales), sept lignes (forme juridique, dénomination, SIREN, % de détention, adresse) ; lues par extraction positionnée puis **vérifiées sur le rendu image** (2026-11-22) ; la notice indique que les entreprises individuelles n'ont pas à servir les tableaux 2033-F et 2033-G.
+- **Fait** : tableaux `2033G_NB` et `2033G_FIL` (migration 0056, additive : contrainte de forme élargie) ; mêmes garanties que D-112 à D-116 (justification obligatoire, trace, historique en ajout seul, « à revoir », néant explicite du tableau, abstention sans saisie, niveau révision). Le formulaire n'énonce **aucun calcul** : tous les rapprochements sont des contrôles indicatifs, jamais bloquants ni corrigés (nombre de lignes saisies au plus égal à la case 905, lignes manquantes signalées, pourcentage inférieur à 10 % signalé car hors du champ du tableau).
+- **Non préparé, dit** : identification de l'entreprise (reprise du dossier), tableaux supplémentaires au-delà de sept filiales (renvoi 1 du formulaire). Le portefeuille de titres relève du registre de la société : rien ne se déduit de la balance. Statut « projet ».
+- **Preuves** : 4 tests du moteur (`formulaire-2033g.test.ts`), 2 tests d'intégration sur la pile réelle, Playwright `fiscal.spec.ts`, saisies jouées par les formulaires (capture).
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

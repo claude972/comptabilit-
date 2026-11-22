@@ -268,6 +268,29 @@ if (process.argv.includes('--2033f')) {
   await page.getByTestId('nombres-2033-f').scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${sortie}fiscal-2033f-nombres.png` });
 }
+// 2033-G (D-117) : saisies par les formulaires (MODIFIE le dossier fictif indiqué).
+if (process.argv.includes('--2033g')) {
+  await page.goto(`${base}&vue=liasse&regime=reel_simplifie`);
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('formulaire-2033-g').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2033g-avant.png` });
+  const n = page.getByTestId('saisie-2033G_NB-NB');
+  await n.scrollIntoViewIfNeeded();
+  await n.getByLabel('Nombre total de filiales (905)').fill('1');
+  await n.getByLabel('Justification (obligatoire)').fill('Registre des titres de participation (démonstration fictive)');
+  await n.getByRole('button', { name: /^Enregistrer le nombre/ }).click();
+  await n.getByText('Ligne enregistrée.').waitFor();
+  const f = page.getByTestId('saisie-2033G_FIL-01');
+  await f.scrollIntoViewIfNeeded();
+  for (const [libelle, v] of Object.entries({ 'Forme juridique': 'SARL', Dénomination: 'Filiale Exemple (démonstration fictive)', 'N° SIREN (si établie en France)': '987654321', '% de détention': '55.00', 'N°': '5', Voie: 'rue du Test', 'Code postal': '33000', Commune: 'Bordeaux', Pays: 'France' })) await f.getByLabel(libelle, { exact: true }).fill(v);
+  await f.getByLabel('Justification (obligatoire)').fill('Participation directe de 55 % inscrite au registre (démonstration fictive)');
+  await f.getByRole('button', { name: /^Enregistrer la filiale 1/ }).click();
+  await f.getByText('Ligne enregistrée.').waitFor();
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('formulaire-2033-g').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2033g-apres.png` });
+}
 // 2033-B (D-107) : « dont export » et lignes « dont » du régime simplifié.
 await page.goto(`${base}&vue=liasse&regime=reel_simplifie`);
 await page.waitForLoadState('networkidle');

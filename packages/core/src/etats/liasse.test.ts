@@ -40,8 +40,10 @@ describe('tables de liasse', () => {
       // Les tableaux 2050 à 2053 et 2033-A n'ont pas de code dans ces lignes ; seules des lignes du 2033-B en portent (D-107), lus puis vérifiés visuellement.
       expect(t.source.verification).toBe('non_verifiee');
       expect(t.source.dateVerification).toBe('2026-11-19');
-      expect(t.lignes.every((l) => (l.tableau === '2033-B' && l.codeCase !== null ? l.etatCodeCase === 'verifie' && /^\d{3}$/.test(l.codeCase) : l.codeCase === null && l.etatCodeCase === 'a_confirmer'))).toBe(true);
-      expect(t.lignes.filter((l) => l.codeCase !== null).every((l) => l.tableau === '2033-B')).toBe(true);
+      // Codes lus ET vérifiés sur le rendu : 2033-B (trois chiffres) ; 2051, 2052, 2053 (deux caractères, D-155). Toute autre ligne : aucun code, « à confirmer ».
+      const AVEC_CODE = new Set(['2033-B', '2051', '2052', '2053']);
+      expect(t.lignes.every((l) => (l.codeCase !== null ? AVEC_CODE.has(l.tableau) && l.etatCodeCase === 'verifie' && (l.tableau === '2033-B' ? /^\d{3}$/ : /^[0-9A-Z]{2}$/).test(l.codeCase) : l.etatCodeCase === 'a_confirmer'))).toBe(true);
+      expect(t.lignes.filter((l) => l.codeCase !== null).every((l) => AVEC_CODE.has(l.tableau))).toBe(true);
       expect(new Set(t.lignes.map((l) => l.id)).size).toBe(t.lignes.length);
     }
     expect(TABLE_LIASSE_REEL_NORMAL_2026.tableaux.map((t) => t.code)).toEqual(['2050', '2051', '2052', '2053']);
@@ -303,7 +305,30 @@ describe('codes de cases du tableau 2033-B (D-107) : lus puis vérifiés sur le 
     expect(l('RSI_2033B_TOTAL_PRODUITS_EXPLOITATION')).toMatchObject({ codeCase: '232' });
     expect(l('RSI_2033B_RESULTAT_EXPLOITATION')).toMatchObject({ codeCase: '270' });
     expect(l('RSI_2033B_RESULTAT')).toMatchObject({ codeCase: '310' });
+
     expect(l('RSI_2033B_PRODUCTION_VENDUE')).toMatchObject({ codeCase: null, etatCodeCase: 'a_confirmer' });
     expect(l('RSI_2033B_DOTATIONS_PROVISIONS')).toMatchObject({ codeCase: null, etatCodeCase: 'a_confirmer' });
+  });
+});
+
+describe('codes de cases des tableaux 2051, 2052 et 2053 (D-155)', () => {
+  it('codes uniques par tableau, deux caractères, lignes regroupées par Comtaple sans code, 2050 non couvert', () => {
+    const p = projet(preparerLiasse(demande([])));
+    const par = (code: string) => p.tableaux.find((t) => t.code === code)!.lignes;
+    for (const t of ['2051', '2052', '2053']) {
+      const codes = par(t).filter((l) => l.codeCase !== null).map((l) => l.codeCase);
+      expect(new Set(codes).size, t).toBe(codes.length);
+    }
+    const l = (t: string, suffixe: string) => par(t).find((x) => x.ligne === `RN_${t}_${suffixe}`)!;
+    expect(l('2052', 'PE')).toMatchObject({ codeCase: 'FR', etatCodeCase: 'verifie' });
+    expect(l('2052', 'PE_CHIFFRE_AFFAIRES')).toMatchObject({ codeCase: 'FL' });
+    expect(l('2052', 'RESULTAT_COURANT')).toMatchObject({ codeCase: 'GW' });
+    expect(l('2052', 'PE_PRODUCTION_VENDUE')).toMatchObject({ codeCase: null, etatCodeCase: 'a_confirmer' }); // biens (FF) + services (FI) regroupés
+    expect(l('2052', 'CE_DOTATIONS')).toMatchObject({ codeCase: null }); // GA + GB + GC + GD regroupés
+    expect(l('2053', 'RESULTAT')).toMatchObject({ codeCase: 'HN' });
+    expect(l('2051', 'P_CAPITAL')).toMatchObject({ codeCase: 'DA' });
+    expect(l('2051', 'TOTAL_GENERAL')).toMatchObject({ codeCase: 'EE' });
+    expect(l('2051', 'P_RESERVES')).toMatchObject({ codeCase: null }); // total des réserves : regroupement propre à Comtaple
+    expect(par('2050').every((x) => x.codeCase === null)).toBe(true);
   });
 });

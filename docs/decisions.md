@@ -928,6 +928,12 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Preuves** : tests du cœur ; itest `parcours-detail-resultat` (67) ; parcours réel ; démonstration : feuillet 2056 début et dotations cohérents, reprises −10,00 et fin +10,00 en écart ; 2057 : clients, fournisseurs, produits constatés d'avance cohérents ; charges constatées d'avance saisies 55,00 contre 50,00 au bilan : écart 5,00.
 - **Non fait, dit** : état détaillé des charges à payer (art. 38 II de l'annexe III au CGI) ; plus de vingt lignes par feuillet ; rapprochement des autres lignes du 2057.
 
+### D-155 — Codes de cases des tableaux 2051, 2052 et 2053 (régime réel normal) lus puis vérifiés sur le rendu (2026-11-22)
+- **Constat de départ** : les lignes des tableaux 2050, 2051, 2052, 2053 (131 lignes) et 2033-A (32 lignes) n'avaient AUCUN code de case (`codeCase: null`, « à confirmer »), à la différence du 2033-B (D-107).
+- **Fait** : 83 codes ajoutés — 2051 (32 lignes), 2052 (43), 2053 (8) —, lus par extraction positionnée dans `2050-liasse_5320.pdf` (SHA-256 0bba3352…8453e1), pages 2, 3 et 4, puis **vérifiés sur le rendu image** (pdf.js, 2026-11-22) : DA à EE au 2051, FC à GW au 2052 (colonne TOTAL), HD à HN au 2053. État « vérifié » ; test d'unicité et de format (deux caractères).
+- **Volontairement sans code** (regroupement propre à Comtaple ou ligne absente du formulaire 2026) : production vendue (FF biens + FI services), dotations aux amortissements, dépréciations et provisions (GA à GD), total des réserves, fonds non remboursables et droits du concédant ; dans la liasse, ces lignes gardent « à confirmer ». Les cellules « dont » du formulaire (EK, B1, EJ, EI, HO, HY…) ne sont pas des lignes de la liasse.
+- **Non fait, et pourquoi** : **2050 (actif)** — chaque ligne a deux codes (brut, amortissements) alors que le modèle n'en porte qu'un ; en outre la numérotation de la liasse (frais d'établissement en II, actif immobilisé en III) ne coïncide pas avec celle du formulaire 2026 (frais d'établissement dans les immobilisations incorporelles, TOTAL II) : les totaux ne peuvent pas être codés sans trancher une correspondance. **2033-A** : non relu. Les deux restent « à confirmer » (reste réel).
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

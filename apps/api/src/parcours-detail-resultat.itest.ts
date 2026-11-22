@@ -993,6 +993,32 @@ describe('feuillet des déficits transférés de plein droit (982 bis, 982 ter),
   }, 120_000);
 });
 
+describe('feuillets du régime réel normal : déficits transférés (K4 bis du 2058-B) et détails du 2058-A (D-133)', () => {
+  const feuilles = async () => (await liasse(exN, 'reel_normal')).json.feuilles2058 as any[];
+  const feuille = async (id: string) => (await feuilles()).find((f) => f.id === id);
+  const put = (tableau: string, ligne: string, valeurs: Record<string, string>) => api('remi', 'PUT', `/v1/exercices/${exN}/tableaux/${tableau}/${ligne}`, { valeurs, note: 'Feuillet de détail (essai)' });
+
+  it('deux feuillets au régime normal, absents au régime simplifié ; K4 bis rapproché de la case saisie ; détails 2058-A totalisés', async () => {
+    expect((await feuilles()).map((f) => f.id)).toEqual(['2058-B-K4BIS', '2058-A-FEUILLETS']);
+    expect((await liasse(exN, 'reel_simplifie')).json.feuilles2058).toBeNull();
+    expect((await api('remi', 'PUT', `/v1/exercices/${exN}/qualifications/renvois/B58_K4BIS`, { montant: '700.00', note: 'Déficits transférés (essai)' })).statut).toBeLessThan(300);
+    expect((await put('2058B_K4BIS', '01', { origine: 'Société d’origine (fictive)', siren: '123456789', date: '2025-03-01', m: '600.00' })).statut).toBeLessThan(300);
+    let f = await feuille('2058-B-K4BIS');
+    expect(f.controles.find((c: any) => c.code === '2058-B-K4BIS_SOMME_K4BIS')).toMatchObject({ statut: 'ecart', ecart: '-100.00' });
+    expect((await put('2058B_K4BIS', '02', { origine: 'Autre société (fictive)', siren: '987654321', date: '2025-04-01', m: '100.00' })).statut).toBeLessThan(300);
+    f = await feuille('2058-B-K4BIS');
+    expect(f.controles.find((c: any) => c.code === '2058-B-K4BIS_SOMME_K4BIS').statut).toBe('coherent');
+    expect((await put('2058A_REINT', '01', { origine: 'Amende (fictive)', m: '120.00' })).statut).toBeLessThan(300);
+    expect((await put('2058A_DEDUC', '01', { origine: 'Quote-part (fictive)', m: '45.00' })).statut).toBeLessThan(300);
+    const d = await feuille('2058-A-FEUILLETS');
+    expect(d.cadres.map((c: any) => c.calculs[0].cellules.m.montant)).toEqual(['120.00', '45.00']);
+    expect((await put('2058A_REINT', '01', { origine: 'Amende', m: '-1.00' })).statut).toBe(400);
+    expect((await api('remi', 'PUT', `/v1/exercices/${exN}/tableaux/2058A_REINT/NEANT`, { valeurs: {}, note: 'Néant (essai)' })).statut).toBe(404);
+    for (const [t, l] of [['2058B_K4BIS', '01'], ['2058B_K4BIS', '02'], ['2058A_REINT', '01'], ['2058A_DEDUC', '01']]) expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/${t}/${l}`)).statut).toBeLessThan(300);
+    expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/qualifications/renvois/B58_K4BIS`)).statut).toBeLessThan(300);
+  }, 120_000);
+});
+
 describe('détail du compte de résultat : qualification tracée, abstention sans qualification', () => {
   it('sans qualification : totaux de la balance, France et exportations en abstention, renvois à saisir, exceptionnel détaillé', async () => {
     const d = await detail();

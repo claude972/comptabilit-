@@ -1,6 +1,6 @@
 /** Recette des grilles 2059-B, 2059-C et 2059-D (D-122) : saisie ligne par ligne, calculs énoncés seulement à composantes saisies. */
 import { describe, expect, it } from 'vitest';
-import { GRILLE_2033D_982, GRILLE_2057, GRILLE_2065, GRILLE_2065_BIS, GRILLE_DATES_CVAE, GRILLES_2059, preparerGrille } from './formulaire-grilles.js';
+import { GRILLE_2033D_982, GRILLE_2058A_FEUILLETS, GRILLE_2058B_K4BIS, GRILLE_2057, GRILLE_2065, GRILLE_2065_BIS, GRILLE_DATES_CVAE, GRILLES_2059, preparerGrille } from './formulaire-grilles.js';
 import { type SaisieTableau, validerSaisieTableau } from './saisies-tableaux.js';
 
 const TRACE = { note: 'Suivi des plus-values (essai)', qualifieePar: 'u-1', le: '2026-12-31T10:00:00Z', versionDonnees: 7 };
@@ -141,5 +141,17 @@ describe('grilles 2059', () => {
     expect(preparerGrille(GRILLE_2033D_982, { versionDonnees: 7, saisiesTableaux: [ligne('01', '1.00')] }).controles.some((c) => c.code.endsWith('_982BIS') || c.code.endsWith('_982TER'))).toBe(false);
     expect(validerSaisieTableau('2033D_982', '20', { origine: 'Société vingt', siren: '123456789', date: '2025-03-01', m: '1.00' })).toEqual([]);
     expect(validerSaisieTableau('2033D_982', '21', { origine: 'Société', siren: '1', date: '2025-03-01', m: '1.00' }).join(' ')).toMatch(/Ligne inconnue/);
+  });
+  it('feuillets du réel normal : K4 bis rapproché de la case saisie ; détails 2058-A sans rapprochement ; pas de néant', () => {
+    const op = (n: string, m: string) => s('2058B_K4BIS', n, { origine: `Société ${n}`, siren: '123456789', date: '2025-03-01', m });
+    const f = preparerGrille(GRILLE_2058B_K4BIS, { versionDonnees: 7, saisiesTableaux: [op('01', '700.00')], valeursAutres: { B58_K4BIS: '700.00' } });
+    expect(f.controles.find((c) => c.code.endsWith('SOMME_K4BIS'))?.statut).toBe('coherent');
+    expect(f.neantPossible).toBe(false);
+    const d = preparerGrille(GRILLE_2058A_FEUILLETS, { versionDonnees: 7, saisiesTableaux: [s('2058A_REINT', '01', { origine: 'Amende (fictive)', m: '120.00' }), s('2058A_REINT', '02', { origine: 'Pénalité (fictive)', m: '30.00' })] });
+    expect(d.cadres[0]!.calculs[0]!.cellules.m).toEqual({ statut: 'etabli', montant: '150.00' });
+    expect(d.controles.every((c) => !c.code.includes('EXTERNE') && !c.code.includes('SOMME'))).toBe(true);
+    expect(d.cadres.map((c) => c.lignes.length)).toEqual([20, 20]);
+    expect(validerSaisieTableau('2058A_DEDUC', 'NEANT', {}).join(' ')).toMatch(/Ligne inconnue/);
+    expect(validerSaisieTableau('2058A_DEDUC', '01', { origine: 'Déduction (fictive)', m: '10.00' })).toEqual([]);
   });
 });

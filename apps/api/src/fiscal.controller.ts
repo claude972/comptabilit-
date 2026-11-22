@@ -20,6 +20,8 @@ import {
   preparerFormulaire2059A,
   GRILLES_2059,
   GRILLE_2033D_982,
+  GRILLE_2058A_FEUILLETS,
+  GRILLE_2058B_K4BIS,
   GRILLE_2057,
   GRILLE_2065,
   GRILLE_2065_BIS,
@@ -73,7 +75,7 @@ const montantSigne = schemaChaineDecimale;
 const ventilation = z.object({ montantFrance: montantSigne, montantExport: montantSigne, note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie la ventilation').max(2000) });
 const renvoiSaisie = z.object({ montant: montantSigne, note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie le montant').max(2000) });
 const saisieTableau = z.object({ valeurs: z.record(z.string().max(40), z.string().max(200)), note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie la saisie').max(2000) });
-const TABLEAU_SAISI = /^(2033C_III|2054BIS_A|2054BIS_B|2055_B|2055_C|2033D_C|2033F_NB|2033F_PM|2033F_PP|2033G_NB|2033G_FIL|2059A_IM|2059A_AUT|2059B_A|2059B_B|2059C_I|2059C_II|2059D_I|2059D_II|2065_C1|2065_C2|2065_C3|2065_C4|2065_F|2065_I|2065_D|2065_E|2033E_DATES|2057_A|2057_AX|2057_B|2057_BX|2065B_G|2065B_H|2065B_I|2065B_J1|2065B_J2|2065B_K|2033D_982)$/;
+const TABLEAU_SAISI = /^(2033C_III|2054BIS_A|2054BIS_B|2055_B|2055_C|2033D_C|2033F_NB|2033F_PM|2033F_PP|2033G_NB|2033G_FIL|2059A_IM|2059A_AUT|2059B_A|2059B_B|2059C_I|2059C_II|2059D_I|2059D_II|2065_C1|2065_C2|2065_C3|2065_C4|2065_F|2065_I|2065_D|2065_E|2033E_DATES|2057_A|2057_AX|2057_B|2057_BX|2065B_G|2065B_H|2065B_I|2065B_J1|2065B_J2|2065B_K|2033D_982|2058B_K4BIS|2058A_REINT|2058A_DEDUC)$/;
 /** Lignes admises par la route, selon la famille de tableau : historiques (01 à 13…), 2059-A (01 à 20), grilles 2059-B à D, 2065 et dates du 2033-E (identifiants courts, forme validée contre la définition). */
 const LIGNE_HISTORIQUE = /^(0[1-9]|1[0-3]|REG|PV19|NEANT|B1|B2|NB)$/;
 const LIGNE_2059A = /^(0[1-9]|1[0-9]|20|NEANT)$/;
@@ -412,6 +414,10 @@ export class FiscalController {
       const valeursDeficits: Record<string, string> = {};
       for (const r of renvoisSaisis) if ((r.code === 'D_982B' || r.code === 'D_982T') && r.versionDonnees === exercice.versionDonnees) valeursDeficits[r.code] = r.montant;
       const feuilletDeficits = regime === 'reel_simplifie' ? preparerGrille(GRILLE_2033D_982, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies, valeursAutres: valeursDeficits }) : null;
+      // Feuillets du régime réel normal (D-133) : déficits transférés (K4 bis du 2058-B) rapprochés de la case saisie ; détails des réintégrations et déductions diverses du 2058-A.
+      const valeursK4: Record<string, string> = {};
+      for (const r of renvoisSaisis) if (r.code === 'B58_K4BIS' && r.versionDonnees === exercice.versionDonnees) valeursK4.B58_K4BIS = r.montant;
+      const feuilles2058 = regime === 'reel_normal' ? [preparerGrille(GRILLE_2058B_K4BIS, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies, valeursAutres: valeursK4 }), preparerGrille(GRILLE_2058A_FEUILLETS, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies })] : null;
       // Annexe 2065 bis-SD (D-131) : servie aux deux régimes (le cadre J ne concerne que le régime simplifié), saisie ligne par ligne.
       const formulaire2065Bis = preparerGrille(GRILLE_2065_BIS, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies });
       // État des échéances 2057 (régime réel normal, D-130) : grilles saisies ligne par ligne.
@@ -467,6 +473,8 @@ export class FiscalController {
         formulaire2065Bis,
         /** Feuillet des déficits transférés de plein droit (982 bis, 982 ter) : saisie ligne par ligne, régime simplifié (D-132) ; null sinon. */
         feuilletDeficits,
+        /** Feuillets du régime réel normal : déficits transférés (K4 bis du 2058-B), détails du 2058-A (D-133) ; null sinon. */
+        feuilles2058,
         /** Formulaires du régime réel normal servis par saisie case par case (2058-A) : D-118 ; null au régime simplifié. */
         formulairesCases,
       };

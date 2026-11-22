@@ -56,7 +56,7 @@ export interface CadreGrille {
   colonneCalculee?: { cle: string; libelle: string; termes: ReadonlyArray<{ col: string; signe: 1 | -1 }> };
 }
 export interface DefinitionGrille {
-  id: '2059-B' | '2059-C' | '2059-D' | '2065' | '2033-E-DATES' | '2057' | '2065-BIS' | '2033-D-982';
+  id: '2059-B' | '2059-C' | '2059-D' | '2065' | '2033-E-DATES' | '2057' | '2065-BIS' | '2033-D-982' | '2058-B-K4BIS' | '2058-A-FEUILLETS';
   titre: string;
   /** Tableau portant la ligne NEANT du formulaire ; absent si le formulaire n'a pas de « néant » (le 2065 est toujours servi). */
   neantSur?: string;
@@ -429,7 +429,51 @@ export const GRILLE_2033D_982: DefinitionGrille = {
   ],
 };
 
-const TOUTES: readonly DefinitionGrille[] = [...GRILLES_2059, GRILLE_2065, GRILLE_DATES_CVAE, GRILLE_2057, GRILLE_2065_BIS, GRILLE_2033D_982];
+const FEUILLET_LIBRE = (tableau: string, titre: string, libelleOrigine: string, libelleTotal: string, externe?: { code: string; libelle: string; cle: string }): CadreGrille => ({
+  tableau,
+  titre,
+  colonnes: [{ cle: 'm', libelle: 'Montant' }],
+  lignes: [],
+  libre: { max: 20, libelleOrigine },
+  calculs: [{ id: 'TOTAL', libelle: libelleTotal, colonnes: ['m'], termes: [{ ref: 'saisies', signe: 1 }] }],
+  ...(externe ? { controlesExternes: [{ code: externe.code, libelle: externe.libelle, mode: 'somme' as const, colonne: 'm', externe: externe.cle }] } : {}),
+});
+/** Feuillet des déficits transférés de plein droit du régime réel normal (case K4 bis du 2058-B, renvoi 2 : « identifier, opération par opération, la société d'origine sur feuillet séparé »). Disposition propre à Comtaple. */
+export const GRILLE_2058B_K4BIS: DefinitionGrille = {
+  id: '2058-B-K4BIS',
+  titre: 'Feuillet des déficits transférés de plein droit (case K4 bis du 2058-B)',
+  cadres: [
+    {
+      tableau: '2058B_K4BIS',
+      titre: 'Opérations de transfert : société d’origine, date de l’opération, montant du déficit transféré',
+      colonnes: [{ cle: 'siren', libelle: 'SIREN de la société d’origine', type: 'texte' }, { cle: 'date', libelle: 'Date de l’opération — AAAA-MM-JJ', type: 'date' }, { cle: 'm', libelle: 'Montant du déficit transféré' }],
+      lignes: [],
+      libre: { max: 20, libelleOrigine: 'Dénomination de la société d’origine' },
+      calculs: [{ id: 'TOTAL', libelle: 'Total des déficits transférés listés', colonnes: ['m'], termes: [{ ref: 'saisies', signe: 1 }] }],
+      controlesExternes: [{ code: 'SOMME_K4BIS', libelle: 'Total des déficits transférés listés et case K4 bis du 2058-B', mode: 'somme', colonne: 'm', externe: 'B58_K4BIS' }],
+    },
+  ],
+  nonPrepare: [
+    'Le formulaire ne fixe pas de modèle de feuillet : la disposition est propre à Comtaple et non officielle ; le SIREN n’est pas contrôlé ; le calcul du déficit transférable relève du cabinet.',
+    'Au-delà de vingt opérations : non préparé.',
+  ],
+};
+/** Feuillets séparés « à détailler » du 2058-A : réintégrations diverses (case SU) et déductions diverses (case XG). Disposition propre à Comtaple ; aucun rapprochement : la notice n'énonce pas la relation entre le feuillet et les cases de détail. */
+export const GRILLE_2058A_FEUILLETS: DefinitionGrille = {
+  id: '2058-A-FEUILLETS',
+  titre: 'Feuillets de détail du 2058-A : réintégrations diverses et déductions diverses « à détailler sur feuillet séparé »',
+  cadres: [
+    FEUILLET_LIBRE('2058A_REINT', 'Réintégrations diverses à détailler sur feuillet séparé (case SU)', 'Nature de la réintégration', 'Total des réintégrations listées'),
+    FEUILLET_LIBRE('2058A_DEDUC', 'Déductions diverses à détailler sur feuillet séparé (case XG)', 'Nature de la déduction', 'Total des déductions listées'),
+  ],
+  nonPrepare: [
+    'Le formulaire demande ces feuillets sans en fixer le modèle : la disposition (nature, montant) est propre à Comtaple et non officielle.',
+    'Aucun rapprochement avec les cases SU, WQ, XG du 2058-A : la notice n’énonce pas la relation entre le détail du feuillet et les cases « dont » ; le total listé est un simple total des lignes saisies.',
+    'Aucune décision fiscale : chaque réintégration ou déduction est une saisie justifiée du cabinet. Au-delà de vingt lignes par feuillet : non préparé.',
+  ],
+};
+
+const TOUTES: readonly DefinitionGrille[] = [...GRILLES_2059, GRILLE_2065, GRILLE_DATES_CVAE, GRILLE_2057, GRILLE_2065_BIS, GRILLE_2033D_982, GRILLE_2058B_K4BIS, GRILLE_2058A_FEUILLETS];
 export const TABLEAUX_GRILLES: readonly string[] = TOUTES.flatMap((g) => g.cadres.map((c) => c.tableau));
 
 /** Lignes admises pour un tableau en grille : `null` si le tableau n'est pas une grille. Utilisée par la validation de forme. */
@@ -477,6 +521,8 @@ export interface GrilleProjet {
   id: string;
   titre: string;
   etat: 'a_saisir' | 'neant' | 'saisi';
+  /** Le formulaire admet une déclaration « néant » (ligne NEANT du premier tableau). */
+  neantPossible: boolean;
   cadres: CadreGrilleProjet[];
   neant: TraceSaisie | null;
   controles: ControleDetail[];
@@ -599,6 +645,7 @@ export function preparerGrille(def: DefinitionGrille, demande: DemandeGrilles): 
     id: def.id,
     titre: def.titre,
     etat,
+    neantPossible: def.neantSur !== undefined,
     cadres,
     neant: neantS ? trace(neantS) : null,
     controles,

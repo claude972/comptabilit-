@@ -64,6 +64,9 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
     await expect(page.getByTestId('grille-2065').locator('li[data-ligne-grille]')).toHaveCount(30);
     // Dates du 2033-E / 2059-E (D-126) et cadre IV du 2033-D (D-126).
     await expect(page.getByTestId('grille-2033-E-DATES').locator('li[data-ligne-grille]')).toHaveCount(2);
+    // Feuillets du réel normal (D-133) : K4 bis (20 lignes), réintégrations et déductions diverses (20 + 20).
+    await expect(page.getByTestId('grille-2058-B-K4BIS').locator('li[data-ligne-grille]')).toHaveCount(20);
+    await expect(page.getByTestId('grille-2058-A-FEUILLETS').locator('li[data-ligne-grille]')).toHaveCount(40);
     // 2065 bis (D-131) : annexe, 10 + 10 + 2 + 2 + 4 + 2 lignes saisies une à une.
     await expect(page.getByTestId('grille-2065-BIS').locator('li[data-ligne-grille]')).toHaveCount(30);
     // 2057 (D-130) : état des échéances des créances et des dettes, 39 lignes saisies une à une.

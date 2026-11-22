@@ -114,7 +114,7 @@ export const FORMULAIRE_2058_A: DefinitionFormulaire = {
   ],
   imputation: { avantBenefice: 'XI', avantDeficit: 'XJ', reportArriere: 'ZL', imputes: 'XL', apresBenefice: 'XN', apresDeficit: 'XO' },
   nonPrepare: [
-    'Détail des réintégrations et des déductions diverses « à détailler sur feuillet séparé » : feuillets joints non préparés (seul le total de ligne et ses cases de détail se saisissent).',
+    'Détail des réintégrations et des déductions diverses « à détailler sur feuillet séparé » : saisi dans les feuillets de détail (disposition propre à Comtaple, non officielle), sans rapprochement avec les cases de détail ; le total de ligne et ses cases de détail se saisissent ici.',
     'Régime de taxation au tonnage (cases Y1, Y3, Y2) : saisies possibles, mais aucun calcul propre n’est fait.',
     'Cases de la colonne de droite et leurs composantes : la relation arithmétique entre elles est LUE sur la disposition du formulaire (cellules fusionnées) ; la notice n’en donne pas la formule : contrôles indicatifs seulement.',
     'Aucune décision fiscale n’est prise par Comtaple : chaque réintégration ou déduction est une saisie justifiée du cabinet.',
@@ -186,7 +186,7 @@ export const FORMULAIRE_2058_B: DefinitionFormulaire = {
   nonPrepare: [
     'Libellé de nature de chaque ligne de provisions et de charges à payer (cellule de gauche, « à détailler sur feuillet séparé ») : à porter dans la justification de la saisie ; feuillet joint non préparé.',
     'Cadre « conséquences de la méthode par composants » : seule la case L1 porte un code ; les cellules « imputations » et « montant net à la fin » (sans code) ne sont pas préparées.',
-    'Feuillet séparé des déficits transférés de plein droit : non préparé.',
+    'Feuillet séparé des déficits transférés de plein droit : saisi dans le feuillet de détail (disposition propre à Comtaple), rapproché de la case K4 bis à titre indicatif.',
     'Aucune décision fiscale n’est prise par Comtaple.',
   ],
   limites: [

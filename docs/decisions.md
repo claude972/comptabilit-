@@ -778,6 +778,13 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Limites, dites** : **le formulaire ne fixe pas de modèle de feuillet** : la disposition (société d'origine, SIREN, date, montant) est propre à Comtaple et non officielle ; le SIREN n'est pas contrôlé ; le calcul du déficit transférable n'est pas fait (décision du cabinet) ; au-delà de vingt opérations : non préparé. Statut « projet ».
 - **Preuves** : test du moteur (10 verts), essai d'intégration sur la pile réelle (62 verts) incluant les rapprochements 982 bis et 982 ter, Playwright `fiscal.spec.ts`.
 
+### D-133 — Feuillets du régime réel normal : déficits transférés (K4 bis du 2058-B) et détails du 2058-A (2026-11-22)
+
+- **Déficits transférés de plein droit (case K4 bis du 2058-B, renvoi 2)** : même feuillet que D-132 (jusqu'à vingt opérations : société d'origine, SIREN, date, montant), tableau `2058B_K4BIS`, **total rapproché de la case K4 bis saisie** sur la version courante des données (indicatif, jamais corrigé).
+- **Détails du 2058-A « à détailler sur feuillet séparé »** : réintégrations diverses (case SU) et déductions diverses (case XG), deux listes de vingt lignes (nature, montant positif), tableaux `2058A_REINT` et `2058A_DEDUC`, avec total des lignes saisies. **Aucun rapprochement** avec SU, WQ, XG ni les cases « dont » : la notice n'énonce pas la relation entre le feuillet et ces cases.
+- **Limites, dites** : le formulaire ne fixe aucun modèle de feuillet : disposition propre à Comtaple, non officielle ; pas de « néant » (`neantPossible` faux) ; la nature des provisions du 2058-B et le cadre « méthode par composants » restent non préparés ; au-delà de vingt lignes : non préparé. Aucune décision fiscale. Statut « projet ».
+- **Migration 0064** additive. **Preuves** : test du moteur (930 tests du moteur verts), essai d'intégration (63 verts), Playwright `fiscal.spec.ts`.
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

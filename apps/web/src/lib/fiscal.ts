@@ -139,6 +139,8 @@ export interface ReponseLiasse {
   formulaire2065Bis?: GrilleProjet | null;
   /** Feuillet des déficits transférés de plein droit, régime simplifié (D-132). */
   feuilletDeficits?: GrilleProjet | null;
+  /** Feuillets du régime réel normal (2058-B K4 bis, 2058-A détails), D-133. */
+  feuilles2058?: GrilleProjet[] | null;
   /** Formulaires du régime réel normal servis par saisie case par case (2058-A, D-118) ; null au régime simplifié. */
   formulairesCases?: FormulaireCasesProjet[] | null;
 }
@@ -713,6 +715,7 @@ export interface GrilleProjet {
   id: string;
   titre: string;
   etat: 'a_saisir' | 'neant' | 'saisi';
+  neantPossible: boolean;
   cadres: CadreGrilleProjet[];
   neant: TraceSaisie | null;
   controles: Array<{ code: string; statut: 'coherent' | 'ecart' | 'non_verifie'; message: string; ecart?: string }>;

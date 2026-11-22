@@ -12,6 +12,6 @@ export default defineConfig({
   workers: 1,
   fullyParallel: false,
   reporter: [['list']],
-  use: { baseURL: 'http://localhost:3100', trace: 'retain-on-failure' },
+  use: { baseURL: 'http://localhost:3100', trace: 'retain-on-failure', actionTimeout: 60_000 },
   projects: [{ name: 'reel', use: { ...devices['Desktop Chrome'] } }],
 });

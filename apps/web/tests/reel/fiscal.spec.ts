@@ -188,6 +188,9 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
   await expect(page.getByTestId('limites-etat-joint')).toContainText('aucune signature, aucune transmission, aucune validation professionnelle');
   expect(await page.locator('[data-tableau-joint]').count()).toBeGreaterThan(10);
   for (const t of ['2054-bis', '2055-B', '2055-C', '2056', '2059-A']) await expect(page.locator(`[data-tableau-joint="${t}"]`)).toHaveCount(1);
+  // 2054 et 2055 (cadre A) : valeurs de l'API, y compris celles issues de la balance (D-146).
+  for (const t of ['2054', '2055']) expect(await page.locator(`[data-tableau-joint^="${t}/"]`).count()).toBeGreaterThan(0);
+  await expect(page.locator('[data-tableau-joint^="2054/"]').first()).toContainText('Immobilisations');
   await expect(page.getByTestId('export-csv-etat-joint')).toHaveAttribute('download', /^etat-joint-.*\.csv$/);
   await page.goto(`/dossiers/${DOSSIER_DEMO}/fiscal`);
 

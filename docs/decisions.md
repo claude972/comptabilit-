@@ -872,6 +872,15 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Résultat** : DÉMONSTRATION RÉUSSIE (exécution unique du 2026-11-22). La base locale historique reste en échec strict (D-144), inchangée.
 - **Limite dite** : jeu synthétique de 24 objets (≈ 0,1 Mo), pas la volumétrie de production ; ce n'est pas un essai sur les données historiques.
 
+### D-146 — État joint : tableaux 2054, 2055 (cadre A) et 2033-C (cadres I et II) repris depuis les valeurs de l'API (2026-11-22)
+- **Décision** : l'origine « balance » d'une cellule n'est pas une raison de l'exclure du parcours utilisateur. `depuisImmobilisations` (`apps/web/src/lib/etat-joint.ts`) reprend telles quelles les valeurs de `tableauxImmobilisations` : cellule établie = montant de l'API, « à saisir » = vide, abstention = motif ; colonne « Dont composants » quand l'API en fournit ; statut de ligne (poste/total/non ventilé · établi/à saisir/abstention) ; limites = réserves, manques, notes et mention PROJET de l'API. Rien n'est recalculé côté web.
+- **Preuves** : test unitaire (4 au total), Playwright `fiscal.spec.ts` (tableaux `2054/…` et `2055/…` présents), et sur le dossier fictif : 52 tableaux au réel normal (2054 cadres A et B, 2055 cadre A inclus, CSV et PDF) et 30 au réel simplifié (2033-C cadres I et II), captures dans `var/captures/etat-joint-*`.
+- **Limite dite** : sur le dossier fictif ces cellules sont à 0,00 ou « à saisir » faute de fichier des immobilisations ; le rendu des valeurs non nulles est couvert par le test unitaire.
+
+### D-147 — Échec WebKit de `ecrans-cabinet.spec.ts` en CI : correctif d'hydratation, cause non confirmée (2026-11-22)
+- **Constat** : l'étape « WebKit pile réelle » du run 1444e1b échoue sur `ouvrir()` (formulaire de connexion soumis avant l'hydratation de la page en WebKit CI) ; 8/8 passes locales avant correctif, donc cause non reproduite.
+- **Correctif, sans affaiblir d'assertion** : `waitForLoadState('networkidle')` après la connexion et `actionTimeout: 60 000 ms` dans les deux configurations Playwright. À confirmer par une lecture CI ; non confirmé à ce jour.
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

@@ -3,7 +3,7 @@
  * (grilles, 2059-A, filiales du 2033-G / 2059-G, associés du 2033-F / 2059-F). Chaque tableau garde son statut, ses totaux tels que calculés par
  * l'API (ou leur abstention motivée) et ses limites. Aucune signature, aucune transmission, aucune validation.
  */
-import type { AmortissementsDerogatoiresProjet, CadreIIIProjet, CelluleMontantSaisie, ChargesRepartiesProjet, EcartsReevaluationProjet, CelluleGrille, Formulaire2033DProjet, Formulaire2033EProjet, FormulaireCasesProjet, Formulaire2033FProjet, Formulaire2033GProjet, Formulaire2059AProjet, GrilleProjet, ReponseLiasse } from './fiscal';
+import type { AmortissementsDerogatoiresProjet, CadreIIIProjet, CelluleMontantSaisie, ChargesRepartiesProjet, EcartsReevaluationProjet, CelluleGrille, Formulaire2033DProjet, Formulaire2033EProjet, FormulaireCasesProjet, Formulaire2033FProjet, Formulaire2033GProjet, Formulaire2059AProjet, GrilleProjet, ReponseLiasse, TableauxImmobilisationsProjet } from './fiscal';
 import { LIBELLES_COLONNES_2055_B, LIBELLES_COLONNES_2059_A } from './fiscal';
 
 export interface TableauEtatJoint {
@@ -210,10 +210,45 @@ function depuis2055C(c: ChargesRepartiesProjet): TableauEtatJoint[] {
   ];
 }
 
+/**
+ * Tableaux 2054, 2055 (cadre A) et 2033-C (cadres I et II) : valeurs de l'API, reprises telles quelles, qu'elles viennent de la balance, du fichier des immobilisations
+ * ou d'une saisie. Une cellule « à saisir » reste vide, une abstention garde son motif ; aucun total n'est recalculé ici (les lignes de total sont celles de l'API).
+ */
+function depuisImmobilisations(t: TableauxImmobilisationsProjet): TableauEtatJoint[] {
+  const nature = (l: { nature: string }) => (l.nature === 'total' ? 'total' : l.nature === 'non_ventile' ? 'non ventilé' : 'poste');
+  return t.tableaux.flatMap((tab) =>
+    tab.cadres.map((c) => {
+      const cles = c.colonnes.map((x) => x.cle);
+      const avecComposants = c.lignes.some((l) => l.dontComposants);
+      return {
+        id: `${tab.code}/${c.id}`,
+        titre: `${tab.code} — ${tab.intitule} — ${c.titre}`,
+        etat: 'valeurs de l’API : balance, fichier des immobilisations ou saisies justifiées ; cellules non établies laissées vides',
+        colonnes: ['Ligne', ...c.colonnes.map((x) => x.libelle), ...(avecComposants ? ['Dont composants'] : [])],
+        lignes: c.lignes.map((l) => {
+          const vals = cles.map((k) => l.cellules[k]);
+          const statut = vals.some((v) => v?.statut === 'abstention') ? 'abstention' : vals.some((v) => v?.statut === 'a_saisir') ? 'à saisir' : 'établi';
+          return {
+            libelle: `${l.numeroRomain ? `${l.numeroRomain} — ` : ''}${l.libelle}`,
+            statut: `${nature(l)} · ${statut}`,
+            cellules: [
+              ...vals.map((v) => (v === undefined ? '—' : v.statut === 'etabli' ? (v.montant ?? '') : v.statut === 'abstention' ? `abstention : ${v.motif ?? ''}` : '')),
+              ...(avecComposants ? [l.dontComposants ? (l.dontComposants.statut === 'etabli' ? (l.dontComposants.montant ?? '') : '') : ''] : []),
+            ],
+          };
+        }),
+        totaux: [],
+        limites: [...t.reserves, ...t.manques, ...c.lignes.filter((l) => l.note).map((l) => `${l.libelle} : ${l.note}`), t.mention],
+      };
+    }),
+  );
+}
+
 /** Tous les tableaux saisis par lignes de la réponse de la liasse, dans l'ordre des numéros de tableau. */
 export function etatJointDe(l: ReponseLiasse): TableauEtatJoint[] {
   const nom = l.regimeDemande === 'reel_normal' ? '2059' : '2033';
   return [
+    ...(l.tableauxImmobilisations && l.tableauxImmobilisations.statut === 'projet' ? depuisImmobilisations(l.tableauxImmobilisations) : []),
     ...(l.formulairesCases ?? []).flatMap(depuisCases),
     ...(l.formulaire2033D ? depuis2033D(l.formulaire2033D) : []),
     ...(l.formulaire2033E ? depuis2033E(l.formulaire2033E) : []),

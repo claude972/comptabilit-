@@ -48,4 +48,20 @@ describe('état joint', () => {
     expect(t[1]!.totaux.at(-1)!.cellules[1]).toMatch(/^abstention/);
     expect(t[2]!.lignes[0]!.cellules).toEqual(['10.00', '0.00', '2.00', '8.00']);
   });
+  it('reprend 2054, 2055 A et 2033-C depuis les valeurs de l’API, y compris celles issues de la balance, sans rien recalculer', () => {
+    const c = (statut: 'etabli' | 'a_saisir' | 'abstention', montant: string | null, motif: string | null = null) => ({ codeCase: null, etatCodeCase: 'a_confirmer' as const, montant, n1: null, statut, motif });
+    const l = { regimeDemande: 'reel_normal', tableauxImmobilisations: { statut: 'projet', complet: false, manques: ['M1'], mention: 'PROJET', reserves: ['R1'], tableaux: [{
+      code: '2054', intitule: 'Immobilisations', cadresNonCouverts: [], cadres: [{ id: 'A', titre: 'Cadre A', colonnes: [{ cle: 'ouverture', numero: 1, libelle: 'Début', surFormulaire: true }, { cle: 'cloture', numero: 5, libelle: 'Fin', surFormulaire: true }], lignes: [
+        { id: 'l1', libelle: 'Terrains', numeroRomain: 'I', nature: 'poste', cellules: { ouverture: c('etabli', '100.00'), cloture: c('abstention', null, 'Fichier incomplet') }, comptes: [], dontComposants: { codeCase: null, montant: '7.00', statut: 'etabli', motif: null }, fichierBrut: null, fichierAmortissements: null, note: null },
+        { id: 'l2', libelle: 'Total', numeroRomain: null, nature: 'total', cellules: { ouverture: c('a_saisir', null), cloture: c('a_saisir', null) }, comptes: [], dontComposants: null, fichierBrut: null, fichierAmortissements: null, note: 'Note' },
+      ] }],
+    }] } } as unknown as ReponseLiasse;
+    const t = etatJointDe(l);
+    expect(t).toHaveLength(1);
+    expect(t[0]!.colonnes).toEqual(['Ligne', 'Début', 'Fin', 'Dont composants']);
+    expect(t[0]!.lignes[0]!.cellules).toEqual(['100.00', 'abstention : Fichier incomplet', '7.00']);
+    expect(t[0]!.lignes[0]!.statut).toBe('poste · abstention');
+    expect(t[0]!.lignes[1]!.cellules).toEqual(['', '', '']);
+    expect(t[0]!.limites).toEqual(['R1', 'M1', 'Total : Note', 'PROJET']);
+  });
 });

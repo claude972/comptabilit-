@@ -28,6 +28,8 @@ async function ouvrir(browser: Browser, email: string, destination: string): Pro
   await page.locator('#password').fill(motDePasse());
   await page.locator('#kc-login').click();
   await page.waitForURL(/^http:\/\/localhost:3100\//);
+  // Hydratation terminée avant toute saisie (D-147) : WebKit en CI soumettait parfois le formulaire avant que React ne l'ait pris en charge (aucun dossier créé, attente jusqu'au délai du test).
+  await page.waitForLoadState('networkidle');
   return page;
 }
 const statutBff = (page: Page, methode: string, chemin: string) =>

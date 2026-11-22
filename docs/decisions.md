@@ -845,6 +845,12 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Non fait, dit** : CSG et cotisations elles-mêmes, abattement de 26 % de la réforme, éléments de la notice qui ne sont pas des cases (rubrique 690 : à saisir par le cabinet d'après la liste de la notice) ; aucune validation professionnelle de la formule.
 - **Preuves** : tests du moteur (944 verts) dont trois cas de formule (EI/EURL, gérant, déficit) ; essai d'intégration de bout en bout (67 verts) ; Playwright (13 lignes du résultat fiscal, 5 cases du cadre IV).
 
+### D-142 — Réconciliation des exigences hors fiscal ; arbitrage du « client en lecture » (R36) (2026-11-22)
+
+- **Relecture ligne à ligne de `exigences.md`** contre le code et les essais : quatre lignes du tableau principal étaient périmées et contredisaient la seconde relecture (tiers et règlements, notifications poussées, portefeuille de l'assistant, traces OpenTelemetry) : corrigées. **Aucun manque n'a été transformé en option** : chaque reste est soit une dépendance **(externe)** nommée (jeton IA, appareils réels, comptes OAuth, hébergeur, validation professionnelle, durées juridiques), soit une limite chiffrée.
+- **Arbitrage R36** (décision produit, jusqu'ici « à prendre ») : la revue des contrôles et ses constats (travaux internes), les dossiers de révision et l'assistant (dossier et portefeuille) sont **réservés aux membres du cabinet** : un « client en lecture » reçoit 403. Il conserve la lecture de son dossier, de ses pièces, des états et des tiers. Fonction `reserverAuxMembresDuCabinet` ; matrice 28 fonctions × 11 profils mise à jour (colonne CLL) et rejouée : 7 essais verts.
+- **Restes non externes, tels qu'ils subsistent** : P0 (isolation des analyseurs en conteneur) PARTIEL — défaut amont de dockerd reproduit, atténué, non résolu, essai conservé sans masquage ; essai de restauration (parcours 10) à rejouer ; mesures multi-utilisateurs sur la cible : externe.
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

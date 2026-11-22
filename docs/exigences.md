@@ -37,7 +37,7 @@ Lecture des colonnes :
 | shadcn/ui | Composants accessibles écrits pour le projet sur Tailwind, sans la bibliothèque shadcn/ui | — | Écart assumé (table des écarts de `decisions.md`) |
 | Recherche textuelle PostgreSQL **et pgvector** | Plein texte en place ; stockage vectoriel et recherche hybride préparés | Tests | Embeddings réels **(externe : jeton IA)** |
 | Passerelle IA unique, modèles figés | `@comtaple/ia` | Tests contre simulateur | Activation **(externe)** : jeton, vérifications contractuelles, évaluation sur corpus métier |
-| Supervision OpenTelemetry, Prometheus, Grafana | `infra/supervision/` (Prometheus, Grafana, collecteur) | Essai local | Traces non émises par l'API et le worker (SDK à ajouter) ; déploiement réel **(externe)** |
+| Supervision OpenTelemetry, Prometheus, Grafana | `infra/supervision/` (Prometheus, Grafana, collecteur) | Essai local | Traces émises par l'API et le worker (D-074, D-083) ; déploiement réel **(externe)** |
 | Infrastructure OVHcloud décrite par OpenTofu et scripts | `infra/opentofu/`, `infra/production/`, `scripts/deployer.sh` | `tofu validate`, `compose config`, mode à blanc | Jamais appliqué **(externe : compte, dépense)** |
 | Montants jamais en flottant ; chaînes décimales dans les API | `montant.ts`, schémas Zod | Tests moteur | — |
 
@@ -58,7 +58,7 @@ Lecture des colonnes :
 
 | Exigence | Implémentation | Preuve | Reste réel |
 |---|---|---|---|
-| Entités listées (cabinets … politiques de conservation) | `packages/db/src/schema.ts`, migrations 0000 → 003x | Migrations rejouées sur base neuve en CI | « Tiers » : pas de table propre (dérivés des comptes auxiliaires des écritures) ; « échéances et règlements » de factures : champs extraits de la pièce, pas de suivi de règlement par facture hors rapprochement bancaire |
+| Entités listées (cabinets … politiques de conservation) | `packages/db/src/schema.ts`, migrations 0000 → 003x | Migrations rejouées sur base neuve en CI | Tiers, factures, avoirs, échéances et règlements : FAITS (D-077, D-096, tables dédiées, essais `tiers-reglements`) ; règles de suivi à valider **(externe)** |
 | Liens pièce ↔ réceptions ↔ écritures ↔ contrôles ↔ décisions | Tables de réception, d'échange, de pièces jointes, de décisions | Parcours API | — |
 | Nouvelle version / doublon binaire / suspicion de double comptabilisation | Versions de pièce, empreinte, contrôle de doublons d'écritures | Tests | — |
 | Résultats rattachés aux versions des données et des règles ; obsolescence | `version_donnees`, versions de règles, « à revoir » | Tests API | — |
@@ -69,7 +69,7 @@ Lecture des colonnes :
 |---|---|---|---|
 | Parcours téléphone complet (installation, photo, pages, rotation, recadrage, lisibilité, commentaire, nature, progression, reprise, « reçu » après confirmation, statuts, champs extraits, signalement, demandes de complément) | `apps/web` (PWA) | Suites navigateur (émulation) | Appareils réels **(externe)** |
 | Pas de documents sensibles dans le cache du service worker ; purge | Service worker sans cache de documents ; stockage temporaire purgé | Tests | — |
-| Notifications discrètes | Notifications internes sans montant | Tests | Notifications poussées : non faites (aucun service d'envoi) — voir « Reste » en fin de document |
+| Notifications discrètes | Notifications internes sans montant | Tests | Notifications poussées FAITES sans aucune donnée par construction, désactivées par défaut, vérifiées contre simulateur (D-081, D-086, D-097) ; réception réelle et écran verrouillé **(externe : appareils, décision d'activation)** |
 | Connecteurs Gmail et Microsoft 365 réels, lecture seule, OAuth/PKCE, jetons chiffrés, renouvellement, révocation | `@comtaple/mail`, API, worker, écrans | 57 tests + 20 parcours **simulés** | Connexion réelle **(externe : applications OAuth)** |
 | Périmètre de connexion, reprise 30 jours, différence permissions / filtres | Écrans de connexion | Parcours simulés | — |
 | Notifications fournisseur, rattrapage, doublons, quotas, reprises, expiration, suivi, déconnexion | Idem | Idem | — |
@@ -138,7 +138,7 @@ Lecture des colonnes :
 
 | Exigence | Implémentation | Preuve | Reste réel |
 |---|---|---|---|
-| Questions sur un dossier autorisé ; habilitations avant recherche ; citations ; période et périmètre ; données manquantes ; fait/calcul/hypothèse/interprétation ; abstention ; fonctions métier autorisées seulement ; pas de SQL libre ; contenus non fiables | `@comtaple/ia` (orchestration et garde-fous), routes `v1/dossiers/:id/assistant/questions`, onglet « Assistant » | 24 parcours API (sans IA sur pile réelle ; modèle contre simulateur avec la base réelle), navigateur simulé et réel | Portefeuille de plusieurs dossiers : non couvert ; rédaction par le modèle réel **(externe)** ; d'ici là, mode « sans IA » étiqueté |
+| Questions sur un dossier autorisé ; habilitations avant recherche ; citations ; période et périmètre ; données manquantes ; fait/calcul/hypothèse/interprétation ; abstention ; fonctions métier autorisées seulement ; pas de SQL libre ; contenus non fiables | `@comtaple/ia` (orchestration et garde-fous), routes `v1/dossiers/:id/assistant/questions`, onglet « Assistant » | 24 parcours API (sans IA sur pile réelle ; modèle contre simulateur avec la base réelle), navigateur simulé et réel | Portefeuille de dossiers autorisés FAIT (D-079, D-088) ; rédaction par le modèle réel **(externe)** ; d'ici là, mode « sans IA » étiqueté ; l'assistant est réservé aux membres du cabinet (D-142) |
 
 ## §16 — Socle SaaS, sécurité, conservation
 
@@ -162,7 +162,7 @@ Lecture des colonnes :
 | Jeux synthétiques et exigences de recette | `packages/core/src/synthetique`, recettes | Tests | — |
 | Dix parcours de bout en bout | Matrice parcours × preuve × lacune dans `couverture.md` (P3, D-101) ; parcours 1 enchaîné de bout en bout (`parcours-recette-dix.itest.ts`) | Tests | Parcours 2, 6, 7 : **simulés** (boîte réelle externe) ; parcours 10 : essai de restauration existant, non rejoué à la passe P3 (reste de P4) ; parcours 1 et 5 sur appareil réel : `recette-appareils.md` **jamais jouée** |
 | Navigateurs / émulations / appareils distingués | `rapport-de-tests.md` ; procédure pas à pas et fiche de résultat vierge pour téléphone réel, Safari, VoiceOver et NVDA : `recette-appareils.md` (**préparée, jamais jouée**) | — | Appareils réels, Safari lui-même, lecteurs d'écran **(externe : personne et appareils)** |
-| Profils et droits : refus attendus prouvés | Matrice 28 fonctions × 11 profils sur deux cabinets neufs, multi-cabinet, habilitation par dossier, expiration (D-101) | `parcours-droits-matrice.itest.ts` | Politique d'un « client en lecture » à arbitrer (R36) ; test d'intrusion indépendant **(externe)** |
+| Profils et droits : refus attendus prouvés | Matrice 28 fonctions × 11 profils sur deux cabinets neufs, multi-cabinet, habilitation par dossier, expiration (D-101) | `parcours-droits-matrice.itest.ts` | Politique du « client en lecture » ARBITRÉE (D-142, R36 levé) ; test d'intrusion indépendant **(externe)** |
 | Erreurs, dépendances indisponibles, reprise, messages d'échec explicites | 503 nommés (files, stockage, base, identité), bassin PostgreSQL non fatal, pièce jamais « en analyse » sans fin, reprise d'un import après arrêt brutal du worker (D-101, migration 0049) | `parcours-dependances.itest.ts`, `dependances.itest.ts`, `parcours-reprise-worker.itest.ts` | Pas de redondance ; pannes de la pile normale elle-même non jouées ; arrêt brutal pendant contrôles / exports non mesuré |
 | Charge concurrente multi-utilisateur et multi-cabinet, gros imports avec budgets | Verrous consultatifs sur les clôtures identiques et la création d'exercices ; budgets mesurés (D-101) | `parcours-charge.itest.ts`, `parcours-gros-imports.itest.ts` | 12 sessions et 4 identités seulement ; une API et un worker ; mesures non transposables à la cible **(externe)** |
 

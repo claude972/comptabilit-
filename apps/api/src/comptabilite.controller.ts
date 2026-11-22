@@ -18,7 +18,7 @@ import { type AccesBd, and, asc, count, desc, eq, inArray, journaliser, notifier
 import type { Config, Files, Stockage } from '@comtaple/plateforme';
 import type { Response } from 'express';
 import { z } from 'zod';
-import { type Acces, AccesCourant, exigerNiveau, exigerUuid, type Niveau } from './acces.js';
+import { type Acces, AccesCourant, exigerNiveau, exigerUuid, type Niveau, reserverAuxMembresDuCabinet } from './acces.js';
 import { BD, CONFIG, STOCKAGE, TACHES } from './jetons.js';
 import { refusVolume, ApiRefusVolume } from './plafonds.js';
 import { schemaOpenApi, uuid, valider } from './validation.js';
@@ -111,6 +111,7 @@ export class ComptabiliteController {
       'Chaque contrôle porte son statut (sans anomalie détectée, constat, non applicable, non réalisé faute de données, erreur technique). « obsolete » signale que les données ont changé depuis l’exécution.',
   })
   async revue(@AccesCourant() acces: Acces, @Param('id') id: string) {
+    reserverAuxMembresDuCabinet(acces);
     exigerUuid(id);
     return this.bd.avecContexte(acces, async (tx) => {
       const ex = await this.exercice(tx, id, 'lecture');
@@ -174,6 +175,7 @@ export class ComptabiliteController {
   @Get('constats/:id')
   @ApiOperation({ summary: 'Détail d’un constat : écritures concernées, preuves, historique des décisions et commentaires' })
   async constat(@AccesCourant() acces: Acces, @Param('id') id: string) {
+    reserverAuxMembresDuCabinet(acces);
     exigerUuid(id);
     return this.bd.avecContexte(acces, async (tx) => {
       const [c] = await tx.select().from(s.constats).where(eq(s.constats.id, id));
@@ -294,6 +296,7 @@ export class ComptabiliteController {
   @Get('exercices/:id/dossiers-revision')
   @ApiOperation({ summary: 'Dossiers de révision générés pour un exercice' })
   async dossiersRevision(@AccesCourant() acces: Acces, @Param('id') id: string) {
+    reserverAuxMembresDuCabinet(acces);
     exigerUuid(id);
     return this.bd.avecContexte(acces, async (tx) => {
       await this.exercice(tx, id, 'lecture');
@@ -304,6 +307,7 @@ export class ComptabiliteController {
   @Get('dossiers-revision/:id/:format')
   @ApiOperation({ summary: 'Télécharger le dossier de révision (format « pdf » ou « donnees »)' })
   async telecharger(@AccesCourant() acces: Acces, @Param('id') id: string, @Param('format') format: string, @Res() res: Response) {
+    reserverAuxMembresDuCabinet(acces);
     exigerUuid(id);
     if (format !== 'pdf' && format !== 'donnees') throw new BadRequestException('format inconnu');
     const exp = await this.bd.avecContexte(acces, async (tx) => {

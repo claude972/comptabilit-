@@ -174,6 +174,14 @@ export async function exigerNiveau(tx: Tx, entiteId: string, minimum: Niveau): P
   return n;
 }
 
+/**
+ * Travaux internes du cabinet (D-142) : un « client en lecture » ne lit ni la revue des contrôles et ses constats, ni les dossiers de révision, ni
+ * l'assistant (constats internes, hypothèses de travail). Il garde la lecture des états et des tiers de son dossier.
+ */
+export function reserverAuxMembresDuCabinet(acces: Acces): void {
+  if (acces.role === 'client_lecture') throw new ForbiddenException('Réservé aux membres du cabinet : travaux internes de révision');
+}
+
 export function auMoins(n: Niveau, minimum: Niveau): boolean {
   return ORDRE.indexOf(n) >= ORDRE.indexOf(minimum);
 }

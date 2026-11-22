@@ -15,7 +15,7 @@ import {
 } from '@comtaple/ia';
 import type { Config, ServicesIa } from '@comtaple/plateforme';
 import { z } from 'zod';
-import { type Acces, AccesCourant, exigerNiveau, exigerUuid } from './acces.js';
+import { type Acces, AccesCourant, exigerNiveau, exigerUuid, reserverAuxMembresDuCabinet } from './acces.js';
 import { BORNE_DOSSIERS_PORTEFEUILLE, DOSSIERS_DEMANDES_MAX, elementsParDossier, TRANCHES_MAX, lirePerimetre, poserQuestionPortefeuille, relireEchangesPortefeuille } from './assistant-portefeuille.service.js';
 import { limiterDebitIa, poserQuestion, QUESTION_MAX, QUESTION_MIN } from './assistant.service.js';
 import { BD, CONFIG, IA } from './jetons.js';
@@ -83,6 +83,7 @@ export class AssistantController {
   })
   @ApiBody({ schema: schemaOpenApi(question) })
   async poser(@AccesCourant() acces: Acces, @Param('id') id: string, @Body() corps: unknown) {
+    reserverAuxMembresDuCabinet(acces);
     exigerUuid(id);
     const d = valider(question, corps);
     limiterDebitIa(`question:${acces.utilisateurId}`);
@@ -94,6 +95,7 @@ export class AssistantController {
   @ApiOperation({ summary: 'Mes questions à l’assistant sur ce dossier, les plus récentes d’abord', description: 'Chacun ne relit que ses propres échanges (règle appliquée par la base).' })
   @ApiQuery({ name: 'page', required: false })
   async historique(@AccesCourant() acces: Acces, @Param('id') id: string, @Query('page') pageBrute?: string) {
+    reserverAuxMembresDuCabinet(acces);
     exigerUuid(id);
     const page = Number(pageBrute ?? 1);
     if (!Number.isInteger(page) || page < 1 || page > 10_000) throw new BadRequestException('page : entier positif attendu');
@@ -119,6 +121,7 @@ export class AssistantController {
   })
   @ApiBody({ schema: schemaOpenApi(questionPortefeuille) })
   async poserPortefeuille(@AccesCourant() acces: Acces, @Body() corps: unknown) {
+    reserverAuxMembresDuCabinet(acces);
     const d = valider(questionPortefeuille, corps);
     limiterDebitIa(`question:${acces.utilisateurId}`);
     const r = await poserQuestionPortefeuille({ bd: this.bd, ia: this.ia, cfg: this.cfg }, acces, d);
@@ -133,6 +136,7 @@ export class AssistantController {
   })
   @ApiQuery({ name: 'page', required: false })
   async historiquePortefeuille(@AccesCourant() acces: Acces, @Query('page') pageBrute?: string) {
+    reserverAuxMembresDuCabinet(acces);
     const page = Number(pageBrute ?? 1);
     if (!Number.isInteger(page) || page < 1 || page > 10_000) throw new BadRequestException('page : entier positif attendu');
     return relireEchangesPortefeuille({ bd: this.bd, ia: this.ia, cfg: this.cfg }, acces, page);
@@ -144,6 +148,7 @@ export class AssistantController {
     description: 'Dossiers actifs où la personne a au moins le niveau « lecture », calculés par la base ; borne par question et nombre d’éléments restitués par dossier. Refusé (403) aux déposants.',
   })
   async perimetre(@AccesCourant() acces: Acces) {
+    reserverAuxMembresDuCabinet(acces);
     const dossiers = await lirePerimetre({ bd: this.bd, ia: this.ia, cfg: this.cfg }, acces);
     return { borne: BORNE_DOSSIERS_PORTEFEUILLE, elementsParDossier: elementsParDossier(Math.min(Math.max(dossiers.length, 1), BORNE_DOSSIERS_PORTEFEUILLE)), dossiers };
   }

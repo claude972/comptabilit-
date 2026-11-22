@@ -1005,7 +1005,7 @@ describe('feuillets du régime réel normal : déficits transférés (K4 bis du 
   const put = (tableau: string, ligne: string, valeurs: Record<string, string>) => api('remi', 'PUT', `/v1/exercices/${exN}/tableaux/${tableau}/${ligne}`, { valeurs, note: 'Feuillet de détail (essai)' });
 
   it('deux feuillets au régime normal, absents au régime simplifié ; K4 bis rapproché de la case saisie ; détails 2058-A totalisés', async () => {
-    expect((await feuilles()).map((f) => f.id)).toEqual(['2058-B-K4BIS', '2058-A-FEUILLETS', '2058-B-COMPLEMENTS']);
+    expect((await feuilles()).map((f) => f.id)).toEqual(['2058-B-K4BIS', '2058-A-FEUILLETS', '2056-FEUILLETS', '2057-FEUILLETS', '2058-B-COMPLEMENTS']);
     expect((await liasse(exN, 'reel_simplifie')).json.feuilles2058).toBeNull();
     expect((await api('remi', 'PUT', `/v1/exercices/${exN}/qualifications/renvois/B58_K4BIS`, { montant: '700.00', note: 'Déficits transférés (essai)' })).statut).toBeLessThan(300);
     expect((await put('2058B_K4BIS', '01', { origine: 'Société d’origine (fictive)', siren: '123456789', date: '2025-03-01', m: '600.00' })).statut).toBeLessThan(300);

@@ -23,6 +23,9 @@ describe('2059-A', () => {
     expect(f.etat).toBe('saisi');
     expect(f.cadres.A).toEqual({ statut: 'etabli', montant: '3000.00' });
     expect(f.cadres.B).toEqual({ statut: 'etabli', montant: '600.00' });
+    // Cadre B par taux (D-153) : somme des trois colonnes = cadre B, mêmes conditions d'établissement.
+    const parTaux = Object.values(f.cadreBParTaux).map((t) => (t.statut === 'etabli' ? Number(t.montant) : NaN));
+    expect(parTaux.reduce((a, b) => a + b, 0).toFixed(2)).toBe('600.00');
     expect(f.cadres.C).toEqual({ statut: 'etabli', montant: '-5.00' });
     expect(prep([s('2059A_IM', 'NEANT', {})]).etat).toBe('neant');
     expect(prep([s('2059A_IM', 'NEANT', {}), s('2059A_IM', '01', CESSION)]).controles.some((c) => c.code === 'A59_NEANT_ET_LIGNES')).toBe(true);

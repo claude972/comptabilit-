@@ -24,7 +24,11 @@ import {
   GRILLE_2058B_COMPLEMENTS,
   GRILLE_2058A_FEUILLETS,
   GRILLE_2058B_K4BIS,
+  GRILLE_2056_FEUILLETS,
+  correspondancePour,
+  projeterBilan,
   GRILLE_2057,
+  GRILLE_2057_FEUILLETS,
   GRILLE_2065,
   GRILLE_2065_BIS,
   GRILLE_DATES_CVAE,
@@ -79,7 +83,7 @@ const montantSigne = schemaChaineDecimale;
 const ventilation = z.object({ montantFrance: montantSigne, montantExport: montantSigne, note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie la ventilation').max(2000) });
 const renvoiSaisie = z.object({ montant: montantSigne, note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie le montant').max(2000) });
 const saisieTableau = z.object({ valeurs: z.record(z.string().max(40), z.string().max(200)), note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie la saisie').max(2000) });
-const TABLEAU_SAISI = /^(2033C_III|2054BIS_A|2054BIS_B|2055_B|2055_C|2033D_C|2033F_NB|2033F_PM|2033F_PP|2033G_NB|2033G_FIL|2059A_IM|2059A_AUT|2059B_A|2059B_B|2059C_I|2059C_II|2059D_I|2059D_II|2065_C1|2065_C2|2065_C3|2065_C4|2065_F|2065_I|2065_D|2065_E|2033E_DATES|2057_A|2057_AX|2057_B|2057_BX|2065B_G|2065B_H|2065B_I|2065B_J1|2065B_J2|2065B_K|2033D_982|2058B_K4BIS|2058A_REINT|2058A_DEDUC|IMMO_CELL|2053_D7|2053_D8|2065_X|2065_T|2058B_NAT|2058B_COMP|2065_ID|2065_IDG)$/;
+const TABLEAU_SAISI = /^(2033C_III|2054BIS_A|2054BIS_B|2055_B|2055_C|2033D_C|2033F_NB|2033F_PM|2033F_PP|2033G_NB|2033G_FIL|2059A_IM|2059A_AUT|2059B_A|2059B_B|2059C_I|2059C_II|2059D_I|2059D_II|2065_C1|2065_C2|2065_C3|2065_C4|2065_F|2065_I|2065_D|2065_E|2033E_DATES|2057_A|2057_AX|2057_B|2057_BX|2065B_G|2065B_H|2065B_I|2065B_J1|2065B_J2|2065B_K|2033D_982|2058B_K4BIS|2058A_REINT|2058A_DEDUC|IMMO_CELL|2053_D7|2053_D8|2065_X|2065_T|2058B_NAT|2058B_COMP|2065_ID|2065_IDG|2056_F_HPX|2056_F_APR|2056_F_IMP|2056_F_ARC|2056_F_AIF|2056_F_ADE|2057_F_PRET|2057_F_EMPR)$/;
 /** Lignes admises par la route, selon la famille de tableau : historiques (01 à 13…), 2059-A (01 à 20), grilles 2059-B à D, 2065 et dates du 2033-E (identifiants courts, forme validée contre la définition). */
 const LIGNE_HISTORIQUE = /^(0[1-9]|1[0-3]|REG|PV19|NEANT|B1|B2|NB)$/;
 const LIGNE_2059A = /^(0[1-9]|1[0-9]|20|NEANT)$/;
@@ -389,11 +393,23 @@ export class FiscalController {
       const formulaire2033F = preparerFormulaire2033F({ versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies });
       // Tableau 2033-G (régime simplifié, D-117) ou 2059-G (régime réel normal, D-120 : même tableau, mêmes saisies) : filiales et participations, saisie ligne par ligne.
       const formulaire2033G = preparerFormulaire2033G({ versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies });
+      // Tableau 2059-A (plus et moins-values, régime réel normal, D-121) : saisie ligne par ligne.
+      const formulaire2059A = regime === 'reel_normal' ? preparerFormulaire2059A({ versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies }) : null;
+      const grilles2059 = regime === 'reel_normal' ? GRILLES_2059.map((g) => preparerGrille(g, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies })) : null;
+      // Reports 2059 → 2058-A (D-153) : valeurs ÉTABLIES seulement (une abstention n'alimente rien). WN est proposée depuis le 2059-B (renvoi chiffré de la notice) ; les autres sont des rapprochements indicatifs.
+      const reports2059: Record<string, string> = {};
+      if (formulaire2059A) {
+        for (const [cle, total] of [['R59A_C10A', formulaire2059A.cadreBParTaux.c10a], ['R59A_C10B', formulaire2059A.cadreBParTaux.c10b], ['R59A_C10C', formulaire2059A.cadreBParTaux.c10c], ['R59A_C11', formulaire2059A.cadres.C]] as const) {
+          if (total.statut === 'etabli') reports2059[cle] = total.montant;
+        }
+      }
+      const total2c = grilles2059?.find((g) => g.id === '2059-B')?.cadres.find((c) => c.tableau === '2059B_A')?.calculs.find((k) => k.id === 'TOTAL2')?.cellules.c;
+      if (total2c?.statut === 'etabli') reports2059.R59B_TOTAL2_C = total2c.montant;
       // Formulaires du régime réel normal par saisie case par case (2058-A, D-118).
       // Les formulaires sont préparés dans l'ordre : les valeurs établies des précédents (saisies retenues, calculs, résultat après imputation du 2058-A) alimentent les propositions et rapprochements des suivants.
       const formulairesCases: FormulaireProjet[] | null = [];
       if (formulairesCases !== null) {
-        const valeursAutres: Record<string, string> = {};
+        const valeursAutres: Record<string, string> = { ...reports2059 };
         // Lignes FW (autres achats et charges externes) et FX (impôts, taxes et versements assimilés) du 2052, déduites de la balance : rapprochements indicatifs du 2058-C (ZJ, YX).
         if (resultat.statut === 'projet') {
           const l2052 = resultat.tableaux.flatMap((t) => t.lignes);
@@ -410,10 +426,7 @@ export class FiscalController {
           if (f.imputation?.apres.statut === 'etabli') valeursAutres[cleCase(def.prefixe, f.imputation.apres.sens === 'deficit' ? 'XO' : 'XN')] = f.imputation.apres.montant;
         }
       }
-      // Tableau 2059-A (plus et moins-values, régime réel normal, D-121) : saisie ligne par ligne.
-      const formulaire2059A = regime === 'reel_normal' ? preparerFormulaire2059A({ versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies }) : null;
       // Tableaux 2059-B, 2059-C et 2059-D (régime réel normal, D-122) : grilles saisies ligne par ligne.
-      const grilles2059 = regime === 'reel_normal' ? GRILLES_2059.map((g) => preparerGrille(g, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies })) : null;
       // Déclaration de résultats 2065-SD (page 1, D-123) : servie aux deux régimes, saisie rubrique par rubrique.
       const formulaire2065 = preparerGrille(GRILLE_2065, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies });
       // Feuillet des déficits transférés de plein droit (D-132) : régime simplifié ; rapprochements indicatifs avec les cases 982 bis et 982 ter du 2033-D.
@@ -422,8 +435,12 @@ export class FiscalController {
       const feuilletDeficits = regime === 'reel_simplifie' ? preparerGrille(GRILLE_2033D_982, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies, valeursAutres: valeursDeficits }) : null;
       // Feuillets du régime réel normal (D-133) : déficits transférés (K4 bis du 2058-B) rapprochés de la case saisie ; détails des réintégrations et déductions diverses du 2058-A.
       const valeursK4: Record<string, string> = {};
-      for (const r of renvoisSaisis) if (r.code.startsWith('B58_') && r.versionDonnees === exercice.versionDonnees) valeursK4[r.code] = r.montant;
-      const feuilles2058 = regime === 'reel_normal' ? [preparerGrille(GRILLE_2058B_K4BIS, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies, valeursAutres: valeursK4 }), preparerGrille(GRILLE_2058A_FEUILLETS, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies }), preparerGrille(GRILLE_2058B_COMPLEMENTS, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies, valeursAutres: valeursK4 })] : null;
+      const valeurs2056: Record<string, string> = {};
+      for (const r of renvoisSaisis) {
+        if (r.code.startsWith('B58_') && r.versionDonnees === exercice.versionDonnees) valeursK4[r.code] = r.montant;
+        if (r.code.startsWith('P56_') && r.versionDonnees === exercice.versionDonnees) valeurs2056[r.code] = r.montant;
+      }
+      const feuilles2058 = regime === 'reel_normal' ? [preparerGrille(GRILLE_2058B_K4BIS, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies, valeursAutres: valeursK4 }), preparerGrille(GRILLE_2058A_FEUILLETS, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies }), preparerGrille(GRILLE_2056_FEUILLETS, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies, valeursAutres: valeurs2056 }), preparerGrille(GRILLE_2057_FEUILLETS, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies }), preparerGrille(GRILLE_2058B_COMPLEMENTS, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies, valeursAutres: valeursK4 })] : null;
       // Renvois (7) et (8) du 2053 (D-136) : détails saisis ligne par ligne ; rapprochements indicatifs avec le 2053 déduit de la balance et les cases 1G et 1H saisies au 2052.
       const valeursDetail: Record<string, string> = {};
       if (resultat.statut === 'projet') {
@@ -438,7 +455,18 @@ export class FiscalController {
       // Annexe 2065 bis-SD (D-131) : servie aux deux régimes (le cadre J ne concerne que le régime simplifié), saisie ligne par ligne.
       const formulaire2065Bis = preparerGrille(GRILLE_2065_BIS, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies });
       // État des échéances 2057 (régime réel normal, D-130) : grilles saisies ligne par ligne.
-      const formulaire2057 = regime === 'reel_normal' ? preparerGrille(GRILLE_2057, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies }) : null;
+      // Rapprochement INDICATIF du 2057 avec le projet de bilan (D-154) : quatre postes de même libellé, correspondance interne des comptes (non validée), jamais corrigé.
+      const valeursBilan2057: Record<string, string> = {};
+      const corrBilan = regime === 'reel_normal' ? correspondancePour(exercice.debut) : null;
+      if (corrBilan) {
+        const rub = projeterBilan(calculerBalance(lignes), corrBilan).rubriques;
+        const pris = (code: string, champ: 'brut' | 'montant') => rub.find((r) => r.code === code)?.[champ];
+        for (const [cle, code, champ] of [['BIL_CLIENTS_BRUT', 'A_CLIENTS', 'brut'], ['BIL_CCA_BRUT', 'A_CHARGES_CONSTATEES_AVANCE', 'brut'], ['BIL_FOURNISSEURS', 'P_FOURNISSEURS', 'montant'], ['BIL_PCA', 'P_PRODUITS_CONSTATES_AVANCE', 'montant']] as const) {
+          const v = pris(code, champ);
+          if (v !== undefined) valeursBilan2057[cle] = v;
+        }
+      }
+      const formulaire2057 = regime === 'reel_normal' ? preparerGrille(GRILLE_2057, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies, valeursAutres: valeursBilan2057 }) : null;
       // Dates du 2033-E / 2059-E (période de référence, cessation, D-126) : saisies aux deux régimes.
       const datesCvae = preparerGrille(GRILLE_DATES_CVAE, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies });
       const tableauxImmobilisations = preparerTableauxImmobilisations({

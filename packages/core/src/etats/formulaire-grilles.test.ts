@@ -1,6 +1,6 @@
 /** Recette des grilles 2059-B, 2059-C et 2059-D (D-122) : saisie ligne par ligne, calculs énoncés seulement à composantes saisies. */
 import { describe, expect, it } from 'vitest';
-import { GRILLE_2058B_COMPLEMENTS, GRILLE_2053_DETAIL, GRILLE_2033D_982, GRILLE_2058A_FEUILLETS, GRILLE_2058B_K4BIS, GRILLE_2057, GRILLE_2065, GRILLE_2065_BIS, GRILLE_DATES_CVAE, GRILLES_2059, preparerGrille } from './formulaire-grilles.js';
+import { GRILLE_2058B_COMPLEMENTS, GRILLE_2053_DETAIL, GRILLE_2033D_982, GRILLE_2058A_FEUILLETS, GRILLE_2058B_K4BIS, GRILLE_2056_FEUILLETS, GRILLE_2057, GRILLE_2057_FEUILLETS, GRILLE_2065, GRILLE_2065_BIS, GRILLE_DATES_CVAE, GRILLES_2059, preparerGrille } from './formulaire-grilles.js';
 import { type SaisieTableau, validerSaisieTableau } from './saisies-tableaux.js';
 
 const TRACE = { note: 'Suivi des plus-values (essai)', qualifieePar: 'u-1', le: '2026-12-31T10:00:00Z', versionDonnees: 7 };
@@ -188,5 +188,44 @@ describe('grilles 2059', () => {
     expect(validerSaisieTableau('2065_IDG', 'MERESIR', { t: 'abc' }).join(' ')).toMatch(/14 chiffres/);
     const f = preparerGrille(GRILLE_2065, { versionDonnees: 7, saisiesTableaux: [] });
     expect(f.cadres.find((c) => c.tableau === '2065_ID')!.lignes.map((l) => l.statut)).toEqual(['a_saisir', 'a_saisir', 'a_saisir', 'a_saisir', 'a_saisir']);
+  });
+});
+
+describe('feuillets du 2056 et du 2057, rapprochement du 2057 avec le projet de bilan (D-154)', () => {
+  it('2056 : six feuillets pour les six lignes marquées (1) ; détail rapproché de la case saisie, jamais corrigé ; sans case saisie, aucun contrôle', () => {
+    expect(GRILLE_2056_FEUILLETS.cadres.map((c) => c.tableau)).toEqual(['2056_F_HPX', '2056_F_APR', '2056_F_IMP', '2056_F_ARC', '2056_F_AIF', '2056_F_ADE']);
+    const ligne = (n: string, d: string, a: string, r: string, f: string) => s('2056_F_ARC', n, { origine: `Provision constituée en 202${n}`, d, a, r, f });
+    const saisies = [ligne('01', '1000.00', '200.00', '0.00', '1200.00'), ligne('02', '500.00', '0.00', '100.00', '400.00')];
+    const nu = preparerGrille(GRILLE_2056_FEUILLETS, { versionDonnees: 7, saisiesTableaux: saisies });
+    expect(nu.controles.some((c) => c.code.includes('SOMME_'))).toBe(false);
+    const g = preparerGrille(GRILLE_2056_FEUILLETS, { versionDonnees: 7, saisiesTableaux: saisies, valeursAutres: { P56_5V: '1500.00', P56_5W: '200.00', P56_5X: '90.00', P56_5Y: '1600.00' } });
+    const cadre = g.cadres.find((c) => c.tableau === '2056_F_ARC')!;
+    expect(cadre.calculs[0]!.cellules).toMatchObject({ d: { montant: '1500.00' }, a: { montant: '200.00' }, r: { montant: '100.00' }, f: { montant: '1600.00' } });
+    const k = (code: string) => g.controles.find((c) => c.code === `2056-FEUILLETS_${code}`);
+    expect(k('SOMME_D')?.statut).toBe('coherent');
+    expect(k('SOMME_A')?.statut).toBe('coherent');
+    expect(k('SOMME_R')).toMatchObject({ statut: 'ecart', ecart: '10.00' });
+    expect(k('SOMME_R')?.message).toMatch(/Rien n’est corrigé/);
+    expect(k('SOMME_F')?.statut).toBe('coherent');
+  });
+  it('2057 : feuillet des titres prêtés et empruntés, simples totaux des lignes saisies', () => {
+    const g = preparerGrille(GRILLE_2057_FEUILLETS, { versionDonnees: 7, saisiesTableaux: [s('2057_F_PRET', '01', { origine: 'Actions fictives', m: '800.00' }), s('2057_F_PRET', '02', { origine: 'Obligations fictives', m: '200.00' })] });
+    expect(g.cadres[0]!.calculs[0]!.cellules.m).toMatchObject({ statut: 'etabli', montant: '1000.00' });
+    expect(g.controles.every((c) => c.statut !== 'ecart')).toBe(true);
+  });
+  it('2057 : rapprochement INDICATIF avec le projet de bilan sur quatre postes ; une ligne citée non saisie : aucun contrôle ; écart jamais corrigé', () => {
+    const c1 = (ligne: string, brut: string) => s('2057_A', ligne, { c1: brut, c2: brut, c3: '0.00' });
+    const b1 = (ligne: string, brut: string) => s('2057_B', ligne, { c1: brut, c2: brut, c3: '0.00', c4: '0.00' });
+    const saisies = [c1('VA', '100.00'), c1('UX', '900.00'), c1('VS', '50.00'), b1('8B', '700.00'), b1('8L', '30.00')];
+    const g = preparerGrille(GRILLE_2057, { versionDonnees: 7, saisiesTableaux: saisies, valeursAutres: { BIL_CLIENTS_BRUT: '1000.00', BIL_CCA_BRUT: '55.00', BIL_FOURNISSEURS: '700.00', BIL_PCA: '30.00' } });
+    const k = (code: string) => g.controles.find((c) => c.code === `2057_${code}`);
+    expect(k('CLIENTS_BILAN')?.statut).toBe('coherent');
+    expect(k('CCA_BILAN')).toMatchObject({ statut: 'ecart', ecart: '-5.00' });
+    expect(k('CCA_BILAN')?.message).toMatch(/correspondance interne des comptes, non validée.*Rien n’est corrigé/);
+    expect(k('FOURNISSEURS_BILAN')?.statut).toBe('coherent');
+    expect(k('PCA_BILAN')?.statut).toBe('coherent');
+    // UX non saisie : le poste « clients » n'est pas rapproché (aucune ligne n'est présumée nulle).
+    const partiel = preparerGrille(GRILLE_2057, { versionDonnees: 7, saisiesTableaux: [c1('VA', '100.00')], valeursAutres: { BIL_CLIENTS_BRUT: '1000.00' } });
+    expect(partiel.controles.some((c) => c.code === '2057_CLIENTS_BILAN')).toBe(false);
   });
 });

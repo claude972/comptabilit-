@@ -21,7 +21,7 @@
 
 **À lire avant de s'en servir.**
 - Tout reste un **projet** non validé par un professionnel ; aucune déclaration n'est transmise ; calcul sur les écritures importées avant écritures d'inventaire (les dotations de clôture non comptabilisées n'y figurent pas).
-- Les **codes de cases** ont été relus sur les formulaires officiels du millésime 2026 (PDF du 2026-11-20) par extraction de texte, sans vérification visuelle : ils sont affichés « lue, à confirmer » ; le symbole « Ø » est un zéro barré. Montants au centime, **sans arrondi à l'euro**.
+- Les **codes de cases** ont été relus sur les formulaires officiels du millésime 2026 (PDF du 2026-11-20) par extraction de texte, puis **vérifiés sur le rendu image des pages** le 2026-11-22 (2054 cadres A et B, 2055 cadre A, 2033-C cadres I et II ; aucun écart trouvé, D-152) : ils sont affichés « lue, vérifiée sur le PDF » ; le symbole « Ø » est un zéro barré. Montants au centime, **sans arrondi à l'euro**.
 - Un compte qu'aucune ligne ne reprend est affiché « non ventilé », hors totaux ; les contrôles reprennent le projet de bilan, la reprise de N-1 et la dotation du compte 6811, sans rien ajuster.
 
 Décision, sources et limites : `decisions.md` D-104 ; périmètre et tables : `etats-fiscaux.md`.

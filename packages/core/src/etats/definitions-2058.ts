@@ -112,8 +112,21 @@ export const FORMULAIRE_2058_A: DefinitionFormulaire = {
     { code: 'WR', libelle: 'TOTAL I (WR)', total: 'WR', somme: plus('WA', 'WB', 'XE', 'XW', 'XY', 'I7', 'K7', 'I8', 'ZN', 'WN', 'WO', 'XR', 'WQ', 'Y1', 'Y3') },
     { code: 'XH', libelle: 'TOTAL II (XH)', total: 'XH', somme: plus('WS', 'WT', 'WU', 'WV', 'WH', 'WP', 'WW', 'XB', 'I6', 'WZ', 'XA', 'ZX', 'ZY', 'XD', 'XF', 'XS', 'XG', 'Y2') },
   ],
+  // Reports depuis les 2059 (D-153) : SEULE la ligne WN a un renvoi chiffré dans la notice (« montant détaillé sur le formulaire 2059-B, cadre A, total 2 de la colonne 3 ») : elle est
+  // PROPOSÉE, jamais retenue sans saisie du cabinet. WV, WH, WP et I6 ne reçoivent aucune proposition : la notice dit seulement « voir également le tableau 2059-A » ; elles sont rapprochées
+  // du 2059-A à titre indicatif (colonne 10 par taux, colonne 11), sans qu'aucune répartition entre lignes soit décidée ici.
+  propositions: [
+    { code: 'WN', origine: 'Total 2 de la colonne 3 du cadre A du 2059-B (la notice 2032-NOT-SD, ligne WN, renvoie à ce montant)', sources: ['R59B_TOTAL2_C'] },
+  ],
+  controlesExternes: [
+    { code: 'WV_2059A', libelle: 'WV (plus-values à long terme à 15 % / 12,80 %) et total 15 % ou 12,80 % du cadre B du 2059-A', case: 'WV', externe: 'R59A_C10B', formulation: 'la notice dit « voir également le tableau 2059-A » sans énoncer d’égalité' },
+    { code: 'WH_2059A', libelle: 'WH (plus-values à long terme à 0 %) et total 0 % du cadre B du 2059-A', case: 'WH', externe: 'R59A_C10C', formulation: 'la notice dit « voir également le tableau 2059-A » sans énoncer d’égalité' },
+    { code: 'WP_2059A', libelle: 'WP (plus-values à long terme à 19 %) et total 19 % du cadre B du 2059-A', case: 'WP', externe: 'R59A_C10A', formulation: 'la notice dit « voir également le tableau 2059-A » sans énoncer d’égalité' },
+    { code: 'I6_2059A', libelle: 'I6 (autres plus-values imposées à 19 %) et cadre C du 2059-A (colonne 11)', case: 'I6', externe: 'R59A_C11', formulation: 'le 2059-A (cadre C) porte « autres plus-values taxables à 19 % » ; la notice ne demande pas expressément ce report' },
+  ],
   imputation: { avantBenefice: 'XI', avantDeficit: 'XJ', reportArriere: 'ZL', imputes: 'XL', apresBenefice: 'XN', apresDeficit: 'XO' },
   nonPrepare: [
+    'Reports depuis les tableaux 2059 : voir ci-dessus ; aucune répartition des plus-values entre WV, WH, WP et I6 n’est décidée par Comtaple.',
     'Détail des réintégrations et des déductions diverses « à détailler sur feuillet séparé » : saisi dans les feuillets de détail (disposition propre à Comtaple, non officielle), sans rapprochement avec les cases de détail ; le total de ligne et ses cases de détail se saisissent ici.',
     'Régime de taxation au tonnage (cases Y1, Y3, Y2) : saisies possibles, mais aucun calcul propre n’est fait.',
     'Cases de la colonne de droite et leurs composantes : la relation arithmétique entre elles est LUE sur la disposition du formulaire (cellules fusionnées) ; la notice n’en donne pas la formule : contrôles indicatifs seulement.',

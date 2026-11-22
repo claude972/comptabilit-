@@ -41,8 +41,8 @@ export type StatutCellule = 'etabli' | 'a_saisir' | 'abstention';
 export interface CelluleImmobilisation {
   /** Code de case lu sur le formulaire du millésime 2026 ; `null` quand le formulaire n'en porte pas ou que la cellule n'est pas sur le formulaire. */
   codeCase: string | null;
-  /** `lu_a_confirmer` : code extrait du PDF officiel, jamais vérifié visuellement ; `a_confirmer` : aucun code connu. */
-  etatCodeCase: 'lu_a_confirmer' | 'a_confirmer';
+  /** `lu_verifie` : code extrait du PDF officiel (2026) ET vérifié sur le rendu image de la page (2026-11-22, D-152) ; `a_confirmer` : aucun code connu. */
+  etatCodeCase: 'lu_verifie' | 'a_confirmer';
   montant: ChaineDecimale | null;
   /** Même cellule pour l'exercice précédent contigu ; `null` si la colonne N-1 est indisponible ou si la cellule n'y est pas établie. */
   n1: ChaineDecimale | null;
@@ -107,7 +107,7 @@ export interface LigneTableauImmobilisations {
   cellules: Record<string, CelluleImmobilisation>;
   comptes: CompteLigneImmobilisation[];
   /** Cellule « dont composants » du formulaire (2054, cadre A) : jamais déduite ; saisie justifiée du cabinet (D-134). */
-  dontComposants: { codeCase: string | null; etatCodeCase: 'lu_a_confirmer' | 'a_confirmer'; montant: ChaineDecimale | null; statut: 'a_saisir' | 'etabli'; motif: string | null } | null;
+  dontComposants: { codeCase: string | null; etatCodeCase: 'lu_verifie' | 'a_confirmer'; montant: ChaineDecimale | null; statut: 'a_saisir' | 'etabli'; motif: string | null } | null;
   fichierBrut: FichierLigneBrut | null;
   fichierAmortissements: FichierLigneAmortissements | null;
   note: string | null;
@@ -678,7 +678,7 @@ function construireTableau(def: TableauDef, p: { saisies?: ReadonlyMap<string, R
         const code = l.codes[i] ?? null;
         cellules[c.cle] = {
           codeCase: code,
-          etatCodeCase: code === null ? 'a_confirmer' : 'lu_a_confirmer',
+          etatCodeCase: code === null ? 'a_confirmer' : 'lu_verifie',
           montant: v.montant === null ? null : m2(v.montant),
           n1: valeursN1 === null ? null : ((): ChaineDecimale | null => { const x = valeursN1.get(l.id)?.get(c.cle); return x === undefined || x.montant === null ? null : m2(x.montant); })(),
           statut: v.statut,
@@ -711,7 +711,7 @@ function construireTableau(def: TableauDef, p: { saisies?: ReadonlyMap<string, R
         id: l.id, libelle: l.libelle, numeroRomain: l.romain ?? null, nature: l.nature, cellules, comptes,
         dontComposants: l.dont === undefined ? null : ((): NonNullable<LigneTableauImmobilisations['dontComposants']> => {
           const saisi = p.saisies?.get(cadre.id)?.get(l.id)?.[CLE_DONT_COMPOSANTS];
-          return saisi === undefined ? { codeCase: l.dont, etatCodeCase: 'lu_a_confirmer', montant: null, statut: 'a_saisir', motif: MOTIF_DONT_COMPOSANTS } : { codeCase: l.dont, etatCodeCase: 'lu_a_confirmer', montant: m2(dec(saisi)), statut: 'etabli', motif: null };
+          return saisi === undefined ? { codeCase: l.dont, etatCodeCase: 'lu_verifie', montant: null, statut: 'a_saisir', motif: MOTIF_DONT_COMPOSANTS } : { codeCase: l.dont, etatCodeCase: 'lu_verifie', montant: m2(dec(saisi)), statut: 'etabli', motif: null };
         })(),
         fichierBrut: fb, fichierAmortissements: fa, note: l.note ?? null,
       };

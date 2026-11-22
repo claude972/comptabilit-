@@ -103,7 +103,7 @@ describe('tableaux 2054, 2055 et 2033-C — projets déduits de la balance et du
     expect(t.mention).toMatch(/en attente de validation professionnelle/);
     const t2054 = t.tableaux.find((x: any) => x.code === '2054');
     const t2055 = t.tableaux.find((x: any) => x.code === '2055');
-    expect(cellule(t2054, 'A', 'BUREAU', 'ouverture')).toMatchObject({ montant: '10000.00', n1: '10000.00', codeCase: 'LB', etatCodeCase: 'lu_a_confirmer', statut: 'etabli' });
+    expect(cellule(t2054, 'A', 'BUREAU', 'ouverture')).toMatchObject({ montant: '10000.00', n1: '10000.00', codeCase: 'LB', etatCodeCase: 'lu_verifie', statut: 'etabli' });
     expect(cellule(t2054, 'A', 'BUREAU', 'augmentation_acquisitions')).toMatchObject({ montant: '5000.00', codeCase: 'LD' });
     expect(cellule(t2054, 'B', 'INST_TECH', 'cloture')).toMatchObject({ montant: '20000.00', n1: '30000.00', codeCase: 'MK' });
     expect(cellule(t2054, 'B', 'INST_TECH', 'diminution_cession')).toMatchObject({ montant: null, statut: 'a_saisir', codeCase: 'MJ' });

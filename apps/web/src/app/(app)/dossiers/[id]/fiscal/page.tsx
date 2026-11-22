@@ -171,7 +171,7 @@ function CelluleMontant({ c, avecN1, fm }: { c: CelluleImmobilisation | undefine
         </span>
       )}
       {avecN1 && c.n1 !== null ? <span className="block text-xs text-texte-doux">N-1 : {fm(c.n1)}</span> : null}
-      <span className="block text-xs text-texte-doux">{c.codeCase !== null ? `case ${c.codeCase} (lue, à confirmer)` : ''}</span>
+      <span className="block text-xs text-texte-doux">{c.codeCase !== null ? `case ${c.codeCase} (${c.etatCodeCase === 'lu_verifie' ? 'lue, vérifiée sur le PDF' : 'lue, à confirmer'})` : ''}</span>
     </td>
   );
 }
@@ -1995,6 +1995,11 @@ function Formulaire2059A({ f, fm, exerciceId, revision, evenements }: { f: Formu
       <ul className="space-y-1 text-sm" data-testid="cadres-2059-a">
         <li data-cadre="A">Cadre A — plus ou moins-value nette à court terme (total algébrique de la colonne 9) : {total(f.cadres.A)}</li>
         <li data-cadre="B">Cadre B — plus ou moins-value nette à long terme (total algébrique de la colonne 10) : {total(f.cadres.B)}</li>
+        {f.cadreBParTaux ? (
+          <li data-cadre-taux="B" className="text-sm text-texte-doux">
+            dont par taux : 19 % {total(f.cadreBParTaux.c10a)} · 15 % ou 12,80 % {total(f.cadreBParTaux.c10b)} · 0 % {total(f.cadreBParTaux.c10c)}. Ces montants ne sont reportés nulle part : le 2058-A les rapproche, à titre indicatif, de ses lignes WP, WV et WH (la notice dit « voir également »), sans décider de la répartition.
+          </li>
+        ) : null}
         <li data-cadre="C">Cadre C — autres plus-values taxables à 19 % (colonne 11) : {total(f.cadres.C)}</li>
       </ul>
       {revision ? <NeantTableau exerciceId={exerciceId} tableau="2059A_IM" declare={f.etat === 'neant'} etiquette="tableau 2059-A (aucune cession)" /> : null}

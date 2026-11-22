@@ -47,7 +47,7 @@ export interface Abstention {
 /** Tableaux 2054, 2055 et 2033-C (D-104) : champ `tableauxImmobilisations` de la réponse de la liasse. */
 export interface CelluleImmobilisation {
   codeCase: string | null;
-  etatCodeCase: 'lu_a_confirmer' | 'a_confirmer';
+  etatCodeCase: 'lu_verifie' | 'a_confirmer';
   montant: string | null;
   n1: string | null;
   statut: 'etabli' | 'a_saisir' | 'abstention';
@@ -686,6 +686,8 @@ export interface Formulaire2059AProjet {
   immobilisations: Array<{ ligne: string; statut: StatutLigneSaisie; trace: TraceSaisie | null; nature: string | null; valeurs: Record<string, string> | null }>;
   autres: Array<{ ligne: string; libelle: string; colonnes: string[]; statut: StatutLigneSaisie; trace: TraceSaisie | null; valeurs: Record<string, string> | null }>;
   cadres: { A: TotalCadre2059A; B: TotalCadre2059A; C: TotalCadre2059A };
+  /** Cadre B par taux de la colonne 10 (D-153) ; absent d'une API plus ancienne. */
+  cadreBParTaux?: { c10a: TotalCadre2059A; c10b: TotalCadre2059A; c10c: TotalCadre2059A };
   neant: TraceSaisie | null;
   controles: Array<{ code: string; statut: 'coherent' | 'ecart' | 'non_verifie'; message: string; ecart?: string }>;
   nonPrepare: string[];

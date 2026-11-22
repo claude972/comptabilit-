@@ -30,14 +30,14 @@ Périmètre explicite : **société commerciale soumise à l’impôt sur les so
 | 2033-D feuillet des déficits transférés | partiel (D-132) | Vingt opérations saisies, rapprochées des cases 982 bis et 982 ter ; disposition propre à Comtaple (pas de modèle officiel) | Calcul du déficit transférable |
 | 2033-D cadre IV, dates 2033-E / 2059-E | partiel (D-126) | Cases 690 à 693 saisies ; dates 024, 016 et cessation saisies | Revenu brut social non calculé |
 | 2033-G | partiel (D-117) | Nombre de filiales (905) et sept lignes par saisie ligne par ligne ; contrôles indicatifs | Tableaux supplémentaires |
-| 2056 | partiel (D-129) | 107 cases saisies ; totaux I, II, III et général calculés comme le formulaire ; contrôles indicatifs | Feuillets séparés des lignes (1), charges à payer |
-| 2057 | partiel (D-130) | 39 lignes saisies ; totaux VT/VU/VV et VY/VZ calculés comme le formulaire ; ventilation contrôlée | Rapprochement avec le bilan |
+| 2056 | partiel (D-129, D-154) | 107 cases saisies ; totaux I, II, III et général calculés comme le formulaire ; contrôles indicatifs ; six feuillets des lignes (1) rapprochés des cases | État détaillé des charges à payer |
+| 2057 | partiel (D-130, D-154) | 39 lignes saisies ; totaux VT/VU/VV et VY/VZ calculés comme le formulaire ; ventilation contrôlée ; rapprochement indicatif avec le projet de bilan sur 4 postes ; feuillet des titres prêtés / empruntés | Autres lignes du bilan (aucune correspondance établie par les sources) |
 | 2058-A | partiel (D-118) | 73 cases par saisie ; XI, XJ, XN, XO calculés comme le formulaire et la notice ; contrôles indicatifs | Feuillets joints |
 | 2058-B, 2058-C | partiel (D-119) | 29 et 47 cases par saisie ; K6, YK, YN, YO, ØF, ZH, ZJ, YX calculés comme le formulaire ; propositions et rapprochements avec le 2058-A | Libellés de nature des provisions, cellules sans code, rapprochement ZJ / YX avec le 2052 | | — | Réintégrations et déductions extra-comptables, déficits, affectation du résultat |
 | 2059-E, 2059-F, 2059-G | partiel (D-120) | Mêmes calculs et saisies que 2033-E, 2033-F et 2033-G (codes du régime réel normal pour le 2059-E) | Dates, tableaux supplémentaires |
-| 2059-A | partiel (D-121) | Cessions (12 lignes) et rubrique II (7 lignes) par saisie ligne par ligne ; cadres A, B, C calculés comme le formulaire ; contrôles indicatifs | Divers (note annexe), report vers 2058-A |
+| 2059-A | partiel (D-121, D-153) | Cessions (12 lignes) et rubrique II (7 lignes) par saisie ligne par ligne ; cadres A, B (par taux), C calculés comme le formulaire ; contrôles indicatifs ; rapprochements indicatifs avec WV, WH, WP, I6 du 2058-A | Divers (note annexe) ; aucune répartition décidée |
 | 2059-B, 2059-C, 2059-D | partiel (D-122) | Grilles saisies ligne par ligne ; totaux, solde (2+3−4−5) et lignes 3, 6, 7 calculés comme les formulaires | En-têtes cochables, report entre tableaux |
-| 2033-C Immobilisations et amortissements (cadres I et II) | partiel (D-104) | Mêmes calculs que 2054 et 2055 au format simplifié, avec N-1 | Cadre III (plus-values et moins-values, prix de cession), colonne 5 (réévaluation) |
+| 2033-C Immobilisations et amortissements (cadres I et II) | partiel (D-104) | Mêmes calculs que 2054 et 2055 au format simplifié, avec N-1 ; codes de cases vérifiés sur le rendu (D-152) | Cadre III (plus-values et moins-values, prix de cession), colonne 5 (réévaluation) |
 | 2065 (page 1) | partiel (D-123) | Cadres C, D, E, F (CES), I (CTM) saisis rubrique par rubrique, deux régimes ; aucun calcul énoncé | Identification, cases à cocher, liquidation |
 | 2065 bis (annexe) | partiel (D-131) | Cadres G (total a à h calculé), H, I, J, K saisis ligne par ligne, deux régimes | Identification, état joint du cadre H |
 

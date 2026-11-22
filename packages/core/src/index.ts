@@ -149,7 +149,7 @@ export type { DemandeFormulaire2059A, Formulaire2059AProjet, LigneAutre2059A, Li
 export { GRILLE_2058B_COMPLEMENTS, GRILLE_2053_DETAIL } from './etats/formulaire-grilles.js';
 export { CLE_DONT_COMPOSANTS, descriptionLigneSaisieImmobilisations, lignesSaisieImmobilisations } from './etats/tableaux-immobilisations.js';
 export type { LigneSaisieImmobilisationsProjet, SaisieCelluleImmobilisations } from './etats/tableaux-immobilisations.js';
-export { GRILLE_2058A_FEUILLETS, GRILLE_2058B_K4BIS, GRILLE_2033D_982, GRILLE_2057, GRILLE_2065, GRILLE_2065_BIS, GRILLE_DATES_CVAE, GRILLES_2059, TABLEAUX_GRILLES, preparerGrille } from './etats/formulaire-grilles.js';
+export { GRILLE_2056_FEUILLETS, GRILLE_2057_FEUILLETS, GRILLE_2058A_FEUILLETS, GRILLE_2058B_K4BIS, GRILLE_2033D_982, GRILLE_2057, GRILLE_2065, GRILLE_2065_BIS, GRILLE_DATES_CVAE, GRILLES_2059, TABLEAUX_GRILLES, preparerGrille } from './etats/formulaire-grilles.js';
 export type { CadreGrilleProjet, CelluleGrille, ColonneGrille, DefinitionGrille, DemandeGrilles, GrilleProjet, LigneGrilleProjet } from './etats/formulaire-grilles.js';
 export type { DemandeFormulaire2033G, Formulaire2033GProjet, LigneFiliale } from './etats/formulaire-2033g.js';
 export { cleCase, preparerFormulaireCases } from './etats/formulaire-cases.js';

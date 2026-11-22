@@ -87,3 +87,8 @@ Document de passage pour reprendre le travail sans relire la conversation. À me
 - Dégressif : déclaration justifiée par écrit du cabinet (colonne `justification_degressif`, migration 0070 appliquée à la base locale), abstention sans justification, exemple fictif `scripts/demo-degressif.mjs`. Activation par l'éditeur inchangée (faux par défaut). Texte de l'art. 39 A toujours non lu (Légifrance 403).
 - Compteur CI des conteneurs : 16 réussites sur 16 atteintes, défaut dockerd NON clos (D-151). Instabilité des navigateurs en CI (WebKit, Firefox) = reste principal de la ligne 12 ; correctifs d'attente appliqués, causes non confirmées.
 - Prochain reste réel de la ligne 5 : vérification visuelle des codes de cases 2054 / 2055 / 2033-C, puis reports 2059-A → 2058-A.
+
+## Point du 2026-11-22 (nuit) — D-152, D-153, D-154
+- Codes 2054 / 2055 A / 2033-C vérifiés sur le rendu image : aucun écart (D-152). Reports 2059 → 2058-A : WN proposée, WV / WH / WP / I6 rapprochés, rien décidé (D-153). Feuillets 2056 et 2057, rapprochement 2057 / bilan sur 4 postes (D-154, migration 0071 appliquée à la base locale).
+- Preuves : `scripts/demo-reports-feuillets.mjs`, `parcours-reports-feuillets.spec.ts`, captures `var/captures/reports-*.png`. Compteur CI des conteneurs : fenêtre bornée des 35 derniers runs (81aa858 a échoué avant).
+- Prochain reste réel : codes des autres tableaux (relecture sur rendu), note annexe 2059-A ligne 20, reports 2059-B/C/D, état détaillé des charges à payer.

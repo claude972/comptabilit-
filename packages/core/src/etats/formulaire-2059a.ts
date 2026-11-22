@@ -72,6 +72,8 @@ export interface Formulaire2059AProjet {
   immobilisations: LigneImmobilisation2059A[];
   autres: LigneAutre2059A[];
   cadres: { A: TotalCadre2059A; B: TotalCadre2059A; C: TotalCadre2059A };
+  /** Totaux du cadre B par taux (colonne 10 : 19 %, 15 % ou 12,80 %, 0 %), mêmes conditions d'établissement que le cadre B : base des rapprochements indicatifs avec le 2058-A (D-153). */
+  cadreBParTaux: { c10a: TotalCadre2059A; c10b: TotalCadre2059A; c10c: TotalCadre2059A };
   neant: TraceSaisie | null;
   controles: ControleDetail[];
   nonPrepare: string[];
@@ -143,13 +145,14 @@ export function preparerFormulaire2059A(demande: DemandeFormulaire2059A): Formul
     immobilisations,
     autres,
     cadres: { A: total(['c9']), B: total(['c10a', 'c10b', 'c10c']), C: total(['c11']) },
+    cadreBParTaux: { c10a: total(['c10a']), c10b: total(['c10b']), c10c: total(['c10c']) },
     neant: neantS ? trace(neantS) : null,
     controles,
     nonPrepare: [
       'Identification de l’entreprise (SIREN, dénomination, adresse), numéro de dépôt et exercice : repris du dossier, non ressaisis ici.',
       'Détail des « Divers » de la ligne 20 sur note annexe : non préparé.',
       'Tableaux supplémentaires au-delà de douze lignes de cessions : non préparés.',
-      'Report des totaux vers le tableau 2058-A (cadres) et vers les tableaux 2059-B, C et D : non préparé ; aucun transfert automatique.',
+      'Report des totaux vers le 2058-A : AUCUN transfert automatique. Rapprochements INDICATIFS affichés au 2058-A (lignes WV, WH, WP et I6, que la notice rattache au 2059-A par « voir également » sans donner d’égalité) ; la répartition entre ces lignes reste la décision du cabinet. Report vers les 2059-B, C et D : non préparé.',
     ],
     limites: [
       'Chaque ligne est une saisie justifiée du cabinet ; la qualification en court ou long terme (et le taux) est celle saisie, jamais déduite ni décidée par le logiciel.',

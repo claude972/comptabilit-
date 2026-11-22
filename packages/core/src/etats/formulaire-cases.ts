@@ -72,6 +72,8 @@ export interface DefinitionControleExterne {
   case: string;
   /** Clé de valeur d'un autre tableau. */
   externe: string;
+  /** Phrase de l'écart : ce que la source (formulaire ou notice) demande exactement. Défaut : « le formulaire demande de les reporter l'un sur l'autre ». */
+  formulation?: string;
 }
 export interface DefinitionFormulaire {
   id: string;
@@ -192,7 +194,7 @@ export function preparerFormulaireCases(def: DefinitionFormulaire, demande: Dema
     const ecart = interne.minus(externe);
     controles.push(ecart.isZero()
       ? { code: `${def.prefixe}_${k.code}`, statut: 'coherent', message: `${k.libelle} : égal à la valeur de l’autre tableau (${versChaine(interne)}). Contrôle indicatif.` }
-      : { code: `${def.prefixe}_${k.code}`, statut: 'ecart', message: `${k.libelle} : ${versChaine(interne)} ici contre ${versChaine(new Decimal(externe))} dans l’autre tableau : le formulaire demande de les reporter l’un sur l’autre. Rien n’est corrigé. Contrôle indicatif.`, ecart: versChaine(ecart) });
+      : { code: `${def.prefixe}_${k.code}`, statut: 'ecart', message: `${k.libelle} : ${versChaine(interne)} ici contre ${versChaine(new Decimal(externe))} dans l’autre tableau : ${k.formulation ?? 'le formulaire demande de les reporter l’un sur l’autre'}. Rien n’est corrigé. Contrôle indicatif.`, ecart: versChaine(ecart) });
   }
 
   let imputation: FormulaireProjet['imputation'] = null;

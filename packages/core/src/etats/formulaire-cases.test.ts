@@ -86,6 +86,32 @@ describe('2058-A : contrôles indicatifs des cases de droite', () => {
   });
 });
 
+describe('2058-A : reports depuis les 2059 (D-153) — proposition notice-sourcée et rapprochements indicatifs', () => {
+  const prepAutres = (renvois: QualificationRenvoi[], valeursAutres: Record<string, string>) => preparerFormulaireCases(FORMULAIRE_2058_A, { versionDonnees: 7, renvois, valeursAutres });
+  it('WN : PROPOSÉ depuis le total 2 de la colonne 3 du 2059-B, jamais retenu sans saisie ; sans cette valeur, aucune proposition', () => {
+    expect(cas(prepAutres([], {}), 'WN').proposition).toBeNull();
+    const f = prepAutres([], { R59B_TOTAL2_C: '1234.50' });
+    expect(cas(f, 'WN')).toMatchObject({ statut: 'a_saisir', montant: null, proposition: { montant: '1234.50' } });
+    expect(cas(f, 'WN').proposition?.origine).toMatch(/colonne 3.*2059-B.*notice/);
+    // Saisie du cabinet, éventuellement différente : elle prime, rien n'est corrigé.
+    const saisi = prepAutres([rv('WN', '1000.00')], { R59B_TOTAL2_C: '1234.50' });
+    expect(cas(saisi, 'WN')).toMatchObject({ statut: 'saisi', montant: '1000.00' });
+  });
+  it('WV, WH, WP, I6 : AUCUNE proposition (la notice ne donne pas d’égalité) ; rapprochement indicatif seulement, écart affiché et jamais corrigé', () => {
+    const f = prepAutres([rv('WV', '500.00'), rv('WH', '100.00'), rv('WP', '0.00'), rv('I6', '40.00')], { R59A_C10B: '500.00', R59A_C10C: '90.00', R59A_C10A: '0.00', R59A_C11: '40.00' });
+    for (const c of ['WV', 'WH', 'WP', 'I6']) expect(cas(f, c).proposition).toBeNull();
+    const k = (code: string) => f.controles.find((x) => x.code === `A58_${code}`);
+    expect(k('WV_2059A')?.statut).toBe('coherent');
+    expect(k('WH_2059A')).toMatchObject({ statut: 'ecart', ecart: '10.00' });
+    expect(k('WH_2059A')?.message).toMatch(/voir également le tableau 2059-A.*sans énoncer d’égalité.*Rien n’est corrigé/);
+    expect(k('WP_2059A')?.statut).toBe('coherent');
+    expect(k('I6_2059A')?.statut).toBe('coherent');
+    expect(cas(f, 'WH').montant).toBe('100.00');
+    // Valeur du 2059-A absente (abstention) : aucun contrôle.
+    expect(prepAutres([rv('WV', '500.00')], {}).controles.some((x) => x.code === 'A58_WV_2059A')).toBe(false);
+  });
+});
+
 describe('2058-B : calculs énoncés, propositions reprises du 2058-A, rapprochements avec le 2058-A (D-119)', () => {
   const rvB = (code: string, montant: string, s: Partial<QualificationRenvoi> = {}): QualificationRenvoi => ({ code: cleCase('B58', code), montant, ...TRACE, ...s });
   const prepB = (renvois: QualificationRenvoi[] = [], valeursAutres: Record<string, string> = {}) => preparerFormulaireCases(FORMULAIRE_2058_B, { versionDonnees: 7, renvois, valeursAutres });

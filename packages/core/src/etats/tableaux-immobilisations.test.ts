@@ -69,7 +69,7 @@ describe('2054 et 2055 : régime réel normal, déduits de la balance', () => {
 
   it('calcule les valeurs brutes : ouverture, augmentations, clôture, par ligne et en total', () => {
     // Matériel de bureau (2183) : 10 000 à l'ouverture, +5 000 (218400), aucune diminution.
-    expect(valeur(p, '2054', 'A', 'BUREAU', 'ouverture')).toMatchObject({ montant: '10000.00', statut: 'etabli', codeCase: 'LB', etatCodeCase: 'lu_a_confirmer' });
+    expect(valeur(p, '2054', 'A', 'BUREAU', 'ouverture')).toMatchObject({ montant: '10000.00', statut: 'etabli', codeCase: 'LB', etatCodeCase: 'lu_verifie' });
     expect(valeur(p, '2054', 'A', 'BUREAU', 'augmentation_acquisitions')).toMatchObject({ montant: '5000.00', codeCase: 'LD' });
     expect(valeur(p, '2054', 'B', 'BUREAU', 'cloture')).toMatchObject({ montant: '15000.00', codeCase: 'MT' });
     // Installations techniques (215) : 30 000 à l'ouverture, 10 000 de crédit (cession).
@@ -311,7 +311,7 @@ describe('codes de cases et sources', () => {
       const codes: string[] = [];
       for (const t of p.tableaux) {
         for (const c of t.cadres) for (const l of c.lignes) for (const v of Object.values(l.cellules)) {
-          if (v.codeCase !== null) { expect(v.etatCodeCase).toBe('lu_a_confirmer'); codes.push(`${t.code}/${c.id}/${v.codeCase}`); } else expect(v.etatCodeCase).toBe('a_confirmer');
+          if (v.codeCase !== null) { expect(v.etatCodeCase).toBe('lu_verifie'); codes.push(`${t.code}/${c.id}/${v.codeCase}`); } else expect(v.etatCodeCase).toBe('a_confirmer');
         }
       }
       expect(new Set(codes).size).toBe(codes.length);

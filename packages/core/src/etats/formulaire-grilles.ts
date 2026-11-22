@@ -49,7 +49,17 @@ export interface CadreGrille {
   /** Contrôle indicatif de ventilation : sur chaque ligne saisie, la colonne `total` égale la somme des colonnes `parties` (les colonnes absentes de la ligne ne sont pas contrôlées). */
   ventilation?: { total: string; parties: readonly string[] };
   /** Rapprochements indicatifs avec des valeurs d'AUTRES tableaux (`valeursAutres`) : somme d'une colonne ou nombre de lignes saisies. Sans valeur externe, aucun contrôle. */
-  controlesExternes?: ReadonlyArray<{ code: string; libelle: string; mode: 'somme' | 'nombre'; colonne?: string; externe: string }>;
+  controlesExternes?: ReadonlyArray<{
+    code: string;
+    libelle: string;
+    /** `somme` : colonne de toutes les lignes saisies ; `nombre` : nombre de lignes saisies ; `lignes` : colonne des seules lignes citées, comparée SEULEMENT si chacune est saisie (D-154). */
+    mode: 'somme' | 'nombre' | 'lignes';
+    colonne?: string;
+    lignes?: readonly string[];
+    externe: string;
+    /** Phrase de l'écart (ce que la source demande exactement) ; défaut : « dans l'autre tableau ». */
+    formulation?: string;
+  }>;
   /** Libellé requis : pour chaque ligne, clés d'AUTRES tableaux (`valeursAutres`) dont la saisie suppose qu'un libellé soit renseigné (contrôle indicatif, jamais bloquant). */
   libelleRequisSi?: Readonly<Record<string, readonly string[]>>;
   /** Contrôles indicatifs d'ordre entre deux colonnes date d'une même ligne (la première ne doit pas suivre la seconde). */
@@ -58,7 +68,7 @@ export interface CadreGrille {
   colonneCalculee?: { cle: string; libelle: string; termes: ReadonlyArray<{ col: string; signe: 1 | -1 }> };
 }
 export interface DefinitionGrille {
-  id: '2059-B' | '2059-C' | '2059-D' | '2065' | '2033-E-DATES' | '2057' | '2065-BIS' | '2033-D-982' | '2058-B-K4BIS' | '2058-A-FEUILLETS' | '2053-DETAIL' | '2058-B-COMPLEMENTS';
+  id: '2059-B' | '2059-C' | '2059-D' | '2065' | '2033-E-DATES' | '2057' | '2065-BIS' | '2033-D-982' | '2058-B-K4BIS' | '2058-A-FEUILLETS' | '2053-DETAIL' | '2058-B-COMPLEMENTS' | '2056-FEUILLETS' | '2057-FEUILLETS';
   titre: string;
   /** Tableau portant la ligne NEANT du formulaire ; absent si le formulaire n'a pas de « néant » (le 2065 est toujours servi). */
   neantSur?: string;
@@ -104,7 +114,7 @@ export const GRILLES_2059: readonly DefinitionGrille[] = [
     ],
     nonPrepare: [
       'Identification de l’entreprise, exercice et cases à cocher (plus-values de fusion ou de scission, d’apport à une société par une entreprise individuelle) : non préparées.',
-      'Aucun lien automatique avec le 2059-A ni le 2058-A : le cabinet reporte lui-même les montants.',
+      'Aucun report automatique vers le 2058-A : le total 2 de la colonne 3 du cadre A est seulement PROPOSÉ à la ligne WN du 2058-A (la notice y renvoie), jamais retenu sans saisie du cabinet ; le lien avec le 2059-A n’est pas fait.',
       'Plus de quatorze lignes d’origine au cadre B : tableaux supplémentaires non préparés.',
     ],
   },
@@ -325,6 +335,10 @@ export const GRILLE_2057: DefinitionGrille = {
       lignes: CREANCES,
       calculs: [{ id: 'VT_VU_VV', libelle: 'TOTAUX (codes VT, VU, VV)', colonnes: ['c1', 'c2', 'c3'], termes: [{ ref: CREANCES.map((l) => l.ligne), signe: 1 }] }],
       ventilation: { total: 'c1', parties: ['c2', 'c3'] },
+      controlesExternes: [
+        { code: 'CLIENTS_BILAN', libelle: 'Clients douteux ou litigieux (VA) + autres créances clients (UX), montant brut, et créances clients du projet de bilan (brut)', mode: 'lignes', lignes: ['VA', 'UX'], colonne: 'c1', externe: 'BIL_CLIENTS_BRUT', formulation: 'dans le projet de bilan (correspondance interne des comptes, non validée ; la notice dit seulement que les créances sont ventilées « pour leur montant brut »)' },
+        { code: 'CCA_BILAN', libelle: 'Charges constatées d’avance (VS), montant brut, et charges constatées d’avance du projet de bilan', mode: 'lignes', lignes: ['VS'], colonne: 'c1', externe: 'BIL_CCA_BRUT', formulation: 'dans le projet de bilan (correspondance interne des comptes, non validée)' },
+      ],
     },
     {
       tableau: '2057_AX',
@@ -345,6 +359,10 @@ export const GRILLE_2057: DefinitionGrille = {
       lignes: DETTES,
       calculs: [{ id: 'VY_VZ', libelle: 'TOTAUX (codes VY, VZ)', colonnes: ['c1', 'c2', 'c3', 'c4'], termes: [{ ref: DETTES.map((l) => l.ligne), signe: 1 }] }],
       ventilation: { total: 'c1', parties: ['c2', 'c3', 'c4'] },
+      controlesExternes: [
+        { code: 'FOURNISSEURS_BILAN', libelle: 'Fournisseurs et comptes rattachés (8B), montant brut, et dettes fournisseurs du projet de bilan', mode: 'lignes', lignes: ['8B'], colonne: 'c1', externe: 'BIL_FOURNISSEURS', formulation: 'dans le projet de bilan (correspondance interne des comptes, non validée)' },
+        { code: 'PCA_BILAN', libelle: 'Produits constatés d’avance (8L), montant brut, et produits constatés d’avance du projet de bilan', mode: 'lignes', lignes: ['8L'], colonne: 'c1', externe: 'BIL_PCA', formulation: 'dans le projet de bilan (correspondance interne des comptes, non validée)' },
+      ],
     },
     {
       tableau: '2057_BX',
@@ -362,7 +380,7 @@ export const GRILLE_2057: DefinitionGrille = {
     'Identification de l’entreprise et exercice : repris du dossier, non ressaisis ici.',
     'Aucun montant n’est déduit de la balance : l’échéance d’une créance ou d’une dette ne figure pas à la balance ; chaque ligne est une saisie justifiée du cabinet.',
     'Seule la colonne « montant brut » a un code imprimé sur la plupart des lignes (UM, UN, UR, US, UV, UW pour les trois premières lignes des créances) ; les codes des autres cellules ne sont pas imprimés sur le formulaire.',
-    'Relation avec les postes du bilan (2050, 2051) : non automatique ; aucun rapprochement n’est supposé.',
+    'Rapprochement avec le projet de bilan, INDICATIF et limité à quatre postes de même libellé sur les deux tableaux (clients, charges constatées d’avance, fournisseurs, produits constatés d’avance), fait avec la correspondance interne des comptes (non validée) ; les autres lignes ne sont pas rapprochées : aucune correspondance n’est établie par les sources. Jamais corrigé.',
   ],
 };
 
@@ -592,7 +610,75 @@ export const GRILLE_2058B_COMPLEMENTS: DefinitionGrille = {
   ],
 };
 
-const TOUTES: readonly DefinitionGrille[] = [...GRILLES_2059, GRILLE_2065, GRILLE_DATES_CVAE, GRILLE_2057, GRILLE_2065_BIS, GRILLE_2033D_982, GRILLE_2058B_K4BIS, GRILLE_2058A_FEUILLETS, GRILLE_2053_DETAIL, GRILLE_2058B_COMPLEMENTS];
+
+/** Lignes marquées (1) du 2056 : « à détailler sur feuillet séparé selon l'année de constitution de la provision ou selon l'objet de la provision » (page 8 de `2050-liasse_5320.pdf`, rendu image vérifié le 2026-11-22). */
+const LIGNES_2056_A_DETAILLER: ReadonlyArray<readonly [tableau: string, libelle: string, codes: readonly [string, string, string, string]]> = [
+  ['2056_F_HPX', 'Provisions pour hausse des prix', ['3V', 'TG', 'TH', 'TI']],
+  ['2056_F_APR', 'Autres provisions réglementées', ['3Y', 'TP', 'TQ', 'TR']],
+  ['2056_F_IMP', 'Provisions pour impôts', ['5B', '5C', '5D', '5E']],
+  ['2056_F_ARC', 'Autres provisions pour risques et charges', ['5V', '5W', '5X', '5Y']],
+  ['2056_F_AIF', 'Dépréciation sur immobilisations : autres immobilisations financières', ['Ø6', 'Ø7', 'Ø8', 'Ø9']],
+  ['2056_F_ADE', 'Autres provisions pour dépréciation', ['6X', '6Y', '6Z', '7A']],
+];
+const COLONNES_2056 = ['début', 'dotations', 'reprises', 'fin'] as const;
+const cle2056 = (code: string) => `P56_${code.replace(/Ø/g, '0')}`;
+/** Feuillets séparés du 2056 (D-154) : détail, par année de constitution ou par objet, des six lignes marquées (1). Disposition propre à Comtaple (le formulaire n'en fixe pas le modèle) ; chaque colonne est rapprochée, à titre indicatif, de la case saisie du 2056. */
+export const GRILLE_2056_FEUILLETS: DefinitionGrille = {
+  id: '2056-FEUILLETS',
+  titre: 'Feuillets du 2056 : détail des provisions des lignes marquées (1), par année de constitution ou par objet',
+  cadres: LIGNES_2056_A_DETAILLER.map(([tableau, libelle, codes]) => ({
+    tableau,
+    titre: `${libelle} (cases ${codes.join(', ')})`,
+    colonnes: [{ cle: 'd', libelle: 'Montant au début de l’exercice' }, { cle: 'a', libelle: 'Dotations de l’exercice' }, { cle: 'r', libelle: 'Reprises de l’exercice' }, { cle: 'f', libelle: 'Montant à la fin de l’exercice' }],
+    lignes: [],
+    libre: { max: 20, libelleOrigine: 'Année de constitution ou objet de la provision' },
+    calculs: [{ id: 'TOTAL', libelle: `Total des lignes détaillées — ${libelle}`, colonnes: ['d', 'a', 'r', 'f'], termes: [{ ref: 'saisies' as const, signe: 1 as const }] }],
+    controlesExternes: (['d', 'a', 'r', 'f'] as const).map((col, i) => ({
+      code: `SOMME_${col.toUpperCase()}`,
+      libelle: `Détail — ${COLONNES_2056[i]} : total des lignes listées et case ${codes[i]} du 2056`,
+      mode: 'somme' as const,
+      colonne: col,
+      externe: cle2056(codes[i]!),
+      formulation: 'dans le tableau 2056 (le formulaire demande de détailler la ligne sur feuillet séparé : le détail et la ligne se rapprochent)',
+    })),
+  })),
+  nonPrepare: [
+    'Le formulaire demande ces feuillets (note (1) : « à détailler sur feuillet séparé selon l’année de constitution de la provision ou selon l’objet de la provision ») sans en fixer le modèle : la disposition est propre à Comtaple et non officielle.',
+    'Le rapprochement du détail avec la case du 2056 est INDICATIF et n’est fait que si la case est saisie ; il n’est jamais corrigé. Aucune décision de déductibilité n’est prise.',
+    'Au-delà de vingt lignes par feuillet : non préparé. Les charges à payer relèvent de l’état détaillé de l’article 38 II de l’annexe III au CGI : non préparé.',
+  ],
+};
+
+/** Feuillet « papier libre » du 2057 : « pour les prêts et emprunts ou remises en garantie de titres, indiquer sur papier libre la nature et le montant des titres prêtés, empruntés ou remis en garantie » (notice 2032-NOT-SD, 2057). */
+export const GRILLE_2057_FEUILLETS: DefinitionGrille = {
+  id: '2057-FEUILLETS',
+  titre: 'Feuillet du 2057 : nature et montant des titres prêtés, empruntés ou remis en garantie',
+  cadres: [
+    {
+      tableau: '2057_F_PRET',
+      titre: 'Titres prêtés ou remis en garantie (créance représentative, ligne Z1 du cadre A)',
+      colonnes: [{ cle: 'm', libelle: 'Montant des titres' }],
+      lignes: [],
+      libre: { max: 20, libelleOrigine: 'Nature des titres prêtés ou remis en garantie' },
+      calculs: [{ id: 'TOTAL', libelle: 'Total des titres prêtés ou remis en garantie listés', colonnes: ['m'], termes: [{ ref: 'saisies', signe: 1 }] }],
+    },
+    {
+      tableau: '2057_F_EMPR',
+      titre: 'Titres empruntés ou remis en garantie (dette représentative, ligne Z2 du cadre B)',
+      colonnes: [{ cle: 'm', libelle: 'Montant des titres' }],
+      lignes: [],
+      libre: { max: 20, libelleOrigine: 'Nature des titres empruntés ou remis en garantie' },
+      calculs: [{ id: 'TOTAL', libelle: 'Total des titres empruntés ou remis en garantie listés', colonnes: ['m'], termes: [{ ref: 'saisies', signe: 1 }] }],
+    },
+  ],
+  nonPrepare: [
+    'La notice demande ce détail « sur papier libre » sans modèle : la disposition (nature, montant) est propre à Comtaple et non officielle.',
+    'Aucun rapprochement avec les lignes Z1 et Z2 : la notice n’énonce pas de relation chiffrée entre la valeur des titres et la créance ou la dette représentative ; les totaux listés sont de simples totaux des lignes saisies.',
+    'Au-delà de vingt lignes par cadre : non préparé.',
+  ],
+};
+
+const TOUTES: readonly DefinitionGrille[] = [...GRILLES_2059, GRILLE_2065, GRILLE_DATES_CVAE, GRILLE_2057, GRILLE_2065_BIS, GRILLE_2033D_982, GRILLE_2058B_K4BIS, GRILLE_2058A_FEUILLETS, GRILLE_2056_FEUILLETS, GRILLE_2057_FEUILLETS, GRILLE_2053_DETAIL, GRILLE_2058B_COMPLEMENTS];
 export const TABLEAUX_GRILLES: readonly string[] = TOUTES.flatMap((g) => g.cadres.map((c) => c.tableau));
 
 /** Lignes admises pour un tableau en grille : `null` si le tableau n'est pas une grille. Utilisée par la validation de forme. */
@@ -749,12 +835,18 @@ export function preparerGrille(def: DefinitionGrille, demande: DemandeGrilles): 
     for (const k of c.controlesExternes ?? []) {
       const externe = demande.valeursAutres?.[k.externe];
       if (externe === undefined) continue;
-      const saisies2 = cadres.find((x) => x.tableau === c.tableau)!.lignes.filter((l) => l.statut === 'saisi');
-      const interne = k.mode === 'nombre' ? new Decimal(saisies2.length) : saisies2.reduce((a, l) => a.plus(l.valeurs![k.colonne ?? 'm'] ?? '0'), new Decimal(0));
+      const toutes = cadres.find((x) => x.tableau === c.tableau)!.lignes;
+      const saisies2 = toutes.filter((l) => l.statut === 'saisi');
+      if (k.mode === 'lignes') {
+        // Seules les lignes citées comptent, et seulement si TOUTES sont saisies (une ligne non saisie n'est jamais présumée nulle).
+        const citees = (k.lignes ?? []).map((id) => toutes.find((l) => l.ligne === id));
+        if (citees.length === 0 || citees.some((l) => l === undefined || l.statut !== 'saisi')) continue;
+      }
+      const interne = k.mode === 'nombre' ? new Decimal(saisies2.length) : (k.mode === 'lignes' ? saisies2.filter((l) => k.lignes!.includes(l.ligne)) : saisies2).reduce((a, l) => a.plus(l.valeurs![k.colonne ?? 'm'] ?? '0'), new Decimal(0));
       const ecart = interne.minus(externe);
       controles.push(ecart.isZero()
         ? { code: `${def.id}_${k.code}`, statut: 'coherent', message: `${k.libelle} : égaux (${versChaine(interne)}). Contrôle indicatif.` }
-        : { code: `${def.id}_${k.code}`, statut: 'ecart', message: `${k.libelle} : ${versChaine(interne)} ici contre ${versChaine(new Decimal(externe))} dans l’autre tableau. Rien n’est corrigé. Contrôle indicatif.`, ecart: versChaine(ecart) });
+        : { code: `${def.id}_${k.code}`, statut: 'ecart', message: `${k.libelle} : ${versChaine(interne)} ici contre ${versChaine(new Decimal(externe))} ${k.formulation ?? 'dans l’autre tableau'}. Rien n’est corrigé. Contrôle indicatif.`, ecart: versChaine(ecart) });
     }
   for (const c of def.cadres)
     for (const [ligneId, cles] of Object.entries(c.libelleRequisSi ?? {})) {

@@ -117,6 +117,7 @@ export const FORMULAIRE_2058_A: DefinitionFormulaire = {
   // du 2059-A à titre indicatif (colonne 10 par taux, colonne 11), sans qu'aucune répartition entre lignes soit décidée ici.
   propositions: [
     { code: 'WN', origine: 'Total 2 de la colonne 3 du cadre A du 2059-B (la notice 2032-NOT-SD, ligne WN, renvoie à ce montant)', sources: ['R59B_TOTAL2_C'] },
+    { code: 'WO', origine: 'Total de la colonne 3 du cadre B du 2059-B (la notice 2032-NOT-SD, plus-values soumises au régime des fusions, renvoie à ce montant)', sources: ['R59B_TOTALB_C'] },
   ],
   controlesExternes: [
     { code: 'WV_2059A', libelle: 'WV (plus-values à long terme à 15 % / 12,80 %) et total 15 % ou 12,80 % du cadre B du 2059-A', case: 'WV', externe: 'R59A_C10B', formulation: 'la notice dit « voir également le tableau 2059-A » sans énoncer d’égalité' },

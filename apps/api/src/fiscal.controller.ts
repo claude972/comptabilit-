@@ -396,7 +396,14 @@ export class FiscalController {
       const formulaire2033G = preparerFormulaire2033G({ versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies });
       // Tableau 2059-A (plus et moins-values, régime réel normal, D-121) : saisie ligne par ligne.
       const formulaire2059A = regime === 'reel_normal' ? preparerFormulaire2059A({ versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies }) : null;
-      const grilles2059 = regime === 'reel_normal' ? GRILLES_2059.map((g) => preparerGrille(g, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies })) : null;
+      // Valeurs d'AUTRES tableaux pour les reports énoncés par la notice (D-164) : WQ (2058-A) et EF (2051) tels que SAISIS par le cabinet, DF tel que déduit de la balance (liasse).
+      const valeursReports2059D: Record<string, string> = {};
+      for (const r of renvoisSaisis) if ((r.code === 'A58_WQ' || r.code === 'R51_EF') && r.versionDonnees === exercice.versionDonnees) valeursReports2059D[r.code] = r.montant;
+      if (resultat.statut === 'projet') {
+        const df = resultat.tableaux.flatMap((t) => t.lignes).find((l) => l.ligne === 'RN_2051_P_RESERVES_REGLEMENTEES');
+        if (df) valeursReports2059D.LIASSE_2051_DF = df.montant;
+      }
+      const grilles2059 = regime === 'reel_normal' ? GRILLES_2059.map((g) => preparerGrille(g, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies, valeursAutres: valeursReports2059D })) : null;
       // Reports 2059 → 2058-A (D-153) : valeurs ÉTABLIES seulement (une abstention n'alimente rien). WN est proposée depuis le 2059-B (renvoi chiffré de la notice) ; les autres sont des rapprochements indicatifs.
       const reports2059: Record<string, string> = {};
       if (formulaire2059A) {
@@ -406,6 +413,8 @@ export class FiscalController {
       }
       const total2c = grilles2059?.find((g) => g.id === '2059-B')?.cadres.find((c) => c.tableau === '2059B_A')?.calculs.find((k) => k.id === 'TOTAL2')?.cellules.c;
       if (total2c?.statut === 'etabli') reports2059.R59B_TOTAL2_C = total2c.montant;
+      const totalBc = grilles2059?.find((g) => g.id === '2059-B')?.cadres.find((c) => c.tableau === '2059B_B')?.calculs.find((k) => k.id === 'TOTALB')?.cellules.c;
+      if (totalBc?.statut === 'etabli') reports2059.R59B_TOTALB_C = totalBc.montant;
       // Formulaires du régime réel normal par saisie case par case (2058-A, D-118).
       // Les formulaires sont préparés dans l'ordre : les valeurs établies des précédents (saisies retenues, calculs, résultat après imputation du 2058-A) alimentent les propositions et rapprochements des suivants.
       const formulairesCases: FormulaireProjet[] | null = [];

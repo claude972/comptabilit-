@@ -62,6 +62,12 @@ export interface CadreGrille {
     /** Phrase de l'écart (ce que la source demande exactement) ; défaut : « dans l'autre tableau ». */
     formulation?: string;
   }>;
+  /**
+   * Reports énoncés par une SOURCE (notice) vers d'autres tableaux (D-164) : montant du tableau (ligne saisie ou calcul établi, somme de colonnes) rapproché d'une valeur d'un autre tableau.
+   * `egalite` : le montant doit égaler la cible ; `inclusion` : il figure dans la cible (cible ≥ montant) ; `information` : report à faire SANS égalité vérifiable (ajustement non déterminé par le
+   * logiciel, cible regroupant d'autres éléments) : le contrôle est « non vérifié » et ne donne que les deux montants. Jamais corrigé, jamais bloquant ; sans valeur des deux côtés, aucun contrôle.
+   */
+  reports?: ReadonlyArray<{ code: string; libelle: string; source: { ligne?: string; calcul?: string; colonnes: readonly string[] }; cible: string; type: 'egalite' | 'inclusion' | 'information'; formulation: string }>;
   /** Libellé requis : pour chaque ligne, clés d'AUTRES tableaux (`valeursAutres`) dont la saisie suppose qu'un libellé soit renseigné (contrôle indicatif, jamais bloquant). */
   libelleRequisSi?: Readonly<Record<string, readonly string[]>>;
   /** Contrôles indicatifs d'ordre entre deux colonnes date d'une même ligne (la première ne doit pas suivre la seconde). */
@@ -190,6 +196,12 @@ export const GRILLES_2059: readonly DefinitionGrille[] = [
           { id: 'L6', libelle: '6 TOTAL (lignes 4 et 5)', colonnes: ['t10', 't15', 't18', 't19', 't25'], termes: [{ ref: ['L4', 'L5'], signe: 1 }] },
           { id: 'L7', libelle: '7 Montant de la réserve spéciale à la clôture de l’exercice (ligne 3 − ligne 6)', colonnes: ['t10', 't15', 't18', 't19', 't25'], termes: [{ ref: ['L3'], signe: 1 }, { ref: ['L6'], signe: -1 }] },
         ],
+        // Reports énoncés par la notice 2032-NOT-SD (2059-D, cadre I ; page 17, rendu image vérifié le 2026-11-22).
+        reports: [
+          { code: 'L4_WQ', libelle: 'Ligne 4 (total des cinq taux) et ligne WQ du 2058-A', source: { ligne: 'L4', colonnes: ['t10', 't15', 't18', 't19', 't25'] }, cible: 'A58_WQ', type: 'information', formulation: 'La notice : ces sommes « doivent être rapportées aux bénéfices imposables de l’exercice en cours, sous déduction de l’impôt perçu (à reporter ligne WQ du tableau 2058-A) » ; WQ regroupe d’autres réintégrations diverses et l’impôt perçu n’est pas déterminé ici.' },
+          { code: 'L7_EF', libelle: 'Ligne 7 (total des cinq taux) et renvoi EF du 2051 (dont réserve spéciale des plus-values à long terme)', source: { calcul: 'L7', colonnes: ['t10', 't15', 't18', 't19', 't25'] }, cible: 'R51_EF', type: 'egalite', formulation: 'La notice : « ce montant figure également ligne DF et EF du tableau 2051 ».' },
+          { code: 'L7_DF', libelle: 'Ligne 7 (total des cinq taux) et ligne DF du 2051 (réserves réglementées)', source: { calcul: 'L7', colonnes: ['t10', 't15', 't18', 't19', 't25'] }, cible: 'LIASSE_2051_DF', type: 'inclusion', formulation: 'La notice : « ce montant figure également ligne DF et EF du tableau 2051 ».' },
+        ],
       },
       {
         tableau: '2059D_II',
@@ -197,6 +209,10 @@ export const GRILLES_2059: readonly DefinitionGrille[] = [
         colonnes: cols(['c1', '1 Montant de la réserve à l’ouverture de l’exercice'], ['c2', '2 Réserve figurant au bilan des sociétés absorbées au cours de l’année'], ['c3', '3 Montants prélevés — donnant lieu à complément d’impôt'], ['c4', '4 Montants prélevés — ne donnant pas lieu à complément d’impôt'], ['c5', '5 Montant de la réserve à la clôture de l’exercice']),
         lignes: [{ ligne: 'U', libelle: 'Réserve spéciale des provisions pour fluctuation des cours' }],
         calculs: [],
+        reports: [
+          { code: 'C3_WQ', libelle: 'Colonne 3 (prélèvements donnant lieu à complément d’impôt) et ligne WQ du 2058-A', source: { ligne: 'U', colonnes: ['c3'] }, cible: 'A58_WQ', type: 'information', formulation: 'La notice : ces sommes « doivent être rapportées aux bénéfices imposables de l’exercice en cours (à reporter ligne WQ du tableau 2058-A) » ; WQ regroupe d’autres réintégrations diverses.' },
+          { code: 'C5_DF', libelle: 'Colonne 5 (réserve à la clôture) et ligne DF du 2051 (réserves réglementées)', source: { ligne: 'U', colonnes: ['c5'] }, cible: 'LIASSE_2051_DF', type: 'inclusion', formulation: 'La notice : « ce montant figure également ligne DF du tableau 2051 ».' },
+        ],
       },
     ],
     nonPrepare: [
@@ -906,6 +922,25 @@ export function preparerGrille(def: DefinitionGrille, demande: DemandeGrilles): 
       controles.push(ecart.isZero()
         ? { code: `${def.id}_${k.code}`, statut: 'coherent', message: `${k.libelle} : égaux (${versChaine(interne)}). Contrôle indicatif.` }
         : { code: `${def.id}_${k.code}`, statut: 'ecart', message: `${k.libelle} : ${versChaine(interne)} ici contre ${versChaine(new Decimal(externe))} ${k.formulation ?? 'dans l’autre tableau'}. Rien n’est corrigé. Contrôle indicatif.`, ecart: versChaine(ecart) });
+    }
+  for (const c of def.cadres)
+    for (const k of c.reports ?? []) {
+      const cible = demande.valeursAutres?.[k.cible];
+      const cp = cadres.find((x) => x.tableau === c.tableau)!;
+      let montant: Decimal | null = null;
+      if (k.source.ligne !== undefined) {
+        const l = cp.lignes.find((x) => x.ligne === k.source.ligne);
+        if (l?.statut === 'saisi' && k.source.colonnes.every((col) => l.valeurs![col] !== undefined)) montant = k.source.colonnes.reduce((a, col) => a.plus(l.valeurs![col]!), new Decimal(0));
+      } else {
+        const cal = cp.calculs.find((x) => x.id === k.source.calcul);
+        if (cal && k.source.colonnes.every((col) => cal.cellules[col]?.statut === 'etabli')) montant = k.source.colonnes.reduce((a, col) => a.plus((cal.cellules[col] as { montant: string }).montant), new Decimal(0));
+      }
+      if (montant === null || cible === undefined) continue;
+      const cb = new Decimal(cible);
+      const code = `${def.id}_${k.code}`;
+      if (k.type === 'information') controles.push({ code, statut: 'non_verifie', message: `${k.libelle} : ${versChaine(montant)} ici ; ${versChaine(cb)} dans l’autre tableau. ${k.formulation} Aucune égalité n’est vérifiable : rien n’est reporté ni corrigé.` });
+      else if (k.type === 'egalite') controles.push(montant.equals(cb) ? { code, statut: 'coherent', message: `${k.libelle} : égaux (${versChaine(montant)}). Contrôle indicatif.` } : { code, statut: 'ecart', message: `${k.libelle} : ${versChaine(montant)} ici contre ${versChaine(cb)} dans l’autre tableau. ${k.formulation} Rien n’est corrigé. Contrôle indicatif.`, ecart: versChaine(montant.minus(cb)) });
+      else controles.push(montant.lessThanOrEqualTo(cb) ? { code, statut: 'coherent', message: `${k.libelle} : ${versChaine(montant)} ici, compris dans ${versChaine(cb)} dans l’autre tableau. Contrôle indicatif.` } : { code, statut: 'ecart', message: `${k.libelle} : ${versChaine(montant)} ici dépasse ${versChaine(cb)} dans l’autre tableau, qui devrait le contenir. ${k.formulation} Rien n’est corrigé. Contrôle indicatif.`, ecart: versChaine(montant.minus(cb)) });
     }
   for (const c of def.cadres)
     for (const [ligneId, cles] of Object.entries(c.libelleRequisSi ?? {})) {

@@ -34,7 +34,7 @@ if (!dossier) {
   exercice = (await api('POST', `/v1/dossiers/${dossier}/exercices`, { debut: '2025-01-01', fin: '2025-12-31' })).json.id;
   const L = []; let n = 0;
   const e = (j, date, lignes, lib) => { n++; for (const [c, cl, d, k] of lignes) L.push([j, j, String(n).padStart(4, '0'), date, c, cl, '', '', `${j}-${n}`, date, lib, d.toFixed(2).replace('.', ','), k.toFixed(2).replace('.', ','), '', '', date, '', ''].join('\t')); };
-  e('AN', '20250101', [['512000', 'Banque', 200000, 0], ['101000', 'Capital', 0, 200000]], 'À-nouveaux');
+  e('AN', '20250101', [['512000', 'Banque', 200300, 0], ['101000', 'Capital', 0, 200000], ['106400', 'Réserves réglementées', 0, 300]], 'À-nouveaux');
   e('VT', '20250630', [['411000', 'Clients', 900, 0], ['416000', 'Clients douteux ou litigieux', 100, 0], ['706000', 'Prestations de services', 0, 1000]], 'Ventes');
   e('AC', '20250930', [['616000', 'Primes d’assurance', 50, 0], ['512000', 'Banque', 0, 50]], 'Assurance');
   e('OD', '20251231', [['486000', 'Charges constatées d’avance', 50, 0], ['616000', 'Primes d’assurance', 0, 50]], 'CCA');
@@ -56,6 +56,12 @@ if (!dossier) {
   // En-têtes cochables du 2059-B (déclarés explicitement) et rappels du 2059-C (montants)
   await tab('2059B_ENT', 'EU', { v: 'non' }); await tab('2059B_ENT', 'FUSION', { v: 'oui' }); await tab('2059B_ENT', 'APPIND', { v: 'non' });
   await tab('2059C_RAPPEL', 'R15', { m: '2000.00' }); await tab('2059C_RAPPEL', 'SPI', { m: '0.00' }); await tab('2059C_RAPPEL', 'T228', { m: '0.00' });
+  // Reports entre 2059-B, 2059-D, 2058-A et 2051 (D-164) : cadre B du 2059-B (WO proposée : 20,00), réserve spéciale du 2059-D (ligne 7 = 250,00 au taux de 10 %), EF du 2051 saisi à 250,00, WQ du 2058-A saisi à 400,00
+  await tab('2059B_B', '01', { origine: 'Fusion 2019 (fictive)', a: '100.00', b: '30.00', c: '20.00', d: '50.00' });
+  const taux = (m) => ({ t10: m, t15: '0.00', t18: '0.00', t19: '0.00', t25: '0.00' });
+  await tab('2059D_I', 'L1', taux('300.00')); await tab('2059D_I', 'L2', taux('0.00')); await tab('2059D_I', 'L4', taux('50.00')); await tab('2059D_I', 'L5', taux('0.00'));
+  await tab('2059D_II', 'U', { c1: '40.00', c2: '0.00', c3: '20.00', c4: '0.00', c5: '30.00' });
+  await cas('R51_EF', '250.00', 'Dont réserve spéciale des plus-values à long terme (renvoi 3), saisie du cabinet'); await cas('A58_WQ', '400.00', 'Réintégrations diverses (dont prélèvements sur la réserve spéciale), saisie du cabinet');
   // 2059-A : une cession (plus-value de 2 000 € à long terme, taux 15 %) et les sept lignes fixes
   await tab('2059A_IM', '01', { nature: 'Participation fictive (acquise le 2018-05-01)', c2: '10000.00', c3: '0.00', c4: '2000.00', c5: '1000.00', c6: '7000.00', c7: '9000.00', c8: '2000.00', c9: '0.00', c10a: '0.00', c10b: '2000.00', c10c: '0.00' });
   for (const l of ['13', '14', '15', '16']) await tab('2059A_AUT', l, { c9: '0.00' });
@@ -90,6 +96,9 @@ ok(liasse.formulaire2059A.cadreBParTaux.c10b.montant === '2000.00' && ctl('WV_20
 ok(ctl('WH_2059A')?.statut === 'ecart' && ctl('WH_2059A').ecart === '100.00', `WH saisi 100,00 contre 0,00 au 2059-A : écart ${ctl('WH_2059A')?.ecart} AFFICHÉ, rien corrigé (WH reste ${caseA('WH').montant})`);
 const g59b = liasse.grilles2059.find((g) => g.id === '2059-B'); const g59c = liasse.grilles2059.find((g) => g.id === '2059-C');
 ok(g59b.cadres[0].lignes.map((l) => l.valeurs?.v).join(',') === 'non,oui,non' && g59b.etat === 'saisi' && g59c.cadres[0].lignes[0].valeurs.m === '2000.00', `2059-B : cases EU non / fusion oui / apport non ; 2059-C : rappel 15 % = ${g59c.cadres[0].lignes[0].valeurs.m} (les en-têtes ne changent pas l’état « saisi » : ${g59b.etat})`);
+ok(caseA('WO').statut === 'a_saisir' && caseA('WO').proposition?.montant === '20.00', `2058-A, WO : proposition ${caseA('WO').proposition?.montant} (cadre B du 2059-B, colonne 3), non retenue`);
+const g59d = liasse.grilles2059.find((g) => g.id === '2059-D'); const kd = (c) => g59d.controles.find((x) => x.code === `2059-D_${c}`);
+ok(kd('L7_EF')?.statut === 'coherent' && kd('L7_DF')?.statut === 'coherent' && kd('C5_DF')?.statut === 'coherent' && kd('L4_WQ')?.statut === 'non_verifie' && kd('C3_WQ')?.statut === 'non_verifie', `2059-D : ligne 7 (250,00) = EF du 2051 et comprise dans DF (${kd('L7_EF')?.statut}/${kd('L7_DF')?.statut}), réserve du cadre II comprise dans DF (${kd('C5_DF')?.statut}), lignes à reporter en WQ : information sans verdict (${kd('L4_WQ')?.statut})`);
 const g56 = liasse.feuilles2058.find((g) => g.id === '2056-FEUILLETS');
 const k56 = (c) => g56.controles.find((x) => x.code === `2056-FEUILLETS_${c}`);
 ok(k56('SOMME_D')?.statut === 'coherent' && k56('SOMME_A')?.statut === 'coherent' && k56('SOMME_F')?.statut === 'ecart' && k56('SOMME_R')?.statut === 'ecart', `feuillet 2056 (autres provisions pour risques et charges) : début ${k56('SOMME_D')?.statut}, dotations ${k56('SOMME_A')?.statut}, reprises ${k56('SOMME_R')?.statut} (${k56('SOMME_R')?.ecart}), fin ${k56('SOMME_F')?.statut} (${k56('SOMME_F')?.ecart})`);

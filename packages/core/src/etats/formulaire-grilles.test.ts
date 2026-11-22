@@ -270,3 +270,31 @@ describe('en-têtes cochables du 2059-B et rappels du 2059-C (D-160)', () => {
     expect(validerSaisieTableau('2059C_RAPPEL', 'INCONNUE', { m: '1.00' }).join(' ')).toMatch(/Ligne inconnue/);
   });
 });
+
+describe('reports énoncés par la notice entre 2059-B, 2059-D, 2058-A et 2051 (D-164)', () => {
+  const taux = (m: string) => ({ t10: m, t15: '0.00', t18: '0.00', t19: '0.00', t25: '0.00' });
+  const saisiesD = [s('2059D_I', 'L1', taux('300.00')), s('2059D_I', 'L2', taux('0.00')), s('2059D_I', 'L4', taux('50.00')), s('2059D_I', 'L5', taux('0.00')), s('2059D_II', 'U', { c1: '40.00', c2: '0.00', c3: '20.00', c4: '0.00', c5: '30.00' })];
+  const prepD = (valeursAutres: Record<string, string> = {}) => preparerGrille(def('2059-D'), { versionDonnees: 7, saisiesTableaux: saisiesD, valeursAutres });
+  const k = (g: ReturnType<typeof prepD>, code: string) => g.controles.find((c) => c.code === `2059-D_${code}`);
+  it('2059-D : ligne 7 égale EF et comprise dans DF ; lignes à reporter en WQ : information sans verdict ; réserve du cadre II comprise dans DF', () => {
+    const g = prepD({ R51_EF: '250.00', LIASSE_2051_DF: '300.00', A58_WQ: '400.00' });
+    expect(k(g, 'L7_EF')?.statut).toBe('coherent'); // 300 − 50 = 250
+    expect(k(g, 'L7_DF')?.statut).toBe('coherent');
+    expect(k(g, 'C5_DF')?.statut).toBe('coherent');
+    for (const c of ['L4_WQ', 'C3_WQ']) {
+      expect(k(g, c)?.statut, c).toBe('non_verifie');
+      expect(k(g, c)?.message).toMatch(/Aucune égalité n’est vérifiable/);
+    }
+    expect(k(g, 'L4_WQ')?.message).toMatch(/50\.00 ici ; 400\.00 dans l’autre tableau.*sous déduction de l’impôt perçu/);
+  });
+  it('écarts affichés, jamais corrigés ; sans valeur de l’autre tableau, aucun contrôle ; une ligne non saisie n’est jamais présumée nulle', () => {
+    const g = prepD({ R51_EF: '240.00', LIASSE_2051_DF: '200.00' });
+    expect(k(g, 'L7_EF')).toMatchObject({ statut: 'ecart', ecart: '10.00' });
+    expect(k(g, 'L7_DF')).toMatchObject({ statut: 'ecart', ecart: '50.00' }); // 250 > 200 : la ligne DF devrait contenir le montant
+    expect(k(g, 'C5_DF')?.statut).toBe('coherent'); // 30 ≤ 200
+    expect(k(g, 'L4_WQ')).toBeUndefined();
+    const partiel = preparerGrille(def('2059-D'), { versionDonnees: 7, saisiesTableaux: saisiesD.filter((x) => x.ligne !== 'L5'), valeursAutres: { R51_EF: '250.00' } });
+    expect(partiel.controles.some((c) => c.code === '2059-D_L7_EF')).toBe(false);
+  });
+});
+

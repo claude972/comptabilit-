@@ -97,6 +97,11 @@ describe('2058-A : reports depuis les 2059 (D-153) — proposition notice-sourc�
     const saisi = prepAutres([rv('WN', '1000.00')], { R59B_TOTAL2_C: '1234.50' });
     expect(cas(saisi, 'WN')).toMatchObject({ statut: 'saisi', montant: '1000.00' });
   });
+  it('WO : PROPOSÉ depuis le total de la colonne 3 du cadre B du 2059-B (régime des fusions), jamais retenu sans saisie', () => {
+    expect(cas(prepAutres([], {}), 'WO').proposition).toBeNull();
+    expect(cas(prepAutres([], { R59B_TOTALB_C: '70.00' }), 'WO')).toMatchObject({ statut: 'a_saisir', montant: null, proposition: { montant: '70.00' } });
+    expect(cas(prepAutres([rv('WO', '60.00')], { R59B_TOTALB_C: '70.00' }), 'WO')).toMatchObject({ statut: 'saisi', montant: '60.00' });
+  });
   it('WV, WH, WP, I6 : AUCUNE proposition (la notice ne donne pas d’égalité) ; rapprochement indicatif seulement, écart affiché et jamais corrigé', () => {
     const f = prepAutres([rv('WV', '500.00'), rv('WH', '100.00'), rv('WP', '0.00'), rv('I6', '40.00')], { R59A_C10B: '500.00', R59A_C10C: '90.00', R59A_C10A: '0.00', R59A_C11: '40.00' });
     for (const c of ['WV', 'WH', 'WP', 'I6']) expect(cas(f, c).proposition).toBeNull();

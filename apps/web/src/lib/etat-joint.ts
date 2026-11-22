@@ -19,6 +19,9 @@ export interface TableauEtatJoint {
 const ETAT: Record<string, string> = { a_saisir: 'à saisir (aucune saisie, rien n’est présumé nul)', neant: 'néant déclaré', saisi: 'saisies présentes' };
 const STATUT_LIGNE: Record<string, string> = { a_saisir: 'à saisir', saisi: 'saisi', a_revoir: 'à revoir (données modifiées)' };
 
+/** Contrôles indicatifs à montrer dans l'état : écarts et reports « à faire » sans égalité vérifiable (jamais corrigés). */
+const controlesVisibles = (controles: ReadonlyArray<{ code: string; statut: string; message: string }>): string[] => controles.filter((c) => c.statut === 'ecart' || /_WQ$/.test(c.code)).map((c) => `Contrôle indicatif (${c.statut === 'ecart' ? 'écart' : 'à reporter'}) : ${c.message}`);
+
 const cellule = (c: CelluleGrille | undefined): string => (c === undefined ? '—' : c.statut === 'etabli' ? c.montant : `abstention : ${c.motifs.join(' ')}`);
 
 function depuisGrille(g: GrilleProjet): TableauEtatJoint[] {
@@ -36,7 +39,7 @@ function depuisGrille(g: GrilleProjet): TableauEtatJoint[] {
         cellules: [...cles.map((k) => (l.valeurs && k in l.valeurs ? l.valeurs[k]! : l.valeurs ? '' : '')), ...(c.colonneCalculee ? [l.calculee ? cellule(l.calculee) : ''] : [])],
       })),
       totaux: c.calculs.map((k) => ({ libelle: k.libelle, cellules: [...cles.map((x) => (x in k.cellules ? cellule(k.cellules[x]) : '—')), ...(c.colonneCalculee ? [''] : [])] })),
-      limites: [...g.limites, ...g.nonPrepare],
+      limites: [...g.limites, ...g.nonPrepare, ...controlesVisibles(g.controles)],
     };
   });
 }
@@ -97,9 +100,10 @@ function depuisCases(f: FormulaireCasesProjet): TableauEtatJoint[] {
       titre: `${f.titre}`,
       etat: saisies === 0 ? ETAT.a_saisir! : `${saisies} case(s) sur ${f.cases.length} saisie(s)`,
       colonnes: ['Case', 'Libellé', 'Montant'],
-      lignes: f.cases.map((c) => ({ libelle: `${c.code}`, statut: STATUT_LIGNE[c.statut] ?? c.statut, cellules: [c.libelle, c.statut === 'saisi' && c.montant !== null ? c.montant : ''] })),
+      // Une proposition (autre tableau) n'est JAMAIS reprise dans le montant : elle figure dans le statut, « non retenue » (D-164).
+      lignes: f.cases.map((c) => ({ libelle: `${c.code}`, statut: c.statut === 'a_saisir' && c.proposition ? `à saisir — proposition non retenue : ${c.proposition.montant} (${c.proposition.origine})` : (STATUT_LIGNE[c.statut] ?? c.statut), cellules: [c.libelle, c.statut === 'saisi' && c.montant !== null ? c.montant : ''] })),
       totaux: f.calculs.map((k) => ({ libelle: `${k.code} — ${k.libelle}`, cellules: ['', k.statut === 'etabli' ? k.montant : `abstention : ${k.motifs.join(' ')}`] })),
-      limites: [...f.limites, ...f.nonPrepare],
+      limites: [...f.limites, ...f.nonPrepare, ...controlesVisibles(f.controles)],
     },
   ];
 }

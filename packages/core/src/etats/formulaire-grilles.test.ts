@@ -1,6 +1,6 @@
 /** Recette des grilles 2059-B, 2059-C et 2059-D (D-122) : saisie ligne par ligne, calculs énoncés seulement à composantes saisies. */
 import { describe, expect, it } from 'vitest';
-import { GRILLE_2058B_COMPLEMENTS, GRILLE_2053_DETAIL, GRILLE_2033D_982, GRILLE_2058A_FEUILLETS, GRILLE_2058B_K4BIS, GRILLE_2056_FEUILLETS, GRILLE_2057, GRILLE_2057_FEUILLETS, GRILLE_2065, GRILLE_2065_BIS, GRILLE_DATES_CVAE, GRILLES_2059, preparerGrille } from './formulaire-grilles.js';
+import { GRILLE_2058B_COMPLEMENTS, GRILLE_2053_DETAIL, GRILLE_2033D_982, GRILLE_2058A_FEUILLETS, GRILLE_2058B_K4BIS, GRILLE_2056_FEUILLETS, GRILLE_2057, GRILLE_2057_FEUILLETS, GRILLE_2059A_NOTE, GRILLE_2065, GRILLE_2065_BIS, GRILLE_DATES_CVAE, GRILLES_2059, preparerGrille } from './formulaire-grilles.js';
 import { type SaisieTableau, validerSaisieTableau } from './saisies-tableaux.js';
 
 const TRACE = { note: 'Suivi des plus-values (essai)', qualifieePar: 'u-1', le: '2026-12-31T10:00:00Z', versionDonnees: 7 };
@@ -227,5 +227,22 @@ describe('feuillets du 2056 et du 2057, rapprochement du 2057 avec le projet de 
     // UX non saisie : le poste « clients » n'est pas rapproché (aucune ligne n'est présumée nulle).
     const partiel = preparerGrille(GRILLE_2057, { versionDonnees: 7, saisiesTableaux: [c1('VA', '100.00')], valeursAutres: { BIL_CLIENTS_BRUT: '1000.00' } });
     expect(partiel.controles.some((c) => c.code === '2057_CLIENTS_BILAN')).toBe(false);
+  });
+});
+
+describe('note annexe de la ligne 20 du 2059-A (D-157)', () => {
+  it('détail des ajustements rapproché de la ligne 20 colonne par colonne ; sans ligne 20 saisie, aucun contrôle ; jamais corrigé', () => {
+    const aj = (n: string, v: Record<string, string>) => s('2059A_NOTE', n, { origine: `Ajustement ${n} (fictif)`, ...v });
+    const saisies = [aj('01', { c9: '300.00', c10b: '-50.00' }), aj('02', { c9: '200.00', c10b: '20.00', c11: '10.00' })];
+    const nu = preparerGrille(GRILLE_2059A_NOTE, { versionDonnees: 7, saisiesTableaux: saisies });
+    expect(nu.controles.some((c) => c.code.includes('SOMME_'))).toBe(false);
+    const g = preparerGrille(GRILLE_2059A_NOTE, { versionDonnees: 7, saisiesTableaux: saisies, valeursAutres: { R59A_L20_C9: '500.00', R59A_L20_C10B: '-40.00', R59A_L20_C11: '10.00' } });
+    expect(g.cadres[0]!.calculs[0]!.cellules).toMatchObject({ c9: { montant: '500.00' }, c10b: { montant: '-30.00' }, c11: { montant: '10.00' } });
+    const k = (c: string) => g.controles.find((x) => x.code === `2059-A-NOTE_${c}`);
+    expect(k('SOMME_C9')?.statut).toBe('coherent');
+    expect(k('SOMME_C10B')).toMatchObject({ statut: 'ecart', ecart: '10.00' });
+    expect(k('SOMME_C10B')?.message).toMatch(/Rien n’est corrigé/);
+    expect(k('SOMME_C11')?.statut).toBe('coherent');
+    expect(k('SOMME_C10A')).toBeUndefined(); // colonne de la ligne 20 non saisie : aucun contrôle
   });
 });

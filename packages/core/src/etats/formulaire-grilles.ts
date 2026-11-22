@@ -68,7 +68,7 @@ export interface CadreGrille {
   colonneCalculee?: { cle: string; libelle: string; termes: ReadonlyArray<{ col: string; signe: 1 | -1 }> };
 }
 export interface DefinitionGrille {
-  id: '2059-B' | '2059-C' | '2059-D' | '2065' | '2033-E-DATES' | '2057' | '2065-BIS' | '2033-D-982' | '2058-B-K4BIS' | '2058-A-FEUILLETS' | '2053-DETAIL' | '2058-B-COMPLEMENTS' | '2056-FEUILLETS' | '2057-FEUILLETS';
+  id: '2059-B' | '2059-C' | '2059-D' | '2065' | '2033-E-DATES' | '2057' | '2065-BIS' | '2033-D-982' | '2058-B-K4BIS' | '2058-A-FEUILLETS' | '2053-DETAIL' | '2058-B-COMPLEMENTS' | '2056-FEUILLETS' | '2057-FEUILLETS' | '2059-A-NOTE';
   titre: string;
   /** Tableau portant la ligne NEANT du formulaire ; absent si le formulaire n'a pas de « néant » (le 2065 est toujours servi). */
   neantSur?: string;
@@ -678,7 +678,38 @@ export const GRILLE_2057_FEUILLETS: DefinitionGrille = {
   ],
 };
 
-const TOUTES: readonly DefinitionGrille[] = [...GRILLES_2059, GRILLE_2065, GRILLE_DATES_CVAE, GRILLE_2057, GRILLE_2065_BIS, GRILLE_2033D_982, GRILLE_2058B_K4BIS, GRILLE_2058A_FEUILLETS, GRILLE_2056_FEUILLETS, GRILLE_2057_FEUILLETS, GRILLE_2053_DETAIL, GRILLE_2058B_COMPLEMENTS];
+
+/** Note annexe de la ligne 20 du 2059-A (D-157) : « porter les ajustements de calcul entre les plus-values et moins-values comptables d'une part et fiscales d'autre part ; joindre une note annexe précisant le détail des ajustements opérés » (notice 2032-NOT-SD). */
+const COLONNES_L20 = ['c9', 'c10a', 'c10b', 'c10c', 'c11'] as const;
+export const GRILLE_2059A_NOTE: DefinitionGrille = {
+  id: '2059-A-NOTE',
+  titre: 'Note annexe du 2059-A : détail des ajustements de la ligne 20 (« Divers »)',
+  cadres: [
+    {
+      tableau: '2059A_NOTE',
+      titre: 'Ajustements entre plus-values et moins-values comptables et fiscales (ligne 20)',
+      colonnes: [{ cle: 'c9', libelle: '9 Court terme', signe: true }, { cle: 'c10a', libelle: '10 Long terme 19 %', signe: true }, { cle: 'c10b', libelle: '10 Long terme 15 % ou 12,80 %', signe: true }, { cle: 'c10c', libelle: '10 Long terme 0 %', signe: true }, { cle: 'c11', libelle: '11 Plus-value taxable à 19 %', signe: true }],
+      lignes: [],
+      libre: { max: 20, libelleOrigine: 'Nature de l’ajustement' },
+      calculs: [{ id: 'TOTAL', libelle: 'Total des ajustements détaillés', colonnes: [...COLONNES_L20], termes: [{ ref: 'saisies', signe: 1 }] }],
+      controlesExternes: COLONNES_L20.map((col) => ({
+        code: `SOMME_${col.toUpperCase()}`,
+        libelle: `Note annexe — colonne ${col.replace('c10a', '10 (19 %)').replace('c10b', '10 (15 % / 12,80 %)').replace('c10c', '10 (0 %)').replace('c9', '9').replace('c11', '11')} : total détaillé et ligne 20 du 2059-A`,
+        mode: 'somme' as const,
+        colonne: col,
+        externe: `R59A_L20_${col.toUpperCase()}`,
+        formulation: 'à la ligne 20 du 2059-A (la notice demande une note annexe « précisant le détail des ajustements opérés » : le détail et la ligne se rapprochent)',
+      })),
+    },
+  ],
+  nonPrepare: [
+    'La notice demande cette note annexe sans en fixer le modèle : la disposition (nature, montants par colonne) est propre à Comtaple et non officielle.',
+    'Le rapprochement avec la ligne 20 est INDICATIF, n’est fait que si la ligne 20 est saisie, et n’est jamais corrigé. Aucune décision fiscale : chaque ajustement est une saisie justifiée du cabinet.',
+    'Au-delà de vingt lignes : non préparé.',
+  ],
+};
+
+const TOUTES: readonly DefinitionGrille[] = [...GRILLES_2059, GRILLE_2065, GRILLE_DATES_CVAE, GRILLE_2057, GRILLE_2065_BIS, GRILLE_2033D_982, GRILLE_2058B_K4BIS, GRILLE_2058A_FEUILLETS, GRILLE_2056_FEUILLETS, GRILLE_2057_FEUILLETS, GRILLE_2059A_NOTE, GRILLE_2053_DETAIL, GRILLE_2058B_COMPLEMENTS];
 export const TABLEAUX_GRILLES: readonly string[] = TOUTES.flatMap((g) => g.cadres.map((c) => c.tableau));
 
 /** Lignes admises pour un tableau en grille : `null` si le tableau n'est pas une grille. Utilisée par la validation de forme. */

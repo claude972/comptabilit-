@@ -505,6 +505,13 @@
       "when": 1795336570609,
       "tag": "0071_feuillets_2056_2057",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1795337453273,
+      "tag": "0072_note_2059a",
+      "breakpoints": true
     }
   ]
 }

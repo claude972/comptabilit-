@@ -57,7 +57,10 @@ if (!dossier) {
   await tab('2059A_IM', '01', { nature: 'Participation fictive (acquise le 2018-05-01)', c2: '10000.00', c3: '0.00', c4: '2000.00', c5: '1000.00', c6: '7000.00', c7: '9000.00', c8: '2000.00', c9: '0.00', c10a: '0.00', c10b: '2000.00', c10c: '0.00' });
   for (const l of ['13', '14', '15', '16']) await tab('2059A_AUT', l, { c9: '0.00' });
   for (const l of ['18', '19']) await tab('2059A_AUT', l, { c10a: '0.00', c10b: '0.00', c10c: '0.00' });
-  await tab('2059A_AUT', '20', { c9: '0.00', c10a: '0.00', c10b: '0.00', c10c: '0.00', c11: '0.00' });
+  await tab('2059A_AUT', '20', { c9: '500.00', c10a: '0.00', c10b: '0.00', c10c: '0.00', c11: '10.00' });
+  // Note annexe de la ligne 20 : détail 300 + 200 en colonne 9 (cohérent), 15 en colonne 11 contre 10 à la ligne 20 (écart affiché)
+  await tab('2059A_NOTE', '01', { origine: 'Ajustement comptable / fiscal (fictif)', c9: '300.00', c10a: '0.00', c10b: '0.00', c10c: '0.00', c11: '0.00' });
+  await tab('2059A_NOTE', '02', { origine: 'Ajustement de calcul de plus-value (fictif)', c9: '200.00', c10a: '0.00', c10b: '0.00', c10c: '0.00', c11: '15.00' });
   // 2058-A : WV saisi égal au cadre B 15 % ; WH saisi (100) différent du cadre B 0 % (0) : écart AFFICHÉ ; WN laissée sans saisie : proposition seulement
   await cas('A58_WV', '2000.00', 'Plus-value à long terme à 15 % (cession de titres fictive), reprise par le cabinet');
   await cas('A58_WH', '100.00', 'Montant saisi par le cabinet pour la démonstration : volontairement différent du 2059-A');
@@ -85,6 +88,9 @@ ok(ctl('WH_2059A')?.statut === 'ecart' && ctl('WH_2059A').ecart === '100.00', `W
 const g56 = liasse.feuilles2058.find((g) => g.id === '2056-FEUILLETS');
 const k56 = (c) => g56.controles.find((x) => x.code === `2056-FEUILLETS_${c}`);
 ok(k56('SOMME_D')?.statut === 'coherent' && k56('SOMME_A')?.statut === 'coherent' && k56('SOMME_F')?.statut === 'ecart' && k56('SOMME_R')?.statut === 'ecart', `feuillet 2056 (autres provisions pour risques et charges) : début ${k56('SOMME_D')?.statut}, dotations ${k56('SOMME_A')?.statut}, reprises ${k56('SOMME_R')?.statut} (${k56('SOMME_R')?.ecart}), fin ${k56('SOMME_F')?.statut} (${k56('SOMME_F')?.ecart})`);
+const gn = liasse.feuilles2058.find((g) => g.id === '2059-A-NOTE');
+const kn = (c) => gn.controles.find((x) => x.code === `2059-A-NOTE_${c}`);
+ok(kn('SOMME_C9')?.statut === 'coherent' && kn('SOMME_C11')?.statut === 'ecart' && kn('SOMME_C11').ecart === '5.00', `note annexe de la ligne 20 du 2059-A : colonne 9 ${kn('SOMME_C9')?.statut} (500,00), colonne 11 ${kn('SOMME_C11')?.statut} (écart ${kn('SOMME_C11')?.ecart} affiché, jamais corrigé)`);
 const k57 = (c) => liasse.formulaire2057.controles.find((x) => x.code === `2057_${c}`);
 ok(k57('CLIENTS_BILAN')?.statut === 'coherent' && k57('FOURNISSEURS_BILAN')?.statut === 'coherent' && k57('PCA_BILAN')?.statut === 'coherent', 'rapprochement 2057 / projet de bilan : clients, fournisseurs et produits constatés d’avance cohérents');
 ok(k57('CCA_BILAN')?.statut === 'ecart' && k57('CCA_BILAN').ecart === '5.00', `charges constatées d’avance : saisie 55,00 contre 50,00 au bilan : écart ${k57('CCA_BILAN')?.ecart} AFFICHÉ, jamais corrigé`);

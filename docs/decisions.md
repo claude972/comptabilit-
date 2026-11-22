@@ -940,6 +940,12 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **État des lignes sans code de case de la liasse du réel normal après D-155 et D-156** : 2050 : 12 lignes (sous-totaux, totaux partiels et lignes regroupées) ; 2051 : 3 ; 2052 : 2 ; 2053 : 0.
 - **Preuves** : tests du cœur (unicité des codes, format, lignes regroupées sans code, 2050 et 2033-A) ; Playwright réel (`fiscal.spec.ts` : AB / AC, CO / 1A, DA, FL à l'écran ; production vendue « à confirmer »).
 
+### D-157 — Note annexe de la ligne 20 du 2059-A (2026-11-22, migration 0072)
+- **Source lue** (notice 2032-NOT-SD, 2059-A) : ligne 20 « Divers » : porter les ajustements de calcul entre les plus-values et moins-values comptables d'une part, fiscales d'autre part ; « joindre une note annexe précisant le détail des ajustements opérés ».
+- **Fait** : feuillet `2059A_NOTE` (nature de l'ajustement et montants signés par colonne 9, 10 à 19 %, 10 à 15 % ou 12,80 %, 10 à 0 %, 11 ; vingt lignes ; une ligne saisie exige toutes ses colonnes, zéro explicite) ; totaux ; chaque colonne rapprochée, à titre indicatif, de la ligne 20 saisie (aucun contrôle si la ligne 20 n'est pas saisie, ni si la colonne ne l'est pas) ; disposition propre à Comtaple, non officielle ; migration 0072 (additive, vérifiée appliquée à la base locale — une première version écrite à la main sans entrée de journal n'avait pas été jouée : la saisie répondait 500, corrigé).
+- **Preuves** : test du cœur ; itest `parcours-detail-resultat` (liste des feuillets) ; parcours réel ; démonstration : ligne 20 = 500,00 en colonne 9, détail 300,00 + 200,00 cohérent ; colonne 11 : 15,00 détaillés contre 10,00 à la ligne 20 : écart 5,00 affiché, jamais corrigé.
+- **Non fait** : aucune règle de report vers les 2059-B, C, D ; au-delà de vingt lignes.
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

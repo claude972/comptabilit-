@@ -73,7 +73,9 @@ test('reports 2059 → 2058-A, feuillets du 2056 et du 2057, rapprochement du 20
   await tab('2059A_IM', '01', { nature: 'Participation fictive', c2: '10000.00', c3: '0.00', c4: '2000.00', c5: '1000.00', c6: '7000.00', c7: '9000.00', c8: '2000.00', c9: '0.00', c10a: '0.00', c10b: '2000.00', c10c: '0.00' });
   for (const l of ['13', '14', '15', '16']) await tab('2059A_AUT', l, { c9: '0.00' });
   for (const l of ['18', '19']) await tab('2059A_AUT', l, { c10a: '0.00', c10b: '0.00', c10c: '0.00' });
-  await tab('2059A_AUT', '20', { c9: '0.00', c10a: '0.00', c10b: '0.00', c10c: '0.00', c11: '0.00' });
+  await tab('2059A_AUT', '20', { c9: '500.00', c10a: '0.00', c10b: '0.00', c10c: '0.00', c11: '10.00' });
+  await tab('2059A_NOTE', '01', { origine: 'Ajustement comptable / fiscal (fictif)', c9: '300.00', c10a: '0.00', c10b: '0.00', c10c: '0.00', c11: '0.00' });
+  await tab('2059A_NOTE', '02', { origine: 'Ajustement de calcul de plus-value (fictif)', c9: '200.00', c10a: '0.00', c10b: '0.00', c10c: '0.00', c11: '15.00' });
   await cas('A58_WV', '2000.00');
   await cas('A58_WH', '100.00');
   for (const [code, m] of [['P56_5V', '1500.00'], ['P56_5W', '200.00'], ['P56_5X', '100.00'], ['P56_5Y', '1600.00']] as Array<[string, string]>) await cas(code, m);
@@ -98,6 +100,9 @@ test('reports 2059 → 2058-A, feuillets du 2056 et du 2057, rapprochement du 20
   const g56 = liasse.feuilles2058.find((g: any) => g.id === '2056-FEUILLETS');
   const k56 = (c: string) => g56.controles.find((x: any) => x.code === `2056-FEUILLETS_${c}`);
   expect([k56('SOMME_D').statut, k56('SOMME_A').statut, k56('SOMME_R').statut, k56('SOMME_F').statut]).toEqual(['coherent', 'coherent', 'ecart', 'ecart']);
+  const kn = (c: string) => liasse.feuilles2058.find((g: any) => g.id === '2059-A-NOTE').controles.find((x: any) => x.code === `2059-A-NOTE_${c}`);
+  expect(kn('SOMME_C9').statut).toBe('coherent');
+  expect(kn('SOMME_C11')).toMatchObject({ statut: 'ecart', ecart: '5.00' });
   const k57 = (c: string) => liasse.formulaire2057.controles.find((x: any) => x.code === `2057_${c}`);
   expect(['CLIENTS_BILAN', 'FOURNISSEURS_BILAN', 'PCA_BILAN'].map((c) => k57(c).statut)).toEqual(['coherent', 'coherent', 'coherent']);
   expect(k57('CCA_BILAN')).toMatchObject({ statut: 'ecart', ecart: '5.00' });

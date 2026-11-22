@@ -19,6 +19,7 @@ import {
   preparerFormulaire2033G,
   preparerFormulaire2059A,
   GRILLES_2059,
+  GRILLE_2057,
   GRILLE_2065,
   GRILLE_DATES_CVAE,
   TABLEAUX_GRILLES,
@@ -70,7 +71,7 @@ const montantSigne = schemaChaineDecimale;
 const ventilation = z.object({ montantFrance: montantSigne, montantExport: montantSigne, note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie la ventilation').max(2000) });
 const renvoiSaisie = z.object({ montant: montantSigne, note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie le montant').max(2000) });
 const saisieTableau = z.object({ valeurs: z.record(z.string().max(40), z.string().max(200)), note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie la saisie').max(2000) });
-const TABLEAU_SAISI = /^(2033C_III|2054BIS_A|2054BIS_B|2055_B|2055_C|2033D_C|2033F_NB|2033F_PM|2033F_PP|2033G_NB|2033G_FIL|2059A_IM|2059A_AUT|2059B_A|2059B_B|2059C_I|2059C_II|2059D_I|2059D_II|2065_C1|2065_C2|2065_C3|2065_C4|2065_F|2065_I|2065_D|2065_E|2033E_DATES)$/;
+const TABLEAU_SAISI = /^(2033C_III|2054BIS_A|2054BIS_B|2055_B|2055_C|2033D_C|2033F_NB|2033F_PM|2033F_PP|2033G_NB|2033G_FIL|2059A_IM|2059A_AUT|2059B_A|2059B_B|2059C_I|2059C_II|2059D_I|2059D_II|2065_C1|2065_C2|2065_C3|2065_C4|2065_F|2065_I|2065_D|2065_E|2033E_DATES|2057_A|2057_AX|2057_B|2057_BX)$/;
 /** Lignes admises par la route, selon la famille de tableau : historiques (01 à 13…), 2059-A (01 à 20), grilles 2059-B à D, 2065 et dates du 2033-E (identifiants courts, forme validée contre la définition). */
 const LIGNE_HISTORIQUE = /^(0[1-9]|1[0-3]|REG|PV19|NEANT|B1|B2|NB)$/;
 const LIGNE_2059A = /^(0[1-9]|1[0-9]|20|NEANT)$/;
@@ -405,6 +406,8 @@ export class FiscalController {
       const grilles2059 = regime === 'reel_normal' ? GRILLES_2059.map((g) => preparerGrille(g, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies })) : null;
       // Déclaration de résultats 2065-SD (page 1, D-123) : servie aux deux régimes, saisie rubrique par rubrique.
       const formulaire2065 = preparerGrille(GRILLE_2065, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies });
+      // État des échéances 2057 (régime réel normal, D-130) : grilles saisies ligne par ligne.
+      const formulaire2057 = regime === 'reel_normal' ? preparerGrille(GRILLE_2057, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies }) : null;
       // Dates du 2033-E / 2059-E (période de référence, cessation, D-126) : saisies aux deux régimes.
       const datesCvae = preparerGrille(GRILLE_DATES_CVAE, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies });
       const tableauxImmobilisations = preparerTableauxImmobilisations({
@@ -450,6 +453,8 @@ export class FiscalController {
         formulaire2065,
         /** Dates du 2033-E / 2059-E : période de référence (024, 016) et date de cessation, deux régimes (D-126). */
         datesCvae,
+        /** État des échéances des créances et des dettes (2057) : saisie ligne par ligne, régime réel normal (D-130) ; null sinon. */
+        formulaire2057,
         /** Formulaires du régime réel normal servis par saisie case par case (2058-A) : D-118 ; null au régime simplifié. */
         formulairesCases,
       };

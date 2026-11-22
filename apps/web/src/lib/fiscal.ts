@@ -133,6 +133,8 @@ export interface ReponseLiasse {
   formulaire2065?: GrilleProjet | null;
   /** Dates du 2033-E / 2059-E (D-126). */
   datesCvae?: GrilleProjet | null;
+  /** État des échéances des créances et des dettes (2057), régime réel normal (D-130). */
+  formulaire2057?: GrilleProjet | null;
   /** Formulaires du régime réel normal servis par saisie case par case (2058-A, D-118) ; null au régime simplifié. */
   formulairesCases?: FormulaireCasesProjet[] | null;
 }

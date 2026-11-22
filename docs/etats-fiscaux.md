@@ -30,7 +30,7 @@ Périmètre explicite : **société commerciale soumise à l’impôt sur les so
 | 2033-D cadre IV, dates 2033-E / 2059-E | partiel (D-126) | Cases 690 à 693 saisies ; dates 024, 016 et cessation saisies | Revenu brut social non calculé |
 | 2033-G | partiel (D-117) | Nombre de filiales (905) et sept lignes par saisie ligne par ligne ; contrôles indicatifs | Tableaux supplémentaires |
 | 2056 | partiel (D-129) | 107 cases saisies ; totaux I, II, III et général calculés comme le formulaire ; contrôles indicatifs | Feuillets séparés des lignes (1), charges à payer |
-| 2057 | **non couvert** | — | État des échéances des créances et des dettes |
+| 2057 | partiel (D-130) | 39 lignes saisies ; totaux VT/VU/VV et VY/VZ calculés comme le formulaire ; ventilation contrôlée | Rapprochement avec le bilan |
 | 2058-A | partiel (D-118) | 73 cases par saisie ; XI, XJ, XN, XO calculés comme le formulaire et la notice ; contrôles indicatifs | Feuillets joints |
 | 2058-B, 2058-C | partiel (D-119) | 29 et 47 cases par saisie ; K6, YK, YN, YO, ØF, ZH, ZJ, YX calculés comme le formulaire ; propositions et rapprochements avec le 2058-A | Libellés de nature des provisions, cellules sans code, rapprochement ZJ / YX avec le 2052 | | — | Réintégrations et déductions extra-comptables, déficits, affectation du résultat |
 | 2059-E, 2059-F, 2059-G | partiel (D-120) | Mêmes calculs et saisies que 2033-E, 2033-F et 2033-G (codes du régime réel normal pour le 2059-E) | Dates, tableaux supplémentaires |

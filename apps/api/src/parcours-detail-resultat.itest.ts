@@ -906,6 +906,39 @@ describe('2056 (régime réel normal) : provisions inscrites au bilan, saisie ca
   }, 120_000);
 });
 
+describe('2057 (régime réel normal) : état des échéances des créances et des dettes saisi ligne par ligne (D-130)', () => {
+  const f2057 = async () => (await liasse(exN, 'reel_normal')).json.formulaire2057;
+  const t57 = (tableau: string, ligne: string, valeurs: Record<string, string>, qui = 'remi') => api(qui, 'PUT', `/v1/exercices/${exN}/tableaux/${tableau}/${ligne}`, { valeurs, note: 'État des échéances du bilan (essai)' });
+  const CODES = ['UL', 'UP', 'UT', 'VA', 'UX', 'Z1', 'UY', 'UZ', 'VM', 'VB', 'VN', 'VP', 'VC', 'VR', 'VS'];
+
+  it('sans saisie : à saisir, totaux en abstention ; absent au régime simplifié ; refus', async () => {
+    const f = await f2057();
+    expect(f).toMatchObject({ statut: 'projet', id: '2057', etat: 'a_saisir' });
+    expect(f.cadres.map((c: any) => c.lignes.length)).toEqual([15, 4, 17, 3]);
+    expect(f.cadres[0].calculs[0].cellules.c1.statut).toBe('abstention');
+    expect((await liasse(exN, 'reel_simplifie')).json.formulaire2057).toBeNull();
+    expect((await t57('2057_A', 'UL', { c1: '1.00' })).statut).toBe(400);
+    expect((await t57('2057_A', 'UO', { c1: '1.00', c2: '1.00', c3: '0.00' })).statut).toBe(404);
+    expect((await t57('2057_A', 'UL', { c1: '1.00', c2: '1.00', c3: '0.00' }, 'chloe')).statut).toBeGreaterThanOrEqual(400);
+    expect((await t57('2057_A', 'UL', { c1: '1.00', c2: '1.00', c3: '0.00' }, 'client')).statut).toBe(404);
+  }, 120_000);
+
+  it('créances : totaux VT, VU, VV seulement quand les quinze lignes sont saisies ; ventilation contrôlée ; retrait', async () => {
+    for (const c of CODES.slice(1)) expect((await t57('2057_A', c, { c1: '100.00', c2: '60.00', c3: '40.00' })).statut, c).toBeLessThan(300);
+    let f = await f2057();
+    expect(f.cadres[0].calculs[0].cellules.c1.statut).toBe('abstention');
+    expect((await t57('2057_A', 'UL', { c1: '100.00', c2: '60.00', c3: '30.00' })).statut).toBeLessThan(300);
+    f = await f2057();
+    expect(f.cadres[0].calculs[0].cellules).toMatchObject({ c1: { statut: 'etabli', montant: '1500.00' }, c2: { montant: '900.00' }, c3: { montant: '590.00' } });
+    expect(f.controles.find((c: any) => c.code === '2057_VENT_UL')).toMatchObject({ statut: 'ecart', ecart: '10.00' });
+    expect((await t57('2057_AX', 'VD', { m: '250.00' })).statut).toBeLessThan(300);
+    const h = (await api('remi', 'GET', `/v1/exercices/${exN}/qualifications/historique?cle=2057_A:UL`)).json.evenements as any[];
+    expect(h).toHaveLength(1);
+    for (const [tb, l] of [...CODES.map((c) => ['2057_A', c]), ['2057_AX', 'VD']]) expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/${tb}/${l}`)).statut, l).toBeLessThan(300);
+    expect((await f2057()).etat).toBe('a_saisir');
+  }, 180_000);
+});
+
 describe('détail du compte de résultat : qualification tracée, abstention sans qualification', () => {
   it('sans qualification : totaux de la balance, France et exportations en abstention, renvois à saisir, exceptionnel détaillé', async () => {
     const d = await detail();

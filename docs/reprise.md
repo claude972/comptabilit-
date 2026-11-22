@@ -29,7 +29,8 @@ Document de passage pour reprendre le travail sans relire la conversation. À me
 | Cadre IV du 2033-D (saisie), dates du 2033-E / 2059-E | D-126 | 1c506a3 |
 | Rapprochement ZJ/YX du 2058-C avec FW/FX du 2052 | D-127 | d84485d |
 | États joints (lignes au-delà de la capacité des formulaires 2033) | D-128 | dd00581 |
-| 2056 (provisions inscrites au bilan) | D-129 | (ce commit) |
+| 2056 (provisions inscrites au bilan) | D-129 | 095a564 |
+| 2057 (échéances des créances et des dettes) | D-130 | (ce commit) |
 
 ## Restes explicites (ordre de travail)
 1. ~~2059-A à D~~ FAIT (D-121, D-122).

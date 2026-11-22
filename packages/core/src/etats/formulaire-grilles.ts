@@ -46,13 +46,15 @@ export interface CadreGrille {
   /** Grille libre : lignes 01 à `max` avec un libellé d'origine saisi. */
   libre?: { max: number; libelleOrigine: string };
   calculs: readonly CalculGrille[];
+  /** Contrôle indicatif de ventilation : sur chaque ligne saisie, la colonne `total` égale la somme des colonnes `parties` (les colonnes absentes de la ligne ne sont pas contrôlées). */
+  ventilation?: { total: string; parties: readonly string[] };
   /** Contrôles indicatifs d'ordre entre deux colonnes date d'une même ligne (la première ne doit pas suivre la seconde). */
   ordreDates?: ReadonlyArray<[string, string]>;
   /** Colonne calculée par ligne : somme signée d'autres colonnes de la MÊME ligne (les colonnes non servies sont ignorées). */
   colonneCalculee?: { cle: string; libelle: string; termes: ReadonlyArray<{ col: string; signe: 1 | -1 }> };
 }
 export interface DefinitionGrille {
-  id: '2059-B' | '2059-C' | '2059-D' | '2065' | '2033-E-DATES';
+  id: '2059-B' | '2059-C' | '2059-D' | '2065' | '2033-E-DATES' | '2057';
   titre: string;
   /** Tableau portant la ligne NEANT du formulaire ; absent si le formulaire n'a pas de « néant » (le 2065 est toujours servi). */
   neantSur?: string;
@@ -229,7 +231,99 @@ export const GRILLE_DATES_CVAE: DefinitionGrille = {
   ],
 };
 
-const TOUTES: readonly DefinitionGrille[] = [...GRILLES_2059, GRILLE_2065, GRILLE_DATES_CVAE];
+const cr = (...x: Array<[string, string]>): ColonneGrille[] => x.map(([cle, libelle]) => ({ cle, libelle }));
+const ligne = (code: string, libelle: string, colonnes?: readonly string[]): LigneGrille => ({ ligne: code, libelle: `${libelle} (code ${code})`, ...(colonnes ? { colonnes } : {}) });
+const CREANCES: LigneGrille[] = [
+  ligne('UL', 'Actif immobilisé — créances rattachées à des participations'),
+  ligne('UP', 'Actif immobilisé — prêts (1) (2)'),
+  ligne('UT', 'Actif immobilisé — autres immobilisations financières'),
+  ligne('VA', 'Actif circulant — clients douteux ou litigieux'),
+  ligne('UX', 'Actif circulant — autres créances clients'),
+  ligne('Z1', 'Actif circulant — créance représentative de titres prêtés ou remis en garantie'),
+  ligne('UY', 'Actif circulant — personnel et comptes rattachés'),
+  ligne('UZ', 'Actif circulant — sécurité sociale et autres organismes sociaux'),
+  ligne('VM', 'État et autres collectivités publiques — impôts sur les bénéfices'),
+  ligne('VB', 'État et autres collectivités publiques — taxe sur la valeur ajoutée'),
+  ligne('VN', 'État et autres collectivités publiques — autres impôts, taxes et versements assimilés'),
+  ligne('VP', 'État et autres collectivités publiques — divers'),
+  ligne('VC', 'Actif circulant — groupe et associés (2)'),
+  ligne('VR', 'Actif circulant — débiteurs divers (dont créances relatives à des opérations de pension de titres)'),
+  ligne('VS', 'Charges constatées d’avance'),
+];
+const DETTES: LigneGrille[] = [
+  ligne('7Y', 'Emprunts obligataires convertibles (1)'),
+  ligne('7Z', 'Autres emprunts obligataires (1)'),
+  ligne('VG', 'Emprunts et dettes auprès des établissements de crédit (1) — à 1 an maximum à l’origine'),
+  ligne('VH', 'Emprunts et dettes auprès des établissements de crédit (1) — à plus d’1 an à l’origine'),
+  ligne('8A', 'Emprunts et dettes financières divers (1) (2)'),
+  ligne('8B', 'Fournisseurs et comptes rattachés'),
+  ligne('8C', 'Personnel et comptes rattachés'),
+  ligne('8D', 'Sécurité sociale et autres organismes sociaux'),
+  ligne('8E', 'État et autres collectivités publiques — impôts sur les bénéfices'),
+  ligne('VW', 'État et autres collectivités publiques — taxe sur la valeur ajoutée'),
+  ligne('VX', 'État et autres collectivités publiques — obligations cautionnées'),
+  ligne('VQ', 'État et autres collectivités publiques — autres impôts, taxes et assimilées'),
+  ligne('8J', 'Dettes sur immobilisations et comptes rattachés'),
+  ligne('VI', 'Groupe et associés (2)'),
+  ligne('8K', 'Autres dettes (dont dettes relatives à des opérations de pension de titres)'),
+  ligne('Z2', 'Dette représentative de titres empruntés ou remis en garantie'),
+  ligne('8L', 'Produits constatés d’avance'),
+];
+/** État des échéances des créances et des dettes à la clôture de l'exercice (2057-SD, page 9 de `2050-liasse_5320.pdf`, régime réel normal). */
+export const GRILLE_2057: DefinitionGrille = {
+  id: '2057',
+  titre: 'État des échéances des créances et des dettes à la clôture de l’exercice',
+  neantSur: '2057_A',
+  cadres: [
+    {
+      tableau: '2057_A',
+      titre: 'Cadre A — État des créances',
+      colonnes: cr(['c1', '1 Montant brut'], ['c2', '2 À 1 an au plus'], ['c3', '3 À plus d’un an']),
+      lignes: CREANCES,
+      calculs: [{ id: 'VT_VU_VV', libelle: 'TOTAUX (codes VT, VU, VV)', colonnes: ['c1', 'c2', 'c3'], termes: [{ ref: CREANCES.map((l) => l.ligne), signe: 1 }] }],
+      ventilation: { total: 'c1', parties: ['c2', 'c3'] },
+    },
+    {
+      tableau: '2057_AX',
+      titre: 'Cadre A — Provision antérieurement constituée et renvois',
+      colonnes: cr(['m', 'Montant']),
+      lignes: [
+        ligne('UO', 'Provisions pour dépréciation antérieurement constituée sur créance représentative de titres prêtés ou remis en garantie'),
+        ligne('VD', 'Renvoi (1) — montant des prêts accordés en cours d’exercice'),
+        ligne('VE', 'Renvoi (1) — montant des remboursements obtenus en cours d’exercice'),
+        ligne('VF', 'Renvoi (2) — prêts et avances consentis aux associés (personnes physiques)'),
+      ],
+      calculs: [],
+    },
+    {
+      tableau: '2057_B',
+      titre: 'Cadre B — État des dettes',
+      colonnes: cr(['c1', '1 Montant brut'], ['c2', '2 À 1 an au plus'], ['c3', '3 À plus d’1 an et 5 ans au plus'], ['c4', '4 À plus de 5 ans']),
+      lignes: DETTES,
+      calculs: [{ id: 'VY_VZ', libelle: 'TOTAUX (codes VY, VZ)', colonnes: ['c1', 'c2', 'c3', 'c4'], termes: [{ ref: DETTES.map((l) => l.ligne), signe: 1 }] }],
+      ventilation: { total: 'c1', parties: ['c2', 'c3', 'c4'] },
+    },
+    {
+      tableau: '2057_BX',
+      titre: 'Cadre B — Renvois',
+      colonnes: cr(['m', 'Montant']),
+      lignes: [
+        ligne('VJ', 'Renvoi (1) — emprunts souscrits en cours d’exercice'),
+        ligne('VK', 'Renvoi (1) — emprunts remboursés en cours d’exercice'),
+        ligne('VL', 'Renvoi (2) — montant des divers emprunts et dettes contractés auprès des associés, personnes physiques'),
+      ],
+      calculs: [],
+    },
+  ],
+  nonPrepare: [
+    'Identification de l’entreprise et exercice : repris du dossier, non ressaisis ici.',
+    'Aucun montant n’est déduit de la balance : l’échéance d’une créance ou d’une dette ne figure pas à la balance ; chaque ligne est une saisie justifiée du cabinet.',
+    'Seule la colonne « montant brut » a un code imprimé sur la plupart des lignes (UM, UN, UR, US, UV, UW pour les trois premières lignes des créances) ; les codes des autres cellules ne sont pas imprimés sur le formulaire.',
+    'Relation avec les postes du bilan (2050, 2051) : non automatique ; aucun rapprochement n’est supposé.',
+  ],
+};
+
+const TOUTES: readonly DefinitionGrille[] = [...GRILLES_2059, GRILLE_2065, GRILLE_DATES_CVAE, GRILLE_2057];
 export const TABLEAUX_GRILLES: readonly string[] = TOUTES.flatMap((g) => g.cadres.map((c) => c.tableau));
 
 /** Lignes admises pour un tableau en grille : `null` si le tableau n'est pas une grille. Utilisée par la validation de forme. */
@@ -361,6 +455,19 @@ export function preparerGrille(def: DefinitionGrille, demande: DemandeGrilles): 
   if (etat === 'saisi') {
     const avecCalculs = def.cadres.some((c) => c.calculs.length > 0 || c.colonneCalculee !== undefined);
     controles.push({ code: `${def.id}_SANS_SAISIE`, statut: 'non_verifie', message: avecCalculs ? 'Les lignes sans saisie ne sont jamais présumées nulles : les totaux ne sont établis que lorsque toutes leurs composantes sont saisies (zéro compris).' : 'Les rubriques sans saisie ne sont jamais présumées nulles : une rubrique à zéro se saisit explicitement.' });
+  }
+  for (const c of def.cadres) {
+    const v2 = c.ventilation;
+    if (v2 === undefined) continue;
+    for (const l of cadres.find((x) => x.tableau === c.tableau)!.lignes) {
+      const x = l.valeurs;
+      if (x === null || x[v2.total] === undefined || v2.parties.some((k) => x[k] === undefined)) continue;
+      const somme = v2.parties.reduce((a, k) => a.plus(x[k]!), new Decimal(0));
+      const ecart = new Decimal(x[v2.total]!).minus(somme);
+      controles.push(ecart.isZero()
+        ? { code: `${def.id}_VENT_${l.ligne}`, statut: 'coherent', message: `${l.libelle} : le montant brut égale la somme de ses échéances. Contrôle indicatif.` }
+        : { code: `${def.id}_VENT_${l.ligne}`, statut: 'ecart', message: `${l.libelle} : le montant brut (${versChaine(new Decimal(x[v2.total]!))}) diffère de la somme de ses échéances (${versChaine(somme)}). Rien n’est corrigé. Contrôle indicatif.`, ecart: versChaine(ecart) });
+    }
   }
   for (const c of def.cadres)
     for (const [a, b] of c.ordreDates ?? [])

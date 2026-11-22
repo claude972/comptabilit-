@@ -64,6 +64,8 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
     await expect(page.getByTestId('grille-2065').locator('li[data-ligne-grille]')).toHaveCount(30);
     // Dates du 2033-E / 2059-E (D-126) et cadre IV du 2033-D (D-126).
     await expect(page.getByTestId('grille-2033-E-DATES').locator('li[data-ligne-grille]')).toHaveCount(2);
+    // 2057 (D-130) : état des échéances des créances et des dettes, 39 lignes saisies une à une.
+    await expect(page.getByTestId('grille-2057').locator('li[data-ligne-grille]')).toHaveCount(39);
     // 2056 (D-129) : provisions inscrites au bilan, 107 cases saisies une à une, totaux en abstention sans saisie.
     await expect(page.getByTestId('formulaire-2056').locator('li[data-case-f]')).toHaveCount(107);
     await expect(page.getByTestId('formulaire-2056').locator('li[data-calcul-f]')).toHaveCount(16);

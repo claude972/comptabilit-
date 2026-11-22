@@ -453,6 +453,25 @@ if (process.argv.includes('--2056')) {
   await page.getByTestId('controles-formulaire-2056').scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${sortie}fiscal-2056-controles.png` });
 }
+// 2057 (D-130) : saisies par les formulaires (MODIFIE le dossier fictif indiqué), régime réel normal.
+if (process.argv.includes('--2057')) {
+  await page.goto(`${base}&vue=liasse&regime=reel_normal`);
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('grille-2057').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2057-avant.png` });
+  const f = page.getByTestId('saisie-2057_A-UL');
+  await f.scrollIntoViewIfNeeded();
+  await f.getByLabel('1 Montant brut').fill('100.00');
+  await f.getByLabel('2 À 1 an au plus').fill('60.00');
+  await f.getByLabel('3 À plus d’un an').fill('30.00');
+  await f.getByLabel('Justification (obligatoire)').fill('Créance sur participation, échéancier du contrat (démonstration fictive)');
+  await f.getByRole('button', { name: /^Enregistrer la ligne UL/ }).click();
+  await f.getByText('Ligne enregistrée.').waitFor();
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('grille-2057').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2057-apres.png` });
+}
 // 2033-B (D-107) : « dont export » et lignes « dont » du régime simplifié.
 await page.goto(`${base}&vue=liasse&regime=reel_simplifie`);
 await page.waitForLoadState('networkidle');

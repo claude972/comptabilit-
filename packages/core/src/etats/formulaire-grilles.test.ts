@@ -1,6 +1,6 @@
 /** Recette des grilles 2059-B, 2059-C et 2059-D (D-122) : saisie ligne par ligne, calculs énoncés seulement à composantes saisies. */
 import { describe, expect, it } from 'vitest';
-import { GRILLE_2065, GRILLE_DATES_CVAE, GRILLES_2059, preparerGrille } from './formulaire-grilles.js';
+import { GRILLE_2057, GRILLE_2065, GRILLE_DATES_CVAE, GRILLES_2059, preparerGrille } from './formulaire-grilles.js';
 import { type SaisieTableau, validerSaisieTableau } from './saisies-tableaux.js';
 
 const TRACE = { note: 'Suivi des plus-values (essai)', qualifieePar: 'u-1', le: '2026-12-31T10:00:00Z', versionDonnees: 7 };
@@ -94,5 +94,24 @@ describe('grilles 2059', () => {
     expect(validerSaisieTableau('2033E_DATES', 'CES', { cessation: '2025-02-30' }).join(' ')).toMatch(/date AAAA-MM-JJ/);
     expect(validerSaisieTableau('2033E_DATES', 'PER', { debut: '2025-01-01' }).join(' ')).toMatch(/obligatoire/);
     expect(validerSaisieTableau('2033E_DATES', 'NEANT', {}).join(' ')).toMatch(/Ligne inconnue/);
+  });
+  it('2057 : totaux VT/VU/VV et VY/VZ seulement quand toutes les lignes sont saisies ; ventilation par échéance contrôlée sans correction', () => {
+    const lignesA = GRILLE_2057.cadres[0]!.lignes.map((l) => l.ligne);
+    const toutes = lignesA.map((l) => s('2057_A', l, { c1: '100.00', c2: '60.00', c3: '40.00' }));
+    const f = preparerGrille(GRILLE_2057, { versionDonnees: 7, saisiesTableaux: toutes });
+    expect(lignesA).toHaveLength(15);
+    expect(f.cadres[0]!.calculs[0]!.cellules).toMatchObject({ c1: { statut: 'etabli', montant: '1500.00' }, c2: { montant: '900.00' }, c3: { montant: '600.00' } });
+    expect(f.controles.filter((c) => c.code.includes('_VENT_')).every((c) => c.statut === 'coherent')).toBe(true);
+    const partiel = preparerGrille(GRILLE_2057, { versionDonnees: 7, saisiesTableaux: toutes.slice(1) });
+    expect(partiel.cadres[0]!.calculs[0]!.cellules.c1!.statut).toBe('abstention');
+    const ecart = preparerGrille(GRILLE_2057, { versionDonnees: 7, saisiesTableaux: [s('2057_A', 'UL', { c1: '100.00', c2: '60.00', c3: '30.00' })] });
+    expect(ecart.controles.find((c) => c.code === '2057_VENT_UL')).toMatchObject({ statut: 'ecart', ecart: '10.00' });
+    expect(ecart.cadres[0]!.lignes[0]!.valeurs!.c3).toBe('30.00');
+    const dettes = GRILLE_2057.cadres[2]!.lignes.map((l) => s('2057_B', l.ligne, { c1: '10.00', c2: '4.00', c3: '3.00', c4: '3.00' }));
+    expect(preparerGrille(GRILLE_2057, { versionDonnees: 7, saisiesTableaux: dettes }).cadres[2]!.calculs[0]!.cellules).toMatchObject({ c1: { montant: '170.00' }, c4: { montant: '51.00' } });
+    expect(validerSaisieTableau('2057_AX', 'UO', { m: '5.00' })).toEqual([]);
+    expect(validerSaisieTableau('2057_A', 'UO', { c1: '5.00', c2: '5.00', c3: '0.00' }).join(' ')).toMatch(/Ligne inconnue/);
+    expect(validerSaisieTableau('2057_B', 'VG', { c1: '5.00', c2: '5.00', c3: '0.00' }).join(' ')).toMatch(/obligatoire/);
+    expect(validerSaisieTableau('2057_A', 'NEANT', {})).toEqual([]);
   });
 });

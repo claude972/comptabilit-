@@ -757,6 +757,13 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Rien n'est déduit de la balance** (elle ne distingue pas la nature ni les dotations et reprises par catégorie). **Non préparé, dit** : feuillets séparés des lignes (1) selon l'année de constitution ou l'objet ; état détaillé des charges à payer ; relation avec le 2058-B. Statut « projet ».
 - **Preuves** : 3 tests du moteur (intégrité des 107 codes, totaux, contrôle de ligne ; 20 verts), 2 essais d'intégration sur la pile réelle (57 verts), Playwright `fiscal.spec.ts`, captures `fiscal-2056-avant/controles.png` (`--2056`).
 
+### D-130 — Tableau 2057 « État des échéances des créances et des dettes » (régime réel normal) (2026-11-22)
+
+- **Source** : `2050-liasse_5320.pdf` (SHA-256 0bba3352…8453e1), page 9 (2057-SD) ; codes de lignes lus par extraction positionnée puis vérifiés sur le rendu image. Cadre A : 15 lignes de créances (UL, UP, UT, VA, UX, Z1, UY, UZ, VM, VB, VN, VP, VC, VR, VS) × 3 colonnes (montant brut, à 1 an au plus, à plus d'un an), provision UO et renvois VD, VE, VF ; cadre B : 17 lignes de dettes (7Y, 7Z, VG, VH, 8A, 8B, 8C, 8D, 8E, VW, VX, VQ, 8J, VI, 8K, Z2, 8L) × 4 colonnes (montant brut, à 1 an au plus, de plus d'1 an à 5 ans, à plus de 5 ans), renvois VJ, VK, VL. Seul le code de la colonne « montant brut » est imprimé sur la plupart des lignes : les lignes sont identifiées par ce code et leurs cellules sont saisies par colonne.
+- **Moteur de grilles** (D-122) : tableaux `2057_A`, `2057_AX`, `2057_B`, `2057_BX` ; une ligne saisie exige toutes ses colonnes (zéro explicite) ; néant du formulaire ; migration 0061 additive. **Calculs énoncés par le formulaire** : TOTAUX (VT, VU, VV pour les créances ; VY, VZ pour les dettes, plus les colonnes sans code imprimé), établis seulement quand les 15 (resp. 17) lignes sont saisies, sinon abstention motivée. **Contrôle indicatif** de ventilation : montant brut = somme des échéances sur chaque ligne saisie, jamais corrigé.
+- **Rien n'est déduit de la balance** (l'échéance n'y figure pas). **Non préparé, dit** : identification, rapprochement avec les postes du bilan, codes non imprimés des autres cellules. Statut « projet ».
+- **Preuves** : test du moteur (8 verts), 2 essais d'intégration sur la pile réelle (59 verts), Playwright `fiscal.spec.ts` (39 lignes), captures `fiscal-2057-avant/apres.png` (`--2057`).
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

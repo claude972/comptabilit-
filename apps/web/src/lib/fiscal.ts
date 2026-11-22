@@ -129,6 +129,8 @@ export interface ReponseLiasse {
   formulaire2059A?: Formulaire2059AProjet | null;
   /** Tableaux 2059-B, 2059-C et 2059-D (grilles saisies ligne par ligne) ; null au régime simplifié (D-122). */
   grilles2059?: GrilleProjet[] | null;
+  /** Déclaration de résultats 2065-SD (page 1), deux régimes (D-123). */
+  formulaire2065?: GrilleProjet | null;
   /** Formulaires du régime réel normal servis par saisie case par case (2058-A, D-118) ; null au régime simplifié. */
   formulairesCases?: FormulaireCasesProjet[] | null;
 }

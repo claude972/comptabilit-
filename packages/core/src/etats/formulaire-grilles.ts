@@ -19,6 +19,8 @@ import { MENTION_PROJET } from './sources-fiscales.js';
 export interface ColonneGrille {
   cle: string;
   libelle: string;
+  /** Montant algébrique (le formulaire demande d'indiquer + ou −) ; sinon positif. */
+  signe?: boolean;
 }
 export interface LigneGrille {
   ligne: string;
@@ -46,10 +48,10 @@ export interface CadreGrille {
   colonneCalculee?: { cle: string; libelle: string; termes: ReadonlyArray<{ col: string; signe: 1 | -1 }> };
 }
 export interface DefinitionGrille {
-  id: '2059-B' | '2059-C' | '2059-D';
+  id: '2059-B' | '2059-C' | '2059-D' | '2065';
   titre: string;
-  /** Tableau portant la ligne NEANT du formulaire. */
-  neantSur: string;
+  /** Tableau portant la ligne NEANT du formulaire ; absent si le formulaire n'a pas de « néant » (le 2065 est toujours servi). */
+  neantSur?: string;
   cadres: readonly CadreGrille[];
   nonPrepare: readonly string[];
 }
@@ -158,17 +160,57 @@ export const GRILLES_2059: readonly DefinitionGrille[] = [
   },
 ];
 
-export const TABLEAUX_GRILLES: readonly string[] = GRILLES_2059.flatMap((g) => g.cadres.map((c) => c.tableau));
+
+const unique = (tableau: string, titre: string, lignes: Array<[string, string]>, signe = false): CadreGrille => ({ tableau, titre, colonnes: [{ cle: 'm', libelle: 'Montant', signe }], lignes: lignes.map(([ligne, libelle]) => ({ ligne, libelle })), calculs: [] });
+/** Déclaration de résultats de l'IS 2065-SD, page 1 (régimes réel normal et simplifié) : cadres C, D, E, F (CES) et I (CTM). */
+export const GRILLE_2065: DefinitionGrille = {
+  id: '2065',
+  titre: 'Déclaration de résultats de l’impôt sur les sociétés (2065-SD) — récapitulation des éléments d’imposition et contributions',
+  cadres: [
+    unique('2065_C1', 'C 1 — Résultat fiscal', [['BN', 'Bénéfice imposable au taux normal'], ['DEF', 'Déficit'], ['B10', 'Résultat net de cession, de concession ou de sous-concession des brevets et droits de propriété industrielle assimilés imposable au taux de 10 %'], ['B15', 'Bénéfice imposable à 15 %']]),
+    unique('2065_C2', 'C 2 — Plus-values', [['PV15', 'PV à long terme imposables à 15 %'], ['PV19', 'PV à long terme imposables à 19 %'], ['PVEX', 'PV exonérées (art. 238 quindecies)'], ['AUT19', 'Autres PV imposables à 19 %'], ['PV0', 'PV à long terme imposables à 0 %']]),
+    unique('2065_C3', 'C 3 — Abattements sur le bénéfice et exonérations', [
+      ['JEI', 'Jeunes entreprises innovantes, art. 44 sexies-0 A'],
+      ['EN', 'Entreprise nouvelle, art. 44 sexies'],
+      ['AUTD', 'Autres dispositifs'],
+      ['FRRA', 'France ruralités revitalisation FRR, art. 44 quindecies A'],
+      ['ZFAN', 'Zone franche d’activité nouvelle génération, art. 44 quaterdecies'],
+      ['ZRD', 'Zone de restructuration de la défense, art. 44 terdecies'],
+      ['BUD', 'Bassins urbains à dynamiser (BUD), art. 44 sexdecies'],
+      ['ZFU', 'Zone franche urbaine – Territoire entrepreneur, art. 44 octies A'],
+      ['ZRR', 'Zone de revitalisation rurale, art. 44 quindecies'],
+      ['BER', 'Bassins d’emploi à redynamiser (art. 44 duodecies)'],
+      ['ZDP', 'Zone de développement prioritaire, art. 44 septdecies'],
+      ['PVSIIC', 'Société d’investissement immobilier cotée — plus-values exonérées relevant du taux de 15 %'],
+    ]),
+    unique('2065_C4', 'C 3 (suite) — Société d’investissement immobilier cotée : bénéfice ou déficit exonéré (indiquer + ou − selon le cas)', [['SIIC', 'Bénéfice ou déficit exonéré']], true),
+    unique('2065_F', 'F — Contribution exceptionnelle sur les bénéfices des grandes entreprises (CES)', [['BASE', 'Base d’imposition'], ['CA', 'Chiffre d’affaires'], ['TAUX', 'Taux d’imposition']]),
+    unique('2065_I', 'I — Contribution exceptionnelle sur les grandes entreprises de transport maritime (CTM)', [['BASE', 'Base d’imposition'], ['TAUX', 'Taux d’imposition']]),
+    unique('2065_D', 'D — Imputations', [['D1', '1. Au titre des revenus mobiliers de source française ou étrangère, ayant donné lieu à la délivrance d’un certificat de crédits d’impôts'], ['D2', '2. Au titre des revenus auxquels est attaché, en vertu d’une convention fiscale, un crédit d’impôt représentatif de l’impôt de l’État, territoire ou collectivité étranger']]),
+    unique('2065_E', 'E — Contribution annuelle sur les revenus locatifs', [['REC', 'Recettes nettes soumises à la contribution de 2,5 %']]),
+  ],
+  nonPrepare: [
+    'Identification de l’entreprise, régime fiscal des groupes, activité, exercice, option pour le régime du tonnage, PME innovante : reprises du dossier, non ressaisies ici.',
+    'Cases à cocher (option pour le crédit d’impôt outre-mer, art. 244 quater W ; comptabilité informatisée et logiciel) et rubriques de signature, professionnel de l’expertise comptable, examen de conformité fiscale : non préparées.',
+    'Annexe 2065 bis-SD (répartition des revenus distribués, rémunérations versées aux associés, divers, MVLT du régime simplifié, dons) : non préparée.',
+    'Liquidation de l’impôt : calculée par l’administration au dépôt électronique, non préparée ici ; aucun montant d’impôt n’est calculé.',
+    'Report depuis les tableaux 2058-A, 2033-D, 2059-A à D : non automatique ; les montants du cadre C sont saisis par le cabinet.',
+  ],
+};
+
+const TOUTES: readonly DefinitionGrille[] = [...GRILLES_2059, GRILLE_2065];
+export const TABLEAUX_GRILLES: readonly string[] = TOUTES.flatMap((g) => g.cadres.map((c) => c.tableau));
 
 /** Lignes admises pour un tableau en grille : `null` si le tableau n'est pas une grille. Utilisée par la validation de forme. */
-export function descriptionLigneGrille(tableau: string, ligne: string): { colonnes: readonly string[]; libre: boolean } | 'neant' | 'inconnue' | null {
-  for (const g of GRILLES_2059)
+export function descriptionLigneGrille(tableau: string, ligne: string): { colonnes: readonly string[]; signees: readonly string[]; libre: boolean } | 'neant' | 'inconnue' | null {
+  for (const g of TOUTES)
     for (const c of g.cadres) {
       if (c.tableau !== tableau) continue;
       if (ligne === 'NEANT') return g.neantSur === tableau ? 'neant' : 'inconnue';
-      if (c.libre !== undefined) return /^(0[1-9]|1[0-9])$/.test(ligne) && Number(ligne) <= c.libre.max ? { colonnes: c.colonnes.map((x) => x.cle), libre: true } : 'inconnue';
+      const signees = c.colonnes.filter((x) => x.signe === true).map((x) => x.cle);
+      if (c.libre !== undefined) return /^(0[1-9]|1[0-9])$/.test(ligne) && Number(ligne) <= c.libre.max ? { colonnes: c.colonnes.map((x) => x.cle), signees, libre: true } : 'inconnue';
       const l = c.lignes.find((x) => x.ligne === ligne);
-      return l ? { colonnes: l.colonnes ?? c.colonnes.map((x) => x.cle), libre: false } : 'inconnue';
+      return l ? { colonnes: l.colonnes ?? c.colonnes.map((x) => x.cle), signees, libre: false } : 'inconnue';
     }
   return null;
 }
@@ -219,7 +261,7 @@ const abst = (...motifs: string[]): CelluleGrille => ({ statut: 'abstention', mo
 
 export function preparerGrille(def: DefinitionGrille, demande: DemandeGrilles): GrilleProjet {
   const v = demande.versionDonnees;
-  const neantS = demande.saisiesTableaux.find((s) => s.tableau === def.neantSur && s.ligne === 'NEANT');
+  const neantS = def.neantSur === undefined ? undefined : demande.saisiesTableaux.find((s) => s.tableau === def.neantSur && s.ligne === 'NEANT');
   const neantStatut = statutDe(neantS, v);
   let nbSaisies = 0;
   const cadres: CadreGrilleProjet[] = def.cadres.map((c) => {
@@ -284,7 +326,10 @@ export function preparerGrille(def: DefinitionGrille, demande: DemandeGrilles): 
   const etat: GrilleProjet['etat'] = nbSaisies > 0 ? 'saisi' : neantStatut === 'saisi' ? 'neant' : 'a_saisir';
   const controles: ControleDetail[] = [];
   if (neantStatut === 'saisi' && etat === 'saisi') controles.push({ code: `${def.id}_NEANT_ET_LIGNES`, statut: 'ecart', message: 'Le tableau est déclaré « néant » ET porte des saisies : retirer l’une des deux ; les saisies sont retenues.' });
-  if (etat === 'saisi') controles.push({ code: `${def.id}_SANS_SAISIE`, statut: 'non_verifie', message: 'Les lignes sans saisie ne sont jamais présumées nulles : les totaux ne sont établis que lorsque toutes leurs composantes sont saisies (zéro compris).' });
+  if (etat === 'saisi') {
+    const avecCalculs = def.cadres.some((c) => c.calculs.length > 0 || c.colonneCalculee !== undefined);
+    controles.push({ code: `${def.id}_SANS_SAISIE`, statut: 'non_verifie', message: avecCalculs ? 'Les lignes sans saisie ne sont jamais présumées nulles : les totaux ne sont établis que lorsque toutes leurs composantes sont saisies (zéro compris).' : 'Les rubriques sans saisie ne sont jamais présumées nulles : une rubrique à zéro se saisit explicitement.' });
+  }
   return {
     statut: 'projet',
     id: def.id,

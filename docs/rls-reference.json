@@ -1,7 +1,7 @@
 {
   "format": "comtaple.rls-reference/1",
   "note": "Référence de la revue des changements RLS (scripts/revue-rls.mjs). Réécrite SEULEMENT après relecture humaine d'un changement voulu. Ce n'est pas un audit indépendant.",
-  "migrations": 59,
+  "migrations": 60,
   "tablesACabinet": {
     "abonnements": {
       "rls": true,

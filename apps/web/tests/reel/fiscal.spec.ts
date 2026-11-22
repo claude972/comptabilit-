@@ -60,6 +60,8 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
     await expect(page.getByTestId('grille-2059-B').locator('li[data-ligne-grille]')).toHaveCount(28);
     await expect(page.getByTestId('grille-2059-C').locator('li[data-ligne-grille]')).toHaveCount(22);
     await expect(page.getByTestId('grille-2059-D').locator('li[data-ligne-grille]')).toHaveCount(5);
+    // 2065-SD (D-123) : récapitulation des éléments d'imposition saisie rubrique par rubrique.
+    await expect(page.getByTestId('grille-2065').locator('li[data-ligne-grille]')).toHaveCount(30);
     // 2059-E, 2059-F, 2059-G (D-120) : effectifs, capital et filiales au régime réel normal (mêmes saisies que 2033-F et G).
     await expect(page.getByTestId('formulaire-2059-E').locator('li[data-case-f]')).toHaveCount(25);
     await expect(page.getByTestId('formulaire-2033-f')).toContainText('2059-F');

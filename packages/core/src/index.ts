@@ -146,7 +146,7 @@ export type { CaseNombre, DemandeFormulaire2033F, Formulaire2033FProjet, LigneAs
 export { preparerFormulaire2033G } from './etats/formulaire-2033g.js';
 export { CHAMPS_2059_A_IM, LIBELLES_COLONNES_2059_A, LIGNES_2059_A_AUT, LIGNES_2059_A_IM, preparerFormulaire2059A } from './etats/formulaire-2059a.js';
 export type { DemandeFormulaire2059A, Formulaire2059AProjet, LigneAutre2059A, LigneImmobilisation2059A, TotalCadre2059A } from './etats/formulaire-2059a.js';
-export { GRILLES_2059, TABLEAUX_GRILLES, preparerGrille } from './etats/formulaire-grilles.js';
+export { GRILLE_2065, GRILLES_2059, TABLEAUX_GRILLES, preparerGrille } from './etats/formulaire-grilles.js';
 export type { CadreGrilleProjet, CelluleGrille, ColonneGrille, DefinitionGrille, DemandeGrilles, GrilleProjet, LigneGrilleProjet } from './etats/formulaire-grilles.js';
 export type { DemandeFormulaire2033G, Formulaire2033GProjet, LigneFiliale } from './etats/formulaire-2033g.js';
 export { cleCase, preparerFormulaireCases } from './etats/formulaire-cases.js';

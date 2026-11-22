@@ -1,6 +1,6 @@
 /** Recette des grilles 2059-B, 2059-C et 2059-D (D-122) : saisie ligne par ligne, calculs énoncés seulement à composantes saisies. */
 import { describe, expect, it } from 'vitest';
-import { GRILLES_2059, preparerGrille } from './formulaire-grilles.js';
+import { GRILLE_2065, GRILLES_2059, preparerGrille } from './formulaire-grilles.js';
 import { type SaisieTableau, validerSaisieTableau } from './saisies-tableaux.js';
 
 const TRACE = { note: 'Suivi des plus-values (essai)', qualifieePar: 'u-1', le: '2026-12-31T10:00:00Z', versionDonnees: 7 };
@@ -68,5 +68,18 @@ describe('grilles 2059', () => {
     expect(validerSaisieTableau('2059C_II', 'N11', { c2: '1.00' }).join(' ')).toMatch(/Ligne inconnue/);
     expect(validerSaisieTableau('2059D_I', 'L3', { t10: '1.00' }).join(' ')).toMatch(/Ligne inconnue/);
     expect(validerSaisieTableau('2059D_II', 'U', { c1: '1.00', c2: '0.00', c3: '0.00', c4: '0.00', c5: '1.00' })).toEqual([]);
+  });
+  it('2065 : rubriques saisies une à une, montants signés seulement où le formulaire le demande, aucun néant', () => {
+    const f = preparerGrille(GRILLE_2065, { versionDonnees: 7, saisiesTableaux: [s('2065_C1', 'BN', { m: '12345.00' })] });
+    expect(f.etat).toBe('saisi');
+    expect(f.cadres.map((c) => c.tableau)).toEqual(['2065_C1', '2065_C2', '2065_C3', '2065_C4', '2065_F', '2065_I', '2065_D', '2065_E']);
+    expect(f.cadres[0]!.lignes.map((l) => l.statut)).toEqual(['saisi', 'a_saisir', 'a_saisir', 'a_saisir']);
+    expect(f.cadres.every((c) => c.calculs.length === 0)).toBe(true);
+    expect(preparerGrille(GRILLE_2065, { versionDonnees: 7, saisiesTableaux: [] }).etat).toBe('a_saisir');
+    expect(validerSaisieTableau('2065_C4', 'SIIC', { m: '-500.00' })).toEqual([]);
+    expect(validerSaisieTableau('2065_C1', 'DEF', { m: '-500.00' }).join(' ')).toMatch(/positif/);
+    expect(validerSaisieTableau('2065_C1', 'NEANT', {}).join(' ')).toMatch(/Ligne inconnue/);
+    expect(validerSaisieTableau('2065_F', 'TAUX', { m: '0.25' })).toEqual([]);
+    expect(validerSaisieTableau('2065_E', 'X', { m: '1.00' }).join(' ')).toMatch(/Ligne inconnue/);
   });
 });

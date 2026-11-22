@@ -36,7 +36,7 @@ Périmètre explicite : **société commerciale soumise à l’impôt sur les so
 | 2059-B, 2059-C, 2059-D | partiel (D-122) | Grilles saisies ligne par ligne ; totaux, solde (2+3−4−5) et lignes 3, 6, 7 calculés comme les formulaires | En-têtes cochables, report entre tableaux |
 | 2033-C Immobilisations et amortissements (cadres I et II) | partiel (D-104) | Mêmes calculs que 2054 et 2055 au format simplifié, avec N-1 | Cadre III (plus-values et moins-values, prix de cession), colonne 5 (réévaluation) |
 | 2033-D à 2033-G | **non couvert** | — | Provisions et dérogatoires, valeur ajoutée, capital, filiales |
-| 2065 et annexes | **non couvert** | — | Résultat fiscal, identification, liquidation de l’impôt |
+| 2065 (page 1) | partiel (D-123) | Cadres C, D, E, F (CES), I (CTM) saisis rubrique par rubrique, deux régimes ; aucun calcul énoncé | Identification, cases à cocher, liquidation, annexe 2065 bis |
 
 **Colonne N-1 (D-103).** Voir `comparatif-n1.md`. `LiasseProjet.comparatif` vaut `fourni` (exercice précédent contigu, préparé par la même table, avant inventaire) ou `indisponible` avec ses motifs ; chaque ligne porte `n1` (`null` si indisponible). Le « idem » des lignes ci-dessus ne contient plus la colonne N-1.
 

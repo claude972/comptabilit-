@@ -794,6 +794,34 @@ describe('2059-B, 2059-C, 2059-D (régime réel normal) : grilles saisies ligne 
   }, 120_000);
 });
 
+describe('2065-SD (page 1) : récapitulation des éléments d’imposition saisie rubrique par rubrique, deux régimes (D-123)', () => {
+  const f2065 = async (regime = 'reel_normal') => (await liasse(exN, regime)).json.formulaire2065;
+  const t = (tableau: string, ligne: string, valeurs: Record<string, string>, note = 'Résultat fiscal retenu par le cabinet (essai)', qui = 'remi') => api(qui, 'PUT', `/v1/exercices/${exN}/tableaux/${tableau}/${ligne}`, { valeurs, note });
+
+  it('sans saisie : à saisir aux deux régimes ; refus de forme, de néant et de droits', async () => {
+    expect(await f2065()).toMatchObject({ statut: 'projet', id: '2065', etat: 'a_saisir' });
+    expect((await f2065('reel_simplifie')).cadres).toHaveLength(8);
+    expect((await t('2065_C1', 'DEF', { m: '-1.00' })).statut).toBe(400);
+    expect((await t('2065_C1', 'NEANT', {})).statut).toBe(400);
+    expect((await t('2065_C1', 'XX', { m: '1.00' })).statut).toBe(400);
+    expect((await t('2065_C1', 'BN', { m: '1.00' }, 'Essai collaborateur', 'chloe')).statut).toBeGreaterThanOrEqual(400);
+    expect((await t('2065_C1', 'BN', { m: '1.00' }, 'Essai déposant', 'client')).statut).toBe(404);
+  }, 120_000);
+
+  it('rubriques saisies : retenues avec leur trace, montant signé du seul cadre SIIC, historique, retrait', async () => {
+    expect((await t('2065_C1', 'BN', { m: '12345.00' })).statut).toBeLessThan(300);
+    expect((await t('2065_C4', 'SIIC', { m: '-500.00' })).statut).toBeLessThan(300);
+    const f = await f2065();
+    expect(f.etat).toBe('saisi');
+    expect(f.cadres[0].lignes[0]).toMatchObject({ statut: 'saisi', valeurs: { m: '12345.00' }, trace: { qualifieePar: DEMO.remi } });
+    expect(f.cadres.find((c: any) => c.tableau === '2065_C4').lignes[0].valeurs.m).toBe('-500.00');
+    const h = (await api('remi', 'GET', `/v1/exercices/${exN}/qualifications/historique?cle=2065_C1:BN`)).json.evenements as any[];
+    expect(h).toHaveLength(1);
+    for (const [tb, l] of [['2065_C1', 'BN'], ['2065_C4', 'SIIC']]) expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/${tb}/${l}`)).statut).toBeLessThan(300);
+    expect((await f2065()).etat).toBe('a_saisir');
+  }, 120_000);
+});
+
 describe('détail du compte de résultat : qualification tracée, abstention sans qualification', () => {
   it('sans qualification : totaux de la balance, France et exportations en abstention, renvois à saisir, exceptionnel détaillé', async () => {
     const d = await detail();

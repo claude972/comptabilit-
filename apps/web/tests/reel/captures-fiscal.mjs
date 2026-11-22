@@ -394,6 +394,28 @@ if (process.argv.includes('--2059bcd')) {
   await page.getByTestId('lignes-2059C_II').scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${sortie}fiscal-2059c-apres.png` });
 }
+// 2065-SD (D-123) : saisies par les formulaires (MODIFIE le dossier fictif indiqué).
+if (process.argv.includes('--2065')) {
+  await page.goto(`${base}&vue=liasse&regime=reel_normal`);
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('grille-2065').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2065-avant.png` });
+  const remplir = async (tableau, ligne, valeur, bouton, note) => {
+    const f = page.getByTestId(`saisie-${tableau}-${ligne}`);
+    await f.scrollIntoViewIfNeeded();
+    await f.getByLabel('Montant', { exact: true }).fill(valeur);
+    await f.getByLabel('Justification (obligatoire)').fill(note);
+    await f.getByRole('button', { name: bouton }).click();
+    await f.getByText('Ligne enregistrée.').waitFor();
+  };
+  await remplir('2065_C1', 'BN', '12345.00', /^Enregistrer la ligne BN du 2065_C1/, 'Résultat fiscal retenu par le cabinet (démonstration fictive)');
+  await remplir('2065_C1', 'DEF', '0.00', /^Enregistrer la ligne DEF du 2065_C1/, 'Pas de déficit (démonstration fictive)');
+  await remplir('2065_C4', 'SIIC', '-500.00', /^Enregistrer la ligne SIIC du 2065_C4/, 'Déficit exonéré, exemple de signe (démonstration fictive)');
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('grille-2065').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2065-apres.png` });
+}
 // 2033-B (D-107) : « dont export » et lignes « dont » du régime simplifié.
 await page.goto(`${base}&vue=liasse&regime=reel_simplifie`);
 await page.waitForLoadState('networkidle');

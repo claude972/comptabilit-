@@ -704,6 +704,14 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Non préparé, dit** : identification, cases à cocher d'en-tête, plus de quatorze lignes d'origine, report entre tableaux. Statut « projet ».
 - **Preuves** : 5 tests du moteur (`formulaire-grilles.test.ts`), 3 tests d'intégration sur la pile réelle, Playwright `fiscal.spec.ts`, captures `fiscal-2059d-avant/apres.png` et `fiscal-2059c-apres.png` (`--2059bcd`).
 
+### D-123 — Déclaration de résultats 2065-SD, page 1 (deux régimes) (2026-11-22)
+
+- **Source** : `2065-sd_5381.pdf` (millésime 2026, cerfa 11084*28, SHA-256 c4f8d73574b6aa5667dba91ad8a918aaca3c71587f4d863938d0223f207d06de), téléchargé sur impots.gouv.fr (`/sites/default/files/formulaires/2065-sd/2026/`), page 1 lue par extraction positionnée puis **vérifiée sur le rendu image** (2026-11-22) ; le formulaire n'a pas de code de case. La notice (page 3) dit que le 2065 est servi par toutes les sociétés passibles de l'IS, quel que soit le régime.
+- **Périmètre préparé** : cadre C (1 résultat fiscal : bénéfice au taux normal, déficit, brevets à 10 %, bénéfice à 15 % ; 2 plus-values : 15 %, 19 %, exonérées 238 quindecies, autres à 19 %, 0 % ; 3 abattements et exonérations : douze rubriques de dispositifs ; SIIC : bénéfice ou déficit exonéré, seul montant **signé**, le formulaire demandant d'indiquer + ou −), cadre F (CES : base, chiffre d'affaires, taux), cadre I (CTM : base, taux), cadre D (imputations 1 et 2), cadre E (recettes soumises à la contribution de 2,5 %). Saisie rubrique par rubrique via le moteur de grilles (D-122, étendu : colonne signée, formulaire sans néant), même justification, trace, historique, « à revoir ».
+- **Aucun calcul, aucune liquidation** : le formulaire n'énonce aucune formule dans ces cadres ; l'impôt est liquidé par l'administration au dépôt. Aucun report automatique depuis 2058-A, 2033-D ni 2059 : le cabinet saisit. Une rubrique non saisie n'est jamais présumée nulle.
+- **Non préparé, dit** : identification, régime des groupes, activité, cases à cocher (crédit d'impôt outre-mer, comptabilité informatisée), signatures, ECF, annexe 2065 bis-SD (revenus distribués, rémunérations, divers, MVLT, dons). Statut « projet ».
+- **Migration 0059** additive (contrainte de forme du nom de tableau). **Preuves** : test du moteur, 2 tests d'intégration sur la pile réelle, Playwright `fiscal.spec.ts`, captures `fiscal-2065-avant/apres.png` (`--2065`).
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

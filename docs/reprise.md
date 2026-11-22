@@ -71,3 +71,8 @@ Document de passage pour reprendre le travail sans relire la conversation. À me
 - Dossier fictif de démonstration : « Maison Lefèvre Distribution SAS (fictive) », dossier `1c624aea-e3c7-498e-bce0-bb72b4cf6552`, exercice `c2730848-08de-4ccb-b4e8-ca7d403cc9a0` ; captures dans `var/captures/` ; script `apps/web/tests/reel/captures-fiscal.mjs` (options `--2058a`, `--2058bc`, `--2033d`…).
 - Pile locale : API 4000, web 3100 ; reconstruction : `pnpm --filter … run build`, tuer le processus qui écoute sur 4000 / 3100 puis `sh scripts/applis.sh serveur|web`.
 - Règle de travail : tests ciblés par lot, une suite complète en CI par livraison cohérente ; aucune validation fiscale présentée comme acquise ; statut « projet » ; rien de partiel présenté comme complet.
+
+## Point du 2026-11-22 (suite)
+- Restauration stricte démontrée sur base et stockage neufs (D-145, `scripts/demo-restauration-stricte.mjs`) ; base historique toujours en échec strict (D-144), inchangée.
+- État joint : 2054, 2055 A, 2033-C I/II repris de l'API (D-146).
+- WebKit `ecrans-cabinet.spec.ts` : correctif d'hydratation poussé (4e9b230, D-147), **à confirmer par UNE lecture groupée de CI** (runs c1c31c4, 10cd7a2, 4e9b230), sans boucle.

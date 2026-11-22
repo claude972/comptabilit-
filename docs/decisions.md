@@ -764,6 +764,13 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Rien n'est déduit de la balance** (l'échéance n'y figure pas). **Non préparé, dit** : identification, rapprochement avec les postes du bilan, codes non imprimés des autres cellules. Statut « projet ».
 - **Preuves** : test du moteur (8 verts), 2 essais d'intégration sur la pile réelle (59 verts), Playwright `fiscal.spec.ts` (39 lignes), captures `fiscal-2057-avant/apres.png` (`--2057`).
 
+### D-131 — Annexe 2065 bis-SD (deux régimes) (2026-11-22)
+
+- **Source** : `2065-sd_5381.pdf` (SHA-256 c4f8d73574b6aa5667dba91ad8a918aaca3c71587f4d863938d0223f207d06de), page 2 ; disposition lue sur le rendu image ; pas de code de case (lignes lettrées a à j au cadre G).
+- **Périmètre préparé** (moteur de grilles, D-122, étendu aux colonnes « texte » et « année ») : G — répartition des produits des actions et parts (lignes a à j) avec le total « revenus répartis (a à h) » calculé comme le formulaire l'énonce, seulement quand a à h sont saisis ; H — rémunérations nettes versées aux membres de certaines sociétés (dix lignes : nom, parts, année du versement, traitements, indemnités forfaitaires et remboursements de frais) ; I — divers (propriétaire du fonds, autres établissements : texte) ; J — régime simplifié (salaires bruts, rétrocessions ; moins-values à long terme 0 %, 15 %, 19 % : ouverture, imputation, réalisation, solde) ; K — organismes bénéficiaires de dons (montant cumulé, nombre de reçus). Tableaux `2065B_G`, `2065B_H`, `2065B_I`, `2065B_J1`, `2065B_J2`, `2065B_K` ; migration 0062 additive ; servi aux deux régimes (le cadre J ne concerne que le régime simplifié : à la charge du cabinet).
+- **Aucun calcul inventé** : le solde des MVLT, la répartition éligible / non éligible à l'abattement de 40 % ne sont pas calculés ni contrôlés ; aucun report automatique depuis le 2065, le 2058-A ou le 2059-C. **Non préparé, dit** : identification, état joint au-delà de dix lignes du cadre H. Statut « projet ».
+- **Preuves** : test du moteur (9 verts), 2 essais d'intégration sur la pile réelle (61 verts), Playwright `fiscal.spec.ts` (30 lignes), captures `fiscal-2065bis-avant/total.png` (`--2065bis`).
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

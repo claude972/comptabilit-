@@ -135,6 +135,8 @@ export interface ReponseLiasse {
   datesCvae?: GrilleProjet | null;
   /** État des échéances des créances et des dettes (2057), régime réel normal (D-130). */
   formulaire2057?: GrilleProjet | null;
+  /** Annexe 2065 bis-SD (D-131). */
+  formulaire2065Bis?: GrilleProjet | null;
   /** Formulaires du régime réel normal servis par saisie case par case (2058-A, D-118) ; null au régime simplifié. */
   formulairesCases?: FormulaireCasesProjet[] | null;
 }
@@ -698,7 +700,7 @@ export type CelluleGrille = { statut: 'etabli'; montant: string } | { statut: 'a
 export interface CadreGrilleProjet {
   tableau: string;
   titre: string;
-  colonnes: Array<{ cle: string; libelle: string; type?: 'montant' | 'date' }>;
+  colonnes: Array<{ cle: string; libelle: string; type?: 'montant' | 'date' | 'texte' | 'annee' }>;
   colonneCalculee: { cle: string; libelle: string } | null;
   libelleOrigine: string | null;
   lignes: Array<{ ligne: string; libelle: string; groupe: string | null; colonnes: string[]; statut: StatutLigneSaisie; trace: TraceSaisie | null; origine: string | null; valeurs: Record<string, string> | null; calculee: CelluleGrille | null }>;

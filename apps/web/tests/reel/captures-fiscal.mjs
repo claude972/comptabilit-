@@ -472,6 +472,25 @@ if (process.argv.includes('--2057')) {
   await page.getByTestId('grille-2057').scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${sortie}fiscal-2057-apres.png` });
 }
+// 2065 bis (D-131) : saisies par les formulaires (MODIFIE le dossier fictif indiqué).
+if (process.argv.includes('--2065bis')) {
+  await page.goto(`${base}&vue=liasse&regime=reel_normal`);
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('grille-2065-BIS').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2065bis-avant.png` });
+  for (const [i, l] of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].entries()) {
+    const f = page.getByTestId(`saisie-2065B_G-${l}`);
+    await f.scrollIntoViewIfNeeded();
+    await f.getByLabel('Montant', { exact: true }).fill(`${(i + 1) * 100}.00`);
+    await f.getByLabel('Justification (obligatoire)').fill('Distributions de l’exercice, registre des assemblées (démonstration fictive)');
+    await f.getByRole('button', { name: new RegExp(`^Enregistrer la ligne ${l} du 2065B_G`) }).click();
+    await f.getByText('Ligne enregistrée.').waitFor();
+  }
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('calculs-2065B_G').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2065bis-total.png` });
+}
 // 2033-B (D-107) : « dont export » et lignes « dont » du régime simplifié.
 await page.goto(`${base}&vue=liasse&regime=reel_simplifie`);
 await page.waitForLoadState('networkidle');

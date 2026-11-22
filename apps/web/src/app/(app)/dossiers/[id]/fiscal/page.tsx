@@ -2035,7 +2035,7 @@ function Grille2059({ g, fm, exerciceId, revision, evenements }: { g: GrilleProj
         État du tableau : <strong>{g.etat === 'saisi' ? 'saisies présentes' : g.etat === 'neant' ? 'néant déclaré' : 'à saisir (ni saisie ni néant)'}</strong>
         {g.neant ? ` — déclaré le ${formaterHorodatage(g.neant.le)} sur la version ${g.neant.versionDonnees} des données` : ''}.
       </p>
-      {revision && g.id !== '2065' && g.id !== '2033-E-DATES' ? <NeantTableau exerciceId={exerciceId} tableau={g.cadres[0]!.tableau} declare={g.etat === 'neant'} etiquette={`tableau ${g.id} (aucune donnée)`} /> : null}
+      {revision && g.id !== '2065' && g.id !== '2065-BIS' && g.id !== '2033-E-DATES' ? <NeantTableau exerciceId={exerciceId} tableau={g.cadres[0]!.tableau} declare={g.etat === 'neant'} etiquette={`tableau ${g.id} (aucune donnée)`} /> : null}
       {g.cadres.map((c) => (
         <div key={c.tableau} className="space-y-2" data-cadre-grille={c.tableau}>
           <h3 className="text-sm font-semibold">{c.titre}</h3>
@@ -2047,7 +2047,7 @@ function Grille2059({ g, fm, exerciceId, revision, evenements }: { g: GrilleProj
                   {c.libelleOrigine ? `Ligne ${Number(l.ligne)}` : l.libelle} {l.statut === 'saisi' ? null : badge(l.statut)}
                   {l.statut === 'saisi' ? (
                     <span className="text-texte-doux">
-                      {l.origine ? ` · ${l.origine}` : ''} · {c.colonnes.filter((k) => l.valeurs && k.cle in l.valeurs).map((k) => `${k.libelle} : ${k.type === 'date' ? l.valeurs![k.cle] : fm(l.valeurs![k.cle])}`).join(' · ')}
+                      {l.origine ? ` · ${l.origine}` : ''} · {c.colonnes.filter((k) => l.valeurs && k.cle in l.valeurs).map((k) => `${k.libelle} : ${k.type === 'date' || k.type === 'texte' || k.type === 'annee' ? l.valeurs![k.cle] : fm(l.valeurs![k.cle])}`).join(' · ')}
                     </span>
                   ) : null}
                 </p>
@@ -2070,7 +2070,7 @@ function Grille2059({ g, fm, exerciceId, revision, evenements }: { g: GrilleProj
                     etiquette={`${c.libelleOrigine ? 'la ligne' : 'la ligne'} ${c.libelleOrigine ? Number(l.ligne) : l.ligne} du ${c.tableau}`}
                     saisie={l.statut !== 'a_saisir'}
                     noteCourante={l.trace?.note ?? null}
-                    champs={[...(c.libelleOrigine ? [{ cle: 'origine', libelle: c.libelleOrigine, type: 'texte' as const, valeur: l.origine ?? '' }] : []), ...c.colonnes.filter((k) => l.colonnes.includes(k.cle)).map((k) => ({ cle: k.cle, libelle: k.libelle, type: (k.type === 'date' ? 'texte' : 'montant') as 'texte' | 'montant', valeur: l.valeurs?.[k.cle] ?? '' }))]}
+                    champs={[...(c.libelleOrigine ? [{ cle: 'origine', libelle: c.libelleOrigine, type: 'texte' as const, valeur: l.origine ?? '' }] : []), ...c.colonnes.filter((k) => l.colonnes.includes(k.cle)).map((k) => ({ cle: k.cle, libelle: k.libelle, type: (k.type === 'date' || k.type === 'texte' || k.type === 'annee' ? 'texte' : 'montant') as 'texte' | 'montant', valeur: l.valeurs?.[k.cle] ?? '' }))]}
                   />
                 ) : null}
               </li>
@@ -2300,6 +2300,7 @@ export default async function PageFiscal({ params, searchParams }: { params: Pro
       {liasse?.ok && liasse.donnees.grilles2059 ? liasse.donnees.grilles2059.map((g) => <Grille2059 key={g.id} g={g} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} />) : null}
       {liasse?.ok && liasse.donnees.formulaire2065 ? <Grille2059 g={liasse.donnees.formulaire2065} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.formulaire2057 ? <Grille2059 g={liasse.donnees.formulaire2057} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
+      {liasse?.ok && liasse.donnees.formulaire2065Bis ? <Grille2059 g={liasse.donnees.formulaire2065Bis} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.datesCvae ? <Grille2059 g={liasse.donnees.datesCvae} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.detailResultat ? <DetailResultat d={liasse.donnees.detailResultat} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {annexe?.ok ? (

@@ -22,7 +22,7 @@ export interface ColonneGrille {
   /** Montant algébrique (le formulaire demande d'indiquer + ou −) ; sinon positif. */
   signe?: boolean;
   /** Nature de la colonne : montant (défaut) ou date (AAAA-MM-JJ, jour réel du calendrier). */
-  type?: 'montant' | 'date';
+  type?: 'montant' | 'date' | 'texte' | 'annee';
 }
 export interface LigneGrille {
   ligne: string;
@@ -54,7 +54,7 @@ export interface CadreGrille {
   colonneCalculee?: { cle: string; libelle: string; termes: ReadonlyArray<{ col: string; signe: 1 | -1 }> };
 }
 export interface DefinitionGrille {
-  id: '2059-B' | '2059-C' | '2059-D' | '2065' | '2033-E-DATES' | '2057';
+  id: '2059-B' | '2059-C' | '2059-D' | '2065' | '2033-E-DATES' | '2057' | '2065-BIS';
   titre: string;
   /** Tableau portant la ligne NEANT du formulaire ; absent si le formulaire n'a pas de « néant » (le 2065 est toujours servi). */
   neantSur?: string;
@@ -323,20 +323,101 @@ export const GRILLE_2057: DefinitionGrille = {
   ],
 };
 
-const TOUTES: readonly DefinitionGrille[] = [...GRILLES_2059, GRILLE_2065, GRILLE_DATES_CVAE, GRILLE_2057];
+const mt = (cle: string, libelle: string): ColonneGrille => ({ cle, libelle });
+const lg = (ligne: string, libelle: string, colonnes?: readonly string[]): LigneGrille => ({ ligne, libelle, ...(colonnes ? { colonnes } : {}) });
+/** Annexe 2065 bis-SD (page 2 de `2065-sd_5381.pdf`) : cadres G, H, I, J, K. Lettres de lignes du cadre G en majuscules (a → A). */
+export const GRILLE_2065_BIS: DefinitionGrille = {
+  id: '2065-BIS',
+  titre: 'Annexe au formulaire 2065-SD (2065 bis-SD) — revenus distribués, rémunérations, divers, régime simplifié, dons',
+  cadres: [
+    {
+      tableau: '2065B_G',
+      titre: 'G — Répartition des produits des actions et parts sociales, ainsi que des revenus assimilés distribués',
+      colonnes: [mt('m', 'Montant')],
+      lignes: [
+        lg('A', 'a — Montant global brut des distributions payées par la société elle-même'),
+        lg('B', 'b — Montant global brut des distributions payées par un établissement chargé du service des titres'),
+        lg('C', 'c — Montant des distributions correspondant à des rémunérations ou avantages dont la société ne désigne pas le (les) bénéficiaire(s)'),
+        lg('D', 'd — Montant des prêts, avances ou acomptes consentis aux associés, actionnaires et porteurs de parts, directement ou par personnes interposées'),
+        lg('E', 'e — Montant des distributions autres que celles visées en (a), (b), (c) et (d) ci-dessus (ligne 1)'),
+        lg('F', 'f — Montant des distributions autres (ligne 2)'),
+        lg('G', 'g — Montant des distributions autres (ligne 3)'),
+        lg('H', 'h — Montant des distributions autres (ligne 4)'),
+        lg('I', 'i — Montant des revenus distribués éligibles à l’abattement de 40 % prévu au 2° du 3 de l’article 158 du CGI'),
+        lg('J', 'j — Montant des revenus distribués non éligibles à l’abattement de 40 % prévu au 2° du 3 de l’article 158 du CGI'),
+      ],
+      calculs: [{ id: 'TOTAL_AH', libelle: 'Montant des revenus répartis (Total a à h)', colonnes: ['m'], termes: [{ ref: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'], signe: 1 }] }],
+    },
+    {
+      tableau: '2065B_H',
+      titre: 'H — Rémunérations nettes versées aux membres de certaines sociétés (SARL, SCA, SNC ou SCS, SEP et sociétés de copropriétaires de navires)',
+      colonnes: [
+        mt('c2', '2 Nombre de parts sociales appartenant à chaque associé en toute propriété ou en usufruit (SARL)'),
+        { cle: 'c3', libelle: '3 Année au cours de laquelle le versement a été effectué', type: 'annee' },
+        mt('c4', '4 À titre de traitements, émoluments et indemnités proprement dits'),
+        mt('c5', '5 Frais de représentation, de mission et de déplacement : indemnités forfaitaires'),
+        mt('c6', '6 Frais de représentation, de mission et de déplacement : remboursements'),
+        mt('c7', '7 Frais professionnels autres que ceux visés aux colonnes 5 et 6 : indemnités forfaitaires'),
+        mt('c8', '8 Frais professionnels autres que ceux visés aux colonnes 5 et 6 : remboursements'),
+      ],
+      lignes: [],
+      libre: { max: 10, libelleOrigine: '1 Nom, prénoms, domicile et qualité' },
+      calculs: [],
+    },
+    {
+      tableau: '2065B_I',
+      titre: 'I — Divers',
+      colonnes: [{ cle: 't', libelle: 'Texte', type: 'texte' }],
+      lignes: [lg('PROP', 'Nom et adresse du propriétaire du fonds (en cas de gérance libre)'), lg('ETAB', 'Adresses des autres établissements (si ce cadre est insuffisant, joindre un état du même modèle)')],
+      calculs: [],
+    },
+    {
+      tableau: '2065B_J1',
+      titre: 'J — Cadre ne concernant que les entreprises placées sous le régime simplifié d’imposition : rémunérations',
+      colonnes: [mt('m', 'Montant')],
+      lignes: [lg('SAL', 'Montant brut des salaires, abstraction faite des sommes comprises dans les DSN et versées aux apprentis sous contrat et aux handicapés'), lg('RETRO', 'Rétrocessions d’honoraires, de commissions et de courtages')],
+      calculs: [],
+    },
+    {
+      tableau: '2065B_J2',
+      titre: 'J — Moins-values à long terme imposées à 0 %, 15 % ou 19 %',
+      colonnes: [mt('m0', 'À 0 %'), mt('m15', 'À 15 %'), mt('m19', 'À 19 %')],
+      lignes: [lg('OUVERT', 'MVLT restant à reporter à l’ouverture de l’exercice'), lg('IMPUTE', 'MVLT imputée sur les PVLT de l’exercice'), lg('REALISE', 'MVLT réalisée au cours de l’exercice'), lg('REPORT', 'MVLT restant à reporter')],
+      calculs: [],
+    },
+    {
+      tableau: '2065B_K',
+      titre: 'K — Cadre ne concernant que les organismes bénéficiaires de dons (article 222 bis du CGI)',
+      colonnes: [mt('m', 'Montant ou nombre')],
+      lignes: [lg('DONS', 'Montant cumulé des dons et versements mentionnés sur les reçus, attestations ou autres documents et perçus au titre de l’exercice'), lg('RECUS', 'Nombre de reçus, attestations ou autres documents délivrés au titre de l’exercice')],
+      calculs: [],
+    },
+  ],
+  nonPrepare: [
+    'Identification de l’entreprise, exercice : repris du dossier, non ressaisis ici.',
+    'Aucun montant n’est déduit de la balance : les distributions, les rémunérations des associés et les moins-values à long terme sont des saisies justifiées du cabinet ; aucun report automatique depuis le 2065, le 2058-A ou le 2059-C.',
+    'Cadre G : le total « a à h » est calculé comme le formulaire l’énonce ; la répartition entre revenus éligibles (i) et non éligibles (j) à l’abattement de 40 % n’est pas contrôlée.',
+    'Cadre J : le solde « MVLT restant à reporter » est saisi : le formulaire n’en énonce pas la formule.',
+    'Cadre H : au-delà de dix lignes, un état du même modèle est à joindre : non préparé.',
+  ],
+};
+
+const TOUTES: readonly DefinitionGrille[] = [...GRILLES_2059, GRILLE_2065, GRILLE_DATES_CVAE, GRILLE_2057, GRILLE_2065_BIS];
 export const TABLEAUX_GRILLES: readonly string[] = TOUTES.flatMap((g) => g.cadres.map((c) => c.tableau));
 
 /** Lignes admises pour un tableau en grille : `null` si le tableau n'est pas une grille. Utilisée par la validation de forme. */
-export function descriptionLigneGrille(tableau: string, ligne: string): { colonnes: readonly string[]; signees: readonly string[]; dates: readonly string[]; libre: boolean } | 'neant' | 'inconnue' | null {
+export function descriptionLigneGrille(tableau: string, ligne: string): { colonnes: readonly string[]; signees: readonly string[]; dates: readonly string[]; textes: readonly string[]; annees: readonly string[]; libre: boolean } | 'neant' | 'inconnue' | null {
   for (const g of TOUTES)
     for (const c of g.cadres) {
       if (c.tableau !== tableau) continue;
       if (ligne === 'NEANT') return g.neantSur === tableau ? 'neant' : 'inconnue';
       const signees = c.colonnes.filter((x) => x.signe === true).map((x) => x.cle);
       const dates = c.colonnes.filter((x) => x.type === 'date').map((x) => x.cle);
-      if (c.libre !== undefined) return /^(0[1-9]|1[0-9])$/.test(ligne) && Number(ligne) <= c.libre.max ? { colonnes: c.colonnes.map((x) => x.cle), signees, dates, libre: true } : 'inconnue';
+      const textes = c.colonnes.filter((x) => x.type === 'texte').map((x) => x.cle);
+      const annees = c.colonnes.filter((x) => x.type === 'annee').map((x) => x.cle);
+      if (c.libre !== undefined) return /^(0[1-9]|1[0-9])$/.test(ligne) && Number(ligne) <= c.libre.max ? { colonnes: c.colonnes.map((x) => x.cle), signees, dates, textes, annees, libre: true } : 'inconnue';
       const l = c.lignes.find((x) => x.ligne === ligne);
-      return l ? { colonnes: l.colonnes ?? c.colonnes.map((x) => x.cle), signees, dates, libre: false } : 'inconnue';
+      return l ? { colonnes: l.colonnes ?? c.colonnes.map((x) => x.cle), signees, dates, textes, annees, libre: false } : 'inconnue';
     }
   return null;
 }

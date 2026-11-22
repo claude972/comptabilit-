@@ -30,8 +30,8 @@ import { MENTION_PROJET } from './sources-fiscales.js';
 
 const ZERO = new Decimal(0);
 
-export type TableauSaisi = '2033C_III' | '2054BIS_A' | '2054BIS_B' | '2055_B' | '2055_C' | '2033D_C' | '2033F_NB' | '2033F_PM' | '2033F_PP' | '2033G_NB' | '2033G_FIL' | '2059A_IM' | '2059A_AUT' | '2059B_A' | '2059B_B' | '2059C_I' | '2059C_II' | '2059D_I' | '2059D_II' | '2065_C1' | '2065_C2' | '2065_C3' | '2065_C4' | '2065_F' | '2065_I' | '2065_D' | '2065_E' | '2033E_DATES' | '2057_A' | '2057_AX' | '2057_B' | '2057_BX';
-export const TABLEAUX_SAISIS: readonly TableauSaisi[] = ['2033C_III', '2054BIS_A', '2054BIS_B', '2055_B', '2055_C', '2033D_C', '2033F_NB', '2033F_PM', '2033F_PP', '2033G_NB', '2033G_FIL', '2059A_IM', '2059A_AUT', '2059B_A', '2059B_B', '2059C_I', '2059C_II', '2059D_I', '2059D_II', '2065_C1', '2065_C2', '2065_C3', '2065_C4', '2065_F', '2065_I', '2065_D', '2065_E', '2033E_DATES', '2057_A', '2057_AX', '2057_B', '2057_BX'];
+export type TableauSaisi = '2033C_III' | '2054BIS_A' | '2054BIS_B' | '2055_B' | '2055_C' | '2033D_C' | '2033F_NB' | '2033F_PM' | '2033F_PP' | '2033G_NB' | '2033G_FIL' | '2059A_IM' | '2059A_AUT' | '2059B_A' | '2059B_B' | '2059C_I' | '2059C_II' | '2059D_I' | '2059D_II' | '2065_C1' | '2065_C2' | '2065_C3' | '2065_C4' | '2065_F' | '2065_I' | '2065_D' | '2065_E' | '2033E_DATES' | '2057_A' | '2057_AX' | '2057_B' | '2057_BX' | '2065B_G' | '2065B_H' | '2065B_I' | '2065B_J1' | '2065B_J2' | '2065B_K';
+export const TABLEAUX_SAISIS: readonly TableauSaisi[] = ['2033C_III', '2054BIS_A', '2054BIS_B', '2055_B', '2055_C', '2033D_C', '2033F_NB', '2033F_PM', '2033F_PP', '2033G_NB', '2033G_FIL', '2059A_IM', '2059A_AUT', '2059B_A', '2059B_B', '2059C_I', '2059C_II', '2059D_I', '2059D_II', '2065_C1', '2065_C2', '2065_C3', '2065_C4', '2065_F', '2065_I', '2065_D', '2065_E', '2033E_DATES', '2057_A', '2057_AX', '2057_B', '2057_BX', '2065B_G', '2065B_H', '2065B_I', '2065B_J1', '2065B_J2', '2065B_K'];
 
 export interface SaisieTableau {
   tableau: TableauSaisi;
@@ -183,7 +183,13 @@ export function validerSaisieTableau(tableau: string, ligne: string, valeurs: un
       exactement(d.libre ? ['origine', ...d.colonnes] : d.colonnes);
       if (d.libre && (typeof v.origine !== 'string' || v.origine.trim().length < 2 || v.origine.length > 200)) e.push('origine : libellé de 2 à 200 caractères.');
       for (const k of d.colonnes) {
-        if (d.dates.includes(k)) {
+        if (d.textes.includes(k)) {
+          const x = v[k];
+          if (typeof x !== 'string' || x.trim().length < 1 || x.length > 500) e.push(`${k} : texte de 1 à 500 caractères.`);
+        } else if (d.annees.includes(k)) {
+          const x = v[k];
+          if (typeof x !== 'string' || !/^\d{4}$/.test(x) || Number(x) < 1900 || Number(x) > 2100) e.push(`${k} : année sur quatre chiffres (1900 à 2100).`);
+        } else if (d.dates.includes(k)) {
           const x = v[k];
           if (typeof x !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(x) || Number.isNaN(Date.parse(`${x}T00:00:00Z`)) || new Date(`${x}T00:00:00Z`).toISOString().slice(0, 10) !== x) e.push(`${k} : date AAAA-MM-JJ valide attendue.`);
         } else decimal(k, !d.signees.includes(k));

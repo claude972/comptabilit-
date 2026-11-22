@@ -939,6 +939,37 @@ describe('2057 (régime réel normal) : état des échéances des créances et d
   }, 180_000);
 });
 
+describe('2065 bis-SD (annexe) : revenus distribués, rémunérations, divers, MVLT, dons, saisis ligne par ligne, deux régimes (D-131)', () => {
+  const f2065bis = async (regime = 'reel_normal') => (await liasse(exN, regime)).json.formulaire2065Bis;
+  const tb = (tableau: string, ligne: string, valeurs: Record<string, string>, qui = 'remi') => api(qui, 'PUT', `/v1/exercices/${exN}/tableaux/${tableau}/${ligne}`, { valeurs, note: 'Distributions et rémunérations de l’exercice (essai)' });
+  const LETTRES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+
+  it('sans saisie : à saisir aux deux régimes ; refus de forme et de droits', async () => {
+    expect(await f2065bis()).toMatchObject({ statut: 'projet', id: '2065-BIS', etat: 'a_saisir' });
+    expect((await f2065bis('reel_simplifie')).cadres.map((c: any) => c.lignes.length)).toEqual([10, 10, 2, 2, 4, 2]);
+    expect((await tb('2065B_H', '01', { origine: 'Durand', c2: '1.00', c3: '25', c4: '1.00', c5: '0.00', c6: '0.00', c7: '0.00', c8: '0.00' })).statut).toBe(400);
+    expect((await tb('2065B_I', 'PROP', { t: '' })).statut).toBe(400);
+    expect((await tb('2065B_G', 'Z', { m: '1.00' })).statut).toBe(404);
+    expect((await tb('2065B_G', 'A', { m: '1.00' }, 'chloe')).statut).toBeGreaterThanOrEqual(400);
+    expect((await tb('2065B_G', 'A', { m: '1.00' }, 'client')).statut).toBe(404);
+  }, 120_000);
+
+  it('cadre G : total a à h calculé seulement à saisie complète ; rémunérations avec année ; textes ; retrait', async () => {
+    for (const [i, l] of LETTRES.slice(1).entries()) expect((await tb('2065B_G', l, { m: `${(i + 2) * 100}.00` })).statut, l).toBeLessThan(300);
+    let f = await f2065bis();
+    expect(f.cadres[0].calculs[0].cellules.m.statut).toBe('abstention');
+    expect((await tb('2065B_G', 'A', { m: '100.00' })).statut).toBeLessThan(300);
+    f = await f2065bis();
+    expect(f.cadres[0].calculs[0].cellules.m).toEqual({ statut: 'etabli', montant: '3600.00' });
+    expect((await tb('2065B_H', '01', { origine: 'Durand Paul, gérant (fictif)', c2: '100.00', c3: '2025', c4: '30000.00', c5: '0.00', c6: '0.00', c7: '0.00', c8: '0.00' })).statut).toBeLessThan(300);
+    expect((await tb('2065B_I', 'PROP', { t: 'SCI Exemple (fictive), 1 rue du Test' })).statut).toBeLessThan(300);
+    f = await f2065bis();
+    expect(f.cadres[1].lignes[0]).toMatchObject({ statut: 'saisi', origine: 'Durand Paul, gérant (fictif)', valeurs: { c3: '2025' } });
+    for (const [t, l] of [...LETTRES.map((x) => ['2065B_G', x]), ['2065B_H', '01'], ['2065B_I', 'PROP']]) expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/${t}/${l}`)).statut, l).toBeLessThan(300);
+    expect((await f2065bis()).etat).toBe('a_saisir');
+  }, 180_000);
+});
+
 describe('détail du compte de résultat : qualification tracée, abstention sans qualification', () => {
   it('sans qualification : totaux de la balance, France et exportations en abstention, renvois à saisir, exceptionnel détaillé', async () => {
     const d = await detail();

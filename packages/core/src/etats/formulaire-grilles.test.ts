@@ -1,6 +1,6 @@
 /** Recette des grilles 2059-B, 2059-C et 2059-D (D-122) : saisie ligne par ligne, calculs énoncés seulement à composantes saisies. */
 import { describe, expect, it } from 'vitest';
-import { GRILLE_2057, GRILLE_2065, GRILLE_DATES_CVAE, GRILLES_2059, preparerGrille } from './formulaire-grilles.js';
+import { GRILLE_2057, GRILLE_2065, GRILLE_2065_BIS, GRILLE_DATES_CVAE, GRILLES_2059, preparerGrille } from './formulaire-grilles.js';
 import { type SaisieTableau, validerSaisieTableau } from './saisies-tableaux.js';
 
 const TRACE = { note: 'Suivi des plus-values (essai)', qualifieePar: 'u-1', le: '2026-12-31T10:00:00Z', versionDonnees: 7 };
@@ -113,5 +113,21 @@ describe('grilles 2059', () => {
     expect(validerSaisieTableau('2057_A', 'UO', { c1: '5.00', c2: '5.00', c3: '0.00' }).join(' ')).toMatch(/Ligne inconnue/);
     expect(validerSaisieTableau('2057_B', 'VG', { c1: '5.00', c2: '5.00', c3: '0.00' }).join(' ')).toMatch(/obligatoire/);
     expect(validerSaisieTableau('2057_A', 'NEANT', {})).toEqual([]);
+  });
+  it('2065 bis : total « a à h » seulement quand a à h sont saisis ; rémunérations H avec année ; textes ; MVLT', () => {
+    const lettres = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].map((l, i) => s('2065B_G', l, { m: `${(i + 1) * 100}.00` }));
+    const f = preparerGrille(GRILLE_2065_BIS, { versionDonnees: 7, saisiesTableaux: lettres });
+    expect(f.cadres[0]!.calculs[0]!.cellules.m).toEqual({ statut: 'etabli', montant: '3600.00' });
+    expect(preparerGrille(GRILLE_2065_BIS, { versionDonnees: 7, saisiesTableaux: lettres.slice(1) }).cadres[0]!.calculs[0]!.cellules.m!.statut).toBe('abstention');
+    const H = { origine: 'Durand Paul, 5 rue du Test, gérant', c2: '100.00', c3: '2025', c4: '30000.00', c5: '0.00', c6: '0.00', c7: '0.00', c8: '0.00' };
+    expect(validerSaisieTableau('2065B_H', '10', H)).toEqual([]);
+    expect(validerSaisieTableau('2065B_H', '11', H).join(' ')).toMatch(/Ligne inconnue/);
+    expect(validerSaisieTableau('2065B_H', '01', { ...H, c3: '25' }).join(' ')).toMatch(/année sur quatre chiffres/);
+    expect(validerSaisieTableau('2065B_I', 'PROP', { t: 'SCI Exemple, 1 rue du Test' })).toEqual([]);
+    expect(validerSaisieTableau('2065B_I', 'PROP', { t: '' }).join(' ')).toMatch(/texte de 1 à 500/);
+    expect(validerSaisieTableau('2065B_J2', 'OUVERT', { m0: '1.00', m15: '0.00', m19: '0.00' })).toEqual([]);
+    expect(validerSaisieTableau('2065B_J2', 'OUVERT', { m0: '1.00' }).join(' ')).toMatch(/obligatoire/);
+    expect(validerSaisieTableau('2065B_K', 'RECUS', { m: '12' })).toEqual([]);
+    expect(validerSaisieTableau('2065B_G', 'NEANT', {}).join(' ')).toMatch(/Ligne inconnue/);
   });
 });

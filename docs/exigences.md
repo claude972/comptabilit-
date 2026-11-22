@@ -251,7 +251,7 @@ Relecture une à une des 44 lignes du tableau portant une mention **(externe)** 
 **Fonctions locales incomplètes trouvées derrière un « (externe) »** :
 
 1. **Charge multi-cabinet** (lignes 199 et 207) : seuls 12 sessions et 4 identités ont été exercés ; aucune mesure simultanée de plusieurs cabinets importants. Marquée **INCOMPLET (local)** ; mesure bornée écrite en D-167 (voir `rapport-de-tests.md`). La mesure sur l'environnement cible reste **(externe)**.
-2. **Ligne 141 (liasse)** : les sous-totaux du 2050 sans code imprimé restent en abstention délibérée (ambiguïté de libellé, D-161, D-166) — ce n'est ni externe ni un manque de code : une règle inventée serait pire qu'une abstention.
+2. **Ligne 141 (liasse)** : les lignes du 2050, 2051 et 2052 sans case imprimée portent désormais leur nature (sous-total interne, détail repris par la ventilation, mention sur pointilles, sans équivalent officiel : D-173) ; aucune correspondance inventée, plus de reste indéfini. Ni externe ni manque de code.
 3. **Restes inscrits au « Détail de la ligne 5 »** : les cadres 2054 bis, 2055 B, 2055 C et 2033-C III étaient décrits « non préparés » alors que leur saisie ligne par ligne, justifiée et historisée, existe (`tableauxSaisis`) : texte corrigé (« saisi par le cabinet, jamais déduit de la balance ») dans l'API, l'écran et l'export. Les colonnes de réévaluation du 2033-C sont saisissables par la même voie. Les rapprochements 2057 manquants ont été ajoutés pour les seules lignes dont le libellé est identique à celui du bilan (UL, UP, UT, 7Y, 7Z, 8J) ; 8A, VI, les dettes fiscales et sociales et les autres créances/dettes restent sans rapprochement (postes mêlés : aucune source n'énonce l'égalité).
 
 ## Bilan produit (D-168, 2026-11-22)

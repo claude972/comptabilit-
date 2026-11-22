@@ -12,6 +12,8 @@ export interface CaseLiasse {
   /** Actif du bilan (2050, 2033-A) : codes des colonnes brut et amortissements ; absent d'une API plus ancienne (D-156). */
   codesActif?: { brut: string; amortissements: string | null } | null;
   etatCodeCase: 'a_confirmer' | 'verifie';
+  /** Nature exacte de l'absence de case imprimée (D-173) ; absent d'une API plus ancienne. */
+  sansCode?: SansCodeProjet | null;
   brut?: string;
   amortissementsDepreciations?: string;
   montant: string;
@@ -750,3 +752,15 @@ export interface Reprise2050StocksProjet {
   sources: { enCoursBrut: string | null; enCoursAmortissements: string | null; produitsBrut: string | null; produitsAmortissements: string | null };
   notes: string[];
 }
+
+/** Nature de l'absence de case imprimée d'une ligne du 2050, du 2051 ou du 2052 (D-173). */
+export interface SansCodeProjet {
+  nature: 'sous_total_interne' | 'detail_repris_ailleurs' | 'mention_sur_pointilles' | 'sans_equivalent_officiel';
+  motif: string;
+}
+export const LIBELLE_SANS_CODE: Record<SansCodeProjet['nature'], string> = {
+  sous_total_interne: 'sous-total interne : aucune case imprimée',
+  detail_repris_ailleurs: 'détail saisi par le cabinet : voir la ventilation',
+  mention_sur_pointilles: 'mention sur pointillés : aucune case',
+  sans_equivalent_officiel: 'sans équivalent officiel : aucune case',
+};

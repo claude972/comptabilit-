@@ -63,6 +63,8 @@ export interface LigneLiasseDefinition {
   /** Actif du bilan : codes des colonnes « brut » et « amortissements, provisions » (la colonne « net » n'a pas de code imprimé) ; `null` hors actif ou non relu. */
   codesActif: { brut: string; amortissements: string | null } | null;
   etatCodeCase: 'a_confirmer' | 'verifie';
+  /** Ligne du 2050 ou du 2051 SANS case imprimée : nature exacte de l'absence de code (D-173) ; `null` si la ligne a un code ou hors 2050 / 2051. */
+  sansCode: SansCode | null;
   /** Réserve propre à la ligne (ventilation du formulaire non reproduite, par exemple). */
   note: string | null;
 }
@@ -124,6 +126,8 @@ export interface CaseLiasse {
   codeCase: string | null;
   codesActif: { brut: string; amortissements: string | null } | null;
   etatCodeCase: 'a_confirmer' | 'verifie';
+  /** Nature exacte de l'absence de case imprimée (2050 et 2051, D-173) ; `null` si la ligne a un code. */
+  sansCode: SansCode | null;
   /** Actif du bilan uniquement. */
   brut?: ChaineDecimale;
   /** Actif du bilan uniquement (montant à déduire, positif). */
@@ -401,6 +405,35 @@ const CODES_2033_A: Readonly<Record<string, string>> = {
 };
 
 /**
+ * Lignes du 2050, du 2051 et du 2052 SANS case imprimée (D-173) : l'absence de code n'est plus un « reste » indéfini, sa NATURE est écrite, d'après le formulaire 2050-SD 2026 (`2050-liasse_5320.pdf`, pages 1 et 2,
+ * SHA-256 0bba3352…8453e1). `sous_total_interne` : sous-total que Comtaple calcule pour sa propre lecture, le formulaire n'imprimant qu'un intitulé de groupe, sans case ; `detail_repris_ailleurs` : le formulaire
+ * imprime des lignes que la balance ne distingue pas, servies par saisie du cabinet ; `mention_sur_pointilles` : « dont » du formulaire à inscrire sur des pointillés, sans case ; `sans_equivalent_officiel` :
+ * ligne du modèle du PCG qui n'existe pas au formulaire 2026 (aucune correspondance inventée : le montant n'est reporté dans aucune case).
+ */
+export interface SansCode {
+  nature: 'sous_total_interne' | 'detail_repris_ailleurs' | 'mention_sur_pointilles' | 'sans_equivalent_officiel';
+  motif: string;
+}
+const SANS_CODE: Readonly<Record<string, SansCode>> = {
+  RN_2050_A_ACTIF_IMMOBILISE: { nature: 'sous_total_interne', motif: 'le formulaire n’imprime pas ce sous-total : son « TOTAL (II) » (BJ / BK) inclut les frais d’établissement (voir la ligne « Total (II) du formulaire »)' },
+  RN_2050_A_IMMOBILISATIONS_INCORPORELLES: { nature: 'sous_total_interne', motif: 'le formulaire imprime l’intitulé de groupe « IMMOBILISATIONS INCORPORELLES » sans case ni total' },
+  RN_2050_A_IMMOBILISATIONS_CORPORELLES: { nature: 'sous_total_interne', motif: 'le formulaire imprime l’intitulé de groupe « IMMOBILISATIONS CORPORELLES » sans case ni total' },
+  RN_2050_A_IMMOBILISATIONS_FINANCIERES: { nature: 'sous_total_interne', motif: 'le formulaire imprime l’intitulé de groupe « IMMOBILISATIONS FINANCIÈRES » sans case ni total' },
+  RN_2050_A_STOCKS: { nature: 'sous_total_interne', motif: 'le formulaire imprime l’intitulé de groupe « STOCKS » sans case ni total' },
+  RN_2050_A_CREANCES: { nature: 'sous_total_interne', motif: 'le formulaire imprime l’intitulé de groupe « CRÉANCES » sans case ni total' },
+  RN_2050_A_STOCKS_EN_COURS: { nature: 'detail_repris_ailleurs', motif: 'le formulaire imprime deux lignes : en cours de production de biens (BN, BO) et de services (BP, BQ) ; la répartition est saisie par le cabinet (ventilation 2050-STOCKS) puis reprise par décision explicite dans les cases' },
+  RN_2050_A_STOCKS_PRODUITS_FINIS: { nature: 'detail_repris_ailleurs', motif: 'le formulaire imprime « produits intermédiaires et finis » (BR, BS) : périmètre plus large que le compte 35, non établi identique ; saisi par le cabinet (ventilation 2050-STOCKS) puis repris par décision explicite' },
+  RN_2050_A_VMP_ACTIONS_PROPRES: { nature: 'mention_sur_pointilles', motif: 'le formulaire imprime « dont actions propres » sur des pointillés de la ligne « Valeurs mobilières de placement » (CD / CE), sans case' },
+  RN_2050_A_VMP_AUTRES_TITRES: { nature: 'sous_total_interne', motif: 'complément interne de « dont actions propres » : le formulaire n’imprime qu’une ligne « Valeurs mobilières de placement » (CD / CE)' },
+  RN_2050_A_INSTRUMENTS_FINANCIERS_JETONS: { nature: 'sans_equivalent_officiel', motif: 'ligne du modèle du PCG absente de l’actif du formulaire 2026 (seul « Instruments financiers à terme » du passif, D1, est imprimé) : le montant n’est reporté dans aucune case, à classer par le cabinet' },
+  RN_2052_PE_PRODUCTION_VENDUE: { nature: 'sous_total_interne', motif: 'le formulaire imprime l’accolade « Production vendue » regroupant deux lignes, « Biens » (FD, FE, FF) et « Services » (FG, FH, FI), sans case de total' },
+  RN_2052_CE_DOTATIONS: { nature: 'sous_total_interne', motif: 'le formulaire imprime l’intitulé « Dotations d’exploitation » regroupant ses lignes (amortissements, dépréciations, provisions) sans case de total' },
+  RN_2051_P_RESERVES: { nature: 'sous_total_interne', motif: 'le formulaire imprime les quatre lignes de réserves (DD, DE, DF, DG) sans total ni case de total' },
+  RN_2051_P_FONDS_NON_REMBOURSABLES: { nature: 'sans_equivalent_officiel', motif: 'ligne du modèle du PCG absente du passif du formulaire 2026 (« autres fonds propres » : seuls DM et DN sont imprimés) : le montant n’est reporté dans aucune case, à classer par le cabinet' },
+  RN_2051_P_DROITS_CONCEDANT: { nature: 'sans_equivalent_officiel', motif: 'ligne du modèle du PCG absente du passif du formulaire 2026 : le montant n’est reporté dans aucune case, à classer par le cabinet' },
+};
+
+/**
  * Codes de cases de l'ACTIF du 2050 et du 2033-A (D-156) : deux codes par ligne (brut, amortissements et provisions) ; la colonne « net » n'a pas de code imprimé. Lus par extraction
  * positionnée (`2050-liasse_5320.pdf` page 1, `2033-sd_5394.pdf` page 1) puis VÉRIFIÉS sur le rendu image le 2026-11-22. Seules les LIGNES FEUILLES de même libellé que celui du formulaire
  * portent des codes : les sous-totaux et totaux du 2050 (« actif immobilisé », « actif circulant », numérotation romaine de la liasse différente de celle du formulaire), « en-cours de
@@ -475,6 +508,7 @@ function finaliser(brouillons: Brouillon[]): LigneLiasseDefinition[] {
     codeCase: codeDe(b),
     codesActif: codesActifDe(b),
     etatCodeCase: codeDe(b) !== null || codesActifDe(b) !== null ? 'verifie' : 'a_confirmer',
+    sansCode: codeDe(b) === null && codesActifDe(b) === null ? (SANS_CODE[b.id] ?? null) : null,
     note: b.note ?? null,
   }));
 }
@@ -938,6 +972,7 @@ export function preparerLiasse(demande: DemandeLiasse): ResultatLiasse {
       codeCase: l.codeCase,
       codesActif: l.codesActif,
       etatCodeCase: l.etatCodeCase,
+      sansCode: l.sansCode,
       ...(l.avecColonnesActif ? { brut: versChaine(c.brut), amortissementsDepreciations: versChaine(c.deduction) } : {}),
       n1: valeurN1(l.id),
       montant: versChaine(c.net),

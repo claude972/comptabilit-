@@ -187,7 +187,7 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
   await expect(page.getByTestId('code-RN_2050_A_ACTIF_CIRCULANT')).toContainText('CJ / CK');
   await expect(page.getByTestId('code-RN_2051_P_CAPITAL')).toContainText('DA');
   await expect(page.getByTestId('code-RN_2052_PE_CHIFFRE_AFFAIRES')).toContainText('FL');
-  await expect(page.getByTestId('code-RN_2052_PE_PRODUCTION_VENDUE')).toContainText('à confirmer'); // regroupement propre à Comtaple : jamais de code inventé
+  await expect(page.getByTestId('code-RN_2052_PE_PRODUCTION_VENDUE')).toContainText('sous-total interne'); // regroupement propre à Comtaple (intitulé de groupe du formulaire, sans case) : jamais de code inventé (D-173)
 
   // État joint imprimable / exportable (D-138) : identification, statut PROJET, limites, tableaux saisis, export CSV.
   await page.goto(`/dossiers/${DOSSIER_DEMO}/fiscal?vue=liasse`);

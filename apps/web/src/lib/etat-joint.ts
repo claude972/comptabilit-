@@ -4,7 +4,7 @@
  * l'API (ou leur abstention motivée) et ses limites. Aucune signature, aucune transmission, aucune validation.
  */
 import type { AmortissementsDerogatoiresProjet, CadreIIIProjet, CelluleMontantSaisie, ChargesRepartiesProjet, EcartsReevaluationProjet, CelluleGrille, Formulaire2033DProjet, Formulaire2033EProjet, FormulaireCasesProjet, Formulaire2033FProjet, Formulaire2033GProjet, Formulaire2059AProjet, GrilleProjet, LiasseProjet, ReponseLiasse, TableauxImmobilisationsProjet } from './fiscal';
-import { LIBELLES_COLONNES_2055_B, LIBELLES_COLONNES_2059_A } from './fiscal';
+import { LIBELLES_COLONNES_2055_B, LIBELLES_COLONNES_2059_A, LIBELLE_SANS_CODE } from './fiscal';
 
 import type { Reprise2050StocksProjet } from './fiscal';
 
@@ -258,7 +258,7 @@ function depuisLiasse(p: LiasseProjet): TableauEtatJoint[] {
   return p.tableaux.map((t) => {
     const deuxColonnes = t.lignes.some((l) => l.brut !== undefined);
     const code = (l: LiasseProjet['tableaux'][number]['lignes'][number]): string =>
-      l.codesActif ? `${l.codesActif.brut}${l.codesActif.amortissements ? ` / ${l.codesActif.amortissements}` : ''}` : l.codeCase !== null ? l.codeCase : 'à confirmer';
+      l.codesActif ? `${l.codesActif.brut}${l.codesActif.amortissements ? ` / ${l.codesActif.amortissements}` : ''}` : l.codeCase !== null ? l.codeCase : l.sansCode ? `${LIBELLE_SANS_CODE[l.sansCode.nature]} (${l.sansCode.motif})` : 'à confirmer';
     return {
       id: `liasse-${t.code}`,
       titre: `${t.code} — ${t.intitule}`,

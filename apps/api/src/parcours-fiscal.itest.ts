@@ -115,7 +115,11 @@ describe('états fiscaux — projets, jamais validés', () => {
     // Codes de cases (D-155, D-156, D-161) : lus puis VÉRIFIÉS sur le rendu pour les lignes de même libellé que le formulaire ; toute autre ligne reste « à confirmer », sans code.
     expect(lignes.every((x: any) => (x.codeCase !== null || x.codesActif ? x.etatCodeCase === 'verifie' : x.etatCodeCase === 'a_confirmer'))).toBe(true);
     expect(lignes.filter((x: any) => x.codeCase !== null || x.codesActif).length).toBeGreaterThan(80);
-    expect(lignes.find((x: any) => x.ligne === 'RN_2052_PE_PRODUCTION_VENDUE')).toMatchObject({ codeCase: null, etatCodeCase: 'a_confirmer' });
+    expect(lignes.find((x: any) => x.ligne === 'RN_2052_PE_PRODUCTION_VENDUE')).toMatchObject({ codeCase: null, etatCodeCase: 'a_confirmer', sansCode: { nature: 'sous_total_interne' } });
+    // D-173 : toute ligne sans case a une nature écrite, avec son motif ; une ligne codée n'en porte pas.
+    for (const x of lignes) expect(x.sansCode == null, x.ligne).toBe(x.codeCase !== null || !!x.codesActif);
+    expect(lignes.find((x: any) => x.ligne === 'RN_2050_A_INSTRUMENTS_FINANCIERS_JETONS').sansCode.nature).toBe('sans_equivalent_officiel');
+    expect(lignes.filter((x: any) => x.sansCode).length).toBe(16);
     expect(lignes.every((x: any) => typeof x.montant === 'string' && /^-?\d+\.\d{2}$/.test(x.montant))).toBe(true);
     expect(l.controles.length).toBeGreaterThan(0);
     // Cohérence avec le projet de bilan existant : même total de l'actif.

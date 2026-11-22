@@ -375,3 +375,29 @@ describe('codes de l\'ACTIF du 2050 et du 2033-A (D-156)', () => {
     expect(b('PASSIF_CAPITAL').codesActif).toBeNull();
   });
 });
+
+describe('2050, 2051 et 2052 : toute ligne sans case imprimée a une nature écrite (D-173)', () => {
+  const lignes = TABLE_LIASSE_REEL_NORMAL_2026.lignes.filter((l) => l.tableau === '2050' || l.tableau === '2051' || l.tableau === '2052' || l.tableau === '2053');
+  const sansCase = lignes.filter((l) => l.codeCase === null && l.codesActif === null);
+  it('les seize lignes sans case sont énumérées, chacune avec sa nature et son motif ; aucune ligne codée n’en porte', () => {
+    expect(sansCase.map((l) => l.id.replace('RN_', '')).sort()).toEqual(
+      ['2050_A_ACTIF_IMMOBILISE', '2050_A_CREANCES', '2050_A_IMMOBILISATIONS_CORPORELLES', '2050_A_IMMOBILISATIONS_FINANCIERES', '2050_A_IMMOBILISATIONS_INCORPORELLES', '2050_A_INSTRUMENTS_FINANCIERS_JETONS', '2050_A_STOCKS', '2050_A_STOCKS_EN_COURS', '2050_A_STOCKS_PRODUITS_FINIS', '2050_A_VMP_ACTIONS_PROPRES', '2050_A_VMP_AUTRES_TITRES', '2051_P_DROITS_CONCEDANT', '2051_P_FONDS_NON_REMBOURSABLES', '2051_P_RESERVES', '2052_CE_DOTATIONS', '2052_PE_PRODUCTION_VENDUE'].sort(),
+    );
+    for (const l of sansCase) expect(l.sansCode, l.id).not.toBeNull();
+    for (const l of sansCase) expect(l.sansCode!.motif.length, l.id).toBeGreaterThan(30);
+    for (const l of lignes.filter((x) => x.codeCase !== null || x.codesActif !== null)) expect(l.sansCode, l.id).toBeNull();
+  });
+  it('la nature « sans équivalent officiel » est réservée aux lignes absentes du formulaire 2026 ; les totaux et sous-totaux internes ne sont pas des cases', () => {
+    const natures = Object.fromEntries(sansCase.map((l) => [l.id.replace('RN_', ''), l.sansCode!.nature]));
+    expect(natures['2050_A_INSTRUMENTS_FINANCIERS_JETONS']).toBe('sans_equivalent_officiel');
+    expect(natures['2051_P_FONDS_NON_REMBOURSABLES']).toBe('sans_equivalent_officiel');
+    expect(natures['2051_P_DROITS_CONCEDANT']).toBe('sans_equivalent_officiel');
+    expect(natures['2050_A_STOCKS_EN_COURS']).toBe('detail_repris_ailleurs');
+    expect(natures['2050_A_VMP_ACTIONS_PROPRES']).toBe('mention_sur_pointilles');
+    expect(Object.values(natures).filter((n) => n === 'sans_equivalent_officiel')).toHaveLength(3);
+  });
+  it('2052 : « production vendue » et « dotations d’exploitation » sont des intitulés de groupe du formulaire, 2053 : aucune ligne sans case', () => {
+    expect(sansCase.filter((l) => l.tableau === '2052').map((l) => l.sansCode!.nature)).toEqual(['sous_total_interne', 'sous_total_interne']);
+    expect(sansCase.filter((l) => l.tableau === '2053')).toEqual([]);
+  });
+});

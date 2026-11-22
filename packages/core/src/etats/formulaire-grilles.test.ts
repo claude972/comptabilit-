@@ -1,6 +1,6 @@
 /** Recette des grilles 2059-B, 2059-C et 2059-D (D-122) : saisie ligne par ligne, calculs énoncés seulement à composantes saisies. */
 import { describe, expect, it } from 'vitest';
-import { GRILLE_2033D_982, GRILLE_2058A_FEUILLETS, GRILLE_2058B_K4BIS, GRILLE_2057, GRILLE_2065, GRILLE_2065_BIS, GRILLE_DATES_CVAE, GRILLES_2059, preparerGrille } from './formulaire-grilles.js';
+import { GRILLE_2053_DETAIL, GRILLE_2033D_982, GRILLE_2058A_FEUILLETS, GRILLE_2058B_K4BIS, GRILLE_2057, GRILLE_2065, GRILLE_2065_BIS, GRILLE_DATES_CVAE, GRILLES_2059, preparerGrille } from './formulaire-grilles.js';
 import { type SaisieTableau, validerSaisieTableau } from './saisies-tableaux.js';
 
 const TRACE = { note: 'Suivi des plus-values (essai)', qualifieePar: 'u-1', le: '2026-12-31T10:00:00Z', versionDonnees: 7 };
@@ -153,5 +153,16 @@ describe('grilles 2059', () => {
     expect(d.cadres.map((c) => c.lignes.length)).toEqual([20, 20]);
     expect(validerSaisieTableau('2058A_DEDUC', 'NEANT', {}).join(' ')).toMatch(/Ligne inconnue/);
     expect(validerSaisieTableau('2058A_DEDUC', '01', { origine: 'Déduction (fictive)', m: '10.00' })).toEqual([]);
+  });
+  it('2053 (7) et (8) : détails saisis, totaux calculés, rapprochés indicativement du 2053 et des cases 1G et 1H', () => {
+    const l = (t: string, n: string, c: string, p: string) => s(t as 'IMMO_CELL', n, { origine: `Nature ${n}`, c, p });
+    const f = preparerGrille(GRILLE_2053_DETAIL, { versionDonnees: 7, saisiesTableaux: [l('2053_D7', '01', '300.00', '0.00'), l('2053_D7', '02', '0.00', '120.00'), l('2053_D8', '01', '45.00', '0.00')], valeursAutres: { R53_CX: '300.00', R53_PX: '100.00', Q_1H: '45.00' } });
+    expect(f.cadres[0]!.calculs[0]!.cellules).toMatchObject({ c: { montant: '300.00' }, p: { montant: '120.00' } });
+    expect(f.controles.find((c) => c.code.endsWith('CHARGES_EXC'))?.statut).toBe('coherent');
+    expect(f.controles.find((c) => c.code.endsWith('PRODUITS_EXC'))).toMatchObject({ statut: 'ecart', ecart: '20.00' });
+    expect(f.controles.find((c) => c.code.endsWith('CHARGES_ANT'))?.statut).toBe('coherent');
+    expect(f.controles.some((c) => c.code.endsWith('PRODUITS_ANT'))).toBe(false);
+    expect(validerSaisieTableau('2053_D8', '10', { origine: 'Nature', c: '1.00', p: '0.00' })).toEqual([]);
+    expect(validerSaisieTableau('2053_D8', '11', { origine: 'Nature', c: '1.00', p: '0.00' }).join(' ')).toMatch(/Ligne inconnue/);
   });
 });

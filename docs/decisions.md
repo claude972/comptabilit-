@@ -801,6 +801,14 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Non préparé, dit** : cases sans code imprimé (« dont actions propres », « clause de réserve de propriété », « dont versé » du capital). Statut « projet ».
 - **Preuves** : tests du moteur (938 verts), essai d'intégration (64 verts), Playwright `fiscal.spec.ts`.
 
+### D-136 — 2053 : renvois (7) et (8), détails des produits et charges exceptionnels et sur exercices antérieurs (2026-11-22)
+
+- **Source** : `2050-liasse_5320.pdf` (SHA-256 0bba3352…8453e1), page 4, cadres (7) « Détail des produits et charges exceptionnels » (colonnes charges exceptionnelles, produits exceptionnels) et (8) « Détail des produits et charges sur exercices antérieurs » (colonnes charges antérieures, produits antérieurs), lus sur le rendu image. Le cadre (7) n'est lisible qu'en quatre lignes ; « si le nombre de lignes est insuffisant, reproduire le cadre (7) et le joindre en annexe ».
+- **Décision** : tableaux `2053_D7` et `2053_D8` servis par le moteur de grilles (dix lignes chacun, dont les lignes 5 à 10 en état joint) : nature en texte, deux montants positifs (zéro explicite), totaux calculés sur les lignes saisies, justification obligatoire, trace, historique. Migration 0066 additive. Régime réel normal.
+- **Rapprochements indicatifs, jamais corrigés** : (7) charges et produits détaillés avec les lignes charges exceptionnelles (CX) et produits exceptionnels (PX) du 2053 **déduites de la balance** ; (8) charges et produits détaillés avec les cases 1H et 1G **saisies** au 2052 (« à détailler au (8) »), uniquement quand ces cases sont saisies sur la version courante. Le formulaire n'énonce pas ces égalités comme des calculs ; ce sont des lectures de sa disposition.
+- **Limites, dites** : la balance ne détaille pas la nature ni le rattachement à un exercice antérieur ; au-delà de dix lignes par cadre : non préparé ; aucune décision fiscale. Statut « projet ».
+- **Preuves** : test du moteur (939 verts), essai d'intégration sur la pile réelle (65 verts), Playwright `fiscal.spec.ts` (20 lignes).
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

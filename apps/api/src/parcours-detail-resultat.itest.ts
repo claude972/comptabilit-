@@ -1049,6 +1049,31 @@ describe('2054 / 2033-C : cellules non déductibles de la balance saisies (réé
   }, 120_000);
 });
 
+describe('2053 renvois (7) et (8) : détails saisis ligne par ligne, rapprochés indicativement (D-136)', () => {
+  const detail = async (regime = 'reel_normal') => (await liasse(exN, regime)).json.detail2053;
+  const put = (tableau: string, ligne: string, valeurs: Record<string, string>, qui = 'remi') => api(qui, 'PUT', `/v1/exercices/${exN}/tableaux/${tableau}/${ligne}`, { valeurs, note: 'Détail du 2053 (essai)' });
+
+  it('absent au régime simplifié ; lignes saisies et totalisées ; rapprochement avec la case 1H saisie ; refus', async () => {
+    expect(await detail('reel_simplifie')).toBeNull();
+    expect(await detail()).toMatchObject({ id: '2053-DETAIL', etat: 'a_saisir' });
+    expect((await detail()).cadres.map((c: any) => c.lignes.length)).toEqual([10, 10]);
+    expect((await put('2053_D7', '01', { origine: 'Amende (fictive)', c: '300.00' })).statut).toBe(400);
+    expect((await put('2053_D7', '11', { origine: 'Amende', c: '1.00', p: '0.00' })).statut).toBe(404);
+    expect((await put('2053_D7', '01', { origine: 'Amende', c: '1.00', p: '0.00' }, 'chloe')).statut).toBeGreaterThanOrEqual(400);
+    expect((await api('remi', 'PUT', `/v1/exercices/${exN}/qualifications/renvois/1H`, { montant: '45.00', note: 'Charges antérieures (essai)' })).statut).toBeLessThan(300);
+    expect((await put('2053_D8', '01', { origine: 'Régularisation de loyers 2024 (fictive)', c: '45.00', p: '0.00' })).statut).toBeLessThan(300);
+    expect((await put('2053_D7', '01', { origine: 'Amende (fictive)', c: '300.00', p: '0.00' })).statut).toBeLessThan(300);
+    const d = await detail();
+    expect(d.etat).toBe('saisi');
+    expect(d.cadres[1].calculs[0].cellules.c).toMatchObject({ statut: 'etabli', montant: '45.00' });
+    expect(d.controles.find((c: any) => c.code === '2053-DETAIL_CHARGES_ANT').statut).toBe('coherent');
+    expect(d.controles.find((c: any) => c.code === '2053-DETAIL_CHARGES_EXC')).toBeDefined();
+    for (const [t, l] of [['2053_D7', '01'], ['2053_D8', '01']]) expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/${t}/${l}`)).statut).toBeLessThan(300);
+    expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/qualifications/renvois/1H`)).statut).toBeLessThan(300);
+    expect((await detail()).etat).toBe('a_saisir');
+  }, 120_000);
+});
+
 describe('détail du compte de résultat : qualification tracée, abstention sans qualification', () => {
   it('sans qualification : totaux de la balance, France et exportations en abstention, renvois à saisir, exceptionnel détaillé', async () => {
     const d = await detail();

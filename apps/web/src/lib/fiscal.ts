@@ -143,6 +143,8 @@ export interface ReponseLiasse {
   feuilletDeficits?: GrilleProjet | null;
   /** Feuillets du régime réel normal (2058-B K4 bis, 2058-A détails), D-133. */
   feuilles2058?: GrilleProjet[] | null;
+  /** Détails (7) et (8) du 2053, régime réel normal (D-136). */
+  detail2053?: GrilleProjet | null;
   /** Formulaires du régime réel normal servis par saisie case par case (2058-A, D-118) ; null au régime simplifié. */
   formulairesCases?: FormulaireCasesProjet[] | null;
 }

@@ -2342,6 +2342,7 @@ export default async function PageFiscal({ params, searchParams }: { params: Pro
       {liasse?.ok && liasse.donnees.grilles2059 ? liasse.donnees.grilles2059.map((g) => <Grille2059 key={g.id} g={g} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} />) : null}
       {liasse?.ok && liasse.donnees.formulaire2065 ? <Grille2059 g={liasse.donnees.formulaire2065} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.formulaire2057 ? <Grille2059 g={liasse.donnees.formulaire2057} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
+      {liasse?.ok && liasse.donnees.detail2053 ? <Grille2059 g={liasse.donnees.detail2053} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.feuilles2058 ? liasse.donnees.feuilles2058.map((g) => <Grille2059 key={g.id} g={g} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} />) : null}
       {liasse?.ok && liasse.donnees.feuilletDeficits ? <Grille2059 g={liasse.donnees.feuilletDeficits} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.formulaire2065Bis ? <Grille2059 g={liasse.donnees.formulaire2065Bis} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}

@@ -56,7 +56,7 @@ export interface CadreGrille {
   colonneCalculee?: { cle: string; libelle: string; termes: ReadonlyArray<{ col: string; signe: 1 | -1 }> };
 }
 export interface DefinitionGrille {
-  id: '2059-B' | '2059-C' | '2059-D' | '2065' | '2033-E-DATES' | '2057' | '2065-BIS' | '2033-D-982' | '2058-B-K4BIS' | '2058-A-FEUILLETS';
+  id: '2059-B' | '2059-C' | '2059-D' | '2065' | '2033-E-DATES' | '2057' | '2065-BIS' | '2033-D-982' | '2058-B-K4BIS' | '2058-A-FEUILLETS' | '2053-DETAIL';
   titre: string;
   /** Tableau portant la ligne NEANT du formulaire ; absent si le formulaire n'a pas de « néant » (le 2065 est toujours servi). */
   neantSur?: string;
@@ -473,7 +473,44 @@ export const GRILLE_2058A_FEUILLETS: DefinitionGrille = {
   ],
 };
 
-const TOUTES: readonly DefinitionGrille[] = [...GRILLES_2059, GRILLE_2065, GRILLE_DATES_CVAE, GRILLE_2057, GRILLE_2065_BIS, GRILLE_2033D_982, GRILLE_2058B_K4BIS, GRILLE_2058A_FEUILLETS];
+/** Cadres (7) « Détail des produits et charges exceptionnels » et (8) « Détail des produits et charges sur exercices antérieurs » du 2053-SD (page 4 de `2050-liasse_5320.pdf`, rendu image vérifié le 2026-11-22). */
+export const GRILLE_2053_DETAIL: DefinitionGrille = {
+  id: '2053-DETAIL',
+  titre: 'Tableau 2053 — renvois (7) et (8) : détail des produits et charges exceptionnels, et sur exercices antérieurs',
+  cadres: [
+    {
+      tableau: '2053_D7',
+      titre: '(7) Détail des produits et charges exceptionnels (si le nombre de lignes est insuffisant, reproduire le cadre et le joindre en annexe : lignes 5 à 10 saisies comme lignes d’état joint)',
+      colonnes: [{ cle: 'c', libelle: 'Charges exceptionnelles' }, { cle: 'p', libelle: 'Produits exceptionnels' }],
+      lignes: [],
+      libre: { max: 10, libelleOrigine: 'Nature du produit ou de la charge exceptionnel(le)' },
+      calculs: [{ id: 'TOTAL', libelle: 'Total des lignes saisies', colonnes: ['c', 'p'], termes: [{ ref: 'saisies', signe: 1 }] }],
+      controlesExternes: [
+        { code: 'CHARGES_EXC', libelle: 'Total des charges exceptionnelles détaillées et charges exceptionnelles du 2053 (déduites de la balance)', mode: 'somme', colonne: 'c', externe: 'R53_CX' },
+        { code: 'PRODUITS_EXC', libelle: 'Total des produits exceptionnels détaillés et produits exceptionnels du 2053 (déduits de la balance)', mode: 'somme', colonne: 'p', externe: 'R53_PX' },
+      ],
+    },
+    {
+      tableau: '2053_D8',
+      titre: '(8) Détail des produits et charges sur exercices antérieurs',
+      colonnes: [{ cle: 'c', libelle: 'Charges antérieures' }, { cle: 'p', libelle: 'Produits antérieurs' }],
+      lignes: [],
+      libre: { max: 10, libelleOrigine: 'Nature du produit ou de la charge sur exercice antérieur' },
+      calculs: [{ id: 'TOTAL', libelle: 'Total des lignes saisies', colonnes: ['c', 'p'], termes: [{ ref: 'saisies', signe: 1 }] }],
+      controlesExternes: [
+        { code: 'CHARGES_ANT', libelle: 'Total des charges antérieures détaillées et renvoi (4) du 2052 (case 1H, saisie)', mode: 'somme', colonne: 'c', externe: 'Q_1H' },
+        { code: 'PRODUITS_ANT', libelle: 'Total des produits antérieurs détaillés et renvoi (2) du 2052 (case 1G, saisie)', mode: 'somme', colonne: 'p', externe: 'Q_1G' },
+      ],
+    },
+  ],
+  nonPrepare: [
+    'Les lignes sont des saisies justifiées du cabinet : la balance ne détaille pas la nature des produits et charges exceptionnels ni leur rattachement à un exercice antérieur.',
+    'Rapprochements INDICATIFS, jamais corrigés : (7) avec les charges et produits exceptionnels du 2053 déduits de la balance ; (8) avec les cases 1H et 1G saisies au 2052 ; les relations exactes ne sont pas énoncées comme des calculs par le formulaire.',
+    'Au-delà de dix lignes par cadre : non préparé.',
+  ],
+};
+
+const TOUTES: readonly DefinitionGrille[] = [...GRILLES_2059, GRILLE_2065, GRILLE_DATES_CVAE, GRILLE_2057, GRILLE_2065_BIS, GRILLE_2033D_982, GRILLE_2058B_K4BIS, GRILLE_2058A_FEUILLETS, GRILLE_2053_DETAIL];
 export const TABLEAUX_GRILLES: readonly string[] = TOUTES.flatMap((g) => g.cadres.map((c) => c.tableau));
 
 /** Lignes admises pour un tableau en grille : `null` si le tableau n'est pas une grille. Utilisée par la validation de forme. */

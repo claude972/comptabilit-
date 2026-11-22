@@ -13,6 +13,8 @@ import {
   preparerDetailResultat,
   preparerFormulaire2033D,
   CLES_2033_D,
+  CLES_2033_E,
+  preparerFormulaire2033E,
   preparerSaisiesTableaux,
   validerSaisieTableau,
   type SaisieTableau,
@@ -54,9 +56,9 @@ const TABLEAU_SAISI = /^(2033C_III|2054BIS_A|2054BIS_B|2055_B|2055_C|2033D_C)$/;
 const LIGNE_TABLEAU = /^(0[1-9]|1[0-3]|REG|PV19|NEANT|B1|B2)$/;
 const COMPTE_CA = /^70[0-9A-Za-z]{1,13}$/;
 const CODE_RENVOI = /^[0-9A-Z_]{2,7}$/;
-const RENVOIS_CONNUS = [...RENVOIS, ...RENVOIS_RSI, ...LIGNES_RESULTAT_FISCAL.map((l) => ({ code: l.cle })), ...DETAIL_RESULTAT_FISCAL.map((l) => ({ code: l.cle })), ...CLES_2033_D.map((cle) => ({ code: cle }))];
+const RENVOIS_CONNUS = [...RENVOIS, ...RENVOIS_RSI, ...LIGNES_RESULTAT_FISCAL.map((l) => ({ code: l.cle })), ...DETAIL_RESULTAT_FISCAL.map((l) => ({ code: l.cle })), ...CLES_2033_D.map((cle) => ({ code: cle })), ...CLES_2033_E.map((cle) => ({ code: cle }))];
 /** Lignes du résultat fiscal qui se saisissent en positif ; seule la case 248 (écart de valeurs liquidatives négatif, « entre parenthèses » selon la notice) peut être négative. */
-const CLES_RESULTAT_FISCAL = new Set([...CLES_2033_D, ...LIGNES_RESULTAT_FISCAL.map((l) => l.cle), ...DETAIL_RESULTAT_FISCAL.filter((l) => !l.negatifPossible).map((l) => l.cle)]);
+const CLES_RESULTAT_FISCAL = new Set([...CLES_2033_D, ...CLES_2033_E, ...LIGNES_RESULTAT_FISCAL.map((l) => l.cle), ...DETAIL_RESULTAT_FISCAL.filter((l) => !l.negatifPossible).map((l) => l.cle)]);
 const RUBRIQUE = /^ANX-[0-9A-Za-z-]{1,24}$/;
 const PROPOSITION = /^[A-Za-z0-9:_|.-]{1,200}$/;
 
@@ -214,6 +216,7 @@ export class FiscalController {
     if (!CODE_RENVOI.test(code) || !RENVOIS_CONNUS.some((r) => r.code === code)) throw new NotFoundException('Renvoi inconnu : les renvois préparés sont ' + RENVOIS_CONNUS.map((r) => r.code).join(', '));
     const d = valider(renvoiSaisie, corps);
     if (CLES_RESULTAT_FISCAL.has(code) && dec(d.montant).isNegative()) throw new BadRequestException('Les lignes du résultat fiscal se saisissent en positif (le sens est celui du formulaire) ; « néant » = 0.00 ; seule la case 248 admet un montant négatif');
+    if (code === 'E_020' && !/^[01](\.0+)?$/.test(d.montant)) throw new BadRequestException('La case 020 (mono-établissement) se saisit 0 (non coché) ou 1 (coché)');
     if (code === 'D_982T' && !/^\d+(\.0+)?$/.test(d.montant)) throw new BadRequestException('Le nombre d’opérations (case 982 ter) est un entier positif');
     return this.bd.avecContexte(acces, async (tx) => {
       const [exercice] = await tx.select().from(s.exercices).where(eq(s.exercices.id, id));
@@ -339,6 +342,8 @@ export class FiscalController {
       });
       // Tableau 2033-D (régime simplifié, D-114) : cases saisies (clés D_…), cadre C par saisie de tableau, propositions 983 et 860 tirées de la partie B du 2033-B.
       const formulaire2033D = regime === 'reel_simplifie' && detailResultat.statut === 'projet' ? preparerFormulaire2033D({ versionDonnees: exercice.versionDonnees, renvois: renvoisSaisis, saisiesTableaux: saisies, resultatFiscal: detailResultat.resultatFiscal }) : null;
+      // Tableau 2033-E (effectifs et valeur ajoutée, régime simplifié, D-115) : cases saisies (clés E_…), totaux calculés comme le formulaire seulement quand tout est saisi.
+      const formulaire2033E = regime === 'reel_simplifie' ? preparerFormulaire2033E({ versionDonnees: exercice.versionDonnees, exercice: { debut: exercice.debut, fin: exercice.fin }, renvois: renvoisSaisis }) : null;
       const tableauxImmobilisations = preparerTableauxImmobilisations({
         lignes,
         exercice: { debut: exercice.debut, fin: exercice.fin },
@@ -368,6 +373,8 @@ export class FiscalController {
         tableauxSaisis,
         /** Tableau 2033-D (provisions, amortissements dérogatoires, déficits reportables, divers) : saisie case par case, régime simplifié (D-114) ; null sinon. */
         formulaire2033D,
+        /** Tableau 2033-E (effectifs, valeur ajoutée, CVAE) : saisie case par case, régime simplifié (D-115) ; null sinon. */
+        formulaire2033E,
       };
     });
   }

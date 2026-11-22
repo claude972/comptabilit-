@@ -119,6 +119,8 @@ export interface ReponseLiasse {
   tableauxSaisis?: TableauxSaisisProjet | Abstention;
   /** Tableau 2033-D (régime simplifié, D-114) ; null au régime réel normal. */
   formulaire2033D?: Formulaire2033DProjet | null;
+  /** Tableau 2033-E (effectifs, valeur ajoutée, CVAE) ; null au régime réel normal (D-115). */
+  formulaire2033E?: Formulaire2033EProjet | null;
 }
 export interface RubriqueAnnexe {
   id: string;
@@ -551,3 +553,33 @@ export const LIGNES_DEROGATOIRES_2033D: Array<{ id: string; libelle: string; cas
   { id: 'AIC', libelle: 'Autres immobilisations corporelles', cases: ['760', '765'] },
   { id: 'TOTAL', libelle: 'TOTAL', cases: ['770', '775'] },
 ];
+
+/** Tableau 2033-E (D-115) : champ `formulaire2033E` de la réponse de la liasse. */
+export interface CaseSaisie2033E {
+  cle: string;
+  codeCase: string;
+  etatCodeCase: string;
+  libelle: string;
+  groupe: 'effectifs' | 'I' | 'II' | 'III' | 'mono';
+  type: 'montant' | 'effectif' | 'oui_non';
+  precision?: string;
+  statut: 'a_saisir' | 'saisi' | 'a_revoir';
+  neant: boolean;
+  montant: string | null;
+  saisie: (TraceQualification & { code: string; montant: string }) | null;
+  proposition: { montant: string; origine: string } | null;
+}
+export interface Formulaire2033EProjet {
+  statut: 'projet';
+  exercice: { debut: string; fin: string; dureeMois: number };
+  cases: CaseSaisie2033E[];
+  total1: CelluleCalculee2033D;
+  total2: CelluleCalculee2033D;
+  total3: CelluleCalculee2033D;
+  valeurAjoutee137: CelluleCalculee2033D;
+  valeurAjoutee117: CelluleCalculee2033D;
+  controles: Array<{ code: string; statut: 'coherent' | 'ecart' | 'non_verifie'; message: string; ecart?: string }>;
+  nonPrepare: string[];
+  limites: string[];
+  mention: string;
+}

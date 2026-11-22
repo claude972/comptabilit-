@@ -139,6 +139,8 @@ export type {
 } from './etats/saisies-tableaux.js';
 export { CASES_2033_D, CLES_2033_D, COLONNES_PROVISIONS, LIGNES_CADRE_C, LIGNES_DEROGATOIRES, LIGNES_PROVISIONS, preparerFormulaire2033D } from './etats/formulaire-2033d.js';
 export type { CaseSaisie2033D, DemandeFormulaire2033D, Formulaire2033DProjet, LigneCadreC } from './etats/formulaire-2033d.js';
+export { CASES_2033_E, CLES_2033_E, dureeEnMois, preparerFormulaire2033E } from './etats/formulaire-2033e.js';
+export type { CaseSaisie2033E, DemandeFormulaire2033E, Formulaire2033EProjet } from './etats/formulaire-2033e.js';
 
 // 16. tiers, factures et avoirs suivis, échéances et règlements — aide à la révision, recalculée à la lecture
 export { estDateIso } from './dates.js';

@@ -4,7 +4,7 @@ import { ChoixExercice } from '@/components/dossier';
 import { ErreurAcces } from '@/components/erreurs';
 import { CategorieAnnexe, ConfirmerRubrique, NeantTableau, QualifierCompte, SaisieCases, SaisieLigneTableau, SaisirRenvoi } from '@/components/fiscal/actions';
 import { Alerte, Carte, Etiquette, MentionProjet, SousTitre, Tableau } from '@/components/ui/base';
-import { type Abstention, type AnnexeProjet, type CelluleImmobilisation, type CelluleVentilation, type AmortissementsDerogatoiresProjet, type CadreIIIProjet, type CaseSaisie2033D, type CelluleCalculee2033D, type CelluleMontantSaisie, type Formulaire2033DProjet, LIGNES_DEROGATOIRES_2033D, LIGNES_PROVISIONS_2033D, type ChargesRepartiesProjet, LIBELLES_COLONNES_2055_B, type DetailResultatProjet, type EcartsReevaluationProjet, type EvenementQualification, LIBELLE_CLASSEMENT, type TableauxSaisisProjet, type ReponseHistorique, type ResultatSigne, LIBELLE_CATEGORIE, LIBELLE_ETAT_QUALIFICATION, type LiasseProjet, type ReponseAnnexe, type ReponseLiasse, type TableauxImmobilisationsProjet } from '@/lib/fiscal';
+import { type Abstention, type AnnexeProjet, type CelluleImmobilisation, type CelluleVentilation, type AmortissementsDerogatoiresProjet, type CadreIIIProjet, type CaseSaisie2033D, type CaseSaisie2033E, type CelluleCalculee2033D, type Formulaire2033EProjet, type CelluleMontantSaisie, type Formulaire2033DProjet, LIGNES_DEROGATOIRES_2033D, LIGNES_PROVISIONS_2033D, type ChargesRepartiesProjet, LIBELLES_COLONNES_2055_B, type DetailResultatProjet, type EcartsReevaluationProjet, type EvenementQualification, LIBELLE_CLASSEMENT, type TableauxSaisisProjet, type ReponseHistorique, type ResultatSigne, LIBELLE_CATEGORIE, LIBELLE_ETAT_QUALIFICATION, type LiasseProjet, type ReponseAnnexe, type ReponseLiasse, type TableauxImmobilisationsProjet } from '@/lib/fiscal';
 import { formaterHorodatage, formaterMontant, formaterMontantEuros } from '@/lib/montants';
 
 type Fm = (valeur: string | null | undefined) => string;
@@ -1441,6 +1441,104 @@ function Formulaire2033D({ f, fm, exerciceId, revision, evenements }: { f: Formu
   );
 }
 
+/** Tableau 2033-E (effectifs et valeur ajoutée) : saisie case par case, totaux calculés seulement quand tout est saisi (D-115). */
+function Formulaire2033E({ f, fm, exerciceId, revision, evenements }: { f: Formulaire2033EProjet; fm: Fm; exerciceId: string; revision: boolean; evenements: EvenementQualification[] }) {
+  const groupe = (g: CaseSaisie2033E['groupe']) => f.cases.filter((c) => c.groupe === g);
+  const valeur = (c: CaseSaisie2033E) => (c.statut === 'saisi' ? (c.neant ? 'néant' : c.type === 'montant' ? fm(c.montant) : String(Number(c.montant))) : c.statut === 'a_revoir' ? 'à revoir' : c.proposition ? `proposé : ${fm(c.proposition.montant)}` : 'à saisir');
+  const badge = (statut: string) => <Etiquette ton={statut === 'saisi' ? 'succes' : 'attention'}>{statut === 'saisi' ? 'Saisi' : statut === 'a_revoir' ? 'À revoir : données modifiées' : 'À saisir'}</Etiquette>;
+  const bloc = (titre: string, g: CaseSaisie2033E['groupe'], total?: CelluleCalculee2033D, libelleTotal?: string) => (
+    <div className="space-y-2" key={g}>
+      <h3 className="font-semibold">{titre}</h3>
+      <Tableau legende={titre}>
+        <tbody data-testid={`groupe-2033-e-${g}`}>
+          {groupe(g).map((c) => (
+            <tr key={c.cle} data-case-e={c.codeCase}>
+              <th scope="row">
+                {c.libelle}
+                <span className="block text-xs font-normal text-texte-doux">case {c.codeCase} (lue, vérifiée sur le PDF)</span>
+              </th>
+              <td className="text-right tabular-nums">{valeur(c)}</td>
+            </tr>
+          ))}
+          {total ? (
+            <tr data-case-e={total.codeCase} className="font-semibold">
+              <th scope="row">{libelleTotal}</th>
+              <td className="text-right">
+                <CelluleCalc c={total} fm={fm} />
+              </td>
+            </tr>
+          ) : null}
+        </tbody>
+      </Tableau>
+      {revision ? (
+        <ul className="space-y-2">
+          {groupe(g).map((c) => (
+            <li key={c.cle} className="rounded border border-bordure p-2" data-ligne-e={c.cle}>
+              <p className="text-sm">
+                {c.libelle} <span className="text-texte-doux">(case {c.codeCase})</span> {badge(c.statut)}
+                {c.proposition && c.statut !== 'saisi' ? <span className="text-xs text-texte-doux"> · proposition : {fm(c.proposition.montant)} ({c.proposition.origine}), non retenue</span> : null}
+              </p>
+              {c.precision ? <p className="text-xs text-texte-doux">{c.precision}</p> : null}
+              {c.saisie ? (
+                <p className="text-xs text-texte-doux" data-testid={`trace-e-${c.cle}`}>
+                  {c.neant ? 'Néant' : c.type === 'montant' ? fm(c.saisie.montant) : String(Number(c.saisie.montant))} · saisi le {formaterHorodatage(c.saisie.le)} sur la version {c.saisie.versionDonnees} des données · « {c.saisie.note} »
+                </p>
+              ) : null}
+              <HistoriqueLigne evenements={evenements} cle={c.cle} fm={fm} />
+              <SaisirRenvoi exerciceId={exerciceId} code={c.cle} proposition={c.proposition?.montant ?? null} saisie={c.saisie ? { montant: c.saisie.montant, note: c.saisie.note } : null} avecNeant />
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+  return (
+    <section className="space-y-4" aria-labelledby="titre-2033-e" data-testid="formulaire-2033-e">
+      <SousTitre id="titre-2033-e" className="text-base">
+        2033-E — Effectifs et valeur ajoutée (CVAE) <MentionProjet />
+      </SousTitre>
+      <Alerte ton="attention" titre="Saisie du cabinet : le rattachement des comptes aux lignes de la valeur ajoutée relève des règles de la CVAE">
+        <p className="text-sm">
+          Chaque case se saisit avec une justification obligatoire, tracée et historisée ; « néant » est une déclaration explicite et une case sans saisie n’est jamais présumée nulle. Les totaux 106, 144 et 152, la valeur ajoutée (137) et la case 117 sont calculés comme le formulaire
+          l’énonce, uniquement quand toutes leurs composantes sont saisies. La case 022 est proposée (= case 106) pour un exercice de 12 mois, jamais retenue sans saisie. Durée de l’exercice : {f.exercice.dureeMois} mois.
+        </p>
+        {f.limites.map((l) => (
+          <p key={l} className="text-sm">
+            {l}
+          </p>
+        ))}
+      </Alerte>
+      <ul className="space-y-1" aria-label="Contrôles du 2033-E" data-testid="controles-2033-e">
+        {f.controles.map((x) => (
+          <li key={x.code}>
+            <Etiquette ton={x.statut === 'coherent' ? 'succes' : x.statut === 'ecart' ? 'danger' : 'attention'}>{x.statut === 'coherent' ? 'Cohérent' : x.statut === 'ecart' ? 'Écart' : 'Non vérifiable'}</Etiquette> {x.message}
+            {x.ecart ? ` (écart : ${fm(x.ecart)})` : ''}
+          </li>
+        ))}
+      </ul>
+      {bloc('Déclaration des effectifs', 'effectifs')}
+      {bloc('I — Chiffre d’affaires de référence CVAE', 'I', f.total1, 'TOTAL 1')}
+      {bloc('II — Autres produits à retenir pour le calcul de la valeur ajoutée', 'II', f.total2, 'TOTAL 2')}
+      {bloc('III — Charges à retenir pour le calcul de la valeur ajoutée', 'III', f.total3, 'TOTAL 3')}
+      <div className="space-y-1" data-testid="valeur-ajoutee-2033-e">
+        <h3 className="font-semibold">IV et V — Valeur ajoutée produite et assujettie à la CVAE</h3>
+        <p className="text-sm">
+          Calcul de la valeur ajoutée (Total 1 + Total 2 − Total 3) : <CelluleCalc c={f.valeurAjoutee137} fm={fm} />
+        </p>
+        <p className="text-sm">
+          Valeur ajoutée assujettie à la CVAE : <CelluleCalc c={f.valeurAjoutee117} fm={fm} />
+        </p>
+      </div>
+      {bloc('Cadre réservé au mono-établissement au sens de la CVAE', 'mono')}
+      <ul className="list-disc pl-5 text-sm text-texte-doux" data-testid="2033-e-non-prepare">
+        {f.nonPrepare.map((n) => (
+          <li key={n}>Non préparé — {n}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function Annexe({ a, reponse, exerciceId, revision }: { a: AnnexeProjet; reponse: ReponseAnnexe; exerciceId: string; revision: boolean }) {
   const confirmations = new Map(reponse.confirmations.map((c) => [c.rubrique, c]));
   const requises = a.rubriques.filter((r) => r.requise);
@@ -1633,6 +1731,7 @@ export default async function PageFiscal({ params, searchParams }: { params: Pro
         )
       ) : null}
       {liasse?.ok && liasse.donnees.formulaire2033D ? <Formulaire2033D f={liasse.donnees.formulaire2033D} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
+      {liasse?.ok && liasse.donnees.formulaire2033E ? <Formulaire2033E f={liasse.donnees.formulaire2033E} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.detailResultat ? <DetailResultat d={liasse.donnees.detailResultat} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {annexe?.ok ? (
         annexe.donnees.resultat.statut === 'abstention' ? (

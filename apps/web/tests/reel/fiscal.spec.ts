@@ -75,6 +75,12 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
     await expect(detailRsi).toContainText('Détail du compte de résultat simplifié (2033-B)');
     await expect(detailRsi.getByTestId('renvois-detail').locator('li[data-renvoi="255"]')).toBeVisible();
     await expect(detailRsi.locator('#titre-2053')).toHaveCount(0);
+    // 2033-E (D-115) : effectifs et valeur ajoutée par saisie ; totaux en abstention tant que toutes les composantes ne sont pas saisies.
+    const e2033 = page.getByTestId('formulaire-2033-e');
+    await expect(e2033).toBeVisible();
+    await expect(e2033.getByTestId('groupe-2033-e-III').locator('tr[data-case-e]')).toHaveCount(10);
+    await expect(e2033.getByTestId('valeur-ajoutee-2033-e')).toContainText('Valeur ajoutée assujettie à la CVAE');
+    await expect(e2033.getByTestId('2033-e-non-prepare')).toContainText('024 et 016');
     // 2033-D (D-114) : cases saisies par le cabinet, total 870 et 780 en abstention sans saisie.
     const d2033 = page.getByTestId('formulaire-2033-d');
     await expect(d2033).toBeVisible();

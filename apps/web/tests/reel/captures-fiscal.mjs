@@ -216,6 +216,30 @@ if (process.argv.includes('--2033d')) {
   await page.getByTestId('total-870').scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${sortie}fiscal-2033d-deficits.png` });
 }
+// 2033-E (D-115) : saisies par les formulaires (MODIFIE le dossier fictif indiqué).
+if (process.argv.includes('--2033e')) {
+  await page.goto(`${base}&vue=liasse&regime=reel_simplifie`);
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('formulaire-2033-e').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2033e-avant.png` });
+  const valeurs = { 376: '12', 657: '2', 651: '1', 861: '0', 108: '11800.00', 118: '0.00', 119: '0.00', 115: '800.00', 143: '0.00', 113: '0.00', 111: '0.00', 153: '0.00', 121: '2400.00', 145: '0.00', 125: '1500.00', 310: '0.00', 133: '300.00', 148: '150.00', 128: '0.00', 135: '0.00', 150: '1500.00' };
+  for (const [code, m] of Object.entries(valeurs)) {
+    const f = page.getByTestId(`renvoi-E_${code}`);
+    await f.scrollIntoViewIfNeeded();
+    await f.getByLabel('Montant').fill(m);
+    await f.getByLabel('Justification (obligatoire)').fill(Number(m) === 0 ? 'Néant : aucune opération de cette nature (démonstration fictive)' : 'Valeur retenue pour la CVAE (démonstration fictive)');
+    await f.getByRole('button', { name: new RegExp(`Enregistrer le renvoi E_${code}`) }).click();
+    await f.getByText('Renvoi enregistré.').waitFor();
+  }
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('formulaire-2033-e').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2033e-apres.png` });
+  await page.getByTestId('valeur-ajoutee-2033-e').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2033e-valeur-ajoutee.png` });
+  await page.getByTestId('groupe-2033-e-III').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2033e-charges.png` });
+}
 // 2033-B (D-107) : « dont export » et lignes « dont » du régime simplifié.
 await page.goto(`${base}&vue=liasse&regime=reel_simplifie`);
 await page.waitForLoadState('networkidle');

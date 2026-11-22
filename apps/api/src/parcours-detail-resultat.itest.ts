@@ -431,6 +431,57 @@ describe('2033-D (régime simplifié) : cases saisies, néant, abstention, calcu
   }, 120_000);
 });
 
+describe('2033-E (régime simplifié) : effectifs et valeur ajoutée, totaux calculés seulement quand tout est saisi (D-115)', () => {
+  const f2033e = async () => (await liasse(exN, 'reel_simplifie')).json.formulaire2033E;
+  const ee = (code: string, montant: string, note = 'Saisie du cabinet pour l’essai', qui = 'remi') => api(qui, 'PUT', `/v1/exercices/${exN}/qualifications/renvois/E_${code}`, { montant, note });
+  const T1 = ['108', '118', '119'], T2 = ['115', '143', '113', '111', '153'], T3 = ['121', '145', '125', '310', '133', '148', '128', '135', '150'];
+
+  it('sans saisie : 25 cases à saisir, totaux et valeur ajoutée en abstention sans chiffre ; absent au régime normal', async () => {
+    const f = await f2033e();
+    expect(f.statut).toBe('projet');
+    expect(f.cases).toHaveLength(25);
+    expect(f.cases.every((c: any) => c.statut === 'a_saisir' && c.montant === null)).toBe(true);
+    for (const t of [f.total1, f.total2, f.total3, f.valeurAjoutee137, f.valeurAjoutee117]) expect(t.statut).toBe('abstention');
+    expect(f.exercice.dureeMois).toBe(12);
+    expect((await liasse(exN, 'reel_normal')).json.formulaire2033E).toBeNull();
+  }, 120_000);
+
+  it('refus : négatif, case 020 hors 0 / 1, note, droits', async () => {
+    expect((await ee('108', '-1.00')).statut).toBe(400);
+    expect((await ee('020', '2.00')).statut).toBe(400);
+    expect((await ee('108', '1.00', 'ok')).statut).toBe(400);
+    expect((await ee('108', '1.00', 'Essai collaborateur', 'chloe')).statut).toBeGreaterThanOrEqual(400);
+    expect((await ee('108', '1.00', 'Essai déposant', 'client')).statut).toBe(404);
+    expect((await f2033e()).cases.every((c: any) => c.statut === 'a_saisir')).toBe(true);
+  });
+
+  it('totaux 106, 144, 152, valeur ajoutée 137 et case 117 calculés seulement quand toutes les composantes sont saisies (néant compris)', async () => {
+    for (const c of T1) expect((await ee(c, '1000.00', 'Produits retenus pour la CVAE (essai)')).statut, c).toBeLessThan(300);
+    let f = await f2033e();
+    expect(f.total1).toMatchObject({ statut: 'etabli', montant: '3000.00', codeCase: '106' });
+    expect(f.total2.statut).toBe('abstention');
+    expect(f.valeurAjoutee137.statut).toBe('abstention');
+    for (const c of T2) expect((await ee(c, c === '153' ? '0.00' : '100.00', c === '153' ? 'Néant : aucune rentrée sur créance amortie' : 'Autres produits (essai)')).statut, c).toBeLessThan(300);
+    for (const c of T3) expect((await ee(c, '200.00', 'Charges retenues pour la CVAE (essai)')).statut, c).toBeLessThan(300);
+    f = await f2033e();
+    expect(f.total2).toMatchObject({ montant: '400.00', codeCase: '144' });
+    expect(f.total3).toMatchObject({ montant: '1800.00', codeCase: '152' });
+    expect(f.valeurAjoutee137).toMatchObject({ statut: 'etabli', montant: '1600.00', codeCase: '137' });
+    expect(f.valeurAjoutee117).toMatchObject({ statut: 'etabli', montant: '1600.00', codeCase: '117' });
+    expect(f.cases.find((c: any) => c.codeCase === '153')).toMatchObject({ neant: true });
+    expect(f.cases.find((c: any) => c.codeCase === '022')).toMatchObject({ statut: 'a_saisir', proposition: { montant: '3000.00' } });
+  }, 120_000);
+
+  it('valeur ajoutée négative : 137 négative, 117 reportée à 0 ; historique des saisies', async () => {
+    expect((await ee('121', '9000.00', 'Achats en forte hausse (essai)')).statut).toBeLessThan(300);
+    const f = await f2033e();
+    expect(f.valeurAjoutee137).toMatchObject({ statut: 'etabli', montant: '-7200.00' });
+    expect(f.valeurAjoutee117).toMatchObject({ statut: 'etabli', montant: '0.00' });
+    const h = (await api('remi', 'GET', `/v1/exercices/${exN}/qualifications/historique?cle=E_121`)).json.evenements as any[];
+    expect(h.map((e) => e.montant)).toEqual(['9000.00', '200.00']);
+  }, 120_000);
+});
+
 describe('détail du compte de résultat : qualification tracée, abstention sans qualification', () => {
   it('sans qualification : totaux de la balance, France et exportations en abstention, renvois à saisir, exceptionnel détaillé', async () => {
     const d = await detail();

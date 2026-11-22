@@ -187,6 +187,7 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
   await expect(page.getByTestId('identification-etat-joint')).toContainText('Exercice : du');
   await expect(page.getByTestId('limites-etat-joint')).toContainText('aucune signature, aucune transmission, aucune validation professionnelle');
   expect(await page.locator('[data-tableau-joint]').count()).toBeGreaterThan(10);
+  for (const t of ['2054-bis', '2055-B', '2055-C', '2056', '2059-A']) await expect(page.locator(`[data-tableau-joint="${t}"]`)).toHaveCount(1);
   await expect(page.getByTestId('export-csv-etat-joint')).toHaveAttribute('download', /^etat-joint-.*\.csv$/);
   await page.goto(`/dossiers/${DOSSIER_DEMO}/fiscal`);
 

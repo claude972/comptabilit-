@@ -3,8 +3,8 @@
  * (grilles, 2059-A, filiales du 2033-G / 2059-G, associés du 2033-F / 2059-F). Chaque tableau garde son statut, ses totaux tels que calculés par
  * l'API (ou leur abstention motivée) et ses limites. Aucune signature, aucune transmission, aucune validation.
  */
-import type { CadreIIIProjet, CelluleGrille, Formulaire2033DProjet, Formulaire2033EProjet, FormulaireCasesProjet, Formulaire2033FProjet, Formulaire2033GProjet, Formulaire2059AProjet, GrilleProjet, ReponseLiasse } from './fiscal';
-import { LIBELLES_COLONNES_2059_A } from './fiscal';
+import type { AmortissementsDerogatoiresProjet, CadreIIIProjet, CelluleMontantSaisie, ChargesRepartiesProjet, EcartsReevaluationProjet, CelluleGrille, Formulaire2033DProjet, Formulaire2033EProjet, FormulaireCasesProjet, Formulaire2033FProjet, Formulaire2033GProjet, Formulaire2059AProjet, GrilleProjet, ReponseLiasse } from './fiscal';
+import { LIBELLES_COLONNES_2055_B, LIBELLES_COLONNES_2059_A } from './fiscal';
 
 export interface TableauEtatJoint {
   id: string;
@@ -159,6 +159,57 @@ function depuisCadreIII(c: CadreIIIProjet): TableauEtatJoint[] {
   ];
 }
 
+const cm = (c: CelluleMontantSaisie | null | undefined): string => (c === null || c === undefined ? '—' : c.statut === 'etabli' ? c.montant : `abstention : ${c.motifs.join(' ')}`);
+
+function depuis2054bis(e: EcartsReevaluationProjet): TableauEtatJoint[] {
+  const cols = ['c1', 'c2', 'c3', 'c4', 'c5', 'ecart', 'c6'] as const;
+  return [
+    {
+      id: '2054-bis',
+      titre: '2054 bis — Écarts de réévaluation sur immobilisations amortissables (cadre A ; colonnes ① à ⑥ du formulaire)',
+      etat: ETAT[e.etat] ?? e.etat,
+      colonnes: ['Ligne', '① Valeur réévaluée', '② Valeur d’origine', '③ Amortissements', '④ Amortissements pratiqués', '⑤', 'Écart (① − ②)', '⑥'],
+      lignes: e.lignes.map((l) => ({ libelle: l.libelle, statut: STATUT_LIGNE[l.statut] ?? l.statut, cellules: cols.map((k) => l[k] ?? '') })),
+      totaux: [
+        { libelle: 'Totaux des colonnes (ligne 10)', cellules: [cm(e.totaux.c1), cm(e.totaux.c2), cm(e.totaux.c3), cm(e.totaux.c4), cm(e.totaux.c5), '', cm(e.totaux.c6)] },
+        { libelle: 'Cadre B : ligne 3 = ligne 1 − ligne 2', cellules: [cm(e.cadreB.b3)] },
+      ],
+      limites: [...e.limites, `Cadre B : ligne 1 ${e.cadreB.b1.montant ?? 'à saisir'} ; ligne 2 ${e.cadreB.b2.montant ?? 'à saisir'}.`],
+    },
+  ];
+}
+
+function depuis2055B(a: AmortissementsDerogatoiresProjet): TableauEtatJoint[] {
+  return [
+    {
+      id: '2055-B',
+      titre: '2055, cadre B — Amortissements dérogatoires (mouvements de l’exercice)',
+      etat: ETAT[a.etat] ?? a.etat,
+      colonnes: ['Ligne', ...LIBELLES_COLONNES_2055_B],
+      lignes: a.lignes.map((l) => ({ libelle: `${l.groupe} — ${l.libelle}`, statut: STATUT_LIGNE[l.statut] ?? l.statut, cellules: LIBELLES_COLONNES_2055_B.map((_, i) => l.colonnes[i]?.montant ?? '') })),
+      totaux: [
+        ...(['I', 'II', 'III', 'general'] as const).map((g) => ({ libelle: g === 'general' ? 'Total général (I + II + III)' : `Total ${g}`, cellules: a.totaux[g].map((c) => cm(c)) })),
+        { libelle: 'Non ventilé : NW (dotations), NY (reprises), NZ (NW − NY)', cellules: [cm(a.nonVentile.NW), cm(a.nonVentile.NY), cm(a.nonVentile.NZ)] },
+      ],
+      limites: a.limites,
+    },
+  ];
+}
+
+function depuis2055C(c: ChargesRepartiesProjet): TableauEtatJoint[] {
+  return [
+    {
+      id: '2055-C',
+      titre: '2055, cadre C — Charges réparties sur plusieurs exercices',
+      etat: ETAT[c.etat] ?? c.etat,
+      colonnes: ['Ligne', 'Montant net au début', 'Augmentations', 'Dotations de l’exercice', 'Montant net à la fin'],
+      lignes: c.lignes.map((l) => ({ libelle: l.libelle, statut: STATUT_LIGNE[l.statut] ?? l.statut, cellules: [l.debut ?? '', l.augmentations ?? '', l.dotations ?? '', l.fin ?? ''] })),
+      totaux: [],
+      limites: c.limites,
+    },
+  ];
+}
+
 /** Tous les tableaux saisis par lignes de la réponse de la liasse, dans l'ordre des numéros de tableau. */
 export function etatJointDe(l: ReponseLiasse): TableauEtatJoint[] {
   const nom = l.regimeDemande === 'reel_normal' ? '2059' : '2033';
@@ -167,6 +218,7 @@ export function etatJointDe(l: ReponseLiasse): TableauEtatJoint[] {
     ...(l.formulaire2033D ? depuis2033D(l.formulaire2033D) : []),
     ...(l.formulaire2033E ? depuis2033E(l.formulaire2033E) : []),
     ...(l.tableauxSaisis && l.tableauxSaisis.statut === 'projet' && l.tableauxSaisis.cadreIII ? depuisCadreIII(l.tableauxSaisis.cadreIII) : []),
+    ...(l.tableauxSaisis && l.tableauxSaisis.statut === 'projet' ? [...(l.tableauxSaisis.ecartsReevaluation ? depuis2054bis(l.tableauxSaisis.ecartsReevaluation) : []), ...(l.tableauxSaisis.amortissementsDerogatoires ? depuis2055B(l.tableauxSaisis.amortissementsDerogatoires) : []), ...(l.tableauxSaisis.chargesRepartiesPlusieursExercices ? depuis2055C(l.tableauxSaisis.chargesRepartiesPlusieursExercices) : [])] : []),
     ...(l.formulaire2059A ? depuis2059A(l.formulaire2059A) : []),
     ...(l.grilles2059 ?? []).flatMap(depuisGrille),
     ...(l.formulaire2057 ? depuisGrille(l.formulaire2057) : []),

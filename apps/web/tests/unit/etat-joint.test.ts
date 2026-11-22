@@ -30,4 +30,22 @@ describe('état joint', () => {
     expect(csv.startsWith('﻿Dossier : Test')).toBe(true);
     expect(csv).toContain('TOTAL — TOTAL;;abstention : Ligne 2 à saisir');
   });
+  it('reprend 2054 bis et 2055 cadres B et C tels que calculés par l’API, totaux et abstentions compris', () => {
+    const ok = (montant: string) => ({ statut: 'etabli' as const, montant, codeCase: null, etatCodeCase: 'x' });
+    const abst = { statut: 'abstention' as const, motifs: ['Ligne 2 à saisir'], codeCase: null, etatCodeCase: 'x' };
+    const tr = { note: 'n', qualifieePar: 'u', le: '2026-01-01T00:00:00Z', versionDonnees: 1 };
+    const l = { regimeDemande: 'reel_normal', tableauxSaisis: {
+      statut: 'projet', cadreIII: null,
+      ecartsReevaluation: { statut: 'projet', etat: 'saisi', lignes: [{ ligne: '01', libelle: 'Ligne 1', statut: 'saisi', trace: tr, c1: '100.00', c2: '60.00', c3: '0.00', c4: '0.00', c5: '0.00', ecart: '40.00', c6: '40.00' }], totaux: { c1: ok('100.00'), c2: ok('60.00'), c3: ok('0.00'), c4: ok('0.00'), c5: ok('0.00'), c6: abst }, cadreB: { b1: { statut: 'saisi', montant: '10.00', trace: tr }, b2: { statut: 'a_saisir', montant: null, trace: null }, b3: abst }, controles: [], limites: ['L1'], neant: null, mention: 'PROJET' },
+      amortissementsDerogatoires: { statut: 'projet', etat: 'saisi', lignes: [{ ligne: '01', libelle: 'Frais', groupe: 'I', statut: 'saisi', trace: tr, colonnes: [{ codeCase: 'M9', montant: '5.00' }, null, null, null, null, null, { codeCase: 'N6', montant: '5.00' }] }], totaux: { I: [ok('5.00'), null, null, null, null, null, ok('5.00')], II: [], III: [], general: [] }, nonVentile: { NW: ok('5.00'), NY: abst, NZ: abst }, controles: [], limites: [], neant: null, mention: 'PROJET' },
+      chargesRepartiesPlusieursExercices: { statut: 'projet', etat: 'saisi', lignes: [{ ligne: '01', libelle: 'Frais d’émission', statut: 'saisi', trace: tr, debut: '10.00', augmentations: '0.00', dotations: '2.00', fin: '8.00', caseDotations: 'Z9', caseFin: 'Z8' }], controles: [], limites: [], neant: null, mention: 'PROJET' },
+    } } as unknown as ReponseLiasse;
+    const t = etatJointDe(l);
+    expect(t.map((x) => x.id)).toEqual(['2054-bis', '2055-B', '2055-C']);
+    expect(t[0]!.lignes[0]!.cellules.slice(0, 2)).toEqual(['100.00', '60.00']);
+    expect(t[0]!.totaux[0]!.cellules[6]).toMatch(/^abstention : Ligne 2 à saisir/);
+    expect(t[1]!.lignes[0]!.cellules[0]).toBe('5.00');
+    expect(t[1]!.totaux.at(-1)!.cellules[1]).toMatch(/^abstention/);
+    expect(t[2]!.lignes[0]!.cellules).toEqual(['10.00', '0.00', '2.00', '8.00']);
+  });
 });

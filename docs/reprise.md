@@ -92,3 +92,9 @@ Document de passage pour reprendre le travail sans relire la conversation. À me
 - Codes 2054 / 2055 A / 2033-C vérifiés sur le rendu image : aucun écart (D-152). Reports 2059 → 2058-A : WN proposée, WV / WH / WP / I6 rapprochés, rien décidé (D-153). Feuillets 2056 et 2057, rapprochement 2057 / bilan sur 4 postes (D-154, migration 0071 appliquée à la base locale).
 - Preuves : `scripts/demo-reports-feuillets.mjs`, `parcours-reports-feuillets.spec.ts`, captures `var/captures/reports-*.png`. Compteur CI des conteneurs : fenêtre bornée des 35 derniers runs (81aa858 a échoué avant).
 - Prochain reste réel : codes des autres tableaux (relecture sur rendu), note annexe 2059-A ligne 20, reports 2059-B/C/D, état détaillé des charges à payer.
+
+## Point du 2026-11-22 (fin de nuit) — D-155 à D-158
+- Codes de cases vérifiés sur le rendu : 2051 (32), 2052 (43), 2053 (8), actif du 2050 (31, deux codes brut / amortissements), 2033-A (31 : actif et passif) — lignes encore sans code : 12 au 2050 (sous-totaux, totaux, lignes regroupées), 3 au 2051, 2 au 2052, 1 au 2033-A (D-155, D-156).
+- Note annexe de la ligne 20 du 2059-A (D-157, migration 0072). Migrations jouées sur la base locale : jusqu'à 0072. Piège : toute migration se crée par `drizzle-kit generate --custom` (entrée de journal), jamais à la main.
+- CI : deuxième lecture (D-158) ; c9c932f et a769790 verts ; échecs Firefox / WebKit de même famille, attentes ajoutées, causes non confirmées ; runs 82a9514 → cbb535c et fcbb825 à lire une fois terminés.
+- Prochains restes réalisables : en-têtes cochables des 2059-B, C, D ; totaux de l'actif du 2050 (numérotation à trancher) ; état détaillé des charges à payer seulement si une source accessible l'énonce (Légifrance refuse l'accès).

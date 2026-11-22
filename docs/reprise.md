@@ -76,3 +76,9 @@ Document de passage pour reprendre le travail sans relire la conversation. À me
 - Restauration stricte démontrée sur base et stockage neufs (D-145, `scripts/demo-restauration-stricte.mjs`) ; base historique toujours en échec strict (D-144), inchangée.
 - État joint : 2054, 2055 A, 2033-C I/II repris de l'API (D-146).
 - WebKit `ecrans-cabinet.spec.ts` : correctif d'hydratation poussé (4e9b230, D-147), **à confirmer par UNE lecture groupée de CI** (runs c1c31c4, 10cd7a2, 4e9b230), sans boucle.
+
+## Point du 2026-11-22 (après-midi)
+- Parcours de bout en bout non nul (D-148) : `scripts/demo-parcours-immobilisations.mjs` (preuve : écran, CSV, PDF) et test réel `parcours-immobilisations.spec.ts` ; intitulé « import CSV ou XLSX » corrigé.
+- Liste unique des exigences : `exigences.md` (livré / incomplet / dépendance externe) ; isolation et fin de contrat remises à jour.
+- CI (D-149) : flaky `assistant.test.ts` corrigé (cause confirmée) ; WebKit `fiscal.spec.ts` : correctif d'hydratation, cause NON confirmée. Runs c1c31c4, 4e9b230, ecd40cb et ceux d'après : à lire UNE fois quand ils seront terminés.
+- Dossier de démonstration à ouvrir : voir la sortie du script (`{"dossier":…,"exercice":…}`), lien `http://localhost:3100/dossiers/<dossier>/fiscal?vue=liasse`.

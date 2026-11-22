@@ -3,7 +3,7 @@
  * (grilles, 2059-A, filiales du 2033-G / 2059-G, associés du 2033-F / 2059-F). Chaque tableau garde son statut, ses totaux tels que calculés par
  * l'API (ou leur abstention motivée) et ses limites. Aucune signature, aucune transmission, aucune validation.
  */
-import type { CelluleGrille, Formulaire2033FProjet, Formulaire2033GProjet, Formulaire2059AProjet, GrilleProjet, ReponseLiasse } from './fiscal';
+import type { CadreIIIProjet, CelluleGrille, Formulaire2033DProjet, Formulaire2033EProjet, FormulaireCasesProjet, Formulaire2033FProjet, Formulaire2033GProjet, Formulaire2059AProjet, GrilleProjet, ReponseLiasse } from './fiscal';
 import { LIBELLES_COLONNES_2059_A } from './fiscal';
 
 export interface TableauEtatJoint {
@@ -88,10 +88,85 @@ function depuis2033F(f: Formulaire2033FProjet, nom: string): TableauEtatJoint[] 
   ];
 }
 
+/** Formulaires saisis case par case (2056, 2058, 2059-E, renvois des bilans) : une ligne par case, avec son code, son statut et son montant ; les calculs du formulaire en totaux. */
+function depuisCases(f: FormulaireCasesProjet): TableauEtatJoint[] {
+  const saisies = f.cases.filter((c) => c.statut !== 'a_saisir').length;
+  return [
+    {
+      id: f.id,
+      titre: `${f.titre}`,
+      etat: saisies === 0 ? ETAT.a_saisir! : `${saisies} case(s) sur ${f.cases.length} saisie(s)`,
+      colonnes: ['Case', 'Libellé', 'Montant'],
+      lignes: f.cases.map((c) => ({ libelle: `${c.code}`, statut: STATUT_LIGNE[c.statut] ?? c.statut, cellules: [c.libelle, c.statut === 'saisi' && c.montant !== null ? c.montant : ''] })),
+      totaux: f.calculs.map((k) => ({ libelle: `${k.code} — ${k.libelle}`, cellules: ['', k.statut === 'etabli' ? k.montant : `abstention : ${k.motifs.join(' ')}`] })),
+      limites: [...f.limites, ...f.nonPrepare],
+    },
+  ];
+}
+
+function depuis2033D(f: Formulaire2033DProjet): TableauEtatJoint[] {
+  const saisies = f.cases.filter((c) => c.statut !== 'a_saisir').length;
+  return [
+    {
+      id: '2033-D',
+      titre: '2033-D — Provisions, amortissements dérogatoires, déficits, divers, travailleurs indépendants (cases)',
+      etat: saisies === 0 ? ETAT.a_saisir! : `${saisies} case(s) sur ${f.cases.length} saisie(s)`,
+      colonnes: ['Case', 'Libellé', 'Montant'],
+      lignes: f.cases.map((c) => ({ libelle: c.codeCase, statut: STATUT_LIGNE[c.statut] ?? c.statut, cellules: [c.libelle, c.statut === 'saisi' && c.montant !== null ? c.montant : ''] })),
+      totaux: [{ libelle: 'Total 870 (984 + 860)', cellules: ['', f.total870.statut === 'etabli' ? f.total870.montant : `abstention : ${f.total870.motifs.join(' ')}`] }, ...(f.revenuBrutSocial ? [{ libelle: 'Revenu brut social (notice, § 692/693)', cellules: ['', f.revenuBrutSocial.statut === 'etabli' ? f.revenuBrutSocial.montant : `abstention : ${f.revenuBrutSocial.motifs.join(' ')}`] }] : [])],
+      limites: [...f.limites, ...f.nonPrepare],
+    },
+    {
+      id: '2033-D-C',
+      titre: '2033-D, cadre C — Dotations aux provisions et charges à payer non déductibles',
+      etat: ETAT[f.cadreC.etat] ?? f.cadreC.etat,
+      colonnes: ['Ligne', 'Nature', 'Montant'],
+      lignes: f.cadreC.lignes.filter((l, i) => i < 7 || l.statut !== 'a_saisir').map((l) => ({ libelle: String(Number(l.ligne)), statut: STATUT_LIGNE[l.statut] ?? l.statut, cellules: [l.nature ?? '', l.montant ?? ''] })),
+      totaux: [{ libelle: 'Total 780 (à reporter ligne 322 du 2033-B)', cellules: ['', f.cadreC.total780.statut === 'etabli' ? f.cadreC.total780.montant : `abstention : ${f.cadreC.total780.motifs.join(' ')}`] }],
+      limites: [],
+    },
+  ];
+}
+
+function depuis2033E(f: Formulaire2033EProjet): TableauEtatJoint[] {
+  const saisies = f.cases.filter((c) => c.statut !== 'a_saisir').length;
+  return [
+    {
+      id: '2033-E',
+      titre: '2033-E — Effectifs et valeur ajoutée (CVAE)',
+      etat: saisies === 0 ? ETAT.a_saisir! : `${saisies} case(s) sur ${f.cases.length} saisie(s)`,
+      colonnes: ['Case', 'Libellé', 'Montant'],
+      lignes: f.cases.map((c) => ({ libelle: c.codeCase, statut: STATUT_LIGNE[c.statut] ?? c.statut, cellules: [c.libelle, c.statut === 'saisi' && c.montant !== null ? c.montant : ''] })),
+      totaux: ([['Total 1', f.total1], ['Total 2', f.total2], ['Total 3', f.total3], ['Valeur ajoutée (case 137)', f.valeurAjoutee137], ['Valeur ajoutée assujettie à la CVAE (case 117)', f.valeurAjoutee117]] as const).map(([libelle, k]) => ({ libelle, cellules: ['', k.statut === 'etabli' ? k.montant : `abstention : ${k.motifs.join(' ')}`] })),
+      limites: [...f.limites, ...f.nonPrepare],
+    },
+  ];
+}
+
+function depuisCadreIII(c: CadreIIIProjet): TableauEtatJoint[] {
+  return [
+    {
+      id: '2033-C-III',
+      titre: '2033-C, cadre III — Plus-values et moins-values (cessions d’immobilisations)',
+      etat: ETAT[c.etat] ?? c.etat,
+      colonnes: ['Ligne', 'Nature', 'Valeur d’actif', 'Amortissements', 'Valeur résiduelle', 'Prix de cession', 'Plus ou moins-value', 'Régime choisi par le cabinet'],
+      lignes: c.lignes.filter((l, i) => i < 10 || l.statut !== 'a_saisir').map((l) => ({ libelle: String(Number(l.ligne)), statut: STATUT_LIGNE[l.statut] ?? l.statut, cellules: [l.nature ?? '', l.valeurActif ?? '', l.amortissements ?? '', l.valeurResiduelle ?? '', l.prixCession ?? '', l.plusOuMoinsValue ?? '', l.classement ?? ''] })),
+      totaux: [
+        { libelle: 'Total des lignes saisies', cellules: ['', ...(['valeurActif', 'amortissements', 'valeurResiduelle', 'prixCession'] as const).map((k) => (c.totaux[k].statut === 'etabli' ? c.totaux[k].montant : `abstention : ${c.totaux[k].motifs.join(' ')}`)), '', ''] },
+      ],
+      limites: c.limites,
+    },
+  ];
+}
+
 /** Tous les tableaux saisis par lignes de la réponse de la liasse, dans l'ordre des numéros de tableau. */
 export function etatJointDe(l: ReponseLiasse): TableauEtatJoint[] {
   const nom = l.regimeDemande === 'reel_normal' ? '2059' : '2033';
   return [
+    ...(l.formulairesCases ?? []).flatMap(depuisCases),
+    ...(l.formulaire2033D ? depuis2033D(l.formulaire2033D) : []),
+    ...(l.formulaire2033E ? depuis2033E(l.formulaire2033E) : []),
+    ...(l.tableauxSaisis && l.tableauxSaisis.statut === 'projet' && l.tableauxSaisis.cadreIII ? depuisCadreIII(l.tableauxSaisis.cadreIII) : []),
     ...(l.formulaire2059A ? depuis2059A(l.formulaire2059A) : []),
     ...(l.grilles2059 ?? []).flatMap(depuisGrille),
     ...(l.formulaire2057 ? depuisGrille(l.formulaire2057) : []),

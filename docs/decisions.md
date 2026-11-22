@@ -720,6 +720,14 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Limites, dites** : XLS, ODS et classeurs au-delà des bornes refusés (422 motivés) ; une seule feuille par reprise ; essais faits sur des classeurs synthétiques (construits dans les tests et avec Python), non sur de vrais exports de logiciels comptables **(externe)** ; le rattachement de composants par import reste à faire.
 - **Preuves** : 5 tests de lecture (`xlsx.test.ts` : valeurs, formules, feuilles, refus hostiles) et analyse de bout en bout (45 tests du dossier `immobilisations`), 3 essais d'intégration sur la pile réelle (aperçu sans écriture, validation et rejeu idempotent, classeur hostile), e2e ordinateur existant adapté (10 passés), capture `reprise-xlsx-apercu.png` (`tests/reel/capture-xlsx.mjs`).
 
+### D-125 — Reprise des immobilisations : rattachement de composants par import (2026-11-22, complète D-092 et D-124)
+
+- **Colonne facultative « Composant de (désignation du bien principal) »** (code `composantDe`, version de l'analyseur `2026-11-22.1`), proposée d'après les en-têtes usuels (« composant de », « bien principal », « structure », « rattaché à »…), modifiable comme les autres. Vide = bien non rattaché ; un fichier sans la colonne se comporte comme avant.
+- **Résolution sans rien deviner** (`rattacherComposants`, seconde passe de l'analyse) : par désignation normalisée (accents, casse, ponctuation ignorés), parmi les lignes valides du fichier ET les immobilisations du dossier. **Rejet motivé, jamais de rattachement au hasard** : aucune correspondance, plusieurs correspondances (ambiguïté), bien principal lui-même composant (un seul niveau, comme la saisie manuelle, PCG art. 214-9), bien lui-même. Un bien principal qui est un doublon d'une immobilisation du dossier retombe sur l'existante.
+- **Écriture** : deux temps dans la même transaction (biens sans rattachement dans le fichier, y compris composants d'un bien déjà au dossier ; puis composants d'un bien du fichier avec l'identifiant créé) ; incohérence = 409 `apercu_obsolete`, rien n'est écrit. Aucune immobilisation existante n'est modifiée. Le journal d'audit de chaque immobilisation créée porte le rattachement. L'aperçu renvoie, par ligne, le rattachement résolu.
+- **Limites, dites** : un seul niveau de rattachement ; la désignation doit être unique pour être rattachable ; les règles de composants (durées par composant, PCG art. 214-9) restent celles de la saisie manuelle, non validées par un professionnel ; essais sur fichiers synthétiques seulement.
+- **Preuves** : 3 tests du moteur, 1 essai d'intégration sur la pile réelle (composant d'un bien du fichier, d'un bien du dossier, ambigu, introuvable, composant de composant), 24 essais d'intégration de la reprise verts.
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

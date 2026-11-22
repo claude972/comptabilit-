@@ -510,3 +510,37 @@ describe('classeur XLSX (D-124) : même aperçu, même validation, mêmes garde-
     expect(await compter('reprises_immobilisations', d)).toBe(avant);
   });
 });
+
+describe('composants par import (D-125) : rattachement au bien principal, jamais deviné', () => {
+  const E = 'Désignation;Compte;Valeur brute;Date de mise en service;Durée (mois);Composant de';
+  let d = '';
+
+  it('composant d’un bien du même fichier et d’un bien déjà au dossier ; ambigu, introuvable et composant de composant rejetés', async () => {
+    ({ dossier: d } = await creerDossier(`Société d’essai composants ${SEL} SAS (fictive)`));
+    expect((await api('chloe', 'POST', `/v1/dossiers/${d}/immobilisations`, { libelle: 'Entrepôt existant', compteImmobilisation: '213100', baseAmortissable: '90000.00', dateMiseEnService: '2020-01-01', dureeMois: 300 })).statut).toBeLessThan(300);
+    const texte = [
+      E,
+      'Bâtiment neuf;213100;50000,00;01/02/2024;300;',
+      'Toiture du bâtiment;213500;8000,00;01/02/2024;180;batiment NEUF',
+      'Quai de chargement;213500;3000,00;01/03/2024;120;Entrepôt existant',
+      'Cloison;213500;1000,00;01/03/2024;120;Toiture du bâtiment',
+      'Absent;213500;900,00;01/03/2024;120;Bien inconnu',
+    ].join('\n');
+    const ap = await apercu('chloe', d, texte);
+    expect(ap.statut).toBe(200);
+    expect(ap.json.correspondance.composantDe).toBe(5);
+    const parLigne = new Map<number, any>(ap.json.lignes.map((l: any) => [l.ligne, l]));
+    expect(parLigne.get(2)).toMatchObject({ statut: 'valide', composant: null });
+    expect(parLigne.get(3)).toMatchObject({ statut: 'valide', composant: { vers: { type: 'fichier', ligne: 2 } } });
+    expect(parLigne.get(4)).toMatchObject({ statut: 'valide', composant: { vers: { type: 'dossier' } } });
+    expect(parLigne.get(5).statut).toBe('invalide');
+    expect(parLigne.get(5).motifs.join(' ')).toMatch(/lui-même un composant/);
+    expect(parLigne.get(6).motifs.join(' ')).toMatch(/aucun bien principal/);
+    const r = await valider('chloe', d, texte, ap);
+    expect(r.statut).toBeLessThan(300);
+    const lignes = (await editeur.query(`select i.libelle, p.libelle as principal from immobilisations i left join immobilisations p on p.id = i.composant_de where i.entite_id = $1 order by i.libelle`, [d])).rows;
+    const dict = Object.fromEntries(lignes.map((l: any) => [l.libelle, l.principal]));
+    expect(dict).toMatchObject({ 'Toiture du bâtiment': 'Bâtiment neuf', 'Quai de chargement': 'Entrepôt existant', 'Bâtiment neuf': null, 'Entrepôt existant': null });
+    expect(Object.keys(dict)).toHaveLength(4); // Cloison et Absent rejetés, rien d'autre créé
+  });
+});

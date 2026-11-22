@@ -18,7 +18,7 @@ import {
 const octets = (t: string) => new Uint8Array(Buffer.from(t, 'utf8'));
 const ENTETE = 'Désignation;Compte;Valeur brute;Date de mise en service;Durée (mois)';
 const csv = (...lignes: string[]) => [ENTETE, ...lignes].join('\n');
-const analyser = (texte: string, existantes: Array<{ libelle: string; dateMiseEnService: string; baseAmortissable: string }> = [], dejaRepris?: Set<number>) => {
+const analyser = (texte: string, existantes: Array<{ libelle: string; dateMiseEnService: string; baseAmortissable: string; id?: string; composantDe?: string | null }> = [], dejaRepris?: Set<number>) => {
   const f = lireFichierReprise(octets(texte));
   const { correspondance } = proposerCorrespondance(f.entetes);
   return { f, correspondance, ...analyserReprise(f, correspondance, { existantes, dejaRepris }) };
@@ -324,5 +324,37 @@ describe('structure', () => {
   it('chaque champ proposé existe dans la liste des champs', () => {
     expect(CODES_CHAMPS_REPRISE).toContain('dureeAnnees');
     expect(new Set(CODES_CHAMPS_REPRISE).size).toBe(CODES_CHAMPS_REPRISE.length);
+  });
+});
+
+describe('composants : rattachement par désignation du bien principal (D-125)', () => {
+  const E = `${ENTETE};Composant de`;
+  const f = (...l: string[]) => [E, ...l].join('\n');
+  const ligne = (n: number, nom: string, compte: string, cmp = '') => `${nom};${compte};${1000 + n},00;01/01/2024;120;${cmp}`;
+
+  it('colonne proposée d’après l’en-tête ; composant du fichier résolu sans rien deviner (accents et casse ignorés)', () => {
+    const a = analyser(f(ligne(1, 'Bâtiment atelier', '213100'), ligne(2, 'Toiture', '213500', 'batiment ATELIER')));
+    expect(a.correspondance.composantDe).toBe(5);
+    expect(a.lignes[0]!.statut).toBe('valide');
+    expect(a.lignes[0]!.composant ?? null).toBeNull();
+    expect(a.lignes[1]).toMatchObject({ statut: 'valide', composant: { designation: 'batiment ATELIER', vers: { type: 'fichier', ligne: 2 } } });
+  });
+  it('composant d’un bien déjà au dossier : identifiant repris ; plusieurs correspondances, introuvable, composant de composant, soi-même : rejetés avec motif', () => {
+    const existantes = [{ libelle: 'Entrepôt', dateMiseEnService: '2020-01-01', baseAmortissable: '9000.00', id: 'id-entrepot', composantDe: null }, { libelle: 'Chariot', dateMiseEnService: '2020-01-01', baseAmortissable: '100.00', id: 'a1', composantDe: 'id-entrepot' }, { libelle: 'Chariot', dateMiseEnService: '2021-01-01', baseAmortissable: '200.00', id: 'a2', composantDe: null }];
+    const a = analyser(f(ligne(1, 'Quai', '213500', 'Entrepôt'), ligne(2, 'Roue', '215400', 'Chariot'), ligne(3, 'Fantôme', '215400', 'Absent'), ligne(4, 'Sous-toit', '213500', 'Quai'), ligne(5, 'Boucle', '213500', 'Boucle')), existantes);
+    expect(a.lignes[0]).toMatchObject({ statut: 'valide', composant: { vers: { type: 'dossier', id: 'id-entrepot' } } });
+    expect(a.lignes[1]).toMatchObject({ statut: 'invalide' });
+    expect(a.lignes[1]!.motifs.join(' ')).toMatch(/2 biens portent cette désignation/);
+    expect(a.lignes[2]!.motifs.join(' ')).toMatch(/aucun bien principal/);
+    expect(a.lignes[3]!.motifs.join(' ')).toMatch(/lui-même un composant/);
+    expect(a.lignes[4]!.motifs.join(' ')).toMatch(/aucun bien principal|propre composant/);
+    expect(a.comptes).toMatchObject({ valides: 1, invalides: 4 });
+  });
+  it('un fichier sans la colonne reste inchangé ; un bien principal en doublon retombe sur l’existant', () => {
+    expect(analyser(csv('A;213100;100,00;01/01/2024;12')).lignes[0]).toMatchObject({ statut: 'valide' });
+    const existantes = [{ libelle: 'Atelier', dateMiseEnService: '2024-01-01', baseAmortissable: '1001.00', id: 'x', composantDe: null }];
+    const a = analyser(f(ligne(1, 'Atelier', '213100'), ligne(2, 'Porte', '213500', 'Atelier')), existantes);
+    expect(a.lignes[0]).toMatchObject({ statut: 'doublon', cause: 'doublon_dossier' });
+    expect(a.lignes[1]).toMatchObject({ statut: 'valide', composant: { vers: { type: 'dossier', id: 'x' } } });
   });
 });

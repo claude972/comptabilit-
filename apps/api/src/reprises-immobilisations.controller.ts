@@ -134,7 +134,7 @@ export class ReprisesImmobilisationsController {
     const proposition = proposerCorrespondance(f.entetes);
     const utilisee = complete(d.correspondance ?? proposition.correspondance);
     const existantes = await tx
-      .select({ libelle: s.immobilisations.libelle, dateMiseEnService: s.immobilisations.dateMiseEnService, baseAmortissable: s.immobilisations.baseAmortissable })
+      .select({ id: s.immobilisations.id, composantDe: s.immobilisations.composantDe, libelle: s.immobilisations.libelle, dateMiseEnService: s.immobilisations.dateMiseEnService, baseAmortissable: s.immobilisations.baseAmortissable })
       .from(s.immobilisations)
       .where(eq(s.immobilisations.entiteId, entiteId));
     const deja = await tx
@@ -184,7 +184,7 @@ export class ReprisesImmobilisationsController {
         remarques: a.proposition.remarques,
         problemes: a.resultat.problemes,
         comptes: a.resultat.comptes,
-        lignes: a.resultat.lignes.map((l) => ({ ligne: l.ligne, statut: l.statut, cause: l.cause, motifs: l.motifs, lues: l.lues })),
+        lignes: a.resultat.lignes.map((l) => ({ ligne: l.ligne, statut: l.statut, cause: l.cause, motifs: l.motifs, lues: l.lues, composant: l.composant ? { designation: l.composant.designation, vers: l.composant.vers.type === 'fichier' ? { type: 'fichier', ligne: l.composant.vers.ligne } : { type: 'dossier' } } : null })),
         empreinteApercu: a.empreinteApercu,
         peutValider: a.resultat.problemes.length === 0 && a.resultat.comptes.valides > 0,
       };
@@ -254,17 +254,24 @@ export class ReprisesImmobilisationsController {
       // Immobilisations : INSERTION SEULE (aucun UPDATE ni DELETE sur le fichier existant).
       const valides = lignes.filter((l) => l.immobilisation);
       const idParLigne = new Map<number, string>();
-      for (let i = 0; i < valides.length; i += LOT_INSERTION) {
-        const creees = await tx
-          .insert(s.immobilisations)
-          .values(
-            valides.slice(i, i + LOT_INSERTION).map((l) => {
-              const im = l.immobilisation!;
-              return { cabinetId: acces.cabinetId, entiteId, ...im, saisiePar: acces.utilisateurId, repriseId: reprise!.id, repriseLigne: l.ligne, composantDe: null };
-            }),
-          )
-          .returning({ id: s.immobilisations.id, ligne: s.immobilisations.repriseLigne });
-        for (const c of creees) idParLigne.set(c.ligne!, c.id);
+      // Deux temps : les biens sans rattachement dans le fichier (y compris les composants d'un bien DÉJÀ au dossier), puis les composants d'un bien du fichier.
+      const versFichier = (l: (typeof valides)[number]) => (l.composant?.vers.type === 'fichier' ? l.composant.vers.ligne : null);
+      for (const [passe, groupe] of [[1, valides.filter((l) => versFichier(l) === null)], [2, valides.filter((l) => versFichier(l) !== null)]] as const) {
+        for (let i = 0; i < groupe.length; i += LOT_INSERTION) {
+          const creees = await tx
+            .insert(s.immobilisations)
+            .values(
+              groupe.slice(i, i + LOT_INSERTION).map((l) => {
+                const im = l.immobilisation!;
+                const vers = l.composant?.vers;
+                const composantDe = vers === undefined ? null : vers.type === 'dossier' ? vers.id : (idParLigne.get(vers.ligne) ?? null);
+                if (passe === 2 && composantDe === null) throw new ConflictException({ message: 'Rattachement de composant incohérent : le bien principal du fichier n’a pas été créé. Relancez l’aperçu. Rien n’a été importé.', code: 'apercu_obsolete' });
+                return { cabinetId: acces.cabinetId, entiteId, ...im, saisiePar: acces.utilisateurId, repriseId: reprise!.id, repriseLigne: l.ligne, composantDe };
+              }),
+            )
+            .returning({ id: s.immobilisations.id, ligne: s.immobilisations.repriseLigne });
+          for (const c of creees) idParLigne.set(c.ligne!, c.id);
+        }
       }
       for (let i = 0; i < lignes.length; i += LOT_INSERTION) {
         await tx.insert(s.lignesRepriseImmobilisations).values(
@@ -314,7 +321,7 @@ export class ReprisesImmobilisationsController {
             cibleType: 'immobilisation',
             cibleId: idParLigne.get(l.ligne)!,
             entiteId,
-            details: { origine: 'reprise', repriseId: reprise!.id, ligne: l.ligne, compte: l.immobilisation!.compteImmobilisation, acquisition: l.immobilisation!.dateAcquisition, dureeMois: l.immobilisation!.dureeMois, mode: l.immobilisation!.modeAmortissement, coefficient: l.immobilisation!.coefficientDegressif, eligibiliteConfirmee: l.immobilisation!.eligibiliteDegressifConfirmee, valeurResiduelle: l.immobilisation!.valeurResiduelle != null, sortie: l.immobilisation!.dateSortie, composant: null },
+            details: { origine: 'reprise', repriseId: reprise!.id, ligne: l.ligne, compte: l.immobilisation!.compteImmobilisation, acquisition: l.immobilisation!.dateAcquisition, dureeMois: l.immobilisation!.dureeMois, mode: l.immobilisation!.modeAmortissement, coefficient: l.immobilisation!.coefficientDegressif, eligibiliteConfirmee: l.immobilisation!.eligibiliteDegressifConfirmee, valeurResiduelle: l.immobilisation!.valeurResiduelle != null, sortie: l.immobilisation!.dateSortie, composant: l.composant ? { designation: l.composant.designation, versBienDuFichier: l.composant.vers.type === 'fichier' } : null },
           })),
         );
       }

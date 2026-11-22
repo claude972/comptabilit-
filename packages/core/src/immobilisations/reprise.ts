@@ -17,7 +17,7 @@ import { dateCivileValide } from '../dates.js';
 import { analyserMontantFr, dec, versChaine } from '../montant.js';
 import { schemaImmobilisation } from './schema.js';
 
-export const VERSION_REPRISE_IMMOBILISATIONS = '2026-11-20.1';
+export const VERSION_REPRISE_IMMOBILISATIONS = '2026-11-22.1';
 /** Taille maximale du fichier repris (5 Mio). */
 export const TAILLE_MAX_REPRISE = 5 * 1024 * 1024;
 /** Nombre maximal de lignes de données d'un fichier repris. */
@@ -45,6 +45,7 @@ export const CODES_CHAMPS_REPRISE = [
   'eligibiliteDegressifConfirmee',
   'valeurResiduelle',
   'dateSortie',
+  'composantDe',
 ] as const;
 export type CodeChampReprise = (typeof CODES_CHAMPS_REPRISE)[number];
 
@@ -63,6 +64,7 @@ export const CHAMPS_REPRISE: readonly ChampReprise[] = [
   { code: 'eligibiliteDegressifConfirmee', libelle: 'Éligibilité au dégressif confirmée', obligatoire: false, aide: 'Oui/non, seulement pour un bien dégressif : jamais devinée.' },
   { code: 'valeurResiduelle', libelle: 'Valeur résiduelle (€)', obligatoire: false, aide: 'Strictement inférieure à la valeur brute.' },
   { code: 'dateSortie', libelle: 'Date de sortie', obligatoire: false, aide: 'Cession ou mise au rebut.' },
+  { code: 'composantDe', libelle: 'Composant de (désignation du bien principal)', obligatoire: false, aide: 'Désignation EXACTE (accents et casse ignorés) du bien principal, dans ce fichier ou déjà dans le dossier : une seule correspondance, un seul niveau de rattachement ; vide = bien non rattaché. Jamais devinée.' },
 ];
 const LIBELLE_CHAMP = Object.fromEntries(CHAMPS_REPRISE.map((c) => [c.code, c.libelle])) as Record<CodeChampReprise, string>;
 
@@ -284,6 +286,7 @@ const SYNONYMES: Partial<Record<CodeChampReprise, readonly string[]>> = {
   coefficientDegressif: ['coefficient degressif', 'coefficient', 'coef degressif', 'coef'],
   eligibiliteDegressifConfirmee: ['eligibilite degressif', 'eligibilite au degressif', 'degressif eligible', 'eligible degressif', 'eligibilite degressif confirmee', 'eligible au degressif'],
   valeurResiduelle: ['valeur residuelle', 'valeur resid', 'residuelle', 'vr', 'valeur residuelle eur'],
+  composantDe: ['composant de', 'composant du bien', 'bien principal', 'structure', 'rattache a', 'rattache au bien', 'immobilisation principale', 'designation structure', 'designation du bien principal'],
   dateSortie: ['date sortie', 'date de sortie', 'sortie', 'date cession', 'date de cession', 'date de mise au rebut', 'date rebut', 'date de sortie de l actif'],
 };
 
@@ -396,6 +399,8 @@ export interface LigneReprise {
   lues: Partial<Record<CodeChampReprise, string>>;
   immobilisation: ImmobilisationReprise | null;
   cle: string | null;
+  /** Rattachement comme composant (D-125) : bien principal résolu, jamais deviné ; null si la colonne est absente ou vide. */
+  composant?: { designation: string; vers: { type: 'dossier'; id: string } | { type: 'fichier'; ligne: number } } | null;
 }
 
 /** Normalise une désignation pour la comparaison des doublons : sans accents, minuscules, ponctuation et espaces réduits. */
@@ -524,6 +529,7 @@ export function controlerLigne(numero: number, cellules: readonly string[], ente
   const eligible = lire('eligibiliteDegressifConfirmee', lireBooleen, false);
   const residuelle = lire('valeurResiduelle', lireMontant, false);
   const sortie = lire('dateSortie', lireDate, false);
+  lire('composantDe', (t) => (CONTROLE.test(t) ? ko('caractères de contrôle interdits') : t.length > 200 ? ko('200 caractères au plus') : ok(t)), false);
   if (motifs.length) return rejet(motifs);
 
   const candidat = {
@@ -572,9 +578,39 @@ export function controlerLigne(numero: number, cellules: readonly string[], ente
   return { ligne: numero, statut: 'valide', cause: null, motifs: [], lues, immobilisation, cle: cleDoublon(d.libelle, d.dateMiseEnService, d.baseAmortissable) };
 }
 
+/**
+ * Rattachement des composants (D-125) : la colonne « composant de » porte la DÉSIGNATION du bien principal ; elle est résolue sans rien
+ * deviner, parmi les lignes valides du fichier et les immobilisations du dossier, par désignation normalisée (accents, casse, ponctuation).
+ * Zéro correspondance, plusieurs correspondances, le bien lui-même, un bien principal lui-même composant (un seul niveau de rattachement,
+ * comme la saisie manuelle) : la ligne est REJETÉE avec son motif, jamais rattachée au hasard.
+ */
+function rattacherComposants(lignes: LigneReprise[], contexte: ContexteReprise): void {
+  const parNom = new Map<string, Array<{ type: 'dossier'; id: string; composant: boolean } | { type: 'fichier'; ligne: number; composant: boolean }>>();
+  const ajouter = (nom: string, x: { type: 'dossier'; id: string; composant: boolean } | { type: 'fichier'; ligne: number; composant: boolean }) => {
+    const k = normaliserDesignation(nom);
+    parNom.set(k, [...(parNom.get(k) ?? []), x]);
+  };
+  for (const e of contexte.existantes) if (e.id) ajouter(e.libelle, { type: 'dossier', id: e.id, composant: Boolean(e.composantDe) });
+  for (const l of lignes) if (l.statut === 'valide' && l.immobilisation) ajouter(l.immobilisation.libelle, { type: 'fichier', ligne: l.ligne, composant: (l.lues.composantDe ?? '').trim() !== '' });
+  lignes.forEach((l, i) => {
+    const nom = (l.lues.composantDe ?? '').trim();
+    if (l.statut !== 'valide' || nom === '') return;
+    const rejeter = (m: string) => {
+      lignes[i] = { ...l, statut: 'invalide', motifs: [m], immobilisation: null, cle: null, composant: null };
+    };
+    const candidats = (parNom.get(normaliserDesignation(nom)) ?? []).filter((c) => !(c.type === 'fichier' && c.ligne === l.ligne));
+    if (candidats.length === 0) return rejeter(`Composant de « ${nom} » : aucun bien principal de cette désignation dans le fichier ni dans le dossier (rien n’est deviné).`);
+    if (candidats.length > 1) return rejeter(`Composant de « ${nom} » : ${candidats.length} biens portent cette désignation ; rattachement ambigu, donc refusé (rendez les désignations uniques).`);
+    const c = candidats[0]!;
+    if (c.composant) return rejeter(`Composant de « ${nom} » : ce bien est lui-même un composant ; un seul niveau de rattachement est admis.`);
+    if (normaliserDesignation(l.immobilisation!.libelle) === normaliserDesignation(nom)) return rejeter(`Composant de « ${nom} » : un bien ne peut pas être son propre composant.`);
+    lignes[i] = { ...l, composant: { designation: nom, vers: c.type === 'dossier' ? { type: 'dossier', id: c.id } : { type: 'fichier', ligne: c.ligne } } };
+  });
+}
+
 export interface ContexteReprise {
   /** Immobilisations déjà présentes dans le dossier (jamais modifiées). */
-  existantes: ReadonlyArray<{ libelle: string; dateMiseEnService: string; baseAmortissable: string }>;
+  existantes: ReadonlyArray<{ libelle: string; dateMiseEnService: string; baseAmortissable: string; id?: string; composantDe?: string | null }>;
   /** Lignes de CE fichier (même empreinte) déjà reprises lors d'un import antérieur dans ce dossier. */
   dejaRepris?: ReadonlySet<number>;
 }
@@ -607,6 +643,7 @@ export function analyserReprise(fichier: FichierLu, correspondance: Correspondan
     dansFichier.set(r.cle, l.numero);
     return r;
   });
+  rattacherComposants(lignes, contexte);
   const comptes = { total: lignes.length, valides: 0, invalides: 0, doublons: 0 };
   for (const l of lignes) {
     if (l.statut === 'valide') comptes.valides++;

@@ -33,49 +33,47 @@ export default async function PageEtatJoint({ params, searchParams }: { params: 
   const liasse = await tenter<ReponseLiasse>(`v1/exercices/${exercice.id}/liasse?regime=${regime}`);
   if (!liasse.ok) return <ErreurAcces statut={liasse.statut} message={liasse.message} retour={`/dossiers/${id}/fiscal?exercice=${exercice.id}`} />;
   // `?vue=essentiel` : bilan, comptes de résultat, immobilisations et amortissements seulement (D-163) ; sans paramètre, tous les tableaux préparés.
-  const essentiel = parametre(sp.vue) === 'essentiel';
+  // `?vue=stocks` : bilan (2050 actif, 2051 passif) et ventilation des stocks seulement (D-174) : grille 2050-STOCKS saisie, cases BN à BS retenues ou en abstention, écarts et justifications.
+  const vue = parametre(sp.vue) === 'essentiel' ? 'essentiel' : parametre(sp.vue) === 'stocks' ? 'stocks' : 'complet';
+  const essentiel = vue === 'essentiel';
+  const stocks = vue === 'stocks';
   const tousTableaux = etatJointDe(liasse.donnees);
-  const tableaux = essentiel ? tousTableaux.filter((t) => /^(liasse-|2054\/|2055\/|2033-C\/)/.test(t.id)) : tousTableaux;
+  const tableaux = essentiel ? tousTableaux.filter((t) => /^(liasse-|2054\/|2055\/|2033-C\/)/.test(t.id)) : stocks ? tousTableaux.filter((t) => /^(liasse-2050|liasse-2051|liasse-2050-STOCKS-REPRISE)$|^2050-STOCKS\//.test(t.id)) : tousTableaux;
+  const perimetre = essentiel ? 'bilan, comptes de résultat, immobilisations et amortissements seulement' : stocks ? 'bilan (2050 actif, 2051 passif) et ventilation des stocks seulement (cases BN à BS)' : 'tous les tableaux préparés';
   const edition = formaterHorodatage(new Date().toISOString());
   const identification = [
     `Dossier : ${ctx.dossier.raisonSociale}${ctx.dossier.formeJuridique ? ` (${ctx.dossier.formeJuridique})` : ''} — SIREN ${liasse.donnees.identification?.siren ?? 'non renseigné au dossier'}`,
     `Exercice : du ${exercice.debut} au ${exercice.fin} (version ${exercice.versionDonnees} des données)`,
     `Régime : ${REGIMES[regime]}`,
+    `Périmètre de cet état : ${perimetre} (${tableaux.length} tableau(x) sur ${tousTableaux.length} préparés)`,
     `Édité le ${edition} — PROJET, non validé`,
   ];
   const csv = csvEtatJoint(tableaux, identification);
   const retour = `/dossiers/${id}/fiscal?exercice=${exercice.id}&vue=liasse&regime=${regime}`;
   return (
     <div className="space-y-4">
-      <style>{`
-        @page { size: A4 landscape; margin: 14mm 12mm 16mm; @bottom-right { content: "Page " counter(page) " / " counter(pages); font-size: 9pt; } @bottom-left { content: "PROJET — non validé — aucune signature ni transmission"; font-size: 9pt; } }
-        @media print {
-          body * { visibility: hidden; }
-          #etat-joint, #etat-joint *, #pied-etat-joint { visibility: visible; }
-          #etat-joint { position: absolute; left: 0; top: 0; width: 100%; }
-          .hors-impression { display: none !important; }
-          #pied-etat-joint { display: block !important; position: fixed; bottom: 0; left: 0; right: 0; font-size: 8pt; border-top: 1px solid #000; background: #fff; }
-          .tableau-joint { break-inside: auto; }
-          .tableau-joint + .tableau-joint { break-before: page; }
-          thead { display: table-header-group; }
-          tr { break-inside: avoid; }
-        }
-      `}</style>
+      {/* Règles d'impression : feuille de style GLOBALE (`globals.css`, section « État joint »), car la politique de sécurité du contenu (style-src avec nonce) interdit tout <style> en ligne : l'ancienne balise ne s'appliquait pas et le PDF reprenait la navigation de l'application (D-174). */}
       <div className="hors-impression flex flex-wrap items-center gap-4" data-testid="actions-etat-joint">
         <Link href={retour}>← Retour aux états fiscaux</Link>
         <Link href={`/dossiers/${id}/fiscal/etat-joint?exercice=${exercice.id}&regime=${regime === 'reel_normal' ? 'reel_simplifie' : 'reel_normal'}`} prefetch={false}>
           Voir l’état joint du régime {REGIMES[regime === 'reel_normal' ? 'reel_simplifie' : 'reel_normal'].toLowerCase()}
         </Link>
-        {essentiel ? (
+        {vue !== 'complet' ? (
           <Link href={`/dossiers/${id}/fiscal/etat-joint?exercice=${exercice.id}&regime=${regime}`} prefetch={false} data-testid="lien-etat-complet">
             Voir tous les tableaux préparés ({tousTableaux.length})
           </Link>
-        ) : (
+        ) : null}
+        {vue !== 'essentiel' ? (
           <Link href={`/dossiers/${id}/fiscal/etat-joint?exercice=${exercice.id}&regime=${regime}&vue=essentiel`} prefetch={false} data-testid="lien-etat-essentiel">
             Bilan, comptes de résultat et immobilisations seulement
           </Link>
-        )}
-        <a href={`data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`} download={`etat-joint-${regime}-${exercice.fin}.csv`} data-testid="export-csv-etat-joint">
+        ) : null}
+        {vue !== 'stocks' ? (
+          <Link href={`/dossiers/${id}/fiscal/etat-joint?exercice=${exercice.id}&regime=${regime}&vue=stocks`} prefetch={false} data-testid="lien-etat-stocks">
+            Bilan et ventilation des stocks
+          </Link>
+        ) : null}
+        <a href={`data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`} download={`etat-joint${vue === 'complet' ? '' : `-${vue}`}-${regime}-${exercice.fin}.csv`} data-testid="export-csv-etat-joint">
           Exporter en CSV
         </a>
         <span className="text-sm text-texte-doux">Pour imprimer ou enregistrer en PDF : Fichier › Imprimer (format A4 paysage, pagination et statut PROJET sur chaque page).</span>
@@ -103,6 +101,9 @@ export default async function PageEtatJoint({ params, searchParams }: { params: 
                       <li key={l}>{l}</li>
                     ))}
                   </ul>
+                  <p className="mt-1 font-semibold" data-testid="perimetre-etat-joint">
+                    Périmètre : {perimetre} ({tableaux.length} tableau(x) sur {tousTableaux.length} préparés). L’état complet reste accessible depuis le lien « Voir tous les tableaux préparés ».
+                  </p>
                   <p className="mt-1" data-testid="sommaire-etat-joint">
                     {tableaux.length} tableau(x) : {tableaux.map((t) => t.id).join(', ')}.
                   </p>

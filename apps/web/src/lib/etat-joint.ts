@@ -37,7 +37,7 @@ function depuisGrille(g: GrilleProjet): TableauEtatJoint[] {
       colonnes,
       lignes: c.lignes.map((l) => ({
         libelle: c.libelleOrigine ? `${Number(l.ligne)}${l.origine ? ` — ${l.origine}` : ''}` : l.libelle,
-        statut: STATUT_LIGNE[l.statut] ?? l.statut,
+        statut: `${STATUT_LIGNE[l.statut] ?? l.statut}${l.trace ? ` — justification : « ${l.trace.note} » (saisie le ${l.trace.le.slice(0, 10)}, version ${l.trace.versionDonnees} des données)` : ''}`,
         cellules: [...cles.map((k) => (l.valeurs && k in l.valeurs ? l.valeurs[k]! : l.valeurs ? '' : '')), ...(c.colonneCalculee ? [l.calculee ? cellule(l.calculee) : ''] : [])],
       })),
       totaux: c.calculs.map((k) => ({ libelle: k.libelle, cellules: [...cles.map((x) => (x in k.cellules ? cellule(k.cellules[x]) : '—')), ...(c.colonneCalculee ? [''] : [])] })),
@@ -262,7 +262,7 @@ function depuisLiasse(p: LiasseProjet): TableauEtatJoint[] {
     return {
       id: `liasse-${t.code}`,
       titre: `${t.code} — ${t.intitule}`,
-      etat: `montants de l’exercice déduits de la balance (avant écritures d’inventaire) ; codes de cases : « à confirmer » quand la ligne regroupe plusieurs lignes du formulaire`,
+      etat: `montants de l’exercice déduits de la balance (avant écritures d’inventaire) ; codes de cases : une ligne sans case imprimée est désignée par sa nature (sous-total interne, détail repris ailleurs, mention sur pointilles, sans équivalent officiel) ; « à confirmer » seulement pour une ligne non relue`,
       colonnes: deuxColonnes ? ['Ligne', 'Code(s) de case', 'Brut', 'Amortissements et provisions', 'Net'] : ['Ligne', 'Code de case', 'Montant'],
       lignes: t.lignes.map((l) => ({
         libelle: l.libelle,

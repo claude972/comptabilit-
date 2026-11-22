@@ -136,14 +136,14 @@ for (const tab of t.tableaux) for (const c of tab.cadres) {
 }
 ok(ecartsCsv === 0, `CSV ↔ API : toutes les cellules des tableaux 2054 et 2055 concordent (${ecartsCsv} écart)`);
 // PDF A4 paysage : tous les montants non nuls de l'API doivent figurer dans le texte du PDF.
-const pdf = await page.pdf({ format: 'A4', landscape: true, displayHeaderFooter: true, headerTemplate: '<span></span>', footerTemplate: '<div style="font-size:8px;width:100%;text-align:right;padding-right:12mm">Page <span class="pageNumber"></span> / <span class="totalPages"></span></div>', margin: { top: '14mm', bottom: '18mm', left: '12mm', right: '12mm' } });
+const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true }); // mise en page d'impression de la feuille globale (D-174) : plus de navigation de l'application dans le PDF
 writeFileSync(`${sortie}parcours-immo-etat-joint.pdf`, pdf);
 const pdfjs = await import(new URL(`file://${join(racine, 'node_modules/.pnpm/pdfjs-dist@6.5.438/node_modules/pdfjs-dist/legacy/build/pdf.mjs')}`).href);
 const doc = await pdfjs.getDocument({ data: new Uint8Array(pdf), useSystemFonts: true }).promise;
 let texte = '';
 for (let p = 1; p <= doc.numPages; p++) texte += (await (await doc.getPage(p)).getTextContent()).items.map((x) => x.str).join(' ') + '\n';
 const manquants = [...montantsAttendus].filter((m) => !texte.includes(m));
-ok(manquants.length === 0 && /PROJET/.test(texte), `PDF ↔ API : ${doc.numPages} pages, ${montantsAttendus.size} montants non nuls distincts, ${manquants.length} absent(s) ${manquants.slice(0, 5)} ; mention PROJET présente`);
+ok(manquants.length === 0 && /PROJET/.test(texte) && !/Tableau de bord|Retour aux états fiscaux/.test(texte), `PDF ↔ API : ${doc.numPages} pages, ${montantsAttendus.size} montants non nuls distincts, ${manquants.length} absent(s) ${manquants.slice(0, 5)} ; mention PROJET présente`);
 await nav.close();
 console.log(`Lien local : ${WEB}/dossiers/${dossier}/fiscal?vue=liasse   (état joint : ${url})`);
 console.log(JSON.stringify({ dossier, exercice }));

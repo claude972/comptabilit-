@@ -115,6 +115,12 @@ test('ventilation 2050 par l’interface : saisir et justifier, retenir la repri
   // 6. État joint : mêmes montants ; CSV téléchargé ; PDF produit par le navigateur (rendu d'impression).
   await page.getByTestId('lien-etat-joint').click();
   await page.waitForURL(/\/fiscal\/etat-joint/);
+  // Vue ciblée « Bilan et ventilation des stocks » (D-174) : quatre tableaux seulement, périmètre annoncé ; l'état complet reste accessible.
+  await page.getByTestId('lien-etat-stocks').click();
+  await page.waitForURL(/vue=stocks/);
+  await expect(page.locator('[data-tableau-joint]')).toHaveCount(4);
+  await expect(page.getByTestId('perimetre-etat-joint')).toContainText('bilan (2050 actif, 2051 passif) et ventilation des stocks seulement');
+  await expect(page.getByTestId('lien-etat-complet')).toBeVisible();
   const joint = page.locator('[data-tableau-joint="liasse-2050-STOCKS-REPRISE"]');
   await expect(joint).toContainText('700.00');
   await expect(joint).toContainText('300.00');
@@ -124,13 +130,20 @@ test('ventilation 2050 par l’interface : saisir et justifier, retenir la repri
   const bloc = csv.split('\n').filter((l) => /;(BN|BO|BP|BQ|BR|BS);/.test(l));
   expect(bloc.map((l) => l.trim().split(';').slice(-2).join(';'))).toEqual(['BN;700.00', 'BO;100.00', 'BP;300.00', 'BQ;0.00', 'BR;500.00', 'BS;0.00']);
   expect(csv).toContain('2050-STOCKS');
+  expect(csv).toContain('Périmètre de cet état : bilan (2050 actif, 2051 passif) et ventilation des stocks seulement');
+  expect(csv).not.toMatch(/^2059-B|^2057 —|^2056 —/m);
   await page.emulateMedia({ media: 'print' });
-  const pdf = await page.pdf({ format: 'A4', landscape: true, printBackground: true });
+  // Mise en page d'impression : la navigation de l'application et les actions disparaissent (régression D-174 : style en ligne bloqué par la politique de sécurité du contenu).
+  await expect(page.getByTestId('actions-etat-joint')).toBeHidden();
+  await expect(page.getByRole('link', { name: 'Tableau de bord' })).toBeHidden();
+  const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
   const { getDocument } = await import(path.resolve(import.meta.dirname, '../../../../node_modules/.pnpm/pdfjs-dist@6.5.438/node_modules/pdfjs-dist/legacy/build/pdf.mjs'));
   const doc = await getDocument({ data: new Uint8Array(pdf), useSystemFonts: true }).promise;
   let texte = '';
   for (let i = 1; i <= doc.numPages; i++) texte += ((await (await doc.getPage(i)).getTextContent()).items as Array<{ str: string }>).map((x) => x.str).join(' ') + '\n';
   expect(texte).toMatch(/cases BN à BS retenues/);
+  expect(texte).not.toMatch(/Tableau de bord|Retour aux états fiscaux/);
+  expect(doc.numPages).toBeLessThanOrEqual(12);
   for (const m of ['700.00', '300.00', '500.00']) expect(texte, `PDF : ${m}`).toContain(m);
   expect(texte).toMatch(/PROJET, non validé/);
   await contexte.close();

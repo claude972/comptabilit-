@@ -124,3 +124,24 @@
     }
   }
 }
+
+/* ── État joint imprimable (D-138, D-174) ─────────────────────────────────────────────────────────────────────────────────────────────────────
+   Règles dans la feuille GLOBALE : la politique de sécurité du contenu (style-src 'self' + nonce) bloque tout <style> en ligne. Elles ne s'appliquent
+   qu'aux pages contenant #etat-joint (:has) ; la page nommée « etat-joint » porte le format A4 paysage et les marges. */
+#etat-joint { page: etat-joint; }
+@page etat-joint {
+  size: A4 landscape;
+  margin: 14mm 12mm 16mm;
+  @bottom-right { content: "Page " counter(page) " / " counter(pages); font-size: 9pt; }
+  @bottom-left { content: "PROJET — non validé — aucune signature ni transmission"; font-size: 9pt; }
+}
+@media print {
+  /* Tout élément qui ne contient pas l'état joint, n'en fait pas partie et n'est pas son pied disparaît de la mise en page (display:none : aucune page blanche, aucune navigation). */
+  body:has(#etat-joint) *:not(:has(#etat-joint)):not(#etat-joint):not(#etat-joint *):not(#pied-etat-joint) { display: none !important; }
+  body:has(#etat-joint) main#contenu { max-width: none; padding: 0; margin: 0; }
+  body:has(#etat-joint) #pied-etat-joint { display: block !important; position: fixed; bottom: -11mm; left: 0; right: 0; font-size: 8pt; border-top: 1px solid #000; background: #fff; }
+  body:has(#etat-joint) .tableau-joint { break-inside: auto; }
+  body:has(#etat-joint) .tableau-joint + .tableau-joint { break-before: page; }
+  body:has(#etat-joint) thead { display: table-header-group; }
+  body:has(#etat-joint) tr { break-inside: avoid; }
+}

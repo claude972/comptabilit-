@@ -98,3 +98,9 @@ Document de passage pour reprendre le travail sans relire la conversation. À me
 - Note annexe de la ligne 20 du 2059-A (D-157, migration 0072). Migrations jouées sur la base locale : jusqu'à 0072. Piège : toute migration se crée par `drizzle-kit generate --custom` (entrée de journal), jamais à la main.
 - CI : deuxième lecture (D-158) ; c9c932f et a769790 verts ; échecs Firefox / WebKit de même famille, attentes ajoutées, causes non confirmées ; runs 82a9514 → cbb535c et fcbb825 à lire une fois terminés.
 - Prochains restes réalisables : en-têtes cochables des 2059-B, C, D ; totaux de l'actif du 2050 (numérotation à trancher) ; état détaillé des charges à payer seulement si une source accessible l'énonce (Légifrance refuse l'accès).
+
+## Point du 2026-11-22 (matin) — D-159 à D-163
+- **Livrable à rejouer** : `node scripts/livrable-demo.mjs` (pile locale démarrée : `scripts/applis.sh demarrer`) → `var/livrables/demo/` (PDF 16 pages, CSV, captures, LISEZ-MOI avec liens). C'est le parcours utilisable de bout en bout ; il ne vaut ni validation professionnelle ni connexion externe.
+- Cause produit probable des échecs de navigation CI trouvée et corrigée : `<div>` / `<ul>` dans `<p>` → erreur d'hydratation (D-159) ; diagnostic de navigation et garde-fou d'hydratation dans `tests/reel/base.ts`. À confirmer par les prochains runs (CI non relue depuis D-158).
+- Faits : en-têtes cochables 2059-B et rappels 2059-C (D-160, migration 0073) ; total (II) / (III) du 2050 (D-161) ; arrêt brutal pendant les contrôles prouvé (D-162).
+- Reste réel indépendant, par impact : relecture de la CI (confirmer D-159) ; arrêt brutal pendant la génération d'un export (non mesuré) ; codes de cases des autres tableaux (2054 bis, 2055 B et C, 2058, 2059, 2065) ; reports 2059-B/C/D. Tout le reste de `exigences.md` est une dépendance externe ou le défaut dockerd non clos.

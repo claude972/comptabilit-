@@ -57,8 +57,8 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
     await expect(a2059.getByTestId('autres-2059-a').locator('li[data-autre]')).toHaveCount(7);
     await expect(a2059.getByTestId('cadres-2059-a').locator('li[data-cadre]')).toHaveCount(3);
     // 2059-B, 2059-C, 2059-D (D-122) : grilles saisies ligne par ligne, totaux en abstention sans saisie complète.
-    await expect(page.getByTestId('grille-2059-B').locator('li[data-ligne-grille]')).toHaveCount(28);
-    await expect(page.getByTestId('grille-2059-C').locator('li[data-ligne-grille]')).toHaveCount(22);
+    await expect(page.getByTestId('grille-2059-B').locator('li[data-ligne-grille]')).toHaveCount(31); // 28 lignes de suivi + 3 cases à cocher d'en-tête (D-160)
+    await expect(page.getByTestId('grille-2059-C').locator('li[data-ligne-grille]')).toHaveCount(25); // 22 lignes de suivi + 3 rappels d'en-tête (D-160)
     await expect(page.getByTestId('grille-2059-D').locator('li[data-ligne-grille]')).toHaveCount(5);
     // 2065-SD (D-123) : récapitulation des éléments d'imposition saisie rubrique par rubrique.
     await expect(page.getByTestId('grille-2065').locator('li[data-ligne-grille]')).toHaveCount(46);

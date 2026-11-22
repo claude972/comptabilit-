@@ -1955,15 +1955,15 @@ function FormulaireCases({ f, fm, exerciceId, revision, evenements }: { f: Formu
       {f.imputation ? (
         <div className="space-y-1" data-testid={`imputation-${idHtml}`}>
           <h3 className="font-semibold">Résultat fiscal avant et après imputation des déficits</h3>
-          <p className="text-sm">
+          <div className="text-sm">
             Avant imputation : <ResultatSigneF r={f.imputation.avant} fm={fm} testid={`avant-${idHtml}`} />
-          </p>
+          </div>
           <p className="text-sm" data-testid={`plafond-${idHtml}`}>
             Plafond d’imputation : {f.imputation.plafond ? <><strong className="tabular-nums">{fm(f.imputation.plafond.montant)}</strong> <span className="text-xs text-texte-doux">{f.imputation.plafond.regle}</span></> : <span className="text-texte-doux">sans objet (pas de bénéfice établi)</span>}
           </p>
-          <p className="text-sm">
+          <div className="text-sm">
             Après imputation : <ResultatSigneF r={f.imputation.apres} fm={fm} testid={`apres-${idHtml}`} />
-          </p>
+          </div>
         </div>
       ) : null}
       <ul className="list-disc pl-5 text-sm text-texte-doux" data-testid={`non-prepare-${idHtml}`}>
@@ -2101,7 +2101,7 @@ function Grille2059({ g, fm, exerciceId, revision, evenements }: { g: GrilleProj
         État du tableau : <strong>{g.etat === 'saisi' ? 'saisies présentes' : g.etat === 'neant' ? 'néant déclaré' : 'à saisir (ni saisie ni néant)'}</strong>
         {g.neant ? ` — déclaré le ${formaterHorodatage(g.neant.le)} sur la version ${g.neant.versionDonnees} des données` : ''}.
       </p>
-      {revision && g.neantPossible ? <NeantTableau exerciceId={exerciceId} tableau={g.cadres[0]!.tableau} declare={g.etat === 'neant'} etiquette={`tableau ${g.id} (aucune donnée)`} /> : null}
+      {revision && g.neantPossible ? <NeantTableau exerciceId={exerciceId} tableau={g.neantTableau ?? g.cadres[0]!.tableau} declare={g.etat === 'neant'} etiquette={`tableau ${g.id} (aucune donnée)`} /> : null}
       {g.cadres.map((c) => (
         <div key={c.tableau} className="space-y-2" data-cadre-grille={c.tableau}>
           <h3 className="text-sm font-semibold">{c.titre}</h3>

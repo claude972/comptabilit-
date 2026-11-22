@@ -70,6 +70,8 @@ test('reports 2059 → 2058-A, feuillets du 2056 et du 2057, rapprochement du 20
 
   const lignesB: Array<[string, string]> = [['T3N1', '20.00'], ['T3N2', '15.00'], ['T10N1', '5.00'], ...Array.from({ length: 8 }, (_, k): [string, string] => [`T10N${k + 2}`, '0.00'])];
   for (const [ligne, c] of lignesB) await tab('2059B_A', ligne, { a: '100.00', b: '30.00', c, d: '50.00' });
+  await tab('2059B_ENT', 'EU', { v: 'non' }); await tab('2059B_ENT', 'FUSION', { v: 'oui' }); await tab('2059B_ENT', 'APPIND', { v: 'non' });
+  await tab('2059C_RAPPEL', 'R15', { m: '2000.00' }); await tab('2059C_RAPPEL', 'SPI', { m: '0.00' }); await tab('2059C_RAPPEL', 'T228', { m: '0.00' });
   await tab('2059A_IM', '01', { nature: 'Participation fictive', c2: '10000.00', c3: '0.00', c4: '2000.00', c5: '1000.00', c6: '7000.00', c7: '9000.00', c8: '2000.00', c9: '0.00', c10a: '0.00', c10b: '2000.00', c10c: '0.00' });
   for (const l of ['13', '14', '15', '16']) await tab('2059A_AUT', l, { c9: '0.00' });
   for (const l of ['18', '19']) await tab('2059A_AUT', l, { c10a: '0.00', c10b: '0.00', c10c: '0.00' });
@@ -100,6 +102,9 @@ test('reports 2059 → 2058-A, feuillets du 2056 et du 2057, rapprochement du 20
   const g56 = liasse.feuilles2058.find((g: any) => g.id === '2056-FEUILLETS');
   const k56 = (c: string) => g56.controles.find((x: any) => x.code === `2056-FEUILLETS_${c}`);
   expect([k56('SOMME_D').statut, k56('SOMME_A').statut, k56('SOMME_R').statut, k56('SOMME_F').statut]).toEqual(['coherent', 'coherent', 'ecart', 'ecart']);
+  const g59b = liasse.grilles2059.find((g: any) => g.id === '2059-B');
+  expect(g59b.cadres[0].lignes.map((l: any) => l.valeurs?.v)).toEqual(['non', 'oui', 'non']);
+  expect(liasse.grilles2059.find((g: any) => g.id === '2059-C').cadres[0].lignes[0].valeurs).toEqual({ m: '2000.00' });
   const kn = (c: string) => liasse.feuilles2058.find((g: any) => g.id === '2059-A-NOTE').controles.find((x: any) => x.code === `2059-A-NOTE_${c}`);
   expect(kn('SOMME_C9').statut).toBe('coherent');
   expect(kn('SOMME_C11')).toMatchObject({ statut: 'ecart', ecart: '5.00' });
@@ -121,6 +126,8 @@ test('reports 2059 → 2058-A, feuillets du 2056 et du 2057, rapprochement du 20
   await page.goto(`/dossiers/${dossier}/fiscal?vue=liasse`);
   await expect(page.getByText(/Total 2 de la colonne 3 du cadre A du 2059-B/).first()).toBeVisible();
   await expect(page.getByText(/dont par taux : 19 %/).first()).toBeVisible();
+  await expect(page.getByText(/Formulaire déposé au titre de l’IR/).first()).toBeVisible();
+  await expect(page.getByText(/Rappel de la plus-value de l’exercice relevant du taux de 15 %/).first()).toBeVisible();
   await expect(page.getByText(/voir également le tableau 2059-A.*sans énoncer d’égalité/).first()).toBeVisible();
   await expect(page.getByText(/charges constatées d’avance du projet de bilan.*55\.00 ici contre 50\.00/).first()).toBeVisible();
   await page.goto(`/dossiers/${dossier}/fiscal/etat-joint?exercice=${exercice}&regime=reel_normal`);

@@ -18,27 +18,28 @@ describe('grilles 2059', () => {
   it('sans saisie : à saisir, totaux en abstention ; nombres de lignes lus sur les formulaires', () => {
     const b = prep('2059-B');
     expect(b.etat).toBe('a_saisir');
-    expect(b.cadres[0]!.lignes).toHaveLength(14);
+    expect(b.cadres[0]!.lignes).toHaveLength(3); // en-tête : trois cases à cocher
     expect(b.cadres[1]!.lignes).toHaveLength(14);
-    expect(b.cadres[0]!.calculs[0]!.cellules.a!.statut).toBe('abstention');
-    expect(prep('2059-C').cadres.map((c) => c.lignes.length)).toEqual([11, 11]);
+    expect(b.cadres[2]!.lignes).toHaveLength(14);
+    expect(b.cadres[1]!.calculs[0]!.cellules.a!.statut).toBe('abstention');
+    expect(prep('2059-C').cadres.map((c) => c.lignes.length)).toEqual([3, 11, 11]);
     expect(prep('2059-D').cadres.map((c) => c.lignes.length)).toEqual([4, 1]);
   });
   it('2059-B : totaux 1 et 2 seulement quand toutes les lignes sont saisies ; cadre B sur les lignes saisies ; à revoir', () => {
     const partiel = prep('2059-B', toutesB.slice(1));
-    expect(partiel.cadres[0]!.calculs[0]!.cellules.a!.statut).toBe('abstention');
+    expect(partiel.cadres[1]!.calculs[0]!.cellules.a!.statut).toBe('abstention');
     const f = prep('2059-B', [...toutesB, s('2059B_B', '01', { origine: 'Fusion 2020 (fictive)', ...ligneB })]);
-    expect(f.cadres[0]!.calculs[0]!.cellules).toMatchObject({ a: { montant: '150.00' }, c: { montant: '25.00' }, d: { montant: '125.00' } });
-    expect(f.cadres[0]!.calculs[0]!.cellules.b).toBeUndefined(); // colonne grisée
-    expect(f.cadres[0]!.calculs[1]!.cellules.a).toMatchObject({ statut: 'etabli', montant: '1100.00' });
-    expect(f.cadres[1]!.calculs[0]!.cellules.d).toMatchObject({ statut: 'etabli', montant: '70.00' });
+    expect(f.cadres[1]!.calculs[0]!.cellules).toMatchObject({ a: { montant: '150.00' }, c: { montant: '25.00' }, d: { montant: '125.00' } });
+    expect(f.cadres[1]!.calculs[0]!.cellules.b).toBeUndefined(); // colonne grisée
+    expect(f.cadres[1]!.calculs[1]!.cellules.a).toMatchObject({ statut: 'etabli', montant: '1100.00' });
+    expect(f.cadres[2]!.calculs[0]!.cellules.d).toMatchObject({ statut: 'etabli', montant: '70.00' });
     const r = prep('2059-B', toutesB.map((x, i) => (i === 3 ? { ...x, versionDonnees: 1 } : x)));
-    expect(r.cadres[0]!.lignes[3]!.statut).toBe('a_revoir');
-    expect(r.cadres[0]!.calculs[1]!.cellules.a!.statut).toBe('abstention');
+    expect(r.cadres[1]!.lignes[3]!.statut).toBe('a_revoir');
+    expect(r.cadres[1]!.calculs[1]!.cellules.a!.statut).toBe('abstention');
   });
   it('2059-C : solde (2 + 3 − 4 − 5) calculé par ligne, colonne grisée ignorée ; néant', () => {
     const f = prep('2059-C', [s('2059C_II', 'N', { c2: '100.00', c3: '10.00', c5: '30.00' }), s('2059C_II', 'N1', { c2: '200.00', c3: '0.00', c4: '50.00', c5: '20.00' })]);
-    const l = f.cadres[1]!.lignes;
+    const l = f.cadres[2]!.lignes;
     expect(l[0]!.calculee).toEqual({ statut: 'etabli', montant: '80.00' });
     expect(l[1]!.calculee).toEqual({ statut: 'etabli', montant: '130.00' });
     expect(l[2]!.calculee!.statut).toBe('abstention');
@@ -244,5 +245,28 @@ describe('note annexe de la ligne 20 du 2059-A (D-157)', () => {
     expect(k('SOMME_C10B')?.message).toMatch(/Rien n’est corrigé/);
     expect(k('SOMME_C11')?.statut).toBe('coherent');
     expect(k('SOMME_C10A')).toBeUndefined(); // colonne de la ligne 20 non saisie : aucun contrôle
+  });
+});
+
+describe('en-têtes cochables du 2059-B et rappels du 2059-C (D-160)', () => {
+  it('2059-B : cases à cocher déclarées explicitement ; elles ne comptent ni pour « saisi » ni pour le conflit avec « néant »', () => {
+    const vide = prep('2059-B');
+    expect(vide.cadres[0]!.lignes.map((l) => l.ligne)).toEqual(['EU', 'FUSION', 'APPIND']);
+    expect(vide.cadres[0]!.lignes.every((l) => l.statut === 'a_saisir')).toBe(true); // jamais présumées décochées
+    const f = prep('2059-B', [s('2059B_ENT', 'EU', { v: 'oui' }), s('2059B_ENT', 'FUSION', { v: 'non' }), s('2059B_A', 'NEANT', {})]);
+    expect(f.etat).toBe('neant');
+    expect(f.neantTableau).toBe('2059B_A');
+    expect(f.controles.some((c) => c.code.endsWith('NEANT_ET_LIGNES'))).toBe(false);
+    expect(f.cadres[0]!.lignes.map((l) => [l.ligne, l.statut, l.valeurs?.v ?? null])).toEqual([['EU', 'saisi', 'oui'], ['FUSION', 'saisi', 'non'], ['APPIND', 'a_saisir', null]]);
+    expect(validerSaisieTableau('2059B_ENT', 'EU', { v: 'peut-être' }).length).toBeGreaterThan(0);
+    expect(validerSaisieTableau('2059B_ENT', 'EU', { v: 'oui' })).toEqual([]);
+  });
+  it('2059-C : trois rappels saisis comme montants, sans effet sur l’état ni sur le néant ; ligne inconnue refusée', () => {
+    const f = prep('2059-C', [s('2059C_RAPPEL', 'R15', { m: '2000.00' }), s('2059C_RAPPEL', 'SPI', { m: '0.00' }), s('2059C_I', 'NEANT', {})]);
+    expect(f.etat).toBe('neant');
+    expect(f.cadres[0]!.lignes.map((l) => l.ligne)).toEqual(['R15', 'SPI', 'T228']);
+    expect(f.cadres[0]!.lignes[0]!.valeurs).toEqual({ m: '2000.00' });
+    expect(validerSaisieTableau('2059C_RAPPEL', 'R15', { m: '2000.00' })).toEqual([]);
+    expect(validerSaisieTableau('2059C_RAPPEL', 'INCONNUE', { m: '1.00' }).join(' ')).toMatch(/Ligne inconnue/);
   });
 });

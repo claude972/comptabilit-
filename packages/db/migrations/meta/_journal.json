@@ -512,6 +512,13 @@
       "when": 1795337453273,
       "tag": "0072_note_2059a",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1795337968655,
+      "tag": "0073_entetes_2059",
+      "breakpoints": true
     }
   ]
 }

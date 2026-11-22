@@ -728,6 +728,8 @@ export interface GrilleProjet {
   titre: string;
   etat: 'a_saisir' | 'neant' | 'saisi';
   neantPossible: boolean;
+  /** Tableau portant la ligne NEANT (D-160) ; absent d'une API plus ancienne : premier cadre. */
+  neantTableau?: string | null;
   cadres: CadreGrilleProjet[];
   neant: TraceSaisie | null;
   controles: Array<{ code: string; statut: 'coherent' | 'ecart' | 'non_verifie'; message: string; ecart?: string }>;

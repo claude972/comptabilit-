@@ -40,6 +40,7 @@ export const test = base.extend<{ diagnosticNavigation: void }>({
   diagnosticNavigation: [
     async ({ browser, context }, use, testInfo) => {
       const journal = new Map<Page, Evenement[]>();
+      const hydratation: string[] = [];
       const t0 = Date.now();
       const noter = (p: Page, e: Evenement) => {
         const l = journal.get(p) ?? [];
@@ -53,7 +54,10 @@ export const test = base.extend<{ diagnosticNavigation: void }>({
           journal.set(p, journal.get(p) ?? []);
           p.on('framenavigated', (f) => { if (f === p.mainFrame()) noter(p, { nav: chemin(f.url()) }); });
           p.on('console', (m) => { if (m.type() === 'error') noter(p, { console: masque(m.text()) }); });
-          p.on('pageerror', (e) => noter(p, { erreurPage: masque(e.message) }));
+          p.on('pageerror', (e) => {
+            noter(p, { erreurPage: masque(e.message) });
+            if (/Hydration failed|Minified React error #(418|423|425)|hydrat(ion|ed) (error|mismatch)/i.test(e.message)) hydratation.push(`${chemin(p.url())} : ${masque(e.message).slice(0, 120)}`);
+          });
           p.on('requestfailed', (r) => noter(p, { requeteEchouee: `${r.method()} ${chemin(r.url())}`, cause: masque(r.failure()?.errorText ?? '') }));
           p.on('response', (r) => { if (r.status() >= 400) noter(p, { reponse: r.status(), requete: `${r.request().method()} ${chemin(r.url())}` }); });
         };
@@ -70,6 +74,12 @@ export const test = base.extend<{ diagnosticNavigation: void }>({
       };
       await use();
       (browser as { newContext: typeof browser.newContext }).newContext = ouvrir;
+      // Garde-fou produit (D-159) : une erreur d'hydratation (HTML invalide, rendu serveur différent du client) fait recréer l'arbre côté client et perdre les clics en cours.
+      // Elle fait échouer le test, qui qu'en soit la cause apparente.
+      if (hydratation.length > 0 && testInfo.status === testInfo.expectedStatus) {
+        testInfo.status = 'failed';
+        testInfo.error = { message: `Erreur d'hydratation détectée (${hydratation.length}) : ${[...new Set(hydratation)].slice(0, 3).join(' | ')}` };
+      }
       if (testInfo.status === testInfo.expectedStatus) return;
       const pages = [];
       for (const [p, evenements] of journal) {

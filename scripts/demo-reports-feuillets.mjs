@@ -53,6 +53,9 @@ if (!dossier) {
   // 2059-B : détail des plus-values à court terme des exercices antérieurs (total 2, colonne 3 = 40,00)
   const ligneB = (c) => ({ a: '100.00', b: '30.00', c, d: '50.00' });
   for (const [ligne, c] of [['T3N1', '20.00'], ['T3N2', '15.00'], ['T10N1', '5.00'], ...Array.from({ length: 8 }, (_, i) => [`T10N${i + 2}`, '0.00'])]) await tab('2059B_A', ligne, ligneB(c));
+  // En-têtes cochables du 2059-B (déclarés explicitement) et rappels du 2059-C (montants)
+  await tab('2059B_ENT', 'EU', { v: 'non' }); await tab('2059B_ENT', 'FUSION', { v: 'oui' }); await tab('2059B_ENT', 'APPIND', { v: 'non' });
+  await tab('2059C_RAPPEL', 'R15', { m: '2000.00' }); await tab('2059C_RAPPEL', 'SPI', { m: '0.00' }); await tab('2059C_RAPPEL', 'T228', { m: '0.00' });
   // 2059-A : une cession (plus-value de 2 000 € à long terme, taux 15 %) et les sept lignes fixes
   await tab('2059A_IM', '01', { nature: 'Participation fictive (acquise le 2018-05-01)', c2: '10000.00', c3: '0.00', c4: '2000.00', c5: '1000.00', c6: '7000.00', c7: '9000.00', c8: '2000.00', c9: '0.00', c10a: '0.00', c10b: '2000.00', c10c: '0.00' });
   for (const l of ['13', '14', '15', '16']) await tab('2059A_AUT', l, { c9: '0.00' });
@@ -85,6 +88,8 @@ ok(caseA('WN').statut === 'a_saisir' && caseA('WN').proposition?.montant === '40
 ok(['WV', 'WP', 'I6'].every((c) => caseA(c).proposition === null), 'WV, WH, WP, I6 : aucune proposition (la notice ne donne pas d’égalité)');
 ok(liasse.formulaire2059A.cadreBParTaux.c10b.montant === '2000.00' && ctl('WV_2059A')?.statut === 'coherent', `WV saisi 2000,00 = cadre B 2059-A à 15 % : ${ctl('WV_2059A')?.statut}`);
 ok(ctl('WH_2059A')?.statut === 'ecart' && ctl('WH_2059A').ecart === '100.00', `WH saisi 100,00 contre 0,00 au 2059-A : écart ${ctl('WH_2059A')?.ecart} AFFICHÉ, rien corrigé (WH reste ${caseA('WH').montant})`);
+const g59b = liasse.grilles2059.find((g) => g.id === '2059-B'); const g59c = liasse.grilles2059.find((g) => g.id === '2059-C');
+ok(g59b.cadres[0].lignes.map((l) => l.valeurs?.v).join(',') === 'non,oui,non' && g59b.etat === 'saisi' && g59c.cadres[0].lignes[0].valeurs.m === '2000.00', `2059-B : cases EU non / fusion oui / apport non ; 2059-C : rappel 15 % = ${g59c.cadres[0].lignes[0].valeurs.m} (les en-têtes ne changent pas l’état « saisi » : ${g59b.etat})`);
 const g56 = liasse.feuilles2058.find((g) => g.id === '2056-FEUILLETS');
 const k56 = (c) => g56.controles.find((x) => x.code === `2056-FEUILLETS_${c}`);
 ok(k56('SOMME_D')?.statut === 'coherent' && k56('SOMME_A')?.statut === 'coherent' && k56('SOMME_F')?.statut === 'ecart' && k56('SOMME_R')?.statut === 'ecart', `feuillet 2056 (autres provisions pour risques et charges) : début ${k56('SOMME_D')?.statut}, dotations ${k56('SOMME_A')?.statut}, reprises ${k56('SOMME_R')?.statut} (${k56('SOMME_R')?.ecart}), fin ${k56('SOMME_F')?.statut} (${k56('SOMME_F')?.ecart})`);

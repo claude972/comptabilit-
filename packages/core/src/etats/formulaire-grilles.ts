@@ -41,6 +41,8 @@ export interface CalculGrille {
 export interface CadreGrille {
   tableau: string;
   titre: string;
+  /** Cadre d'EN-TÊTE (cases à cocher, rappels du haut du formulaire) : ses saisies ne comptent ni pour l'état « saisi » du tableau ni pour le conflit avec « néant » (D-160). */
+  entete?: boolean;
   colonnes: readonly ColonneGrille[];
   lignes: readonly LigneGrille[];
   /** Grille libre : lignes 01 à `max` avec un libellé d'origine saisi. */
@@ -87,6 +89,18 @@ export const GRILLES_2059: readonly DefinitionGrille[] = [
     neantSur: '2059B_A',
     cadres: [
       {
+        tableau: '2059B_ENT',
+        titre: 'En-tête et cases à cocher du formulaire',
+        entete: true,
+        colonnes: [{ cle: 'v', libelle: 'Case cochée', type: 'booleen' }],
+        lignes: [
+          { ligne: 'EU', libelle: 'Formulaire déposé au titre de l’IR (case EU, en-tête)' },
+          { ligne: 'FUSION', libelle: 'Plus-values de fusion, d’apport partiel ou de scission (personnes morales soumises à l’IS seulement) : case à cocher du cadre B' },
+          { ligne: 'APPIND', libelle: 'Plus-values d’apport à une société d’une activité professionnelle exercée à titre individuel (toutes sociétés) : case à cocher du cadre B' },
+        ],
+        calculs: [],
+      },
+      {
         tableau: '2059B_A',
         titre: 'A — Éléments assujettis au régime fiscal des plus-values à court terme',
         colonnes: C59B,
@@ -113,7 +127,7 @@ export const GRILLES_2059: readonly DefinitionGrille[] = [
       },
     ],
     nonPrepare: [
-      'Identification de l’entreprise, exercice et cases à cocher (plus-values de fusion ou de scission, d’apport à une société par une entreprise individuelle) : non préparées.',
+      'Identification de l’entreprise et exercice : repris du dossier, non ressaisis. Les trois cases à cocher (formulaire déposé au titre de l’IR, plus-values de fusion ou de scission, plus-values d’apport par une entreprise individuelle) se déclarent explicitement, cochées ou non (D-160) ; une case non déclarée n’est jamais présumée décochée.',
       'Aucun report automatique vers le 2058-A : le total 2 de la colonne 3 du cadre A est seulement PROPOSÉ à la ligne WN du 2058-A (la notice y renvoie), jamais retenu sans saisie du cabinet ; le lien avec le 2059-A n’est pas fait.',
       'Plus de quatorze lignes d’origine au cadre B : tableaux supplémentaires non préparés.',
     ],
@@ -123,6 +137,18 @@ export const GRILLES_2059: readonly DefinitionGrille[] = [
     titre: 'Suivi des moins-values à long terme',
     neantSur: '2059C_I',
     cadres: [
+      {
+        tableau: '2059C_RAPPEL',
+        titre: 'Rappels du haut du formulaire (plus-values de l’exercice à 15 % ou 12,8 % ; titres exclus du régime du long terme)',
+        entete: true,
+        colonnes: [{ cle: 'm', libelle: 'Montant' }],
+        lignes: [
+          { ligne: 'R15', libelle: 'Rappel de la plus-value de l’exercice relevant du taux de 15 % (entreprises à l’IS) ou de 12,8 % (entreprises à l’IR)' },
+          { ligne: 'SPI', libelle: 'Gains nets retirés de la cession de titres de sociétés à prépondérance immobilière non cotées exclus du régime du long terme (art. 219 I a sexies-0 bis du CGI) — entreprises à l’IS' },
+          { ligne: 'T228', libelle: 'Gains nets retirés de la cession de certains titres dont le prix de revient est supérieur à 22,8 M€ (art. 219 I a sexies-0 du CGI) — entreprises à l’IS' },
+        ],
+        calculs: [],
+      },
       {
         tableau: '2059C_I',
         titre: 'I — Suivi des moins-values des entreprises soumises à l’impôt sur le revenu (taux de 12,8 %)',
@@ -140,7 +166,7 @@ export const GRILLES_2059: readonly DefinitionGrille[] = [
       },
     ],
     nonPrepare: [
-      'Identification de l’entreprise, exercice et rappels cochables du haut du tableau (taux de 15 % ou 12,8 %, titres à prépondérance immobilière, prix de revient supérieur à 22,8 M€) : non préparés.',
+      'Identification de l’entreprise et exercice : repris du dossier, non ressaisis. Les trois rappels du haut du tableau (plus-value à 15 % ou 12,8 %, titres à prépondérance immobilière non cotées, prix de revient supérieur à 22,8 M€) sont saisis comme montants (D-160) ; aucun rapprochement : les sources n’en énoncent pas.',
       'Imputation automatique des moins-values sur les plus-values du 2059-A : non préparée ; aucune décision d’imputation.',
     ],
   },
@@ -760,6 +786,8 @@ export interface GrilleProjet {
   etat: 'a_saisir' | 'neant' | 'saisi';
   /** Le formulaire admet une déclaration « néant » (ligne NEANT du premier tableau). */
   neantPossible: boolean;
+  /** Tableau portant la ligne NEANT (le premier cadre peut être un cadre d'en-tête) ; `null` si le formulaire n'a pas de « néant ». */
+  neantTableau: string | null;
   cadres: CadreGrilleProjet[];
   neant: TraceSaisie | null;
   controles: ControleDetail[];
@@ -789,7 +817,7 @@ export function preparerGrille(def: DefinitionGrille, demande: DemandeGrilles): 
     const lignes: LigneGrilleProjet[] = defsLignes.map((d) => {
       const s = saisies.get(d.ligne);
       const statut = statutDe(s, v);
-      if (statut === 'saisi') nbSaisies++;
+      if (statut === 'saisi' && c.entete !== true) nbSaisies++;
       const permises = d.colonnes ?? c.colonnes.map((x) => x.cle);
       const valeurs = statut === 'saisi' ? s!.valeurs : null;
       let calculee: CelluleGrille | null = null;
@@ -895,6 +923,7 @@ export function preparerGrille(def: DefinitionGrille, demande: DemandeGrilles): 
     titre: def.titre,
     etat,
     neantPossible: def.neantSur !== undefined,
+    neantTableau: def.neantSur ?? null,
     cadres,
     neant: neantS ? trace(neantS) : null,
     controles,

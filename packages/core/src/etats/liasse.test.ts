@@ -134,6 +134,17 @@ describe('liasse du régime réel normal (2050 à 2053)', () => {
     expect(caseDe(p, 'RN_2053_RESULTAT').montant).toBe('13100.00');
   });
 
+  it('total (II) du formulaire 2050 = frais d’établissement + actif immobilisé du modèle du PCG, colonne par colonne (D-161)', () => {
+    const t = caseDe(p, 'RN_2050_A_TOTAL_II_FORMULAIRE');
+    const f = caseDe(p, 'RN_2050_A_FRAIS_ETABLISSEMENT');
+    const i = caseDe(p, 'RN_2050_A_ACTIF_IMMOBILISE');
+    expect(t).toMatchObject({ nature: 'total', codesActif: { brut: 'BJ', amortissements: 'BK' }, etatCodeCase: 'verifie' });
+    expect(new Decimal(t.brut!).toFixed(2)).toBe(new Decimal(f.brut!).plus(i.brut!).toFixed(2));
+    expect(new Decimal(t.amortissementsDepreciations!).toFixed(2)).toBe(new Decimal(f.amortissementsDepreciations!).plus(i.amortissementsDepreciations!).toFixed(2));
+    expect(new Decimal(t.montant).toFixed(2)).toBe(new Decimal(f.montant).plus(i.montant).toFixed(2));
+    expect(Number(t.brut)).toBeGreaterThan(0);
+  });
+
   it('donne pour chaque case le montant, les comptes contributeurs et la traçabilité', () => {
     const c = caseDe(p, 'RN_2050_A_AUTRES_CORPORELLES');
     expect(c).toMatchObject({ tableau: '2050', nature: 'poste', brut: '10000.00', amortissementsDepreciations: '4000.00', montant: '6000.00', codeCase: null, codesActif: { brut: 'AT', amortissements: 'AU' }, etatCodeCase: 'verifie' });
@@ -352,7 +363,9 @@ describe('codes de l\'ACTIF du 2050 et du 2033-A (D-156)', () => {
     expect(a('A_CLIENTS').codesActif).toEqual({ brut: 'BX', amortissements: 'BY' });
     expect(a('TOTAL_GENERAL').codesActif).toEqual({ brut: 'CO', amortissements: '1A' });
     expect(a('A_CAPITAL_SOUSCRIT_NON_APPELE').codesActif).toEqual({ brut: 'AA', amortissements: null });
-    for (const id of ['A_ACTIF_IMMOBILISE', 'A_ACTIF_CIRCULANT', 'A_IMMOBILISATIONS_INCORPORELLES', 'A_STOCKS_EN_COURS', 'A_STOCKS_PRODUITS_FINIS', 'A_INSTRUMENTS_FINANCIERS_JETONS']) expect(a(id), id).toMatchObject({ codesActif: null, etatCodeCase: 'a_confirmer' });
+    expect(a('A_TOTAL_II_FORMULAIRE').codesActif).toEqual({ brut: 'BJ', amortissements: 'BK' });
+    expect(a('A_ACTIF_CIRCULANT').codesActif).toEqual({ brut: 'CJ', amortissements: 'CK' });
+    for (const id of ['A_ACTIF_IMMOBILISE', 'A_IMMOBILISATIONS_INCORPORELLES', 'A_STOCKS_EN_COURS', 'A_STOCKS_PRODUITS_FINIS', 'A_INSTRUMENTS_FINANCIERS_JETONS']) expect(a(id), id).toMatchObject({ codesActif: null, etatCodeCase: 'a_confirmer' });
     const toutes = rn.flatMap((x) => (x.codesActif ? [x.codesActif.brut, ...(x.codesActif.amortissements ? [x.codesActif.amortissements] : [])] : []));
     expect(new Set(toutes).size).toBe(toutes.length);
     const rsi = projet(preparerLiasse(demande([], { regime: 'reel_simplifie' }))).tableaux.find((t) => t.code === '2033-A')!.lignes;

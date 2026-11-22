@@ -112,6 +112,9 @@ test('immobilisations et amortissements non nuls : FEC, import XLSX par l’inte
     // Des valeurs RÉELLES, non nulles : ni zéros partout, ni test unitaire seul.
     expect(nonNulles, `cellules non nulles (${regime})`).toBeGreaterThan(20);
   }
+  // Total (II) du formulaire 2050 (D-161) : frais d'établissement + actif immobilisé ; mêmes valeurs que les tableaux 2054 et 2055 (brut 177 000 ; amortissements 81 300,93 = 80 000 + dotation du poste neuf 1 300,93), codes BJ / BK.
+  const t2 = (await api('GET', `/v1/exercices/${exercice}/liasse?regime=reel_normal`)).json.resultat.tableaux.find((x: any) => x.code === '2050').lignes.find((l: any) => l.ligne === 'RN_2050_A_TOTAL_II_FORMULAIRE');
+  expect(t2).toMatchObject({ brut: '177000.00', amortissementsDepreciations: '81300.93', montant: '95699.07', codesActif: { brut: 'BJ', amortissements: 'BK' }, etatCodeCase: 'verifie' });
   const clotureBrute = (await api('GET', `/v1/exercices/${exercice}/liasse?regime=reel_normal`)).json.tableauxImmobilisations.tableaux.find((x: any) => x.code === '2054').cadres.find((c: any) => c.id === 'B');
   expect(clotureBrute.lignes.find((l: any) => l.libelle.startsWith('Total général')).cellules.cloture.montant).toBe('177000.00');
   await contexte.close();

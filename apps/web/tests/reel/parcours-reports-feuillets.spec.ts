@@ -133,5 +133,7 @@ test('reports 2059 → 2058-A, feuillets du 2056 et du 2057, rapprochement du 20
   await page.goto(`/dossiers/${dossier}/fiscal/etat-joint?exercice=${exercice}&regime=reel_normal`);
   await expect(page.locator('[data-tableau-joint="2056-FEUILLETS/2056_F_ARC"]')).toContainText('Provision constituée en 2024');
   await expect(page.locator('[data-tableau-joint="2057-FEUILLETS/2057_F_PRET"]')).toContainText('800.00');
+  await expect(page.locator('[data-tableau-joint="2059-B/2059B_ENT"]')).toContainText('Formulaire déposé au titre de l’IR');
+  await expect(page.locator('[data-tableau-joint="2059-C/2059C_RAPPEL"]')).toContainText('2000.00');
   await contexte.close();
 });

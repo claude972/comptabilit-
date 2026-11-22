@@ -183,6 +183,8 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
   await page.goto(`/dossiers/${DOSSIER_DEMO}/fiscal?vue=liasse`);
   await expect(page.getByTestId('code-RN_2050_A_FRAIS_ETABLISSEMENT')).toContainText('AB / AC');
   await expect(page.getByTestId('code-RN_2050_TOTAL_GENERAL')).toContainText('CO / 1A');
+  await expect(page.getByTestId('code-RN_2050_A_TOTAL_II_FORMULAIRE')).toContainText('BJ / BK');
+  await expect(page.getByTestId('code-RN_2050_A_ACTIF_CIRCULANT')).toContainText('CJ / CK');
   await expect(page.getByTestId('code-RN_2051_P_CAPITAL')).toContainText('DA');
   await expect(page.getByTestId('code-RN_2052_PE_CHIFFRE_AFFAIRES')).toContainText('FL');
   await expect(page.getByTestId('code-RN_2052_PE_PRODUCTION_VENDUE')).toContainText('à confirmer'); // regroupement propre à Comtaple : jamais de code inventé

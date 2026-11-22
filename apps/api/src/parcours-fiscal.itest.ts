@@ -112,7 +112,10 @@ describe('états fiscaux — projets, jamais validés', () => {
     expect(l.manques.length).toBeGreaterThan(0);
     expect(l.tableauxNonCouverts.length).toBeGreaterThan(5);
     const lignes = l.tableaux.flatMap((t: any) => t.lignes);
-    expect(lignes.every((x: any) => x.etatCodeCase === 'a_confirmer' && x.codeCase === null)).toBe(true);
+    // Codes de cases (D-155, D-156, D-161) : lus puis VÉRIFIÉS sur le rendu pour les lignes de même libellé que le formulaire ; toute autre ligne reste « à confirmer », sans code.
+    expect(lignes.every((x: any) => (x.codeCase !== null || x.codesActif ? x.etatCodeCase === 'verifie' : x.etatCodeCase === 'a_confirmer'))).toBe(true);
+    expect(lignes.filter((x: any) => x.codeCase !== null || x.codesActif).length).toBeGreaterThan(80);
+    expect(lignes.find((x: any) => x.ligne === 'RN_2052_PE_PRODUCTION_VENDUE')).toMatchObject({ codeCase: null, etatCodeCase: 'a_confirmer' });
     expect(lignes.every((x: any) => typeof x.montant === 'string' && /^-?\d+\.\d{2}$/.test(x.montant))).toBe(true);
     expect(l.controles.length).toBeGreaterThan(0);
     // Cohérence avec le projet de bilan existant : même total de l'actif.

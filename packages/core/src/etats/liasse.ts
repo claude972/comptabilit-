@@ -437,6 +437,9 @@ const CODES_ACTIF: Readonly<Record<string, { brut: string; amortissements: strin
   RN_2050_A_FRAIS_EMISSION_EMPRUNTS: { brut: 'CW', amortissements: null },
   RN_2050_A_PRIMES_REMBOURSEMENT: { brut: 'CM', amortissements: null },
   RN_2050_A_ECARTS_CONVERSION: { brut: 'CN', amortissements: null },
+  RN_2050_A_TOTAL_II_FORMULAIRE: { brut: 'BJ', amortissements: 'BK' },
+  // « Total (III) » du formulaire = stocks, avances, créances, capital appelé non versé, valeurs mobilières de placement, disponibilités, charges constatées d'avance : même contenu que « Total de l'actif circulant (IV) » du modèle du PCG (seule la numérotation romaine diffère).
+  RN_2050_A_ACTIF_CIRCULANT: { brut: 'CJ', amortissements: 'CK' },
   RN_2050_TOTAL_GENERAL: { brut: 'CO', amortissements: '1A' },
   RSI_2033A_ACTIF_FONDS_COMMERCIAL: { brut: '010', amortissements: '012' },
   RSI_2033A_ACTIF_AUTRES_INCORPORELLES: { brut: '014', amortissements: '016' },
@@ -512,6 +515,9 @@ function lignesReelNormal(c: CorrespondanceRubriques): LigneLiasseDefinition[] {
 
   return finaliser([
     ...versLignes('2050', tries.filter((r) => r.etat === 'bilan_actif')),
+    // Total (II) du FORMULAIRE 2050-SD (D-161) : sa ligne « Frais d'établissement » est la première des immobilisations incorporelles, alors que le modèle du PCG suivi par la liasse la numérote à part (II) et
+    // ne l'inclut pas dans « Total de l'actif immobilisé (III) » : le total du formulaire est donc la somme des deux, et seul ce total porte les codes BJ / BK.
+    total('RN_2050_A_TOTAL_II_FORMULAIRE', '2050', 'Total (II) du formulaire 2050-SD : frais d’établissement et actif immobilisé', plus('RN_2050_A_FRAIS_ETABLISSEMENT', 'RN_2050_A_ACTIF_IMMOBILISE')),
     total('RN_2050_TOTAL_GENERAL', '2050', 'Total général de l’actif (I + II + III + IV + V + VI + VII)', plus(...racines('bilan_actif').map((code) => `RN_2050_${code}`))),
     ...versLignes('2051', tries.filter((r) => r.etat === 'bilan_passif')),
     total('RN_2051_TOTAL_GENERAL', '2051', 'Total général du passif (I + II + III + IV + V)', plus(...racines('bilan_passif').map((code) => `RN_2051_${code}`))),

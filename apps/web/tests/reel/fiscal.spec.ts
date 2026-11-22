@@ -67,6 +67,8 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
     // Feuillets du réel normal (D-133) : K4 bis (20 lignes), réintégrations et déductions diverses (20 + 20).
     await expect(page.getByTestId('grille-2058-B-K4BIS').locator('li[data-ligne-grille]')).toHaveCount(20);
     await expect(page.getByTestId('grille-2058-A-FEUILLETS').locator('li[data-ligne-grille]')).toHaveCount(40);
+    // 2058-B compléments (D-139) : dix libellés de nature et la ligne de la méthode par composants.
+    await expect(page.getByTestId('grille-2058-B-COMPLEMENTS').locator('li[data-ligne-grille]')).toHaveCount(11);
     // Renvois (7) et (8) du 2053 (D-136) : dix lignes par cadre.
     await expect(page.getByTestId('grille-2053-DETAIL').locator('li[data-ligne-grille]')).toHaveCount(20);
     // Cellules non déductibles de la balance (D-134) : saisies du 2054 cadres A et B (17 + 17 lignes).

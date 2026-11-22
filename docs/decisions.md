@@ -823,6 +823,12 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Limites, dites** : la pagination « Page x / y » dépend du navigateur (le PDF de preuve la porte) ; disposition propre à Comtaple, non officielle ; le SIREN n'est pas encore repris (sujet de l'identification 2065) ; les tableaux à structure propre non listés ci-dessus (2033-C cadre III, 2054 bis, 2055, 2058-A à C, 2059-E, 2056) restent visibles à l'écran fiscal mais ne figurent pas encore dans l'état joint. Aucune signature, aucune transmission, aucune validation professionnelle.
 - **Preuves** : 2 tests unitaires, Playwright `fiscal.spec.ts`, script `tests/reel/capture-etat-joint.mjs` : sur le dossier fictif, 36 tableaux (réel normal, PDF de 40 pages avec « Page 1 / 40 », en-tête et pied PROJET répétés) et 21 (réel simplifié) ; captures et CSV dans `var/captures/etat-joint-*`.
 
+### D-139 — 2058-B : libellés de nature des provisions et méthode par composants (2026-11-22)
+
+- **Source** : `2050-liasse_5320.pdf` (SHA-256 0bba3352…8453e1), page 11, rendu image vérifié : dix lignes de provisions et charges à payer non déductibles (risques et charges 8X, 8Z, 9B ; dépréciation 9D, 9F, 9H ; charges à payer 9K, 9M, 9P, 9S) dont la cellule de gauche porte la nature (« à détailler sur feuillet séparé ») ; cadre « conséquences de la méthode par composants (art. 237 septies du CGI) » : montant au début (case L1, déjà servie), imputations et montant net à la fin (cellules sans code).
+- **Décision** : tableaux `2058B_NAT` (dix libellés, texte de 1 à 500 caractères) et `2058B_COMP` (deux montants positifs, zéro explicite) via le moteur de grilles ; migration 0068 additive. **Rappel indicatif** quand un montant (dotation ou reprise) est saisi à la ligne sans libellé, jamais bloquant. **Aucun calcul** : le formulaire n'énonce pas de formule pour les cellules sans code ; aucune relation supposée avec L1.
+- **Preuves** : test du moteur (940 verts), essai d'intégration (66 verts), Playwright (11 lignes) ; le complément figure dans l'état joint (D-138).
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

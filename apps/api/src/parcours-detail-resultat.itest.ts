@@ -999,7 +999,7 @@ describe('feuillets du régime réel normal : déficits transférés (K4 bis du 
   const put = (tableau: string, ligne: string, valeurs: Record<string, string>) => api('remi', 'PUT', `/v1/exercices/${exN}/tableaux/${tableau}/${ligne}`, { valeurs, note: 'Feuillet de détail (essai)' });
 
   it('deux feuillets au régime normal, absents au régime simplifié ; K4 bis rapproché de la case saisie ; détails 2058-A totalisés', async () => {
-    expect((await feuilles()).map((f) => f.id)).toEqual(['2058-B-K4BIS', '2058-A-FEUILLETS']);
+    expect((await feuilles()).map((f) => f.id)).toEqual(['2058-B-K4BIS', '2058-A-FEUILLETS', '2058-B-COMPLEMENTS']);
     expect((await liasse(exN, 'reel_simplifie')).json.feuilles2058).toBeNull();
     expect((await api('remi', 'PUT', `/v1/exercices/${exN}/qualifications/renvois/B58_K4BIS`, { montant: '700.00', note: 'Déficits transférés (essai)' })).statut).toBeLessThan(300);
     expect((await put('2058B_K4BIS', '01', { origine: 'Société d’origine (fictive)', siren: '123456789', date: '2025-03-01', m: '600.00' })).statut).toBeLessThan(300);
@@ -1071,6 +1071,24 @@ describe('2053 renvois (7) et (8) : détails saisis ligne par ligne, rapprochés
     for (const [t, l] of [['2053_D7', '01'], ['2053_D8', '01']]) expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/${t}/${l}`)).statut).toBeLessThan(300);
     expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/qualifications/renvois/1H`)).statut).toBeLessThan(300);
     expect((await detail()).etat).toBe('a_saisir');
+  }, 120_000);
+});
+
+describe('2058-B : libellés de nature et méthode par composants saisis (D-139)', () => {
+  const comp = async () => ((await liasse(exN, 'reel_normal')).json.feuilles2058 as any[]).find((f) => f.id === '2058-B-COMPLEMENTS');
+  const put = (tableau: string, ligne: string, valeurs: Record<string, string>, qui = 'remi') => api(qui, 'PUT', `/v1/exercices/${exN}/tableaux/${tableau}/${ligne}`, { valeurs, note: 'Détail du 2058-B (essai)' });
+  it('rappel indicatif sans libellé, levé par la saisie ; composants ; refus', async () => {
+    expect((await comp()).cadres.map((c: any) => c.lignes.length)).toEqual([10, 1]);
+    expect((await api('remi', 'PUT', `/v1/exercices/${exN}/qualifications/renvois/B58_8X`, { montant: '100.00', note: 'Provision litige (essai)' })).statut).toBeLessThan(300);
+    expect((await comp()).controles.some((c: any) => c.code === '2058-B-COMPLEMENTS_LIBELLE_8X')).toBe(true);
+    expect((await put('2058B_NAT', '8X', { t: 'Litige prud’homal (fictif)' })).statut).toBeLessThan(300);
+    expect((await comp()).controles.some((c: any) => c.code === '2058-B-COMPLEMENTS_LIBELLE_8X')).toBe(false);
+    expect((await put('2058B_COMP', 'L1', { imputations: '10.00', netfin: '90.00' })).statut).toBeLessThan(300);
+    expect((await put('2058B_NAT', '8X', { t: '' })).statut).toBe(400);
+    expect((await put('2058B_NAT', '8Y', { t: 'x1' })).statut).toBe(404);
+    expect((await put('2058B_NAT', '8X', { t: 'x1' }, 'chloe')).statut).toBeGreaterThanOrEqual(400);
+    for (const [t, l] of [['2058B_NAT', '8X'], ['2058B_COMP', 'L1']]) expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/${t}/${l}`)).statut).toBeLessThan(300);
+    expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/qualifications/renvois/B58_8X`)).statut).toBeLessThan(300);
   }, 120_000);
 });
 

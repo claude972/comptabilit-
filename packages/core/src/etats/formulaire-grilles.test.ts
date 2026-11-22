@@ -1,6 +1,6 @@
 /** Recette des grilles 2059-B, 2059-C et 2059-D (D-122) : saisie ligne par ligne, calculs énoncés seulement à composantes saisies. */
 import { describe, expect, it } from 'vitest';
-import { GRILLE_2053_DETAIL, GRILLE_2033D_982, GRILLE_2058A_FEUILLETS, GRILLE_2058B_K4BIS, GRILLE_2057, GRILLE_2065, GRILLE_2065_BIS, GRILLE_DATES_CVAE, GRILLES_2059, preparerGrille } from './formulaire-grilles.js';
+import { GRILLE_2058B_COMPLEMENTS, GRILLE_2053_DETAIL, GRILLE_2033D_982, GRILLE_2058A_FEUILLETS, GRILLE_2058B_K4BIS, GRILLE_2057, GRILLE_2065, GRILLE_2065_BIS, GRILLE_DATES_CVAE, GRILLES_2059, preparerGrille } from './formulaire-grilles.js';
 import { type SaisieTableau, validerSaisieTableau } from './saisies-tableaux.js';
 
 const TRACE = { note: 'Suivi des plus-values (essai)', qualifieePar: 'u-1', le: '2026-12-31T10:00:00Z', versionDonnees: 7 };
@@ -167,5 +167,16 @@ describe('grilles 2059', () => {
     expect(f.controles.some((c) => c.code.endsWith('PRODUITS_ANT'))).toBe(false);
     expect(validerSaisieTableau('2053_D8', '10', { origine: 'Nature', c: '1.00', p: '0.00' })).toEqual([]);
     expect(validerSaisieTableau('2053_D8', '11', { origine: 'Nature', c: '1.00', p: '0.00' }).join(' ')).toMatch(/Ligne inconnue/);
+  });
+  it('2058-B : libellés de nature saisis ; rappel indicatif si un montant est saisi sans libellé ; composants saisis sans calcul', () => {
+    const sans = preparerGrille(GRILLE_2058B_COMPLEMENTS, { versionDonnees: 7, saisiesTableaux: [], valeursAutres: { B58_8X: '100.00', B58_9D: '0.00' } });
+    expect(sans.cadres[0]!.lignes).toHaveLength(10);
+    expect(sans.controles.map((c) => c.code)).toContain('2058-B-COMPLEMENTS_LIBELLE_8X');
+    expect(sans.controles.map((c) => c.code)).not.toContain('2058-B-COMPLEMENTS_LIBELLE_9D');
+    const avec = preparerGrille(GRILLE_2058B_COMPLEMENTS, { versionDonnees: 7, saisiesTableaux: [s('2058B_NAT', '8X', { t: 'Provision pour litige prud’homal (fictive)' }), s('2058B_COMP', 'L1', { imputations: '10.00', netfin: '90.00' })], valeursAutres: { B58_8X: '100.00' } });
+    expect(avec.controles.some((c) => c.code.includes('LIBELLE'))).toBe(false);
+    expect(avec.cadres[1]!.lignes[0]!.valeurs).toEqual({ imputations: '10.00', netfin: '90.00' });
+    expect(validerSaisieTableau('2058B_NAT', '8Y', { t: 'x' }).join(' ')).toMatch(/Ligne inconnue/);
+    expect(validerSaisieTableau('2058B_COMP', 'L1', { imputations: '1.00' }).join(' ')).toMatch(/obligatoire/);
   });
 });

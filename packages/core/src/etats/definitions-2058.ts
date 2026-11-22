@@ -184,8 +184,7 @@ export const FORMULAIRE_2058_B: DefinitionFormulaire = {
     { code: 'YO_WU', libelle: 'YO (reprises) et ligne WU du 2058-A', case: 'YO', externe: 'A58_WU' },
   ],
   nonPrepare: [
-    'Libellé de nature de chaque ligne de provisions et de charges à payer (cellule de gauche, « à détailler sur feuillet séparé ») : à porter dans la justification de la saisie ; feuillet joint non préparé.',
-    'Cadre « conséquences de la méthode par composants » : seule la case L1 porte un code ; les cellules « imputations » et « montant net à la fin » (sans code) ne sont pas préparées.',
+    'Libellé de nature de chaque ligne de provisions et de charges à payer (cellule de gauche, « à détailler sur feuillet séparé ») et cadre « conséquences de la méthode par composants » (imputations, montant net à la fin : cellules sans code) : saisis dans les compléments du 2058-B (D-139), sans calcul ni rapprochement.',
     'Feuillet séparé des déficits transférés de plein droit : saisi dans le feuillet de détail (disposition propre à Comtaple), rapproché de la case K4 bis à titre indicatif.',
     'Aucune décision fiscale n’est prise par Comtaple.',
   ],

@@ -50,13 +50,15 @@ export interface CadreGrille {
   ventilation?: { total: string; parties: readonly string[] };
   /** Rapprochements indicatifs avec des valeurs d'AUTRES tableaux (`valeursAutres`) : somme d'une colonne ou nombre de lignes saisies. Sans valeur externe, aucun contrôle. */
   controlesExternes?: ReadonlyArray<{ code: string; libelle: string; mode: 'somme' | 'nombre'; colonne?: string; externe: string }>;
+  /** Libellé requis : pour chaque ligne, clés d'AUTRES tableaux (`valeursAutres`) dont la saisie suppose qu'un libellé soit renseigné (contrôle indicatif, jamais bloquant). */
+  libelleRequisSi?: Readonly<Record<string, readonly string[]>>;
   /** Contrôles indicatifs d'ordre entre deux colonnes date d'une même ligne (la première ne doit pas suivre la seconde). */
   ordreDates?: ReadonlyArray<[string, string]>;
   /** Colonne calculée par ligne : somme signée d'autres colonnes de la MÊME ligne (les colonnes non servies sont ignorées). */
   colonneCalculee?: { cle: string; libelle: string; termes: ReadonlyArray<{ col: string; signe: 1 | -1 }> };
 }
 export interface DefinitionGrille {
-  id: '2059-B' | '2059-C' | '2059-D' | '2065' | '2033-E-DATES' | '2057' | '2065-BIS' | '2033-D-982' | '2058-B-K4BIS' | '2058-A-FEUILLETS' | '2053-DETAIL';
+  id: '2059-B' | '2059-C' | '2059-D' | '2065' | '2033-E-DATES' | '2057' | '2065-BIS' | '2033-D-982' | '2058-B-K4BIS' | '2058-A-FEUILLETS' | '2053-DETAIL' | '2058-B-COMPLEMENTS';
   titre: string;
   /** Tableau portant la ligne NEANT du formulaire ; absent si le formulaire n'a pas de « néant » (le 2065 est toujours servi). */
   neantSur?: string;
@@ -525,7 +527,48 @@ export const GRILLE_2053_DETAIL: DefinitionGrille = {
   ],
 };
 
-const TOUTES: readonly DefinitionGrille[] = [...GRILLES_2059, GRILLE_2065, GRILLE_DATES_CVAE, GRILLE_2057, GRILLE_2065_BIS, GRILLE_2033D_982, GRILLE_2058B_K4BIS, GRILLE_2058A_FEUILLETS, GRILLE_2053_DETAIL];
+
+const NATURES_2058B: ReadonlyArray<[string, string, readonly string[]]> = [
+  ['8X', 'Provisions pour risques et charges — ligne 1', ['B58_8X', 'B58_8Y']],
+  ['8Z', 'Provisions pour risques et charges — ligne 2', ['B58_8Z', 'B58_9A']],
+  ['9B', 'Provisions pour risques et charges — ligne 3', ['B58_9B', 'B58_9C']],
+  ['9D', 'Provisions pour dépréciation — ligne 1', ['B58_9D', 'B58_9E']],
+  ['9F', 'Provisions pour dépréciation — ligne 2', ['B58_9F', 'B58_9G']],
+  ['9H', 'Provisions pour dépréciation — ligne 3', ['B58_9H', 'B58_9J']],
+  ['9K', 'Charges à payer — ligne 1', ['B58_9K', 'B58_9L']],
+  ['9M', 'Charges à payer — ligne 2', ['B58_9M', 'B58_9N']],
+  ['9P', 'Charges à payer — ligne 3', ['B58_9P', 'B58_9R']],
+  ['9S', 'Charges à payer — ligne 4', ['B58_9S', 'B58_9T']],
+];
+/** Compléments du 2058-B (page 11 de `2050-liasse_5320.pdf`, rendu image vérifié le 2026-11-22) : libellé de nature de chaque ligne de provisions et charges à payer « à détailler sur feuillet séparé » ; cadre « conséquences de la méthode par composants » (art. 237 septies du CGI). */
+export const GRILLE_2058B_COMPLEMENTS: DefinitionGrille = {
+  id: '2058-B-COMPLEMENTS',
+  titre: '2058-B — libellés de nature des provisions non déductibles et conséquences de la méthode par composants',
+  cadres: [
+    {
+      tableau: '2058B_NAT',
+      titre: 'III — Nature de chaque ligne de provisions et de charges à payer non déductibles (cellule de gauche du formulaire, « à détailler sur feuillet séparé »)',
+      colonnes: [{ cle: 't', libelle: 'Nature (libellé)', type: 'texte' }],
+      lignes: NATURES_2058B.map(([ligne, libelle]) => ({ ligne, libelle: `${libelle} (dotation ${ligne})` })),
+      calculs: [],
+      libelleRequisSi: Object.fromEntries(NATURES_2058B.map(([ligne, , cles]) => [ligne, cles])),
+    },
+    {
+      tableau: '2058B_COMP',
+      titre: 'Conséquences de la méthode par composants (art. 237 septies du CGI) : montant de la réintégration ou de la déduction',
+      colonnes: [{ cle: 'imputations', libelle: 'Imputations' }, { cle: 'netfin', libelle: 'Montant net à la fin de l’exercice' }],
+      lignes: [{ ligne: 'L1', libelle: 'Montant de la réintégration ou de la déduction (le montant au début de l’exercice est la case L1 du 2058-B)' }],
+      calculs: [],
+    },
+  ],
+  nonPrepare: [
+    'Les cellules « imputations » et « montant net à la fin de l’exercice » n’ont pas de code imprimé et le formulaire n’en énonce pas la formule : elles sont saisies, sans calcul ni rapprochement avec la case L1.',
+    'Le libellé de nature est un texte du cabinet, sans contrôle de fond ; le rappel « montant saisi sans libellé » est indicatif.',
+    'Aucune décision de déductibilité n’est prise par Comtaple.',
+  ],
+};
+
+const TOUTES: readonly DefinitionGrille[] = [...GRILLES_2059, GRILLE_2065, GRILLE_DATES_CVAE, GRILLE_2057, GRILLE_2065_BIS, GRILLE_2033D_982, GRILLE_2058B_K4BIS, GRILLE_2058A_FEUILLETS, GRILLE_2053_DETAIL, GRILLE_2058B_COMPLEMENTS];
 export const TABLEAUX_GRILLES: readonly string[] = TOUTES.flatMap((g) => g.cadres.map((c) => c.tableau));
 
 /** Lignes admises pour un tableau en grille : `null` si le tableau n'est pas une grille. Utilisée par la validation de forme. */
@@ -688,6 +731,12 @@ export function preparerGrille(def: DefinitionGrille, demande: DemandeGrilles): 
       controles.push(ecart.isZero()
         ? { code: `${def.id}_${k.code}`, statut: 'coherent', message: `${k.libelle} : égaux (${versChaine(interne)}). Contrôle indicatif.` }
         : { code: `${def.id}_${k.code}`, statut: 'ecart', message: `${k.libelle} : ${versChaine(interne)} ici contre ${versChaine(new Decimal(externe))} dans l’autre tableau. Rien n’est corrigé. Contrôle indicatif.`, ecart: versChaine(ecart) });
+    }
+  for (const c of def.cadres)
+    for (const [ligneId, cles] of Object.entries(c.libelleRequisSi ?? {})) {
+      const l = cadres.find((x) => x.tableau === c.tableau)!.lignes.find((x) => x.ligne === ligneId);
+      const montants = cles.filter((k) => demande.valeursAutres?.[k] !== undefined && !new Decimal(demande.valeursAutres[k]!).isZero());
+      if (l !== undefined && l.statut !== 'saisi' && montants.length > 0) controles.push({ code: `${def.id}_LIBELLE_${ligneId}`, statut: 'non_verifie', message: `${l.libelle} : un montant est saisi (${montants.join(', ')}) mais la nature de la ligne n’est pas renseignée au feuillet. Contrôle indicatif.` });
     }
   for (const c of def.cadres)
     for (const [a, b] of c.ordreDates ?? [])

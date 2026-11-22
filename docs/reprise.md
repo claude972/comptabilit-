@@ -26,7 +26,8 @@ Document de passage pour reprendre le travail sans relire la conversation. À me
 | 2065 (page 1) | D-123 | ea2ccaf |
 | Import XLSX des immobilisations | D-124 | df60b4f |
 | Composants par import | D-125 | 048039f |
-| Cadre IV du 2033-D (saisie), dates du 2033-E / 2059-E | D-126 | (ce commit) |
+| Cadre IV du 2033-D (saisie), dates du 2033-E / 2059-E | D-126 | 1c506a3 |
+| Rapprochement ZJ/YX du 2058-C avec FW/FX du 2052 | D-127 | (ce commit) |
 
 ## Restes explicites (ordre de travail)
 1. ~~2059-A à D~~ FAIT (D-121, D-122).

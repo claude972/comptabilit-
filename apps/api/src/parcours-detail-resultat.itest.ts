@@ -672,6 +672,12 @@ describe('2058-B et 2058-C (régime réel normal) : déficits, provisions non d�
     for (const [c, m] of [['YW', '100.00'], ['9Z', '40.00']] as const) expect((await pc(c, m, 'Impôts et taxes (essai)')).statut, c).toBeLessThan(300);
     expect(calc(await unique('2058-C'), 'YX')).toMatchObject({ statut: 'etabli', montant: '140.00' });
     expect(calc(await unique('2058-C'), 'ZJ').statut).toBe('abstention');
+    // Rapprochement indicatif de YX avec la ligne FX du 2052 déduite de la balance (D-127) : présent quand la balance porte la ligne, jamais corrigé.
+    const rapprochement = (await unique('2058-C')).controles.find((c: any) => c.code === 'C58_YX_FX');
+    if (rapprochement) {
+      expect(['coherent', 'ecart']).toContain(rapprochement.statut);
+      expect(calc(await unique('2058-C'), 'YX')).toMatchObject({ statut: 'etabli', montant: '140.00' });
+    }
     expect((await pc('YW', '-1.00')).statut).toBe(400);
     expect((await pc('ZZZ', '1.00')).statut).toBe(404);
   }, 120_000);

@@ -379,6 +379,14 @@ export class FiscalController {
       const formulairesCases: FormulaireProjet[] | null = regime === 'reel_normal' ? [] : null;
       if (formulairesCases !== null) {
         const valeursAutres: Record<string, string> = {};
+        // Lignes FW (autres achats et charges externes) et FX (impôts, taxes et versements assimilés) du 2052, déduites de la balance : rapprochements indicatifs du 2058-C (ZJ, YX).
+        if (resultat.statut === 'projet') {
+          const l2052 = resultat.tableaux.flatMap((t) => t.lignes);
+          const fw = l2052.find((l) => l.ligne === 'RN_2052_CE_AUTRES_ACHATS_CHARGES_EXTERNES');
+          const fx = l2052.find((l) => l.ligne === 'RN_2052_CE_IMPOTS_TAXES');
+          if (fw) valeursAutres.R52_FW = fw.montant;
+          if (fx) valeursAutres.R52_FX = fx.montant;
+        }
         for (const def of FORMULAIRES_CASES) {
           const f = preparerFormulaireCases(def, { versionDonnees: exercice.versionDonnees, renvois: renvoisSaisis, valeursAutres, dureeMois: dureeEnMois(exercice.debut, exercice.fin) });
           formulairesCases.push(f);

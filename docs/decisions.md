@@ -736,6 +736,12 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Non préparé, dit** : formule du revenu brut social ; tableaux supplémentaires et états joints (> 10 cessions du cadre III du 2033-C, > 7 lignes du cadre C du 2033-D, au-delà de 7 filiales ou associés) ; feuillet des déficits transférés de plein droit ; 2058-A feuillets joints ; 2058-B libellés de nature des provisions ; rapprochement ZJ/YX du 2058-C avec FW/FX du 2052. **La série 2033 n'est pas déclarée complète.**
 - **Preuves** : tests du moteur (2033-D cadre IV, grilles dates), 2 essais d'intégration sur la pile réelle (54 verts dans `parcours-detail-resultat`), Playwright `fiscal.spec.ts`, captures `fiscal-2033e-dates.png` et `fiscal-2033d-cadre-iv.png` (`--2033reste`).
 
+### D-127 — 2058-C : rapprochement de ZJ et YX avec les lignes FW et FX du 2052 (2026-11-22)
+
+- Le formulaire dit que ZJ est le « total du poste correspondant à la ligne FW du 2052 » et YX le « total du poste correspondant à la ligne FX ». Le rapprochement est désormais fait, **à titre indicatif** (`controlesExternes` du moteur de formulaires) : ZJ contre la ligne 2052 « autres achats et charges externes » (comptes 604, 605, 606, 6094 à 6096, 61, 62 de la correspondance interne) et YX contre « impôts, taxes et versements assimilés » (comptes 63), toutes deux déduites de la balance. Un écart est signalé, jamais corrigé ; sans ZJ ou YX calculé (composantes non toutes saisies), ou sans ligne 2052, aucun contrôle.
+- **Limite, dite** : la correspondance comptes → lignes du 2052 est interne et non validée par un professionnel ; un écart peut venir d'un rattachement de compte différent, pas d'une erreur de saisie.
+- **Preuves** : 2 tests du moteur (`formulaire-cases.test.ts`, 17 verts), essai d'intégration étendu (3 verts).
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

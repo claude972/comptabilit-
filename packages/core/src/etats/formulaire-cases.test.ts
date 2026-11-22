@@ -1,7 +1,7 @@
 /** Recette du moteur générique de formulaires par cases (D-118) et de la définition du 2058-A : intégrité, abstention, néant, calculs énoncés, imputation, contrôles indicatifs. */
 import { describe, expect, it } from 'vitest';
 import type { QualificationRenvoi } from './detail-resultat.js';
-import { FORMULAIRE_2058_A, FORMULAIRE_2058_B } from './definitions-2058.js';
+import { FORMULAIRE_2058_A, FORMULAIRE_2058_B, FORMULAIRE_2058_C } from './definitions-2058.js';
 import { FORMULAIRE_2059_E } from './definitions-2059.js';
 import { cleCase, preparerFormulaireCases } from './formulaire-cases.js';
 
@@ -155,5 +155,22 @@ describe('2059-E : mêmes calculs que le 2033-E avec les codes du régime réel 
     expect(prepE(t1).cases.find((c) => c.code === 'GX')).toMatchObject({ statut: 'a_saisir', montant: null, proposition: { montant: '300.00' } });
     expect(prepE(t1, 9).cases.find((c) => c.code === 'GX')!.proposition).toBeNull();
     expect(prepE([...t1, rvE('GX', '300.00')]).cases.find((c) => c.code === 'GX')!.proposition).toBeNull();
+  });
+});
+
+describe('2058-C : rapprochements ZJ / FW et YX / FX avec le 2052 déduit de la balance (D-127)', () => {
+  const rc = (code: string, montant: string): QualificationRenvoi => ({ code: cleCase('C58', code), montant, ...TRACE });
+  const ZJ = ['YT', 'XQ', 'YU', 'SS', 'YV', 'ST'].map((c) => rc(c, '100.00'));
+  const prepC = (renvois: QualificationRenvoi[], valeursAutres?: Record<string, string>) => preparerFormulaireCases(FORMULAIRE_2058_C, { versionDonnees: 7, renvois, ...(valeursAutres ? { valeursAutres } : {}) });
+  it('ZJ égal à FW : cohérent ; différent : écart indicatif jamais corrigé ; sans valeur du 2052 ou sans ZJ : aucun contrôle', () => {
+    expect(prepC(ZJ, { R52_FW: '600.00' }).controles.find((c) => c.code === 'C58_ZJ_FW')?.statut).toBe('coherent');
+    const e = prepC(ZJ, { R52_FW: '650.00' });
+    expect(e.controles.find((c) => c.code === 'C58_ZJ_FW')).toMatchObject({ statut: 'ecart', ecart: '-50.00' });
+    expect(e.calculs.find((c) => c.code === 'ZJ')).toMatchObject({ statut: 'etabli', montant: '600.00' });
+    expect(prepC(ZJ).controles.some((c) => c.code === 'C58_ZJ_FW')).toBe(false);
+    expect(prepC([], { R52_FW: '600.00' }).controles.some((c) => c.code === 'C58_ZJ_FW')).toBe(false);
+  });
+  it('YX égal à FX', () => {
+    expect(prepC([rc('YW', '30.00'), rc('9Z', '12.00')], { R52_FX: '42.00' }).controles.find((c) => c.code === 'C58_YX_FX')?.statut).toBe('coherent');
   });
 });

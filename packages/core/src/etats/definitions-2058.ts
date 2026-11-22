@@ -271,8 +271,12 @@ export const FORMULAIRE_2058_C: DefinitionFormulaire = {
     { code: 'YX', libelle: 'Total du poste correspondant à la ligne FX du tableau 2052-SD (impôts, taxes et versements assimilés)', groupe: 'IMP', composantes: plus('YW', '9Z') },
   ],
   controles: [{ code: 'I_EGAL_II', libelle: 'TOTAL I (origines) et TOTAL II (affectations)', total: 'ØF', somme: [{ code: 'ZH', signe: 1 }] }],
+  controlesExternes: [
+    { code: 'ZJ_FW', libelle: 'ZJ (total du poste) et ligne FW du 2052 (autres achats et charges externes, déduite de la balance)', case: 'ZJ', externe: 'R52_FW' },
+    { code: 'YX_FX', libelle: 'YX (total du poste) et ligne FX du 2052 (impôts, taxes et versements assimilés, déduite de la balance)', case: 'YX', externe: 'R52_FX' },
+  ],
   nonPrepare: [
-    'Rapprochement du total ZJ avec la ligne FW et du total YX avec la ligne FX du 2052 : non fait (les lignes calculées du 2052 ne sont pas reprises ici) ; la relation « total du poste » est lue sur le formulaire.',
+    'Rapprochement de ZJ avec la ligne FW et de YX avec la ligne FX du 2052 : INDICATIF, fait sur les lignes du 2052 déduites de la balance (correspondance interne des comptes, non validée) ; jamais corrigé.',
     'Cases JH et JJ (société mère ou filiale, SIRET de la société mère) : valeurs numériques seulement ; le SIRET en clair se porte dans la justification.',
     'Aucune décision fiscale n’est prise par Comtaple.',
   ],

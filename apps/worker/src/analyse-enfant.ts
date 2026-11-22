@@ -9,9 +9,14 @@
 import './analyse-verrou.js'; // en premier : le réseau est neutralisé avant le chargement des lecteurs
 import type { PageTexte } from '@comtaple/core';
 import { analyserPiece, extraireDuTexte } from './analyse-contenu.js';
-import { type DemandeAnalyse, ENTETE_MAX_OCTETS, type TrameFec } from './analyse-types.js';
+import { type DemandeAnalyse, ENTETE_MAX_OCTETS, MARQUEUR_CREDIT, type TrameFec } from './analyse-types.js';
 import { analyserFecEnFlux } from './fec-contenu.js';
 import { lireReleve } from './releve-contenu.js';
+
+/** Annonce au parent que `n` octets de corps ont été consommés (sortie d'erreur : jamais mêlée aux résultats). */
+function accorderCredit(n: number): void {
+  process.stderr.write(`${MARQUEUR_CREDIT}${n}\n`);
+}
 
 /** Lit l'en-tête ; le corps reste un FLUX (un FEC n'est jamais chargé en entier). */
 async function ouvrirEntree(): Promise<{ demande: DemandeAnalyse; corps: AsyncGenerator<Buffer> }> {
@@ -25,11 +30,17 @@ async function ouvrirEntree(): Promise<{ demande: DemandeAnalyse; corps: AsyncGe
         const demande = JSON.parse(tampon.subarray(4, 4 + longueur).toString('utf8')) as DemandeAnalyse;
         const reste = tampon.subarray(4 + longueur);
         const corps = (async function* (): AsyncGenerator<Buffer> {
-          if (reste.length > 0) yield reste;
+          // Crédit (D-171) : les octets d'un bloc sont annoncés CONSOMMÉS quand le consommateur revient chercher la suite, pas à leur arrivée : la contre-pression de bout en bout
+          // (traitement lent) se répercute sur le parent, qui n'écrit alors plus rien.
+          if (reste.length > 0) {
+            yield reste;
+            accorderCredit(reste.length);
+          }
           for (;;) {
             const suivant = await lecteur.next();
             if (suivant.done) return;
             yield suivant.value;
+            accorderCredit(suivant.value.length);
           }
         })();
         return { demande, corps };

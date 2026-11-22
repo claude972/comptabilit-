@@ -36,6 +36,15 @@ export type DemandeAnalyse =
 export const ENTETE_MAX_OCTETS = 65_536;
 
 /**
+ * PROTOCOLE D'ENTRÉE À CRÉDIT (D-171). Pour ne jamais écrire dans l'entrée d'un conteneur qui ne lit plus (déclencheur du blocage amont de dockerd à l'arrêt forcé, D-098 bis, D-109), le
+ * parent n'a jamais plus de `FENETRE_CREDIT_OCTETS` octets de corps « en vol » : l'enfant annonce, sur sa SORTIE D'ERREUR (canal distinct des résultats), le nombre d'octets de corps qu'il a
+ * effectivement consommés (`\u0001CREDIT <n>\n`), et le parent n'écrit la suite que dans la fenêtre ainsi libérée. La fenêtre initiale est `FENETRE_CREDIT_OCTETS`. Un enfant d'essai qui ne
+ * parle pas ce protocole est servi à l'ancienne (voir `executerEnfant`). Les lignes de crédit sont retirées du texte d'erreur du parent (jamais relayées).
+ */
+export const FENETRE_CREDIT_OCTETS = 256 * 1024;
+export const MARQUEUR_CREDIT = '\u0001CREDIT ';
+
+/**
  * Résultat de la lecture d'un relevé bancaire (camt.053, OFX, CSV, document d'agrégation) par l'enfant. Les refus qui
  * tiennent au FORMAT (non reconnu, colonnes CSV à confirmer) sont des résultats, pas des échecs de l'enfant.
  */

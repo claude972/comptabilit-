@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { type LigneFec, PLAFOND_ANOMALIES_FEC, type PageTexte, type ProfilCsvBanque, type RapportFec, referentielFec, schemaProfilCsvBanque, TAILLE_MAX_LIGNE_FEC } from '@comtaple/core';
 import { z } from 'zod';
 import { demarrerConteneur, type ParametresConteneur, RACINE_IMAGE } from './analyse-conteneur.js';
-import { type DemandeAnalyse, LIGNES_MAX_PAR_PAGE, MOUVEMENTS_MAX_RELEVE, PAGES_MAX, PAGES_MAX_TEXTE, type ResultatPiece, type ResultatReleve, type ResultatTexte, type TypePieceDecodee } from './analyse-types.js';
+import { FENETRE_CREDIT_OCTETS, MARQUEUR_CREDIT, type DemandeAnalyse, LIGNES_MAX_PAR_PAGE, MOUVEMENTS_MAX_RELEVE, PAGES_MAX, PAGES_MAX_TEXTE, type ResultatPiece, type ResultatReleve, type ResultatTexte, type TypePieceDecodee } from './analyse-types.js';
 
 export interface LimitesAnalyse {
   /** Durée maximale d'un enfant, lancement compris ; au-delà il est arrêté de force (SIGKILL). */
@@ -43,6 +43,8 @@ export interface OptionsAnalyse extends Partial<LimitesAnalyse> {
   isolation?: 'processus' | 'conteneur';
   /** Paramètres du mode `conteneur` (image, client docker, bornes) ; ignorés en mode `processus`. */
   conteneur?: ParametresConteneur;
+  /** Mesure du protocole d'entrée à crédit, REMPLIE par l'appel (essais, D-171) : octets de corps écrits, crédités, maximum en vol, protocole actif ou non. */
+  mesureCredit?: { actif: boolean; ecrit: number; credite: number; maxEnVol: number };
 }
 
 /** Options d'isolement issues de la configuration (mode, image, bornes du conteneur) : à répandre dans les options d'un appel. */
@@ -128,6 +130,8 @@ interface Lancement {
   fin: Promise<number | null>;
   /** Issue d'un enfant terminé sans arrêt forcé mais avec un code non nul. */
   causeSortie(): CauseEchec;
+  /** Écriture à crédit du corps (D-171) : rend la main quand `octets` de plus tiennent dans la fenêtre annoncée par l'enfant, ou quand l'enfant est arrêté. */
+  attendreCredit(octets: number): Promise<void>;
 }
 
 /**
@@ -167,6 +171,7 @@ function lancer(options: OptionsAnalyse): Lancement {
     arret ??= cause;
     if (conteneur) conteneur.arreter();
     else enfant.kill('SIGKILL');
+    reveiller();
   };
   const minuterie = setTimeout(() => arreter('delai'), limites.dureeMaxMs);
   let mesureEnCours = false;
@@ -181,10 +186,40 @@ function lancer(options: OptionsAnalyse): Lancement {
           if (mo !== null && mo > limites.memoireMaxMo) arreter('memoire');
         });
       }, 100);
-  // Sortie d'erreur : seuls ses premiers octets servent, à reconnaître un dépassement du tas ; jamais relayée.
+  // Sortie d'erreur : seuls ses premiers octets servent, à reconnaître un dépassement du tas ; jamais relayée. Les lignes de CRÉDIT (D-171) en sont retirées : elles alimentent la fenêtre
+  // d'écriture et ne comptent ni dans le texte d'erreur ni dans sa limite.
   let erreurs = '';
+  let partiel = '';
+  const mesure = options.mesureCredit;
+  // Protocole actif seulement avec l'enfant RÉEL (ni point d'entrée d'essai, ni image d'essai) : un enfant d'essai qui ne parle pas le protocole est servi à l'ancienne.
+  const creditActif = options.entree === undefined && options.conteneur?.essai === undefined;
+  const credit = { ecrit: 0, credite: 0, maxEnVol: 0 };
+  let attentes: Array<() => void> = [];
+  const reveiller = () => {
+    const a = attentes;
+    attentes = [];
+    for (const r of a) r();
+  };
+  if (mesure) Object.assign(mesure, { actif: creditActif, ecrit: 0, credite: 0, maxEnVol: 0 });
+  const ajouterErreur = (texte: string) => {
+    if (erreurs.length < 8192) erreurs += texte.slice(0, 8192 - erreurs.length);
+  };
+  const viderPartiel = () => {
+    if (partiel) ajouterErreur(partiel);
+    partiel = '';
+  };
   enfant.stderr!.on('data', (m: Buffer) => {
-    if (erreurs.length < 8192) erreurs += m.toString('latin1').slice(0, 8192 - erreurs.length);
+    const lignes = (partiel + m.toString('latin1')).split('\n');
+    partiel = lignes.pop() ?? '';
+    for (const ligne of lignes) {
+      const n = ligne.startsWith(MARQUEUR_CREDIT) ? /^\d{1,10}$/.exec(ligne.slice(MARQUEUR_CREDIT.length)) : null;
+      if (n) {
+        credit.credite = Math.min(credit.credite + Number(n[0]), credit.ecrit); // jamais plus que ce qui a été écrit : un crédit inventé ne rouvre rien
+        if (mesure) mesure.credite = credit.credite;
+        reveiller();
+      } else ajouterErreur(`${ligne}\n`);
+    }
+    if (partiel.length > 8192) viderPartiel();
   });
   // Un enfant mort avant d'avoir tout lu ferme son entrée : l'erreur d'écriture est attendue, l'issue vient de « close ».
   enfant.stdin!.on('error', () => undefined);
@@ -200,6 +235,8 @@ function lancer(options: OptionsAnalyse): Lancement {
       rejeter(new Error(`Lancement du processus d'analyse impossible : ${e.message}`));
     });
     enfant.on('close', (code) => {
+      viderPartiel();
+      reveiller();
       void (async () => {
         if (conteneur) {
           // Le conteneur est constaté puis supprimé AVANT de rendre l'issue : aucun conteneur ne survit à son analyse.
@@ -221,7 +258,16 @@ function lancer(options: OptionsAnalyse): Lancement {
       })();
     });
   });
-  return { enfant, limites, debut, arreter, cause: () => arret, fin, causeSortie: () => (/heap out of memory|Allocation failed|out of memory/i.test(erreurs) ? 'memoire' : 'plantage') };
+  const attendreCredit = async (octets: number): Promise<void> => {
+    // Rien en vol : on écrit toujours (un bloc plus grand que la fenêtre passe seul) ; sinon on attend que l'enfant ait consommé de quoi faire de la place.
+    while (creditActif && credit.ecrit - credit.credite > 0 && credit.ecrit - credit.credite + octets > FENETRE_CREDIT_OCTETS && arret === null && !enfant.stdin!.destroyed && enfant.exitCode === null) {
+      await new Promise<void>((r) => attentes.push(r));
+    }
+    credit.ecrit += octets;
+    credit.maxEnVol = Math.max(credit.maxEnVol, credit.ecrit - credit.credite);
+    if (mesure) Object.assign(mesure, { ecrit: credit.ecrit, maxEnVol: credit.maxEnVol });
+  };
+  return { enfant, limites, debut, arreter, cause: () => arret, fin, attendreCredit, causeSortie: () => (/heap out of memory|Allocation failed|out of memory/i.test(erreurs) ? 'memoire' : 'plantage') };
 }
 
 /** Taille d'un bloc d'entrée écrit à l'enfant. */
@@ -254,7 +300,10 @@ export async function executerEnfant<T>(demande: { entete: unknown; corps: Buffe
   // (atténuation du blocage de dockerd 29.5.2 quand l'entrée est encore écrite, D-098 bis point 4). Octets et ordre inchangés.
   const entree = l.enfant.stdin!;
   for (let i = 0; i < demande.corps.length && !l.cause() && !entree.destroyed; i += BLOC_ENTREE) {
-    if (!entree.write(demande.corps.subarray(i, i + BLOC_ENTREE))) {
+    const bloc = demande.corps.subarray(i, i + BLOC_ENTREE);
+    await l.attendreCredit(bloc.length);
+    if (l.cause() || entree.destroyed) break;
+    if (!entree.write(bloc)) {
       await new Promise<void>((suite) => {
         const reprendre = () => {
           entree.off('drain', reprendre);
@@ -317,6 +366,8 @@ export async function executerEnfantFlux<L, F>(
   const alimentation = (async () => {
     try {
       for await (const bloc of demande.corps) {
+        if (l.cause() || entree.destroyed) break;
+        await l.attendreCredit(bloc.length);
         if (l.cause() || entree.destroyed) break;
         if (!entree.write(bloc)) {
           await new Promise<void>((suite) => {

@@ -746,6 +746,21 @@ describe.skipIf(!IMAGE_ANALYSE_PRESENTE)('équivalence processus / conteneur —
     expect(b.issue.ok && json(b.issue.valeur)).toEqual(a.issue.ok && json(a.issue.valeur));
   }, 180_000);
 
+  it('FEC en CONTENEUR, entrée à crédit (D-171) : traitement lent, jamais plus de la fenêtre en vol, tout est écrit puis crédité, mêmes lignes qu’en mode processus', async () => {
+    const jeu = genererFecSynthetique({ exercice: EXERCICE, nbEcritures: 12_000, graine: 4 });
+    const octets = Buffer.from(jeu.contenu).length;
+    const mesureCredit: NonNullable<OptionsAnalyse['mesureCredit']> = { actif: false, ecrit: 0, credite: 0, maxEnVol: 0 };
+    let nb = 0;
+    const issue = await analyserFecIsole(enBlocs(jeu.contenu, 65_536), { exerciceDebut: EXERCICE.debut, exerciceFin: EXERCICE.fin, nomFichier: jeu.nomFichier, surLot: async (l) => { nb += l.length; await new Promise((r) => setTimeout(r, 15)); } }, { ...conteneurReel(), mesureCredit });
+    expect(issue.ok).toBe(true);
+    expect(nb).toBe(jeu.nbLignes);
+    expect(mesureCredit.actif).toBe(true);
+    expect(mesureCredit.ecrit).toBe(octets);
+    expect(mesureCredit.credite).toBe(octets);
+    expect(mesureCredit.maxEnVol).toBeLessThanOrEqual(256 * 1024);
+    console.log(`[mesure] crédit en conteneur : ${octets} octets, maximum en vol ${mesureCredit.maxEnVol}`);
+  }, 180_000);
+
   it('coût réel par pièce : médiane de 15 lectures en mode processus puis en mode conteneur', async () => {
     const mesurer = async (options: OptionsAnalyse) => {
       const t: number[] = [];

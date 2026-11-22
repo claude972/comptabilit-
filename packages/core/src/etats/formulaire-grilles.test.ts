@@ -1,6 +1,6 @@
 /** Recette des grilles 2059-B, 2059-C et 2059-D (D-122) : saisie ligne par ligne, calculs énoncés seulement à composantes saisies. */
 import { describe, expect, it } from 'vitest';
-import { GRILLE_2058B_COMPLEMENTS, GRILLE_2053_DETAIL, GRILLE_2033D_982, GRILLE_2058A_FEUILLETS, GRILLE_2058B_K4BIS, GRILLE_2056_FEUILLETS, GRILLE_2057, GRILLE_2057_FEUILLETS, GRILLE_2059A_NOTE, GRILLE_2065, GRILLE_2065_BIS, GRILLE_DATES_CVAE, GRILLES_2059, preparerGrille } from './formulaire-grilles.js';
+import { GRILLE_2050_STOCKS, GRILLE_2058B_COMPLEMENTS, GRILLE_2053_DETAIL, GRILLE_2033D_982, GRILLE_2058A_FEUILLETS, GRILLE_2058B_K4BIS, GRILLE_2056_FEUILLETS, GRILLE_2057, GRILLE_2057_FEUILLETS, GRILLE_2059A_NOTE, GRILLE_2065, GRILLE_2065_BIS, GRILLE_DATES_CVAE, GRILLES_2059, preparerGrille } from './formulaire-grilles.js';
 import { type SaisieTableau, validerSaisieTableau } from './saisies-tableaux.js';
 
 const TRACE = { note: 'Suivi des plus-values (essai)', qualifieePar: 'u-1', le: '2026-12-31T10:00:00Z', versionDonnees: 7 };
@@ -310,3 +310,21 @@ describe('2057 : rapprochements des postes de libellé identique avec le projet 
   });
 });
 
+
+describe('2050 : ventilation explicite des en-cours et produits (D-169)', () => {
+  const v = (l: string, c1: string, c2 = '0.00') => s('2050_STOCKS', l, { c1, c2 });
+  it('sans saisie : aucun contrôle, abstention ; avec saisie : montant source conservé, total ventilé rapproché, écart visible', () => {
+    const sans = preparerGrille(GRILLE_2050_STOCKS, { versionDonnees: 7, saisiesTableaux: [], valeursAutres: { BIL_EN_COURS_BRUT: '1000.00', BIL_EN_COURS_AMORT: '100.00', BIL_PIF_BRUT: '500.00', BIL_PIF_AMORT: '0.00' } });
+    expect(sans.etat).toBe('a_saisir');
+    expect(sans.controles.filter((c) => c.statut !== 'non_verifie')).toEqual([]);
+    const g = preparerGrille(GRILLE_2050_STOCKS, { versionDonnees: 7, saisiesTableaux: [v('ECB', '700.00', '100.00'), v('ECS', '300.00'), v('PIF', '450.00')], valeursAutres: { BIL_EN_COURS_BRUT: '1000.00', BIL_EN_COURS_AMORT: '100.00', BIL_PIF_BRUT: '500.00', BIL_PIF_AMORT: '0.00' } });
+    const k = (c: string) => g.controles.find((x) => x.code === `2050-STOCKS_${c}`);
+    expect(k('EN_COURS_BRUT')?.statut).toBe('coherent');
+    expect(k('EN_COURS_AMORT')?.statut).toBe('coherent');
+    expect(k('PIF_BRUT')).toMatchObject({ statut: 'ecart', ecart: '-50.00' });
+    expect(g.cadres[0]!.calculs.find((c) => c.id === 'TOTAL_EN_COURS')?.cellules.c1).toMatchObject({ statut: 'etabli', montant: '1000.00' });
+    // Une seule des deux lignes saisie : le total ventilé n'est pas comparé (règle D-154), rien n'est réparti.
+    const une = preparerGrille(GRILLE_2050_STOCKS, { versionDonnees: 7, saisiesTableaux: [v('ECB', '700.00')], valeursAutres: { BIL_EN_COURS_BRUT: '1000.00' } });
+    expect(une.controles.find((x) => x.code === '2050-STOCKS_EN_COURS_BRUT')?.statut).not.toBe('ecart');
+  });
+});

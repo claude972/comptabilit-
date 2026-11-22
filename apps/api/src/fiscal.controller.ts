@@ -28,6 +28,7 @@ import {
   correspondancePour,
   projeterBilan,
   GRILLE_2057,
+  GRILLE_2050_STOCKS,
   GRILLE_2057_FEUILLETS,
   GRILLE_2059A_NOTE,
   GRILLE_2065,
@@ -84,7 +85,7 @@ const montantSigne = schemaChaineDecimale;
 const ventilation = z.object({ montantFrance: montantSigne, montantExport: montantSigne, note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie la ventilation').max(2000) });
 const renvoiSaisie = z.object({ montant: montantSigne, note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie le montant').max(2000) });
 const saisieTableau = z.object({ valeurs: z.record(z.string().max(40), z.string().max(200)), note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie la saisie').max(2000) });
-const TABLEAU_SAISI = /^(2033C_III|2054BIS_A|2054BIS_B|2055_B|2055_C|2033D_C|2033F_NB|2033F_PM|2033F_PP|2033G_NB|2033G_FIL|2059A_IM|2059A_AUT|2059B_A|2059B_B|2059C_I|2059C_II|2059D_I|2059D_II|2065_C1|2065_C2|2065_C3|2065_C4|2065_F|2065_I|2065_D|2065_E|2033E_DATES|2057_A|2057_AX|2057_B|2057_BX|2065B_G|2065B_H|2065B_I|2065B_J1|2065B_J2|2065B_K|2033D_982|2058B_K4BIS|2058A_REINT|2058A_DEDUC|IMMO_CELL|2053_D7|2053_D8|2065_X|2065_T|2058B_NAT|2058B_COMP|2065_ID|2065_IDG|2056_F_HPX|2056_F_APR|2056_F_IMP|2056_F_ARC|2056_F_AIF|2056_F_ADE|2057_F_PRET|2057_F_EMPR|2059A_NOTE|2059B_ENT|2059C_RAPPEL)$/;
+const TABLEAU_SAISI = /^(2033C_III|2054BIS_A|2054BIS_B|2055_B|2055_C|2033D_C|2033F_NB|2033F_PM|2033F_PP|2033G_NB|2033G_FIL|2059A_IM|2059A_AUT|2059B_A|2059B_B|2059C_I|2059C_II|2059D_I|2059D_II|2065_C1|2065_C2|2065_C3|2065_C4|2065_F|2065_I|2065_D|2065_E|2033E_DATES|2057_A|2057_AX|2057_B|2057_BX|2065B_G|2065B_H|2065B_I|2065B_J1|2065B_J2|2065B_K|2033D_982|2058B_K4BIS|2058A_REINT|2058A_DEDUC|IMMO_CELL|2053_D7|2053_D8|2065_X|2065_T|2058B_NAT|2058B_COMP|2065_ID|2065_IDG|2056_F_HPX|2056_F_APR|2056_F_IMP|2056_F_ARC|2056_F_AIF|2056_F_ADE|2057_F_PRET|2057_F_EMPR|2059A_NOTE|2059B_ENT|2059C_RAPPEL|2050_STOCKS)$/;
 /** Lignes admises par la route, selon la famille de tableau : historiques (01 à 13…), 2059-A (01 à 20), grilles 2059-B à D, 2065 et dates du 2033-E (identifiants courts, forme validée contre la définition). */
 const LIGNE_HISTORIQUE = /^(0[1-9]|1[0-3]|REG|PV19|NEANT|B1|B2|NB)$/;
 const LIGNE_2059A = /^(0[1-9]|1[0-9]|20|NEANT)$/;
@@ -473,12 +474,14 @@ export class FiscalController {
       const corrBilan = regime === 'reel_normal' ? correspondancePour(exercice.debut) : null;
       if (corrBilan) {
         const rub = projeterBilan(calculerBalance(lignes), corrBilan).rubriques;
-        const pris = (code: string, champ: 'brut' | 'montant') => rub.find((r) => r.code === code)?.[champ];
-        for (const [cle, code, champ] of [['BIL_CLIENTS_BRUT', 'A_CLIENTS', 'brut'], ['BIL_CCA_BRUT', 'A_CHARGES_CONSTATEES_AVANCE', 'brut'], ['BIL_FOURNISSEURS', 'P_FOURNISSEURS', 'montant'], ['BIL_PCA', 'P_PRODUITS_CONSTATES_AVANCE', 'montant'], ['BIL_CREANCES_PARTICIPATIONS_BRUT', 'A_CREANCES_PARTICIPATIONS', 'brut'], ['BIL_PRETS_BRUT', 'A_PRETS', 'brut'], ['BIL_AUTRES_IMMOS_FIN_BRUT', 'A_AUTRES_IMMOBILISATIONS_FINANCIERES', 'brut'], ['BIL_OBLIG_CONVERTIBLES', 'P_EMPRUNTS_OBLIGATAIRES_CONVERTIBLES', 'montant'], ['BIL_AUTRES_OBLIG', 'P_AUTRES_EMPRUNTS_OBLIGATAIRES', 'montant'], ['BIL_DETTES_IMMOS', 'P_DETTES_IMMOBILISATIONS', 'montant']] as const) {
+        const pris = (code: string, champ: 'brut' | 'montant' | 'amortissementsDepreciations') => rub.find((r) => r.code === code)?.[champ];
+        for (const [cle, code, champ] of [['BIL_CLIENTS_BRUT', 'A_CLIENTS', 'brut'], ['BIL_CCA_BRUT', 'A_CHARGES_CONSTATEES_AVANCE', 'brut'], ['BIL_FOURNISSEURS', 'P_FOURNISSEURS', 'montant'], ['BIL_PCA', 'P_PRODUITS_CONSTATES_AVANCE', 'montant'], ['BIL_CREANCES_PARTICIPATIONS_BRUT', 'A_CREANCES_PARTICIPATIONS', 'brut'], ['BIL_EN_COURS_BRUT', 'A_STOCKS_EN_COURS', 'brut'], ['BIL_EN_COURS_AMORT', 'A_STOCKS_EN_COURS', 'amortissementsDepreciations'], ['BIL_PIF_BRUT', 'A_STOCKS_PRODUITS_FINIS', 'brut'], ['BIL_PIF_AMORT', 'A_STOCKS_PRODUITS_FINIS', 'amortissementsDepreciations'], ['BIL_PRETS_BRUT', 'A_PRETS', 'brut'], ['BIL_AUTRES_IMMOS_FIN_BRUT', 'A_AUTRES_IMMOBILISATIONS_FINANCIERES', 'brut'], ['BIL_OBLIG_CONVERTIBLES', 'P_EMPRUNTS_OBLIGATAIRES_CONVERTIBLES', 'montant'], ['BIL_AUTRES_OBLIG', 'P_AUTRES_EMPRUNTS_OBLIGATAIRES', 'montant'], ['BIL_DETTES_IMMOS', 'P_DETTES_IMMOBILISATIONS', 'montant']] as const) {
           const v = pris(code, champ);
           if (v !== undefined) valeursBilan2057[cle] = v;
         }
       }
+      // Ventilation explicite des en-cours et produits du 2050 (D-169) : saisie du cabinet, montants sources du projet de bilan conservés et rapprochés.
+      if (feuilles2058) feuilles2058.push(preparerGrille(GRILLE_2050_STOCKS, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies, valeursAutres: valeursBilan2057 }));
       const formulaire2057 = regime === 'reel_normal' ? preparerGrille(GRILLE_2057, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies, valeursAutres: valeursBilan2057 }) : null;
       // Dates du 2033-E / 2059-E (période de référence, cessation, D-126) : saisies aux deux régimes.
       const datesCvae = preparerGrille(GRILLE_DATES_CVAE, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies });

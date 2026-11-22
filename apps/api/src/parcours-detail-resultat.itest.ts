@@ -1005,7 +1005,7 @@ describe('feuillets du régime réel normal : déficits transférés (K4 bis du 
   const put = (tableau: string, ligne: string, valeurs: Record<string, string>) => api('remi', 'PUT', `/v1/exercices/${exN}/tableaux/${tableau}/${ligne}`, { valeurs, note: 'Feuillet de détail (essai)' });
 
   it('deux feuillets au régime normal, absents au régime simplifié ; K4 bis rapproché de la case saisie ; détails 2058-A totalisés', async () => {
-    expect((await feuilles()).map((f) => f.id)).toEqual(['2058-B-K4BIS', '2058-A-FEUILLETS', '2056-FEUILLETS', '2057-FEUILLETS', '2059-A-NOTE', '2058-B-COMPLEMENTS']);
+    expect((await feuilles()).map((f) => f.id)).toEqual(['2058-B-K4BIS', '2058-A-FEUILLETS', '2056-FEUILLETS', '2057-FEUILLETS', '2059-A-NOTE', '2058-B-COMPLEMENTS', '2050-STOCKS']);
     expect((await liasse(exN, 'reel_simplifie')).json.feuilles2058).toBeNull();
     expect((await api('remi', 'PUT', `/v1/exercices/${exN}/qualifications/renvois/B58_K4BIS`, { montant: '700.00', note: 'Déficits transférés (essai)' })).statut).toBeLessThan(300);
     expect((await put('2058B_K4BIS', '01', { origine: 'Société d’origine (fictive)', siren: '123456789', date: '2025-03-01', m: '600.00' })).statut).toBeLessThan(300);
@@ -1028,6 +1028,21 @@ describe('feuillets du régime réel normal : déficits transférés (K4 bis du 
 describe('2054 / 2033-C : cellules non déductibles de la balance saisies (réévaluation, ventilation, composants) (D-134)', () => {
   const immo = async (regime: string) => (await liasse(exN, regime)).json.tableauxImmobilisations;
   const put = (ligne: string, valeurs: Record<string, string>, qui = 'remi') => api(qui, 'PUT', `/v1/exercices/${exN}/tableaux/IMMO_CELL/${ligne}`, { valeurs, note: 'Registre des immobilisations (essai)' });
+
+  it('ventilation des en-cours du 2050 (D-169) : sans saisie aucune valeur ; saisie justifiée et historisée ; re-saisie conserve l’ancienne ; ligne inconnue refusée', async () => {
+    const sto = async () => ((await liasse(exN, 'reel_normal')).json.feuilles2058 as any[]).find((f) => f.id === '2050-STOCKS');
+    const ecrire = (ligne: string, valeurs: Record<string, string>, note = 'Ventilation des en-cours (essai)') => api('remi', 'PUT', `/v1/exercices/${exN}/tableaux/2050_STOCKS/${ligne}`, { valeurs, note });
+    const f0 = await sto();
+    expect(f0.etat).toBe('a_saisir');
+    expect(f0.cadres[0].lignes.every((l: any) => l.valeurs === null)).toBe(true);
+    expect((await ecrire('ECB', { c1: '700.00', c2: '100.00' })).statut).toBeLessThan(300);
+    expect((await ecrire('ECB', { c1: '710.00', c2: '100.00' })).statut).toBeLessThan(300);
+    const f1 = await sto();
+    expect(f1.etat).toBe('saisi');
+    expect(f1.cadres[0].lignes.find((l: any) => l.ligne === 'ECB').valeurs).toMatchObject({ c1: '710.00' });
+    expect((await ecrire('XYZ', { c1: '1.00' })).statut).toBeGreaterThanOrEqual(400);
+    expect((await ecrire('ECS', { c1: '1.00' }, 'ab')).statut).toBeGreaterThanOrEqual(400); // justification obligatoire
+  });
 
   it('lignes saisissables aux deux régimes ; saisie retenue avec trace, cellule établie ; refus de forme et de droits ; retrait', async () => {
     const n = await immo('reel_normal');

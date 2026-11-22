@@ -34,7 +34,7 @@ if (!dossier) {
   exercice = (await api('POST', `/v1/dossiers/${dossier}/exercices`, { debut: '2025-01-01', fin: '2025-12-31' })).json.id;
   const L = []; let n = 0;
   const e = (j, date, lignes, lib) => { n++; for (const [c, cl, d, k] of lignes) L.push([j, j, String(n).padStart(4, '0'), date, c, cl, '', '', `${j}-${n}`, date, lib, d.toFixed(2).replace('.', ','), k.toFixed(2).replace('.', ','), '', '', date, '', ''].join('\t')); };
-  e('AN', '20250101', [['512000', 'Banque', 201100, 0], ['101000', 'Capital', 0, 200000], ['106400', 'Réserves réglementées', 0, 300], ['274000', 'Prêts', 1000, 0], ['267000', 'Créances rattachées à des participations', 500, 0], ['163000', 'Autres emprunts obligataires', 0, 2000], ['404000', 'Fournisseurs d’immobilisations', 0, 300]], 'À-nouveaux');
+  e('AN', '20250101', [['512000', 'Banque', 199700, 0], ['331000', 'En-cours de production de biens', 700, 0], ['341000', 'En-cours de production de services', 300, 0], ['351000', 'Produits finis', 500, 0], ['393000', 'Dépréciation des en-cours', 0, 100], ['101000', 'Capital', 0, 200000], ['106400', 'Réserves réglementées', 0, 300], ['274000', 'Prêts', 1000, 0], ['267000', 'Créances rattachées à des participations', 500, 0], ['163000', 'Autres emprunts obligataires', 0, 2000], ['404000', 'Fournisseurs d’immobilisations', 0, 300]], 'À-nouveaux');
   e('VT', '20250630', [['411000', 'Clients', 900, 0], ['416000', 'Clients douteux ou litigieux', 100, 0], ['706000', 'Prestations de services', 0, 1000]], 'Ventes');
   e('AC', '20250930', [['616000', 'Primes d’assurance', 50, 0], ['512000', 'Banque', 0, 50]], 'Assurance');
   e('OD', '20251231', [['486000', 'Charges constatées d’avance', 50, 0], ['616000', 'Primes d’assurance', 0, 50]], 'CCA');
@@ -81,6 +81,7 @@ if (!dossier) {
   const c = (m) => ({ c1: m, c2: m, c3: '0.00' });
   const d4 = (m) => ({ c1: m, c2: m, c3: '0.00', c4: '0.00' });
   await tab('2057_A', 'VA', c('100.00')); await tab('2057_A', 'UX', c('900.00')); await tab('2057_A', 'VS', c('55.00'));
+  await tab('2050_STOCKS', 'ECB', { c1: '700.00', c2: '100.00' }); await tab('2050_STOCKS', 'ECS', { c1: '300.00', c2: '0.00' }); await tab('2050_STOCKS', 'PIF', { c1: '450.00', c2: '0.00' });
   await tab('2057_A', 'UL', c('500.00')); await tab('2057_A', 'UP', c('1000.00')); await tab('2057_B', '7Z', d4('2000.00')); await tab('2057_B', '8J', d4('300.00'));
   await tab('2057_B', '8B', d4('700.00')); await tab('2057_B', '8L', d4('30.00'));
   await tab('2057_F_PRET', '01', { origine: 'Actions fictives (prêtées)', m: '800.00' });
@@ -110,5 +111,7 @@ const k57 = (c) => liasse.formulaire2057.controles.find((x) => x.code === `2057_
 ok(k57('CLIENTS_BILAN')?.statut === 'coherent' && k57('FOURNISSEURS_BILAN')?.statut === 'coherent' && k57('PCA_BILAN')?.statut === 'coherent', 'rapprochement 2057 / projet de bilan : clients, fournisseurs et produits constatés d’avance cohérents');
 ok(k57('CCA_BILAN')?.statut === 'ecart' && k57('CCA_BILAN').ecart === '5.00', `charges constatées d’avance : saisie 55,00 contre 50,00 au bilan : écart ${k57('CCA_BILAN')?.ecart} AFFICHÉ, jamais corrigé`);
 ok(['CREANCES_PARTICIPATIONS_BILAN', 'PRETS_BILAN', 'AUTRES_OBLIG_BILAN', 'DETTES_IMMOS_BILAN'].every((x) => k57(x)?.statut === 'coherent'), `rapprochement 2057 / projet de bilan (D-167) : créances rattachées 500, prêts 1000, autres emprunts obligataires 2000, dettes sur immobilisations 300 : ${['CREANCES_PARTICIPATIONS_BILAN', 'PRETS_BILAN', 'AUTRES_OBLIG_BILAN', 'DETTES_IMMOS_BILAN'].map((x) => k57(x)?.statut).join('/')}`);
+const g50 = liasse.feuilles2058.find((g) => g.id === '2050-STOCKS'); const k50 = (c) => g50.controles.find((x) => x.code === `2050-STOCKS_${c}`);
+ok(g50.etat === 'saisi' && k50('EN_COURS_BRUT')?.statut === 'coherent' && k50('EN_COURS_AMORT')?.statut === 'coherent' && k50('PIF_BRUT')?.statut === 'ecart' && k50('PIF_BRUT').ecart === '-50.00', `2050, ventilation des en-cours (D-169) : biens 700 + services 300 = 1000 du bilan (cohérent), dépréciation 100 (cohérent) ; produits intermédiaires et finis 450 contre 500 au bilan : écart ${k50('PIF_BRUT')?.ecart} AFFICHÉ, rien corrigé`);
 console.log(`\nLien local : ${WEB}/dossiers/${dossier}/fiscal?vue=liasse`);
 console.log(JSON.stringify({ dossier, exercice }));

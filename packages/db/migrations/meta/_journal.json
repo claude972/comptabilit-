@@ -526,6 +526,13 @@
       "when": 1795341570570,
       "tag": "0074_rattrapage_exports_en_cours",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1795345095123,
+      "tag": "0075_ventilation_stocks_2050",
+      "breakpoints": true
     }
   ]
 }

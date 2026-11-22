@@ -76,7 +76,7 @@ export interface CadreGrille {
   colonneCalculee?: { cle: string; libelle: string; termes: ReadonlyArray<{ col: string; signe: 1 | -1 }> };
 }
 export interface DefinitionGrille {
-  id: '2059-B' | '2059-C' | '2059-D' | '2065' | '2033-E-DATES' | '2057' | '2065-BIS' | '2033-D-982' | '2058-B-K4BIS' | '2058-A-FEUILLETS' | '2053-DETAIL' | '2058-B-COMPLEMENTS' | '2056-FEUILLETS' | '2057-FEUILLETS' | '2059-A-NOTE';
+  id: '2059-B' | '2059-C' | '2059-D' | '2065' | '2033-E-DATES' | '2057' | '2065-BIS' | '2033-D-982' | '2058-B-K4BIS' | '2058-A-FEUILLETS' | '2053-DETAIL' | '2058-B-COMPLEMENTS' | '2056-FEUILLETS' | '2057-FEUILLETS' | '2059-A-NOTE' | '2050-STOCKS';
   titre: string;
   /** Tableau portant la ligne NEANT du formulaire ; absent si le formulaire n'a pas de « néant » (le 2065 est toujours servi). */
   neantSur?: string;
@@ -758,7 +758,43 @@ export const GRILLE_2059A_NOTE: DefinitionGrille = {
   ],
 };
 
-const TOUTES: readonly DefinitionGrille[] = [...GRILLES_2059, GRILLE_2065, GRILLE_DATES_CVAE, GRILLE_2057, GRILLE_2065_BIS, GRILLE_2033D_982, GRILLE_2058B_K4BIS, GRILLE_2058A_FEUILLETS, GRILLE_2056_FEUILLETS, GRILLE_2057_FEUILLETS, GRILLE_2059A_NOTE, GRILLE_2053_DETAIL, GRILLE_2058B_COMPLEMENTS];
+
+/**
+ * Ventilation des en-cours et des produits du 2050 (actif circulant, D-169). Le formulaire 2050 (2050-liasse_5320.pdf, page 1) imprime QUATRE lignes là où le projet de bilan n'en a que deux :
+ * « en cours de production de biens » (BN brut, BO amortissements), « en cours de production de services » (BP, BQ) et « produits intermédiaires et finis » (BR, BS). La répartition entre biens et
+ * services N'EST PAS DÉDUITE : elle est saisie par le cabinet, justifiée et historisée ; le logiciel conserve le montant source du projet de bilan (comptes 33 et 34 ; 35) et affiche l'écart avec le
+ * total ventilé. Sans saisie : abstention (aucune valeur dans les cases BN à BS). Aucune règle de répartition n'est inventée.
+ */
+export const GRILLE_2050_STOCKS: DefinitionGrille = {
+  id: '2050-STOCKS',
+  titre: 'Ventilation des en-cours et des produits intermédiaires et finis du 2050 (actif circulant)',
+  cadres: [
+    {
+      tableau: '2050_STOCKS',
+      titre: '2050, actif circulant — lignes BN à BS',
+      colonnes: cr(['c1', 'Brut'], ['c2', 'Amortissements et provisions']),
+      lignes: [
+        { ligne: 'ECB', libelle: 'En cours de production de biens (brut BN, amortissements et provisions BO)' },
+        { ligne: 'ECS', libelle: 'En cours de production de services (brut BP, amortissements et provisions BQ)' },
+        { ligne: 'PIF', libelle: 'Produits intermédiaires et finis (brut BR, amortissements et provisions BS)' },
+      ],
+      calculs: [{ id: 'TOTAL_EN_COURS', libelle: 'Total des en-cours ventilés (biens + services)', colonnes: ['c1', 'c2'], termes: [{ ref: ['ECB', 'ECS'], signe: 1 }] }],
+      controlesExternes: [
+        { code: 'EN_COURS_BRUT', libelle: 'En cours de production de biens + services, brut, et « en-cours de production » du projet de bilan (brut, comptes 33 et 34)', mode: 'lignes', lignes: ['ECB', 'ECS'], colonne: 'c1', externe: 'BIL_EN_COURS_BRUT', formulation: 'dans le projet de bilan (correspondance interne des comptes, non validée ; montant source conservé, jamais corrigé)' },
+        { code: 'EN_COURS_AMORT', libelle: 'En cours (biens + services), amortissements et provisions, et dépréciations des en-cours du projet de bilan (comptes 393 et 394)', mode: 'lignes', lignes: ['ECB', 'ECS'], colonne: 'c2', externe: 'BIL_EN_COURS_AMORT', formulation: 'dans le projet de bilan (correspondance interne des comptes, non validée ; montant source conservé, jamais corrigé)' },
+        { code: 'PIF_BRUT', libelle: 'Produits intermédiaires et finis, brut, et « produits finis » du projet de bilan (brut, compte 35)', mode: 'lignes', lignes: ['PIF'], colonne: 'c1', externe: 'BIL_PIF_BRUT', formulation: 'dans le projet de bilan (le périmètre « produits intermédiaires et finis » du formulaire et celui du compte 35 ne sont pas établis identiques : rapprochement indicatif)' },
+        { code: 'PIF_AMORT', libelle: 'Produits intermédiaires et finis, amortissements et provisions, et dépréciations des produits du projet de bilan (compte 395)', mode: 'lignes', lignes: ['PIF'], colonne: 'c2', externe: 'BIL_PIF_AMORT', formulation: 'dans le projet de bilan (même réserve de périmètre)' },
+      ],
+    },
+  ],
+  nonPrepare: [
+    'La répartition entre « biens » et « services » n’est jamais déduite des comptes : le cabinet la saisit avec sa justification ; les comptes 33 et 34 du projet de bilan restent le montant source, rapproché du total ventilé (écart affiché, jamais corrigé).',
+    'Sans saisie, les cases BN à BS du 2050 restent vides (abstention) : une ligne non ventilée n’est ni présumée nulle ni répartie par le logiciel.',
+    'La reprise des montants saisis dans les cases BN à BS du 2050 imprimé n’est pas automatique : ils figurent dans cet état joint et à l’écran, et se reportent à la main.',
+  ],
+};
+
+const TOUTES: readonly DefinitionGrille[] = [...GRILLES_2059, GRILLE_2065, GRILLE_DATES_CVAE, GRILLE_2057, GRILLE_2065_BIS, GRILLE_2033D_982, GRILLE_2058B_K4BIS, GRILLE_2058A_FEUILLETS, GRILLE_2056_FEUILLETS, GRILLE_2057_FEUILLETS, GRILLE_2059A_NOTE, GRILLE_2053_DETAIL, GRILLE_2058B_COMPLEMENTS, GRILLE_2050_STOCKS];
 export const TABLEAUX_GRILLES: readonly string[] = TOUTES.flatMap((g) => g.cadres.map((c) => c.tableau));
 
 /** Lignes admises pour un tableau en grille : `null` si le tableau n'est pas une grille. Utilisée par la validation de forme. */

@@ -17,7 +17,7 @@ describe('état joint', () => {
   it('reprend les saisies, l’abstention des totaux et les limites sans rien recalculer', () => {
     const t = etatJointDe(liasse);
     expect(t).toHaveLength(1);
-    expect(t[0]!.lignes.map((l) => [l.statut, l.cellules[0]])).toEqual([['saisi', '100.00'], ['à saisir', '']]);
+    expect(t[0]!.lignes.map((l) => [l.statut, l.cellules[0]])).toEqual([['saisi — justification : « n » (saisie le 2026-01-01, version 1 des données)', '100.00'], ['à saisir', '']]); // D-174 : la justification de chaque ligne saisie figure dans l’état joint (écran, CSV, PDF)
     expect(t[0]!.totaux[0]!.cellules[0]).toMatch(/^abstention : Ligne 2 à saisir/);
     expect(t[0]!.limites).toEqual(['Limite 1', 'Identification non préparée']);
   });

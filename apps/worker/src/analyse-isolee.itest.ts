@@ -7,7 +7,7 @@
  * Les comportements hostiles (boucle, débordement, sortie invalide, tentative d'évasion) sont joués par
  * `essais/enfant-hostile.mjs`, lancé avec exactement les mêmes options que l'enfant réel.
  */
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer as creerServeurHttp, type Server as ServeurHttp } from 'node:http';
 import { createServer, type Server } from 'node:net';
@@ -18,7 +18,7 @@ import { deflateSync } from 'node:zlib';
 import { extraireChampsFacture, genererTexteFactureSynthetique, verifierCoherenceFacture } from '@comtaple/core';
 import { creerAccesBd, urlBd } from '@comtaple/db';
 import { chargerEnvLocal } from '@comtaple/db/env';
-import { type Files, lireConfig, type Stockage } from '@comtaple/plateforme';
+import { type Files, lireConfig, Stockage as StockageReel, type Stockage } from '@comtaple/plateforme';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
@@ -420,7 +420,9 @@ describe('chaîne complète analyserDocument — PostgreSQL réel', () => {
   async function deposer(nom: string, contenu: Buffer): Promise<string> {
     const cle = `essai-isolement/${SEL}/${nom}`;
     contenus.set(cle, contenu);
-    const fichier = (await admin.query(`insert into fichiers (cabinet_id, sha256, taille, cle_stockage) values ($1, $2, $3, $4) returning id`, [cabinet, randomBytes(32).toString('hex'), contenu.length, cle])).rows[0].id;
+    // L'objet est DÉPOSÉ pour de vrai (D-144) : une ligne `fichiers` ne doit jamais référencer une clé absente du stockage (essai de restauration).
+    await new StockageReel(cfg).deposer(cle, contenu);
+    const fichier = (await admin.query(`insert into fichiers (cabinet_id, sha256, taille, cle_stockage) values ($1, $2, $3, $4) returning id`, [cabinet, createHash('sha256').update(contenu).digest('hex'), contenu.length, cle])).rows[0].id;
     return (await admin.query(`insert into documents (cabinet_id, entite_id, fichier_id, nom_origine) values ($1, $2, $3, $4) returning id`, [cabinet, entite, fichier, nom])).rows[0].id;
   }
   const etat = async (id: string) => {

@@ -62,6 +62,9 @@ Document de passage pour reprendre le travail sans relire la conversation. À me
   - **Échecs de e7ae833 à 048039f** (itest `parcours-detail-resultat` : 404 attendu, 400 reçu pour une ligne inconnue de tableau, lignes 236 et 313) : **régression réelle de mes livraisons D-121 à D-125** (la route acceptait des lignes plus larges) ; **corrigée dans 1c506a3** (D-126) en distinguant les familles de tableaux et en restaurant les 404 historiques. À confirmer sur les runs de 1c506a3 et suivants, en cours de lecture.
 - Les « verts » d'étapes `continue-on-error` ne se lisent que par les annotations, jamais par la conclusion.
 
+## Essai de restauration (2026-11-22)
+ÉCHEC conservé : journal Alpha (historique, D-038) et 1 874 lignes de fixtures d'essai sans objet (D-144) ; fixtures corrigées pour l'avenir ; restauration stricte réussie sur base cohérente séparée : à démontrer.
+
 ## Garde-fous et état local
 - Données conservées : aucune suppression, aucune purge ; migrations 0050 à 0064 additives. Le disque Colima vide créé par erreur dans `/Volumes/Stockage/colima-dev-home/_lima/_disks/colima/` est **laissé intact** (suppression refusée par le garde-fou, à décider par son propriétaire).
 - `scripts/verifier-profil-colima.sh` et `~/.comtaple-outils/env.sh` (LIMA_HOME forcé) protègent les autres projets ; ne jamais lancer `colima start` sans `source ~/.comtaple-outils/env.sh`.

@@ -8,7 +8,7 @@
  * Les comportements hostiles de l'enfant (boucle, débordement, trames invalides) sont joués par
  * `essais/enfant-hostile.mjs`, lancé avec exactement les mêmes options que l'enfant réel.
  */
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -20,7 +20,7 @@ import {
 } from '@comtaple/core';
 import { creerAccesBd, schema as s, urlBd } from '@comtaple/db';
 import { chargerEnvLocal } from '@comtaple/db/env';
-import { type Files, lireConfig, type Stockage } from '@comtaple/plateforme';
+import { type Files, lireConfig, Stockage as StockageReel, type Stockage } from '@comtaple/plateforme';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { analyserFecIsole, analyserPieceIsolee, ENTREE_ENFANT, lireReleveIsole, motifEchecFec, motifEchecReleve, type OptionsAnalyse } from './analyse-isolee.js';
@@ -342,7 +342,9 @@ describe('chaînes complètes importerReleve et importerFec — PostgreSQL réel
   async function creerLot(type: 'fec' | 'releve_bancaire', nom: string, contenu: Buffer, rapport: Record<string, unknown> = {}): Promise<string> {
     const cle = `essai-isolement-imports/${SEL}/${randomBytes(4).toString('hex')}-${nom}`;
     contenus.set(cle, contenu);
-    const fichier = (await admin.query(`insert into fichiers (cabinet_id, sha256, taille, cle_stockage) values ($1, $2, $3, $4) returning id`, [cabinet, randomBytes(32).toString('hex'), contenu.length, cle])).rows[0].id;
+    // L'objet est DÉPOSÉ pour de vrai (D-144) : une ligne `fichiers` ne doit jamais référencer une clé absente du stockage, sinon l'essai de restauration (qui vérifie toute référence) échoue.
+    await new StockageReel(cfg).deposer(cle, contenu);
+    const fichier = (await admin.query(`insert into fichiers (cabinet_id, sha256, taille, cle_stockage) values ($1, $2, $3, $4) returning id`, [cabinet, createHash('sha256').update(contenu).digest('hex'), contenu.length, cle])).rows[0].id;
     return (
       await admin.query(`insert into lots_import (cabinet_id, entite_id, exercice_id, type, fichier_id, cle_idempotence, actif, statut, rapport) values ($1, $2, $3, $4, $5, $6, false, 'en_attente', $7) returning id`, [
         cabinet, entite, type === 'fec' ? exercice : null, type, fichier, `${SEL}-${randomBytes(6).toString('hex')}`, JSON.stringify({ nomFichier: nom, ...rapport }),

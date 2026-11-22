@@ -179,6 +179,9 @@ async function verifier(cheminReferences, cheminManifeste) {
   }
   console.log(`Objets référencés par la base restaurée${t.n > 1 ? ` (tranche ${t.i}/${t.n})` : ''} : ${references.length} ; relus et conformes dans le stockage d'essai : ${conformes} (dont ${parLaBase} comparés à l'empreinte enregistrée en base, ${conformes - parLaBase} à celle du manifeste).`);
   if (absents.length) console.log(`ABSENTS du stockage restauré : ${absents.length} (ex. …${absents[0].slice(-40)})`);
+  // Information seulement (le verdict reste strict) : parmi les absents, ceux dont la clé porte le préfixe des essais d'isolement des analyseurs (lignes de fixtures sans objet, voir D-144).
+  const prefixeEssai = absents.filter((c) => /^essai-isolement(-imports)?\//.test(c)).length;
+  if (prefixeEssai) console.log(`  dont ${prefixeEssai} au préfixe essai-isolement : fixtures d'essai identifiées (D-144) ; cela ne change pas le verdict.`);
   if (differents.length) console.log(`EMPREINTE DIFFÉRENTE : ${differents.length} (ex. …${differents[0].slice(-40)})`);
   if (absents.length || differents.length) process.exit(1);
 }

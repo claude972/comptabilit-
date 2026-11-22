@@ -860,6 +860,13 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Défaut dockerd** : non masqué, l'essai des conteneurs reste bloquant ; il s'est reproduit (81aa858) et n'a pas reparu dans les runs récents.
 - **Essai de restauration (parcours 10)** rejoué sur une sauvegarde neuve : voir le résultat consigné dans `docs/reprise.md`.
 
+### D-144 — Essai de restauration du 2026-11-22 : ÉCHEC conservé ; défaut des fixtures d'essai versus perte de données (2026-11-22)
+
+- **Résultat** (sauvegarde `comtaple-20261122-063808`, essai isolé, code de sortie 1) : (a) **journal d'audit non intègre** (cabinet Alpha fictif, lignes 7603-7604) : état historique dégradé connu (D-038), ni réparé ni réécrit ; (b) **1 874 références `fichiers` absentes** du stockage restauré. **Le verdict reste ÉCHEC** : le vérificateur générique `scripts/objets.mjs` reste strict pour TOUTE référence manquante, sans exemption (une exemption globale par préfixe avait été essayée dans le brouillon et **n'est pas publiée**) ; il affiche seulement, à titre d'information, combien d'absents portent le préfixe `essai-isolement`.
+- **Qualification précise** : les 1 874 clés sont **absentes aussi du stockage VIVANT** (vérifié par HEAD sur chaque référence), toutes rattachées à des cabinets d'essai jetables créés les 19 et 20 novembre (« Cabinet d'essai isolement… », 1 707 le 20, 167 le 19) ; aucune référence d'un cabinet réel ou de démonstration n'est absente. **Cause : défaut des fixtures, pas perte de données** : `isolement-imports.itest.ts` et `analyse-isolee.itest.ts` insèrent dans la vraie table `fichiers` des lignes dont la clé n'était jamais déposée (le contenu restait dans une mémoire d'essai, la somme d'empreinte était aléatoire). Aucun objet référencé par un dossier réel n'a été perdu.
+- **Correction des futurs jeux d'essai** : ces deux suites déposent désormais l'objet réel dans le stockage avec l'empreinte SHA-256 réelle avant d'insérer la ligne. Vérifié : 33 lignes `essai-isolement` créées par la nouvelle exécution (52 essais verts), 0 absente du stockage.
+- **Non fait, dit** : les 1 874 lignes historiques ne sont ni supprimées ni réécrites (données conservées) ; cette base locale reste donc en échec à l'essai de restauration. La **démonstration d'une restauration stricte réussie sur une base d'essai cohérente séparée n'est pas faite** (il faudrait amorcer une base et un stockage neufs, puis rejouer l'essai complet, ~25 minutes) ; le second essai lancé avec l'exemption a été interrompu et ne vaut pas validation. Aucune restauration entière inchangée n'a été relancée en boucle ; les instances d'essai interrompues ont été détruites (seules celles de l'essai).
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

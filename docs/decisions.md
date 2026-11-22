@@ -851,6 +851,15 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Arbitrage R36** (décision produit, jusqu'ici « à prendre ») : la revue des contrôles et ses constats (travaux internes), les dossiers de révision et l'assistant (dossier et portefeuille) sont **réservés aux membres du cabinet** : un « client en lecture » reçoit 403. Il conserve la lecture de son dossier, de ses pièces, des états et des tiers. Fonction `reserverAuxMembresDuCabinet` ; matrice 28 fonctions × 11 profils mise à jour (colonne CLL) et rejouée : 7 essais verts.
 - **Restes non externes, tels qu'ils subsistent** : P0 (isolation des analyseurs en conteneur) PARTIEL — défaut amont de dockerd reproduit, atténué, non résolu, essai conservé sans masquage ; essai de restauration (parcours 10) à rejouer ; mesures multi-utilisateurs sur la cible : externe.
 
+### D-143 — Lecture groupée de la CI du 2026-11-22 (06:38 UTC) et suites (2026-11-22)
+
+- **Correction 400/404 confirmée** : après 1c506a3, les runs de d84485d, dd00581, 095a564, e777e24, db47bad, c73872c, e25a255, 80ec17b, 7b05b0f et dcfe4f4 sont **verts** (itests `parcours-detail-resultat` compris) ; aucun échec ne porte plus sur ces essais.
+- **Échecs restants, diagnostiqués** (annotations lues) : 1c506a3 : WebKit, `ecrans-cabinet.spec.ts:52` « préparation… » (`locator.click: Test ended`, 41 réussis) ; 84337eb, 4122ef6, e74241c : Firefox, `parcours-reel.spec.ts:57` « téléphone : photo → envoi → Reçu → OCR » : le **numéro de facture n'est pas extrait** (« Numéro : non extrait ») alors que le reste l'est (OCR PaddleOCR 3.7.0, date et totaux lus) ; 0878628 : « Construction des images (Keycloak, OCR) » en échec après 4 minutes.
+- **Firefox / OCR** : intermittence (3 runs sur une douzaine), **non reproductible localement** (Firefox plante localement, déjà noté) ; mesure locale du même rendu avec Chromium : 0 échec sur 30 tirages. Mesure appliquée à l'entrée de l'essai, pas au contrôle : image de facture rendue à l'échelle 2, police plus grande et plus grasse, familles explicites. **L'assertion n'est pas assouplie** ; si l'échec persiste, c'est une défaillance de lecture à investiguer, pas à masquer.
+- **Construction des images** : la sortie n'était pas lisible (annotation « exit code 1 » seule). L'étape passe par `scripts/ci-etape.sh`, qui publie désormais la fin de la sortie de `docker compose build` en annotation : le prochain échec nommera la cause (hypothèse non vérifiée : indisponibilité d'un registre pendant des exécutions concurrentes). **Aucune cause établie à ce jour.**
+- **Défaut dockerd** : non masqué, l'essai des conteneurs reste bloquant ; il s'est reproduit (81aa858) et n'a pas reparu dans les runs récents.
+- **Essai de restauration (parcours 10)** rejoué sur une sauvegarde neuve : voir le résultat consigné dans `docs/reprise.md`.
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

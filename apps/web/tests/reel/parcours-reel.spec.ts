@@ -44,8 +44,9 @@ const TEXTE = [
 
 /** Image de facture rendue par un navigateur : aucun texte exploitable sans OCR. Ce n'est pas une photo réelle. */
 async function imageFacture(browser: Browser): Promise<Buffer> {
-  const page = await browser.newPage({ viewport: { width: 1400, height: 1200 } });
-  await page.setContent(`<body style="margin:60px;background:#fff"><pre style="font:30px/1.7 Helvetica,Arial,sans-serif;color:#111"></pre></body>`);
+  // Entrée plus lisible pour l'OCR (D-143) : rendu à l'échelle 2, police plus grosse, graisse moyenne, familles explicites ; la CI Firefox a échoué par intermittence (« Numéro : non extrait »), non reproductible localement.
+  const page = await browser.newPage({ viewport: { width: 1400, height: 1200 }, deviceScaleFactor: 2 });
+  await page.setContent(`<body style="margin:60px;background:#fff"><pre style="font:600 36px/1.7 'DejaVu Sans','Liberation Sans',Arial,sans-serif;letter-spacing:1px;color:#000"></pre></body>`);
   await page.locator('pre').evaluate((el, t) => (el.textContent = t), TEXTE);
   const image = await page.screenshot({ type: 'png' });
   await page.close();

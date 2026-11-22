@@ -34,7 +34,7 @@ jobs:
       # tout », sans journal exploitable. Les étapes sont désormais séparées et bornées : celle qui échoue désigne
       # d'elle-même la construction ou le service en cause, et l'étape « Journaux en cas d'échec » en donne le détail.
       - name: Construction des images (Keycloak, OCR)
-        run: docker compose --progress plain build
+        run: sh scripts/ci-etape.sh "Construction des images" docker compose --progress plain build
       - name: Services de base (PostgreSQL, Redis, S3, Keycloak)
         run: docker compose up -d --wait --wait-timeout 420 postgres redis s3 keycloak
       - name: Antivirus (ClamAV, téléchargement des signatures au premier démarrage)

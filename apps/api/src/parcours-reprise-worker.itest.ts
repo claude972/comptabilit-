@@ -179,16 +179,20 @@ describe('worker tué par SIGKILL pendant un import', () => {
       const lot = await deposerSurApiEssai(Buffer.from(fec.contenu), { usage: 'fec', exerciceId: exercice3, statutDonnees: 'travail_avant_cloture' }, fec.nomFichier);
       await attendre(() => lotEtat(lot), fini, 240_000);
       await attendre(async () => (await editeur.query(`select statut from executions_controles where lot_import_id = $1`, [lot])).rows[0] as { statut: string } | undefined, (e) => e?.statut === 'termine', 240_000);
+      // Déterminisme : sur une machine rapide la génération se termine avant qu'on puisse tuer le worker (course constatée en CI,
+      // 72b3aa1). Le worker est donc arrêté AVANT la demande ; l'état « en cours » est posé tel que la transaction de prise en
+      // charge le laisse (statut + ancienneté), et la perte de la tâche suit. Le SIGKILL pendant un calcul réel est couvert par les
+      // essais de contrôles et d'import ci-dessus ; ici on prouve le rattrapage de l'export resté « en cours ».
+      w1.kill('SIGKILL');
+      await new Promise((r) => setTimeout(r, 1_500));
       choisirCabinet('remi', cabinet);
       const demande = await apiSur(apiUrl, 'remi', 'POST', `/v1/exercices/${exercice3}/dossier-revision`);
       choisirCabinet('remi', null);
       expect(demande.statut).toBe(202);
       const idExport = demande.json.id as string;
       const etatExport = async () => (await editeur.query(`select statut, cle_pdf, sha256_pdf from exports_revision where id = $1`, [idExport])).rows[0] as { statut: string; cle_pdf: string | null; sha256_pdf: string | null };
-      // Dès que l'export est « en cours » (transaction de prise en charge validée, génération du PDF en route) : SIGKILL.
-      await attendre(etatExport, (e) => e.statut === 'en_cours', 120_000);
-      w1.kill('SIGKILL');
-      await new Promise((r) => setTimeout(r, 1_500));
+      expect((await etatExport()).statut).not.toBe('termine');
+      await editeur.query(`update exports_revision set statut = 'en_cours' where id = $1`, [idExport]);
       // La tâche est PERDUE de la file (perte de Redis, tentatives épuisées…) : on la retire, et l'export est ancien.
       const { Files, connexionRedis, lireConfig } = await import('@comtaple/plateforme');
       const files = new Files(connexionRedis(lireConfig().REDIS_URL), PREFIXE);

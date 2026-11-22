@@ -4,7 +4,7 @@ import { ChoixExercice } from '@/components/dossier';
 import { ErreurAcces } from '@/components/erreurs';
 import { CategorieAnnexe, ConfirmerRubrique, NeantTableau, QualifierCompte, SaisieLigneTableau, SaisirRenvoi } from '@/components/fiscal/actions';
 import { Alerte, Carte, Etiquette, MentionProjet, SousTitre, Tableau } from '@/components/ui/base';
-import { type Abstention, type AnnexeProjet, type CelluleImmobilisation, type CelluleVentilation, type CadreIIIProjet, type CelluleMontantSaisie, type DetailResultatProjet, type EcartsReevaluationProjet, type EvenementQualification, LIBELLE_CLASSEMENT, type TableauxSaisisProjet, type ReponseHistorique, type ResultatSigne, LIBELLE_CATEGORIE, LIBELLE_ETAT_QUALIFICATION, type LiasseProjet, type ReponseAnnexe, type ReponseLiasse, type TableauxImmobilisationsProjet } from '@/lib/fiscal';
+import { type Abstention, type AnnexeProjet, type CelluleImmobilisation, type CelluleVentilation, type AmortissementsDerogatoiresProjet, type CadreIIIProjet, type CelluleMontantSaisie, type ChargesRepartiesProjet, LIBELLES_COLONNES_2055_B, type DetailResultatProjet, type EcartsReevaluationProjet, type EvenementQualification, LIBELLE_CLASSEMENT, type TableauxSaisisProjet, type ReponseHistorique, type ResultatSigne, LIBELLE_CATEGORIE, LIBELLE_ETAT_QUALIFICATION, type LiasseProjet, type ReponseAnnexe, type ReponseLiasse, type TableauxImmobilisationsProjet } from '@/lib/fiscal';
 import { formaterHorodatage, formaterMontant, formaterMontantEuros } from '@/lib/montants';
 
 type Fm = (valeur: string | null | undefined) => string;
@@ -1022,6 +1022,219 @@ function EcartsReevaluation({ t, fm, exerciceId, revision, evenements }: { t: Ec
   );
 }
 
+/** Tableau 2055 cadre B (amortissements dérogatoires) : saisie ligne par ligne, tracée et historisée (D-113). */
+function AmortissementsDerogatoires({ t, fm, exerciceId, revision, evenements }: { t: AmortissementsDerogatoiresProjet; fm: Fm; exerciceId: string; revision: boolean; evenements: EvenementQualification[] }) {
+  const badge = (statut: string) => <Etiquette ton={statut === 'saisi' ? 'succes' : 'attention'}>{statut === 'saisi' ? 'Saisi' : statut === 'a_revoir' ? 'À revoir : données modifiées' : 'À saisir'}</Etiquette>;
+  const total = (nom: string, cellules: Array<CelluleMontantSaisie | null>, testid: string) => (
+    <tr data-b2055={testid} className="font-semibold">
+      <th scope="row">{nom}</th>
+      {cellules.map((c, i) => (
+        <td key={i} className="text-right tabular-nums">
+          {c ? <CelluleMs c={c} fm={fm} /> : null}
+        </td>
+      ))}
+    </tr>
+  );
+  return (
+    <section className="space-y-3" aria-labelledby="titre-2055-b" data-testid="amortissements-derogatoires">
+      <SousTitre id="titre-2055-b" className="text-base">
+        2055 — Cadre B : provision pour amortissements dérogatoires (dotations et reprises) <MentionProjet />
+      </SousTitre>
+      <Alerte ton="attention" titre="Saisie du cabinet : la balance ne ventile pas les amortissements dérogatoires">
+        <p className="text-sm">
+          Chaque poste se saisit en colonnes 1 à 6 (dotations : différentiel de durée et autres, mode dégressif, amortissement fiscal exceptionnel ; reprises : mêmes origines) avec une justification obligatoire, tracée et historisée. L’origine d’une dotation ou d’une reprise est une décision du cabinet. Le logiciel
+          calcule seulement ce que le formulaire calcule : colonne 7 = (1 + 2 + 3) − (4 + 5 + 6), totaux, non ventilé. Une ligne non saisie n’est jamais présumée nulle ; sans ligne ni « néant », les totaux restent en abstention.
+        </p>
+        {t.limites.map((l) => (
+          <p key={l} className="text-sm">
+            {l}
+          </p>
+        ))}
+      </Alerte>
+      <ul className="space-y-1" aria-label="Contrôles du cadre B du 2055" data-testid="controles-2055-b">
+        {t.controles.map((x) => (
+          <li key={x.code}>
+            <Etiquette ton={x.statut === 'coherent' ? 'succes' : x.statut === 'ecart' ? 'danger' : 'attention'}>{x.statut === 'coherent' ? 'Cohérent' : x.statut === 'ecart' ? 'Écart' : 'Non vérifiable'}</Etiquette> {x.message}
+            {x.ecart ? ` (écart : ${fm(x.ecart)})` : ''}
+          </li>
+        ))}
+      </ul>
+      <Tableau legende="Cadre B du tableau 2055 : amortissements dérogatoires">
+        <thead>
+          <tr>
+            <th scope="col">Immobilisations amortissables</th>
+            {LIBELLES_COLONNES_2055_B.map((c) => (
+              <th key={c} scope="col" className="text-right">
+                {c}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody data-testid="lignes-2055-b">
+          {t.lignes.map((l) => (
+            <tr key={l.ligne} data-b2055={l.ligne}>
+              <th scope="row">
+                {l.libelle} {l.statut !== 'saisi' ? badge(l.statut) : null}
+              </th>
+              {l.colonnes.map((c, i) => (
+                <td key={i} className="text-right tabular-nums">
+                  {c ? (
+                    <>
+                      {c.montant !== null ? fm(c.montant) : ''}
+                      <span className="block text-xs text-texte-doux">case {c.codeCase}</span>
+                    </>
+                  ) : null}
+                </td>
+              ))}
+            </tr>
+          ))}
+          {total('TOTAL I (incorporelles)', t.totaux.I, 'I')}
+          {total('TOTAL II (corporelles)', t.totaux.II, 'II')}
+          {total('TOTAL III (frais d’acquisition de titres de participation)', t.totaux.III, 'III')}
+          {total('Total général (I + II + III)', t.totaux.general, 'general')}
+        </tbody>
+      </Tableau>
+      <p className="text-sm" data-testid="non-ventile-2055-b">
+        Total général non ventilé : dotations (NP + NQ + NR) <CelluleMs c={t.nonVentile.NW} fm={fm} /> · reprises (NS + NT + NU) <CelluleMs c={t.nonVentile.NY} fm={fm} /> · mouvement net (NW − NY) <CelluleMs c={t.nonVentile.NZ} fm={fm} />
+      </p>
+      <p className="text-sm" data-testid="etat-2055-b">
+        État du cadre : <strong>{t.etat === 'saisi' ? 'lignes saisies' : t.etat === 'neant' ? 'néant déclaré' : 'à saisir (ni ligne ni néant)'}</strong>
+        {t.neant ? ` — déclaré le ${formaterHorodatage(t.neant.le)} sur la version ${t.neant.versionDonnees} des données` : ''}.
+      </p>
+      {revision ? (
+        <div className="space-y-3">
+          <NeantTableau exerciceId={exerciceId} tableau="2055_B" declare={t.etat === 'neant'} etiquette="cadre B du 2055 (aucun amortissement dérogatoire)" />
+          <ul className="space-y-3">
+            {t.lignes.map((l) => {
+              const quatre = l.ligne === '13';
+              const idx = quatre ? [0, 3] : [0, 1, 2, 3, 4, 5];
+              return (
+                <li key={l.ligne} className="rounded-lg border border-bordure p-3" data-saisie-b2055={l.ligne}>
+                  <p className="text-sm font-semibold">
+                    {l.libelle} {badge(l.statut)}
+                  </p>
+                  {l.trace ? (
+                    <p className="text-xs text-texte-doux" data-testid={`trace-b2055-${l.ligne}`}>
+                      saisie le {formaterHorodatage(l.trace.le)} sur la version {l.trace.versionDonnees} des données · « {l.trace.note} »
+                    </p>
+                  ) : null}
+                  <HistoriqueLigne evenements={evenements} cle={`2055_B:${l.ligne}`} fm={fm} />
+                  <SaisieLigneTableau
+                    exerciceId={exerciceId}
+                    tableau="2055_B"
+                    ligne={l.ligne}
+                    etiquette={`la ligne « ${l.libelle} » du cadre B`}
+                    saisie={l.statut !== 'a_saisir'}
+                    noteCourante={l.trace?.note ?? null}
+                    champs={idx.map((i) => ({ cle: `c${i + 1}`, libelle: LIBELLES_COLONNES_2055_B[i]!, type: 'montant' as const, valeur: l.colonnes[i]?.montant ?? '' }))}
+                  />
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+/** Tableau 2055 cadre C (charges réparties sur plusieurs exercices) : saisie ligne par ligne, tracée et historisée (D-113). */
+function ChargesReparties({ t, fm, exerciceId, revision, evenements }: { t: ChargesRepartiesProjet; fm: Fm; exerciceId: string; revision: boolean; evenements: EvenementQualification[] }) {
+  const badge = (statut: string) => <Etiquette ton={statut === 'saisi' ? 'succes' : 'attention'}>{statut === 'saisi' ? 'Saisi' : statut === 'a_revoir' ? 'À revoir : données modifiées' : 'À saisir'}</Etiquette>;
+  return (
+    <section className="space-y-3" aria-labelledby="titre-2055-c" data-testid="charges-reparties">
+      <SousTitre id="titre-2055-c" className="text-base">
+        2055 — Cadre C : charges réparties sur plusieurs exercices <MentionProjet />
+      </SousTitre>
+      <Alerte ton="attention" titre="Saisie du cabinet : la balance ne porte pas les mouvements de l’exercice">
+        <p className="text-sm">
+          Le montant net au début, les augmentations et les dotations de l’exercice se saisissent avec une justification obligatoire, tracée et historisée ; le montant net à la fin est calculé comme le formulaire : début + augmentations − dotations. Sans ligne ni « néant », rien n’est présumé nul.
+        </p>
+        {t.limites.map((l) => (
+          <p key={l} className="text-sm">
+            {l}
+          </p>
+        ))}
+      </Alerte>
+      <ul className="space-y-1" aria-label="Contrôles du cadre C du 2055" data-testid="controles-2055-c">
+        {t.controles.map((x) => (
+          <li key={x.code}>
+            <Etiquette ton={x.statut === 'coherent' ? 'succes' : x.statut === 'ecart' ? 'danger' : 'attention'}>{x.statut === 'coherent' ? 'Cohérent' : x.statut === 'ecart' ? 'Écart' : 'Non vérifiable'}</Etiquette> {x.message}
+            {x.ecart ? ` (écart : ${fm(x.ecart)})` : ''}
+          </li>
+        ))}
+      </ul>
+      <Tableau legende="Cadre C du tableau 2055 : charges réparties sur plusieurs exercices">
+        <thead>
+          <tr>
+            <th scope="col">Charges</th>
+            <th scope="col" className="text-right">Montant net au début</th>
+            <th scope="col" className="text-right">Augmentations</th>
+            <th scope="col" className="text-right">Dotations de l’exercice aux amortissements</th>
+            <th scope="col" className="text-right">Montant net à la fin</th>
+          </tr>
+        </thead>
+        <tbody data-testid="lignes-2055-c">
+          {t.lignes.map((l) => (
+            <tr key={l.ligne} data-c2055={l.ligne}>
+              <th scope="row">
+                {l.libelle} {l.statut !== 'saisi' ? badge(l.statut) : null}
+              </th>
+              <td className="text-right tabular-nums">{l.debut !== null ? fm(l.debut) : ''}</td>
+              <td className="text-right tabular-nums">{l.augmentations !== null ? fm(l.augmentations) : ''}</td>
+              <td className="text-right tabular-nums">
+                {l.dotations !== null ? fm(l.dotations) : ''}
+                <span className="block text-xs text-texte-doux">case {l.caseDotations}</span>
+              </td>
+              <td className="text-right tabular-nums">
+                {l.fin !== null ? fm(l.fin) : ''}
+                <span className="block text-xs text-texte-doux">case {l.caseFin}</span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </Tableau>
+      <p className="text-sm" data-testid="etat-2055-c">
+        État du cadre : <strong>{t.etat === 'saisi' ? 'lignes saisies' : t.etat === 'neant' ? 'néant déclaré' : 'à saisir (ni ligne ni néant)'}</strong>
+        {t.neant ? ` — déclaré le ${formaterHorodatage(t.neant.le)} sur la version ${t.neant.versionDonnees} des données` : ''}.
+      </p>
+      {revision ? (
+        <div className="space-y-3">
+          <NeantTableau exerciceId={exerciceId} tableau="2055_C" declare={t.etat === 'neant'} etiquette="cadre C du 2055 (aucune charge répartie)" />
+          <ul className="space-y-3">
+            {t.lignes.map((l) => (
+              <li key={l.ligne} className="rounded-lg border border-bordure p-3" data-saisie-c2055={l.ligne}>
+                <p className="text-sm font-semibold">
+                  {l.libelle} {badge(l.statut)}
+                </p>
+                {l.trace ? (
+                  <p className="text-xs text-texte-doux" data-testid={`trace-c2055-${l.ligne}`}>
+                    saisie le {formaterHorodatage(l.trace.le)} sur la version {l.trace.versionDonnees} des données · « {l.trace.note} »
+                  </p>
+                ) : null}
+                <HistoriqueLigne evenements={evenements} cle={`2055_C:${l.ligne}`} fm={fm} />
+                <SaisieLigneTableau
+                  exerciceId={exerciceId}
+                  tableau="2055_C"
+                  ligne={l.ligne}
+                  etiquette={`la ligne « ${l.libelle} » du cadre C`}
+                  saisie={l.statut !== 'a_saisir'}
+                  noteCourante={l.trace?.note ?? null}
+                  champs={[
+                    { cle: 'debut', libelle: 'Montant net au début de l’exercice', type: 'montant', valeur: l.debut ?? '' },
+                    { cle: 'augmentations', libelle: 'Augmentations', type: 'montant', valeur: l.augmentations ?? '' },
+                    { cle: 'dotations', libelle: `Dotations de l’exercice (case ${l.caseDotations})`, type: 'montant', valeur: l.dotations ?? '' },
+                  ]}
+                />
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function Annexe({ a, reponse, exerciceId, revision }: { a: AnnexeProjet; reponse: ReponseAnnexe; exerciceId: string; revision: boolean }) {
   const confirmations = new Map(reponse.confirmations.map((c) => [c.rubrique, c]));
   const requises = a.rubriques.filter((r) => r.requise);
@@ -1207,6 +1420,8 @@ export default async function PageFiscal({ params, searchParams }: { params: Pro
         ) : (
           <>
             {liasse.donnees.tableauxSaisis.cadreIII ? <CadreIII c={liasse.donnees.tableauxSaisis.cadreIII} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
+            {liasse.donnees.tableauxSaisis.amortissementsDerogatoires ? <AmortissementsDerogatoires t={liasse.donnees.tableauxSaisis.amortissementsDerogatoires} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
+            {liasse.donnees.tableauxSaisis.chargesRepartiesPlusieursExercices ? <ChargesReparties t={liasse.donnees.tableauxSaisis.chargesRepartiesPlusieursExercices} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
             {liasse.donnees.tableauxSaisis.ecartsReevaluation ? <EcartsReevaluation t={liasse.donnees.tableauxSaisis.ecartsReevaluation} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
           </>
         )

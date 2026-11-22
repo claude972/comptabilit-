@@ -1,6 +1,7 @@
 /**
- * Tableaux de la liasse servis par SAISIE LIGNE PAR LIGNE (D-112) : cadre III du 2033-C (cessions d'immobilisations, plus-values et
- * moins-values) et tableau 2054 bis (écarts de réévaluation des immobilisations amortissables, cadres A et B).
+ * Tableaux de la liasse servis par SAISIE LIGNE PAR LIGNE (D-112, D-113) : cadre III du 2033-C (cessions d'immobilisations, plus-values et
+ * moins-values), tableau 2054 bis (écarts de réévaluation des immobilisations amortissables, cadres A et B) et tableau 2055 cadres B
+ * (amortissements dérogatoires) et C (charges réparties sur plusieurs exercices).
  *
  * Principes (mêmes que D-106, D-110) :
  *  - la balance ne porte ni le détail des cessions ni les écarts de réévaluation : le cabinet SAISIT chaque ligne, avec une justification
@@ -28,8 +29,8 @@ import { MENTION_PROJET } from './sources-fiscales.js';
 
 const ZERO = new Decimal(0);
 
-export type TableauSaisi = '2033C_III' | '2054BIS_A' | '2054BIS_B';
-export const TABLEAUX_SAISIS: readonly TableauSaisi[] = ['2033C_III', '2054BIS_A', '2054BIS_B'];
+export type TableauSaisi = '2033C_III' | '2054BIS_A' | '2054BIS_B' | '2055_B' | '2055_C';
+export const TABLEAUX_SAISIS: readonly TableauSaisi[] = ['2033C_III', '2054BIS_A', '2054BIS_B', '2055_B', '2055_C'];
 
 export interface SaisieTableau {
   tableau: TableauSaisi;
@@ -92,6 +93,21 @@ export function validerSaisieTableau(tableau: string, ligne: string, valeurs: un
       for (const k of COLONNES_BIS) decimal(k, true);
     } else if (ligne === 'NEANT') exactement([]);
     else e.push(`Ligne inconnue pour le cadre A du 2054 bis : ${ligne}.`);
+  } else if (tableau === '2055_B') {
+    if (/^(0[1-9]|1[0-2])$/.test(ligne)) {
+      exactement(['c1', 'c2', 'c3', 'c4', 'c5', 'c6']);
+      for (const k of ['c1', 'c2', 'c3', 'c4', 'c5', 'c6']) decimal(k, true);
+    } else if (ligne === '13') {
+      exactement(['c1', 'c4']); // frais d'acquisition de titres de participation : colonnes 1 et 4 seulement (notice 2032-NOT-SD)
+      for (const k of ['c1', 'c4']) decimal(k, true);
+    } else if (ligne === 'NEANT') exactement([]);
+    else e.push(`Ligne inconnue pour le cadre B du 2055 : ${ligne}.`);
+  } else if (tableau === '2055_C') {
+    if (ligne === '01' || ligne === '02') {
+      exactement(['debut', 'augmentations', 'dotations']);
+      for (const k of ['debut', 'augmentations', 'dotations']) decimal(k, true);
+    } else if (ligne === 'NEANT') exactement([]);
+    else e.push(`Ligne inconnue pour le cadre C du 2055 : ${ligne}.`);
   } else if (tableau === '2054BIS_B') {
     if (ligne === 'B1' || ligne === 'B2') {
       exactement(['montant']);
@@ -194,6 +210,98 @@ export interface EcartsReevaluationProjet {
   mention: string;
 }
 
+// ── 2055, cadre B : amortissements dérogatoires ─────────────────────────────────────────────────────────────────────────────
+
+/** Lignes du cadre B du 2055-SD (ordre du formulaire) et leurs cases (colonnes 1 à 7), lues sur 2050-liasse_5320.pdf page 7, vérifiées sur le rendu image. */
+export const LIGNES_2055_B: ReadonlyArray<{ ligne: string; libelle: string; groupe: 'I' | 'II' | 'III'; cases: readonly string[] }> = [
+  { ligne: '01', libelle: 'Frais d’établissement', groupe: 'I', cases: ['M9', 'N1', 'N2', 'N3', 'N4', 'N5', 'N6'] },
+  { ligne: '02', libelle: 'Fonds commercial', groupe: 'I', cases: ['RP', 'RQ', 'RR', 'RS', 'RT', 'RU', 'RV'] },
+  { ligne: '03', libelle: 'Autres immobilisations incorporelles', groupe: 'I', cases: ['N7', 'N8', 'P6', 'P7', 'P8', 'P9', 'Q1'] },
+  { ligne: '04', libelle: 'Terrains', groupe: 'II', cases: ['Q2', 'Q3', 'Q4', 'Q5', 'Q6', 'Q7', 'Q8'] },
+  { ligne: '05', libelle: 'Constructions : sur sol propre', groupe: 'II', cases: ['Q9', 'R1', 'R2', 'R3', 'R4', 'R5', 'R6'] },
+  { ligne: '06', libelle: 'Constructions : sur sol d’autrui', groupe: 'II', cases: ['R7', 'R8', 'R9', 'S1', 'S2', 'S3', 'S4'] },
+  { ligne: '07', libelle: 'Constructions : installations générales, agencements, aménagements divers', groupe: 'II', cases: ['S5', 'S6', 'S7', 'S8', 'S9', 'T1', 'T2'] },
+  { ligne: '08', libelle: 'Installations techniques, matériel et outillage industriels', groupe: 'II', cases: ['T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9'] },
+  { ligne: '09', libelle: 'Autres immobilisations corporelles : installations générales, agencements, aménagements divers', groupe: 'II', cases: ['U1', 'U2', 'U3', 'U4', 'U5', 'U6', 'U7'] },
+  { ligne: '10', libelle: 'Autres immobilisations corporelles : matériel de transport', groupe: 'II', cases: ['U8', 'U9', 'V1', 'V2', 'V3', 'V4', 'V5'] },
+  { ligne: '11', libelle: 'Autres immobilisations corporelles : matériel de bureau et informatique, mobilier', groupe: 'II', cases: ['V6', 'V7', 'V8', 'V9', 'W1', 'W2', 'W3'] },
+  { ligne: '12', libelle: 'Autres immobilisations corporelles : emballages récupérables et divers', groupe: 'II', cases: ['W4', 'W5', 'W6', 'W7', 'W8', 'W9', 'X1'] },
+  { ligne: '13', libelle: 'Frais d’acquisition de titres de participation (colonnes 1, 4 et 7 seulement)', groupe: 'III', cases: ['NL', '', '', 'NM', '', '', 'NO'] },
+];
+/** Totaux du cadre B : TOTAL I, TOTAL II, TOTAL III (cases NL, NM, NO), Total général (I + II + III) NP à NV. */
+const CASES_TOTAL_2055_B = {
+  I: ['RW', 'RX', 'RY', 'RZ', 'SB', 'SC', 'SD'],
+  II: ['X2', 'X3', 'X4', 'X5', 'X6', 'X7', 'X8'],
+  III: ['NL', '', '', 'NM', '', '', 'NO'],
+  general: ['NP', 'NQ', 'NR', 'NS', 'NT', 'NU', 'NV'],
+} as const;
+export const LIBELLES_COLONNES_2055_B = [
+  'Dotations : différentiel de durée et autres (col. 1)',
+  'Dotations : mode dégressif (col. 2)',
+  'Dotations : amortissement fiscal exceptionnel (col. 3)',
+  'Reprises : différentiel de durée et autres (col. 4)',
+  'Reprises : mode dégressif (col. 5)',
+  'Reprises : amortissement fiscal exceptionnel (col. 6)',
+  'Mouvement net des amortissements à la fin de l’exercice (col. 7)',
+] as const;
+
+export interface CelluleCase {
+  /** Case du formulaire ; null quand la cellule n'en porte pas. */
+  codeCase: string | null;
+  montant: ChaineDecimale | null;
+}
+export interface LigneDerogatoire {
+  ligne: string;
+  libelle: string;
+  groupe: 'I' | 'II' | 'III';
+  statut: StatutLigneSaisie;
+  trace: TraceSaisie | null;
+  /** Sept colonnes : 1 à 6 saisies, 7 = (col. 1 + 2 + 3) − (col. 4 + 5 + 6), calculée (notice 2032-NOT-SD) ; vide pour les colonnes sans objet (ligne 13). */
+  colonnes: Array<CelluleCase | null>;
+}
+export interface AmortissementsDerogatoiresProjet {
+  statut: 'projet';
+  etat: 'a_saisir' | 'neant' | 'saisi';
+  lignes: LigneDerogatoire[];
+  /** TOTAL I, II, III et Total général : sept colonnes, somme des lignes saisies. */
+  totaux: { I: Array<CelluleMontant | null>; II: Array<CelluleMontant | null>; III: Array<CelluleMontant | null>; general: Array<CelluleMontant | null> };
+  /** Total général non ventilé : NW (dotations NP + NQ + NR), NY (reprises NS + NT + NU), NZ (NW − NY). */
+  nonVentile: { NW: CelluleMontant; NY: CelluleMontant; NZ: CelluleMontant };
+  controles: ControleDetail[];
+  limites: string[];
+  neant: TraceSaisie | null;
+  mention: string;
+}
+
+// ── 2055, cadre C : charges réparties sur plusieurs exercices ───────────────────────────────────────────────────────────────
+
+export const LIGNES_2055_C: ReadonlyArray<{ ligne: string; libelle: string; caseDotations: string; caseFin: string; compteControle: string; libelleCompte: string }> = [
+  { ligne: '01', libelle: 'Frais d’émission d’emprunt à étaler', caseDotations: 'Z9', caseFin: 'Z8', compteControle: '481', libelleCompte: 'charges à répartir sur plusieurs exercices' },
+  { ligne: '02', libelle: 'Primes de remboursement des obligations', caseDotations: 'SP', caseFin: 'SR', compteControle: '169', libelleCompte: 'primes de remboursement des obligations' },
+];
+export interface LigneChargeRepartie {
+  ligne: string;
+  libelle: string;
+  statut: StatutLigneSaisie;
+  trace: TraceSaisie | null;
+  /** Colonne 1 (montant net au début) et 2 (augmentations) : saisies, sans case ; colonne 3 : dotations (case Z9 ou SP) ; colonne 4 : montant net à la fin (case Z8 ou SR), calculée. */
+  debut: ChaineDecimale | null;
+  augmentations: ChaineDecimale | null;
+  dotations: ChaineDecimale | null;
+  fin: ChaineDecimale | null;
+  caseDotations: string;
+  caseFin: string;
+}
+export interface ChargesRepartiesProjet {
+  statut: 'projet';
+  etat: 'a_saisir' | 'neant' | 'saisi';
+  lignes: LigneChargeRepartie[];
+  controles: ControleDetail[];
+  limites: string[];
+  neant: TraceSaisie | null;
+  mention: string;
+}
+
 export interface DemandeSaisiesTableaux {
   balance: Balance;
   exercice: { debut: string; fin: string };
@@ -208,7 +316,7 @@ export interface DemandeSaisiesTableaux {
 }
 
 export type ResultatSaisiesTableaux =
-  | { statut: 'projet'; cadreIII: CadreIIIProjet | null; ecartsReevaluation: EcartsReevaluationProjet | null }
+  | { statut: 'projet'; cadreIII: CadreIIIProjet | null; ecartsReevaluation: EcartsReevaluationProjet | null; amortissementsDerogatoires: AmortissementsDerogatoiresProjet | null; chargesRepartiesPlusieursExercices: ChargesRepartiesProjet | null }
   | LiasseAbstention;
 
 const trace = (s: SaisieTableau): TraceSaisie => ({ note: s.note, qualifieePar: s.qualifieePar, le: s.le, versionDonnees: s.versionDonnees });
@@ -371,10 +479,126 @@ function ecartsReevaluation(demande: DemandeSaisiesTableaux): EcartsReevaluation
   };
 }
 
+function amortissementsDerogatoires(demande: DemandeSaisiesTableaux): AmortissementsDerogatoiresProjet {
+  const v = demande.versionDonnees;
+  const saisies = demande.saisies.filter((x) => x.tableau === '2055_B');
+  const parLigne = new Map(saisies.map((x) => [x.ligne, x]));
+  const lignes: LigneDerogatoire[] = LIGNES_2055_B.map((def) => {
+    const x = parLigne.get(def.ligne);
+    const statut = statutDe(x, v);
+    const base = { ligne: def.ligne, libelle: def.libelle, groupe: def.groupe, statut, trace: x ? trace(x) : null };
+    if (x === undefined || statut !== 'saisi') return { ...base, colonnes: def.cases.map((c) => (c === '' ? null : { codeCase: c, montant: null })) };
+    const val = (k: string) => d(x.valeurs[k]);
+    const dotations = def.ligne === '13' ? val('c1') : val('c1').plus(val('c2')).plus(val('c3'));
+    const reprises = def.ligne === '13' ? val('c4') : val('c4').plus(val('c5')).plus(val('c6'));
+    const net = dotations.minus(reprises);
+    const cellules: Array<CelluleCase | null> = def.ligne === '13'
+      ? [{ codeCase: 'NL', montant: versChaine(val('c1')) }, null, null, { codeCase: 'NM', montant: versChaine(val('c4')) }, null, null, { codeCase: 'NO', montant: versChaine(net) }]
+      : ['c1', 'c2', 'c3', 'c4', 'c5', 'c6'].map((k, i) => ({ codeCase: def.cases[i]!, montant: versChaine(val(k)) })).concat([{ codeCase: def.cases[6]!, montant: versChaine(net) }]);
+    return { ...base, colonnes: cellules };
+  });
+  const neantSaisie = parLigne.get('NEANT');
+  const neantStatut = statutDe(neantSaisie, v);
+  const retenues = lignes.filter((l) => l.statut === 'saisi');
+  const aRevoir = lignes.filter((l) => l.statut === 'a_revoir').length + (neantStatut === 'a_revoir' ? 1 : 0);
+  const etat: AmortissementsDerogatoiresProjet['etat'] = retenues.length > 0 ? 'saisi' : neantStatut === 'saisi' ? 'neant' : 'a_saisir';
+  const controles: ControleDetail[] = [];
+  if (retenues.length > 0 && neantStatut === 'saisi') controles.push({ code: 'B2055_NEANT_ET_LIGNES', statut: 'ecart', message: 'Le cadre B est déclaré « néant » ET porte des lignes : retirer l’une des deux saisies ; les lignes saisies sont retenues.' });
+  const motifs: string[] = [];
+  if (etat === 'a_saisir') motifs.push('Aucune ligne saisie et le cadre n’est pas déclaré « néant » : rien n’est présumé nul.');
+  if (aRevoir > 0) motifs.push(`${aRevoir} saisie(s) donnée(s) sur une autre version des données (« à revoir ») ne comptent plus.`);
+  const somme = (groupes: ReadonlyArray<'I' | 'II' | 'III'>, col: number): Decimal => retenues.filter((l) => groupes.includes(l.groupe)).reduce((acc, l) => acc.plus(l.colonnes[col]?.montant ?? '0'), ZERO);
+  const cellule = (groupes: ReadonlyArray<'I' | 'II' | 'III'>, col: number, code: string): CelluleMontant | null => {
+    if (code === '') return null;
+    return motifs.length > 0 ? abstention(motifs, code) : etabli(etat === 'neant' ? ZERO : somme(groupes, col), code);
+  };
+  const ligneTotaux = (groupes: ReadonlyArray<'I' | 'II' | 'III'>, cases: readonly string[]) => cases.map((c, i) => cellule(groupes, i, c));
+  const totaux = { I: ligneTotaux(['I'], CASES_TOTAL_2055_B.I), II: ligneTotaux(['II'], CASES_TOTAL_2055_B.II), III: ligneTotaux(['III'], CASES_TOTAL_2055_B.III), general: ligneTotaux(['I', 'II', 'III'], CASES_TOTAL_2055_B.general) };
+  const general = totaux.general;
+  const sommeCols = (cols: number[]): Decimal => cols.reduce((acc, i) => acc.plus(general[i]!.statut === 'etabli' ? general[i]!.montant : 0), ZERO);
+  const pasEtabli = motifs.length > 0;
+  const NW = pasEtabli ? abstention(motifs, 'NW') : etabli(sommeCols([0, 1, 2]), 'NW');
+  const NY = pasEtabli ? abstention(motifs, 'NY') : etabli(sommeCols([3, 4, 5]), 'NY');
+  const NZ = NW.statut === 'etabli' && NY.statut === 'etabli' ? etabli(new Decimal(NW.montant).minus(NY.montant), 'NZ') : abstention(motifs, 'NZ');
+  // Contrôle indicatif avec la balance : dotations aux provisions réglementées (6872) et reprises (7872) ; la notice rattache NZ aux lignes HG et HC du 2053.
+  if (etat === 'saisi' && motifs.length === 0) {
+    const debit6872 = demande.balance.lignes.filter((l) => l.compteNum.startsWith('6872')).reduce((acc, l) => acc.plus(soldeDebiteur(l)), ZERO);
+    const credit7872 = demande.balance.lignes.filter((l) => l.compteNum.startsWith('7872')).reduce((acc, l) => acc.plus(soldeCrediteur(l)), ZERO);
+    for (const [code, saisi, compte, solde] of [['B2055_DOTATIONS_6872', NW, '6872', debit6872], ['B2055_REPRISES_7872', NY, '7872', credit7872]] as const) {
+      const m = new Decimal(saisi.statut === 'etabli' ? saisi.montant : 0);
+      const ecart = solde.minus(m);
+      controles.push(ecart.isZero()
+        ? { code, statut: 'coherent', message: `Total saisi (${versChaine(m)}) égal au compte ${compte} de la balance. Contrôle indicatif.` }
+        : { code, statut: 'ecart', message: `Total saisi (${versChaine(m)}) différent du compte ${compte} de la balance (${versChaine(solde)}) : dotations ou reprises portées à d’autres comptes, ou lignes non saisies. Rien n’est corrigé. Contrôle indicatif.`, ecart: versChaine(ecart) });
+    }
+    if (retenues.length < lignes.length) controles.push({ code: 'B2055_LIGNES_NON_SAISIES', statut: 'non_verifie', message: `${lignes.length - retenues.length} ligne(s) non saisie(s) : les totaux ne comptent que les lignes saisies ; rien n’est présumé nul.` });
+  }
+  return {
+    statut: 'projet',
+    etat,
+    lignes,
+    totaux,
+    nonVentile: { NW, NY, NZ },
+    controles,
+    limites: [
+      'Aucune donnée de la balance ne ventile les amortissements dérogatoires par poste et par origine : chaque ligne se saisit (colonnes 1 à 6) avec sa justification ; l’origine d’une dotation ou d’une reprise (différence de durée, dégressif, amortissement fiscal exceptionnel) est une décision du cabinet (notice 2032-NOT-SD, cadre B).',
+      'Seul le calcul que le formulaire porte est fait : colonne 7 = (colonnes 1 + 2 + 3) − (colonnes 4 + 5 + 6) ; totaux I, II, III et général ; non ventilé NW = NP + NQ + NR, NY = NS + NT + NU, NZ = NW − NY. Frais d’acquisition de titres de participation : colonnes 1 et 4 seulement.',
+      'Le contrôle avec la balance (comptes 6872 et 7872) est indicatif : la notice rattache la case NZ aux lignes HG et HC du tableau 2053 et aux cases TM et TN du tableau 2056, non préparées.',
+    ],
+    neant: neantSaisie ? trace(neantSaisie) : null,
+    mention: MENTION_PROJET,
+  };
+}
+
+function chargesReparties(demande: DemandeSaisiesTableaux): ChargesRepartiesProjet {
+  const v = demande.versionDonnees;
+  const parLigne = new Map(demande.saisies.filter((x) => x.tableau === '2055_C').map((x) => [x.ligne, x]));
+  const lignes: LigneChargeRepartie[] = LIGNES_2055_C.map((def) => {
+    const x = parLigne.get(def.ligne);
+    const statut = statutDe(x, v);
+    const base = { ligne: def.ligne, libelle: def.libelle, statut, trace: x ? trace(x) : null, caseDotations: def.caseDotations, caseFin: def.caseFin };
+    if (x === undefined || statut !== 'saisi') return { ...base, debut: null, augmentations: null, dotations: null, fin: null };
+    const debut = d(x.valeurs.debut), aug = d(x.valeurs.augmentations), dot = d(x.valeurs.dotations);
+    return { ...base, debut: versChaine(debut), augmentations: versChaine(aug), dotations: versChaine(dot), fin: versChaine(debut.plus(aug).minus(dot)) };
+  });
+  const neantSaisie = parLigne.get('NEANT');
+  const neantStatut = statutDe(neantSaisie, v);
+  const retenues = lignes.filter((l) => l.statut === 'saisi');
+  const etat: ChargesRepartiesProjet['etat'] = retenues.length > 0 ? 'saisi' : neantStatut === 'saisi' ? 'neant' : 'a_saisir';
+  const controles: ControleDetail[] = [];
+  if (retenues.length > 0 && neantStatut === 'saisi') controles.push({ code: 'C2055_NEANT_ET_LIGNES', statut: 'ecart', message: 'Le cadre C est déclaré « néant » ET porte des lignes : retirer l’une des deux saisies ; les lignes saisies sont retenues.' });
+  for (const l of retenues) {
+    if (d(l.fin).isNegative()) controles.push({ code: `C2055_FIN_NEGATIVE_${l.ligne}`, statut: 'ecart', message: `Ligne ${Number(l.ligne)} : montant net à la fin négatif (dotations supérieures au début plus les augmentations) : à vérifier.`, ecart: l.fin! });
+    const def = LIGNES_2055_C.find((x) => x.ligne === l.ligne)!;
+    const solde = demande.balance.lignes.filter((b) => b.compteNum.startsWith(def.compteControle)).reduce((acc, b) => acc.plus(soldeDebiteur(b)), ZERO);
+    const ecart = solde.minus(d(l.fin));
+    controles.push(ecart.isZero()
+      ? { code: `C2055_COMPTE_${def.compteControle}`, statut: 'coherent', message: `Ligne ${Number(l.ligne)} : montant net à la fin égal au solde du compte ${def.compteControle} (${def.libelleCompte}). Contrôle indicatif.` }
+      : { code: `C2055_COMPTE_${def.compteControle}`, statut: 'ecart', message: `Ligne ${Number(l.ligne)} : montant net à la fin (${l.fin}) différent du solde du compte ${def.compteControle} (${def.libelleCompte}) : ${versChaine(solde)}. Rien n’est corrigé. Contrôle indicatif.`, ecart: versChaine(ecart) });
+  }
+  if (etat === 'neant') {
+    const soldes = LIGNES_2055_C.map((def) => ({ def, solde: demande.balance.lignes.filter((b) => b.compteNum.startsWith(def.compteControle)).reduce((acc, b) => acc.plus(soldeDebiteur(b)), ZERO) })).filter((x) => !x.solde.isZero());
+    for (const x of soldes) controles.push({ code: `C2055_NEANT_COMPTE_${x.def.compteControle}`, statut: 'ecart', message: `Cadre déclaré « néant » alors que le compte ${x.def.compteControle} (${x.def.libelleCompte}) porte ${versChaine(x.solde)}. Rien n’est corrigé. Contrôle indicatif.` });
+  }
+  return {
+    statut: 'projet',
+    etat,
+    lignes,
+    controles,
+    limites: [
+      'Aucune donnée de la balance ne porte les mouvements de l’exercice : les colonnes 1 (montant net au début), 2 (augmentations) et 3 (dotations, cases Z9 et SP) se saisissent avec leur justification ; le formulaire n’a pas de case pour les colonnes 1 et 2.',
+      'Seul le calcul que le formulaire porte est fait : colonne 4 (montant net à la fin, cases Z8 et SR) = colonne 1 + colonne 2 − colonne 3 (notice 2032-NOT-SD : amortissement imputé directement aux comptes d’actif correspondants).',
+      'Le contrôle avec la balance (comptes 481 et 169) est indicatif : le compte 481 regroupe toutes les charges à répartir, pas seulement les frais d’émission d’emprunt.',
+    ],
+    neant: neantSaisie ? trace(neantSaisie) : null,
+    mention: MENTION_PROJET,
+  };
+}
+
 export function preparerSaisiesTableaux(demande: DemandeSaisiesTableaux): ResultatSaisiesTableaux {
   const motifs = motifsAbstention({ exercice: demande.exercice, regime: demande.regime, territoire: demande.territoire, impotSurLeResultat: demande.impotSurLeResultat, referentielComptable: demande.referentielComptable, devise: demande.devise, societeCommerciale: demande.societeCommerciale });
   if (motifs.length > 0) return { statut: 'abstention', motifs, perimetreCouvert: PERIMETRE_LIASSE, mention: MENTION_PROJET };
   return demande.regime === 'reel_simplifie'
-    ? { statut: 'projet', cadreIII: cadreIII(demande), ecartsReevaluation: null }
-    : { statut: 'projet', cadreIII: null, ecartsReevaluation: ecartsReevaluation(demande) };
+    ? { statut: 'projet', cadreIII: cadreIII(demande), ecartsReevaluation: null, amortissementsDerogatoires: null, chargesRepartiesPlusieursExercices: null }
+    : { statut: 'projet', cadreIII: null, ecartsReevaluation: ecartsReevaluation(demande), amortissementsDerogatoires: amortissementsDerogatoires(demande), chargesRepartiesPlusieursExercices: chargesReparties(demande) };
 }

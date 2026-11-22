@@ -434,11 +434,66 @@ export interface EcartsReevaluationProjet {
   neant: TraceSaisie | null;
   mention: string;
 }
+export interface CelluleCase {
+  codeCase: string | null;
+  montant: string | null;
+}
+export interface LigneDerogatoire {
+  ligne: string;
+  libelle: string;
+  groupe: 'I' | 'II' | 'III';
+  statut: StatutLigneSaisie;
+  trace: TraceSaisie | null;
+  colonnes: Array<CelluleCase | null>;
+}
+export interface AmortissementsDerogatoiresProjet {
+  statut: 'projet';
+  etat: 'a_saisir' | 'neant' | 'saisi';
+  lignes: LigneDerogatoire[];
+  totaux: { I: Array<CelluleMontantSaisie | null>; II: Array<CelluleMontantSaisie | null>; III: Array<CelluleMontantSaisie | null>; general: Array<CelluleMontantSaisie | null> };
+  nonVentile: { NW: CelluleMontantSaisie; NY: CelluleMontantSaisie; NZ: CelluleMontantSaisie };
+  controles: Array<{ code: string; statut: 'coherent' | 'ecart' | 'non_verifie'; message: string; ecart?: string }>;
+  limites: string[];
+  neant: TraceSaisie | null;
+  mention: string;
+}
+export interface LigneChargeRepartie {
+  ligne: string;
+  libelle: string;
+  statut: StatutLigneSaisie;
+  trace: TraceSaisie | null;
+  debut: string | null;
+  augmentations: string | null;
+  dotations: string | null;
+  fin: string | null;
+  caseDotations: string;
+  caseFin: string;
+}
+export interface ChargesRepartiesProjet {
+  statut: 'projet';
+  etat: 'a_saisir' | 'neant' | 'saisi';
+  lignes: LigneChargeRepartie[];
+  controles: Array<{ code: string; statut: 'coherent' | 'ecart' | 'non_verifie'; message: string; ecart?: string }>;
+  limites: string[];
+  neant: TraceSaisie | null;
+  mention: string;
+}
 export interface TableauxSaisisProjet {
   statut: 'projet';
   cadreIII: CadreIIIProjet | null;
   ecartsReevaluation: EcartsReevaluationProjet | null;
+  amortissementsDerogatoires: AmortissementsDerogatoiresProjet | null;
+  chargesRepartiesPlusieursExercices: ChargesRepartiesProjet | null;
 }
+export const LIBELLES_COLONNES_2055_B = [
+  'Dotations : différentiel de durée et autres (1)',
+  'Dotations : mode dégressif (2)',
+  'Dotations : amortissement fiscal exceptionnel (3)',
+  'Reprises : différentiel de durée et autres (4)',
+  'Reprises : mode dégressif (5)',
+  'Reprises : amortissement fiscal exceptionnel (6)',
+  'Mouvement net à la fin de l’exercice (7)',
+] as const;
 export const LIBELLE_CLASSEMENT: Record<string, string> = {
   court_terme: 'Court terme (colonne 5)',
   long_terme_19: 'Long terme à 19 % (colonne 6)',

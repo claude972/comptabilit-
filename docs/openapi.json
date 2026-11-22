@@ -5939,7 +5939,7 @@
     },
     "/v1/exercices/{id}/tableaux/{tableau}/{ligne}": {
       "put": {
-        "description": "Tableaux : 2033C_III (lignes 01 à 10 : nature, valeurActif, amortissements, prixCession, classement ; REG : c5 à c8 signés ; PV19 : montant ; NEANT), 2054BIS_A (lignes 01 à 09 : c1 à c5 ; NEANT), 2054BIS_B (B1, B2 : montant). Montants en chaînes décimales positives (sauf REG). Note de justification obligatoire. La saisie est tracée, historisée (ajout seul) et « à revoir » si les données changent. Le moteur ne calcule que ce que le formulaire calcule ; aucune décision fiscale n’est prise (le classement d’une plus-value est choisi par le cabinet).",
+        "description": "Tableaux : 2055_B (lignes 01 à 12 : c1 à c6 ; 13 : c1 et c4 ; NEANT), 2055_C (lignes 01 et 02 : debut, augmentations, dotations ; NEANT), 2033C_III (lignes 01 à 10 : nature, valeurActif, amortissements, prixCession, classement ; REG : c5 à c8 signés ; PV19 : montant ; NEANT), 2054BIS_A (lignes 01 à 09 : c1 à c5 ; NEANT), 2054BIS_B (B1, B2 : montant). Montants en chaînes décimales positives (sauf REG). Note de justification obligatoire. La saisie est tracée, historisée (ajout seul) et « à revoir » si les données changent. Le moteur ne calcule que ce que le formulaire calcule ; aucune décision fiscale n’est prise (le classement d’une plus-value est choisi par le cabinet).",
         "operationId": "FiscalController_saisirLigneTableau",
         "parameters": [
           {
@@ -6010,7 +6010,7 @@
             "bearer": []
           }
         ],
-        "summary": "Saisir une ligne du cadre III du 2033-C (cessions) ou du tableau 2054 bis (écarts de réévaluation) (niveau révision)",
+        "summary": "Saisir une ligne du cadre III du 2033-C (cessions), du tableau 2054 bis (écarts de réévaluation) ou du tableau 2055 cadres B et C (amortissements dérogatoires, charges réparties) (niveau révision)",
         "tags": [
           "États fiscaux (projets)"
         ]

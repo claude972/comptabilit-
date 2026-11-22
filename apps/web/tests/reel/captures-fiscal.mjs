@@ -156,6 +156,26 @@ if (process.argv.includes('--bis')) {
   await page.screenshot({ path: `${sortie}fiscal-2054bis-apres.png` });
   await page.getByRole('region', { name: 'Cadre A du tableau 2054 bis : écarts de réévaluation' }).screenshot({ path: `${sortie}fiscal-2054bis-tableau.png` });
 }
+// 2055 cadres B et C (D-113) : saisies par les formulaires (MODIFIE le dossier fictif indiqué).
+if (process.argv.includes('--b2055')) {
+  await page.goto(`${base}&vue=liasse&regime=reel_normal`);
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('amortissements-derogatoires').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2055-avant.png` });
+  const derog = (a, b, c, d, e, f) => ({ 'Dotations : différentiel de durée et autres (1)': a, 'Dotations : mode dégressif (2)': b, 'Dotations : amortissement fiscal exceptionnel (3)': c, 'Reprises : différentiel de durée et autres (4)': d, 'Reprises : mode dégressif (5)': e, 'Reprises : amortissement fiscal exceptionnel (6)': f });
+  await saisirLigne('2055_B', '01', derog('100.00', '0.00', '0.00', '20.00', '0.00', '0.00'), 'Dérogatoire sur frais d’établissement (démonstration fictive)');
+  await saisirLigne('2055_B', '04', derog('50.00', '30.00', '10.00', '5.00', '5.00', '5.00'), 'Dérogatoire sur terrains (démonstration fictive)');
+  await saisirLigne('2055_B', '13', { 'Dotations : différentiel de durée et autres (1)': '40.00', 'Reprises : différentiel de durée et autres (4)': '15.00' }, 'Frais d’acquisition de titres de participation (démonstration fictive)');
+  await saisirLigne('2055_C', '01', { 'Montant net au début de l’exercice': '1000.00', Augmentations: '500.00', 'Dotations de l’exercice (case Z9)': '300.00' }, 'Frais d’émission de l’emprunt bancaire (démonstration fictive)');
+  await saisirLigne('2055_C', '02', { 'Montant net au début de l’exercice': '0.00', Augmentations: '0.00', 'Dotations de l’exercice (case SP)': '0.00' }, 'Aucune prime de remboursement (démonstration fictive)');
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+  await page.getByRole('region', { name: 'Cadre B du tableau 2055 : amortissements dérogatoires' }).screenshot({ path: `${sortie}fiscal-2055-b-tableau.png` });
+  await page.getByTestId('charges-reparties').scrollIntoViewIfNeeded();
+  await page.getByRole('region', { name: 'Cadre C du tableau 2055 : charges réparties sur plusieurs exercices' }).screenshot({ path: `${sortie}fiscal-2055-c-tableau.png` });
+  await page.getByTestId('non-ventile-2055-b').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2055-apres.png` });
+}
 // 2033-B (D-107) : « dont export » et lignes « dont » du régime simplifié.
 await page.goto(`${base}&vue=liasse&regime=reel_simplifie`);
 await page.waitForLoadState('networkidle');

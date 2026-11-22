@@ -372,6 +372,13 @@
       "when": 1795319249174,
       "tag": "0052_saisies_tableaux",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1795319849174,
+      "tag": "0053_saisies_tableaux_2055",
+      "breakpoints": true
     }
   ]
 }

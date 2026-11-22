@@ -45,6 +45,11 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
     await expect(liasse.getByText('à confirmer').first()).toBeVisible();
     await expect(page.getByTestId('tableaux-non-couverts').locator('li').first()).toBeVisible();
     await expect(page.getByTestId('controles-liasse').locator('li').first()).toBeVisible();
+    // 2055 cadres B et C (D-113) : saisie ligne par ligne, totaux en abstention sans saisie ni néant.
+    await expect(page.getByTestId('amortissements-derogatoires')).toBeVisible();
+    await expect(page.getByTestId('lignes-2055-b').locator('tr[data-b2055]')).toHaveCount(17);
+    await expect(page.getByTestId('charges-reparties')).toBeVisible();
+    await expect(page.getByTestId('lignes-2055-c').locator('tr[data-c2055]')).toHaveCount(2);
     // 2054 bis (D-112) : tableau servi par saisie, sans saisie les totaux restent en abstention.
     await expect(page.getByTestId('ecarts-reevaluation')).toBeVisible();
     await expect(page.getByTestId('lignes-2054-bis').locator('tr[data-bis]')).toHaveCount(10);

@@ -232,7 +232,8 @@ describe('cadre III du 2033-C et 2054 bis : saisies ligne par ligne, tracées, h
     expect((await lig('2033C_III', '01', { ...CESSION, classement: 'inconnu' })).statut).toBe(400);
     expect((await lig('2033C_III', '01', { ...CESSION, valeurActif: '-3.00' })).statut).toBe(400);
     expect((await lig('2033C_III', '01', CESSION, 'ok')).statut).toBe(400);
-    expect((await lig('2033C_III', '11', CESSION)).statut).toBe(404);
+    expect((await lig('2033C_III', '11', CESSION)).statut).toBe(400); // ligne bien formée mais inconnue de ce tableau
+    expect((await lig('2033C_III', '14', CESSION)).statut).toBe(404); // identifiant de ligne mal formé
     expect((await lig('autre', '01', CESSION)).statut).toBe(404);
     expect((await lig('2033C_III', '01', CESSION, 'Essai collaborateur', 'chloe')).statut).toBeGreaterThanOrEqual(400);
     expect((await lig('2033C_III', '01', CESSION, 'Essai déposant', 'client')).statut).toBe(404);
@@ -285,6 +286,73 @@ describe('cadre III du 2033-C et 2054 bis : saisies ligne par ligne, tracées, h
     expect(c.lignes[0].statut).toBe('a_saisir');
     expect(c.etat).toBe('a_saisir');
     expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/2054BIS_A/NEANT`)).statut).toBeLessThan(300);
+  }, 120_000);
+});
+
+describe('2055 cadres B (amortissements dérogatoires) et C (charges réparties) : saisies ligne par ligne, historisées, abstention sans saisie (D-113)', () => {
+  const t55 = async () => (await liasse(exN, 'reel_normal')).json.tableauxSaisis;
+  const lig = (tableau: string, ligne: string, valeurs: Record<string, string>, note = 'Saisie du cabinet pour l’essai', qui = 'remi') => api(qui, 'PUT', `/v1/exercices/${exN}/tableaux/${tableau}/${ligne}`, { valeurs, note });
+  const montant = (c: any) => (c && c.statut === 'etabli' ? c.montant : c?.statut ?? null);
+
+  it('sans saisie : cadre B et cadre C en abstention, sans chiffre ; absents au régime simplifié', async () => {
+    const t = await t55();
+    expect(t.amortissementsDerogatoires.etat).toBe('a_saisir');
+    expect(t.amortissementsDerogatoires.lignes).toHaveLength(13);
+    expect(montant(t.amortissementsDerogatoires.totaux.general[0])).toBe('abstention');
+    expect(t.amortissementsDerogatoires.nonVentile.NZ.statut).toBe('abstention');
+    expect(t.chargesRepartiesPlusieursExercices.lignes.map((l: any) => l.fin)).toEqual([null, null]);
+    const rsi = (await liasse(exN, 'reel_simplifie')).json.tableauxSaisis;
+    expect(rsi.amortissementsDerogatoires).toBeNull();
+    expect(rsi.chargesRepartiesPlusieursExercices).toBeNull();
+  }, 120_000);
+
+  it('refus : forme (colonne manquante, négatif, ligne 13 avec colonne 2, ligne 14), droits', async () => {
+    expect((await lig('2055_B', '01', { c1: '1.00' })).statut).toBe(400);
+    expect((await lig('2055_B', '01', { c1: '-1.00', c2: '0', c3: '0.00', c4: '0.00', c5: '0.00', c6: '0.00' })).statut).toBe(400);
+    expect((await lig('2055_B', '13', { c1: '1.00', c4: '0.00', c2: '1.00' })).statut).toBe(400);
+    expect((await lig('2055_B', '14', { c1: '1.00' })).statut).toBe(404);
+    expect((await lig('2055_C', '03', { debut: '1.00', augmentations: '0.00', dotations: '0.00' })).statut).toBe(400);
+    expect((await lig('2055_C', '01', { debut: '1.00', augmentations: '0.00', dotations: '0.00' }, 'Essai collaborateur', 'chloe')).statut).toBeGreaterThanOrEqual(400);
+    expect((await lig('2055_C', '01', { debut: '1.00', augmentations: '0.00', dotations: '0.00' }, 'Essai déposant', 'client')).statut).toBe(404);
+    expect((await t55()).amortissementsDerogatoires.etat).toBe('a_saisir');
+  });
+
+  it('cadre B : colonne 7 et totaux calculés comme le formulaire ; cases lues ; trace ; contrôles avec la balance', async () => {
+    expect((await lig('2055_B', '01', { c1: '100.00', c2: '0.00', c3: '0.00', c4: '20.00', c5: '0.00', c6: '0.00' }, 'Dérogatoire sur frais d’établissement (essai)')).statut).toBeLessThan(300);
+    expect((await lig('2055_B', '04', { c1: '50.00', c2: '30.00', c3: '10.00', c4: '5.00', c5: '5.00', c6: '5.00' }, 'Dérogatoire sur terrains (essai)')).statut).toBeLessThan(300);
+    expect((await lig('2055_B', '13', { c1: '40.00', c4: '15.00' }, 'Frais d’acquisition de titres (essai)')).statut).toBeLessThan(300);
+    const b = (await t55()).amortissementsDerogatoires;
+    expect(b.etat).toBe('saisi');
+    expect(b.lignes[0].colonnes[6]).toEqual({ codeCase: 'N6', montant: '80.00' });
+    expect(b.lignes[0]).toMatchObject({ statut: 'saisi', trace: { qualifieePar: DEMO.remi, note: 'Dérogatoire sur frais d’établissement (essai)' } });
+    expect(montant(b.totaux.I[6])).toBe('80.00');
+    expect(montant(b.totaux.general[0])).toBe('190.00');
+    expect(b.nonVentile.NZ).toMatchObject({ statut: 'etabli', montant: '180.00', codeCase: 'NZ' });
+    expect(b.controles.find((c: any) => c.code === 'B2055_DOTATIONS_6872').statut).toBe('ecart'); // la balance d'essai n'a pas de compte 6872
+    expect((await lig('2055_B', 'NEANT', {}, 'Cadre B déclaré néant (essai)')).statut).toBeLessThan(300);
+    expect((await t55()).amortissementsDerogatoires.controles.some((c: any) => c.code === 'B2055_NEANT_ET_LIGNES')).toBe(true);
+  }, 120_000);
+
+  it('cadre C : colonne 4 = 1 + 2 − 3 ; cases Z9 / Z8 et SP / SR ; néant', async () => {
+    expect((await lig('2055_C', '01', { debut: '1000.00', augmentations: '500.00', dotations: '300.00' }, 'Frais d’émission de l’emprunt bancaire (essai)')).statut).toBeLessThan(300);
+    expect((await lig('2055_C', '02', { debut: '0.00', augmentations: '0.00', dotations: '0.00' }, 'Aucune prime de remboursement (essai)')).statut).toBeLessThan(300);
+    const c = (await t55()).chargesRepartiesPlusieursExercices;
+    expect(c.etat).toBe('saisi');
+    expect(c.lignes[0]).toMatchObject({ statut: 'saisi', fin: '1200.00', caseDotations: 'Z9', caseFin: 'Z8' });
+    expect(c.lignes[1]).toMatchObject({ fin: '0.00', caseDotations: 'SP', caseFin: 'SR' });
+  }, 120_000);
+
+  it('historique en ajout seul ; retraits ; les lignes redeviennent « à saisir »', async () => {
+    const h = (await api('remi', 'GET', `/v1/exercices/${exN}/qualifications/historique?cle=2055_C:01`)).json.evenements as any[];
+    expect(h).toHaveLength(1);
+    expect(h[0]).toMatchObject({ nature: 'tableau', cle: '2055_C:01', action: 'saisie', auteurId: DEMO.remi });
+    expect(JSON.parse(h[0].montant)).toEqual({ debut: '1000.00', augmentations: '500.00', dotations: '300.00' });
+    for (const [t, l] of [['2055_B', '01'], ['2055_B', '04'], ['2055_B', '13'], ['2055_B', 'NEANT'], ['2055_C', '01'], ['2055_C', '02']] as const) expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/${t}/${l}`)).statut, `${t} ${l}`).toBeLessThan(300);
+    const t = await t55();
+    expect(t.amortissementsDerogatoires.etat).toBe('a_saisir');
+    expect(t.chargesRepartiesPlusieursExercices.etat).toBe('a_saisir');
+    const h2 = (await api('remi', 'GET', `/v1/exercices/${exN}/qualifications/historique?cle=2055_C:01`)).json.evenements as any[];
+    expect(h2.map((e) => e.action)).toEqual(['retrait', 'saisie']);
   }, 120_000);
 });
 

@@ -55,6 +55,22 @@ export interface DefinitionImputation {
   apresBenefice: string;
   apresDeficit: string;
 }
+/** Proposition reprise d'un AUTRE tableau (valeur énoncée par le formulaire : « total des lignes XB et XL du tableau 2058-A »), jamais retenue sans saisie. */
+export interface DefinitionProposition {
+  code: string;
+  origine: string;
+  /** Clés de valeurs d'autres tableaux (`valeursAutres`), additionnées ; la proposition n'existe que si toutes sont présentes. */
+  sources: readonly string[];
+}
+/** Rapprochement INDICATIF d'un total calculé ou saisi avec la valeur d'une case d'un autre tableau (« à reporter ligne WI du tableau 2058-A »). */
+export interface DefinitionControleExterne {
+  code: string;
+  libelle: string;
+  /** Case (ou calcul) de ce tableau. */
+  case: string;
+  /** Clé de valeur d'un autre tableau. */
+  externe: string;
+}
 export interface DefinitionFormulaire {
   id: string;
   titre: string;
@@ -66,6 +82,8 @@ export interface DefinitionFormulaire {
   calculs: readonly DefinitionCalcul[];
   controles: readonly DefinitionControle[];
   imputation?: DefinitionImputation;
+  propositions?: readonly DefinitionProposition[];
+  controlesExternes?: readonly DefinitionControleExterne[];
   nonPrepare: readonly string[];
   limites: readonly string[];
 }
@@ -80,6 +98,8 @@ export interface CaseFormulaire extends DefinitionCase {
   neant: boolean;
   montant: ChaineDecimale | null;
   saisie: QualificationRenvoi | null;
+  /** Proposition reprise d'un autre tableau (jamais retenue sans saisie). */
+  proposition: { montant: ChaineDecimale; origine: string } | null;
 }
 export type CelluleCalc =
   | { statut: 'etabli'; montant: ChaineDecimale; code: string; etatCodeCase: EtatCodeCase; calcul: string; libelle: string; groupe: string }
@@ -106,6 +126,8 @@ export interface FormulaireProjet {
 export interface DemandeFormulaire {
   versionDonnees: number;
   renvois: readonly QualificationRenvoi[];
+  /** Valeurs établies d'autres tableaux (saisies retenues et calculs), par clé `<préfixe>_<code>` : propositions et rapprochements entre tableaux. */
+  valeursAutres?: Readonly<Record<string, ChaineDecimale>>;
 }
 
 const SEUIL = new Decimal(1_000_000);
@@ -117,7 +139,10 @@ export function preparerFormulaireCases(def: DefinitionFormulaire, demande: Dema
     const s = saisies.get(cle) ?? null;
     const statut = s === null ? 'a_saisir' : s.versionDonnees !== demande.versionDonnees ? 'a_revoir' : 'saisi';
     const montant = statut === 'saisi' ? s!.montant : null;
-    return { ...c, cle, etatCodeCase: 'lu_verifie', statut, neant: montant !== null && new Decimal(montant).isZero(), montant, saisie: s };
+    const p = def.propositions?.find((x) => x.code === c.code);
+    const autres = demande.valeursAutres ?? {};
+    const proposition = p !== undefined && statut !== 'saisi' && p.sources.every((k) => autres[k] !== undefined) ? { montant: versChaine(p.sources.reduce((a, k) => a.plus(autres[k]!), ZERO)), origine: p.origine } : null;
+    return { ...c, cle, etatCodeCase: 'lu_verifie', statut, neant: montant !== null && new Decimal(montant).isZero(), montant, saisie: s, proposition };
   });
   const valeurs = new Map<string, Decimal | null>();
   for (const c of cases) valeurs.set(c.code, c.statut === 'saisi' ? new Decimal(c.montant!) : null);
@@ -145,6 +170,16 @@ export function preparerFormulaireCases(def: DefinitionFormulaire, demande: Dema
     controles.push(ecart.isZero()
       ? { code: `${def.prefixe}_${k.code}`, statut: 'coherent', message: `${k.libelle} : le total saisi égale la somme de ses composantes. Contrôle indicatif (lecture de la disposition du formulaire).` }
       : { code: `${def.prefixe}_${k.code}`, statut: 'ecart', message: `${k.libelle} : le total saisi (${versChaine(total)}) diffère de la somme de ses composantes (${versChaine(somme)}). Rien n’est corrigé. Contrôle indicatif.`, ecart: versChaine(ecart) });
+  }
+
+  for (const k of def.controlesExternes ?? []) {
+    const interne = valeurs.get(k.case);
+    const externe = demande.valeursAutres?.[k.externe];
+    if (interne === null || interne === undefined || externe === undefined) continue;
+    const ecart = interne.minus(externe);
+    controles.push(ecart.isZero()
+      ? { code: `${def.prefixe}_${k.code}`, statut: 'coherent', message: `${k.libelle} : égal à la valeur de l’autre tableau (${versChaine(interne)}). Contrôle indicatif.` }
+      : { code: `${def.prefixe}_${k.code}`, statut: 'ecart', message: `${k.libelle} : ${versChaine(interne)} ici contre ${versChaine(new Decimal(externe))} dans l’autre tableau : le formulaire demande de les reporter l’un sur l’autre. Rien n’est corrigé. Contrôle indicatif.`, ecart: versChaine(ecart) });
   }
 
   let imputation: FormulaireProjet['imputation'] = null;

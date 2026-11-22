@@ -1,7 +1,7 @@
 /** Recette du moteur générique de formulaires par cases (D-118) et de la définition du 2058-A : intégrité, abstention, néant, calculs énoncés, imputation, contrôles indicatifs. */
 import { describe, expect, it } from 'vitest';
 import type { QualificationRenvoi } from './detail-resultat.js';
-import { FORMULAIRE_2058_A } from './definitions-2058.js';
+import { FORMULAIRE_2058_A, FORMULAIRE_2058_B } from './definitions-2058.js';
 import { cleCase, preparerFormulaireCases } from './formulaire-cases.js';
 
 const TRACE = { note: 'Saisie du cabinet pour l’essai', qualifieePar: 'u-1', le: '2026-12-31T10:00:00Z', versionDonnees: 7 };
@@ -80,5 +80,51 @@ describe('2058-A : contrôles indicatifs des cases de droite', () => {
   });
   it('décimaux exacts', () => {
     expect(calc(prep([rv('WR', '0.30'), rv('XH', '0.10')]), 'XI')).toMatchObject({ montant: '0.20' });
+  });
+});
+
+describe('2058-B : calculs énoncés, propositions reprises du 2058-A, rapprochements avec le 2058-A (D-119)', () => {
+  const rvB = (code: string, montant: string, s: Partial<QualificationRenvoi> = {}): QualificationRenvoi => ({ code: cleCase('B58', code), montant, ...TRACE, ...s });
+  const prepB = (renvois: QualificationRenvoi[] = [], valeursAutres: Record<string, string> = {}) => preparerFormulaireCases(FORMULAIRE_2058_B, { versionDonnees: 7, renvois, valeursAutres });
+  const calcB = (f: ReturnType<typeof prepB>, code: string) => f.calculs.find((c) => c.code === code)!;
+
+  it('intégrité : codes uniques, clés valides, calculs et propositions référant à des cases existantes', () => {
+    const codes = FORMULAIRE_2058_B.cases.map((c) => c.code);
+    expect(new Set(codes).size).toBe(codes.length);
+    expect(codes.length).toBe(5 + 1 + 22 + 1); // I : 5 cases ; II : 1 ; III : 22 ; IV : 1
+    expect(new Set(codes.map((c) => cleCase('B58', c))).size).toBe(codes.length);
+    for (const c of codes) expect(cleCase('B58', c)).toMatch(/^B58_[0-9A-Z]{2,5}$/);
+    expect(cleCase('B58', 'K4 bis')).toBe('B58_K4BIS');
+    const connus = new Set([...codes, ...FORMULAIRE_2058_B.calculs.map((c) => c.code)]);
+    for (const k of FORMULAIRE_2058_B.calculs) for (const x of k.composantes) expect(connus.has(x.code), x.code).toBe(true);
+    for (const p of FORMULAIRE_2058_B.propositions ?? []) expect(connus.has(p.code)).toBe(true);
+  });
+  it('sans saisie : K6, YK, YN et YO en abstention sans chiffre', () => {
+    const f = prepB();
+    for (const k of ['K6', 'YK', 'YN', 'YO']) expect(calcB(f, k).statut).toBe('abstention');
+    expect(f.cases.every((c) => c.statut === 'a_saisir' && c.proposition === null)).toBe(true);
+  });
+  it('K6 = K4 + K4 bis − K5 et YK = K6 + YJ (« différence », « somme »)', () => {
+    const f = prepB([rvB('K4', '1000.00'), rvB('K4 bis', '200.00'), rvB('K5', '300.00'), rvB('YJ', '50.00')]);
+    expect(calcB(f, 'K6')).toMatchObject({ statut: 'etabli', montant: '900.00' });
+    expect(calcB(f, 'YK')).toMatchObject({ statut: 'etabli', montant: '950.00' });
+  });
+  it('K5 et YJ proposés par le 2058-A, jamais retenus sans saisie', () => {
+    const f = prepB([], { A58_XB: '100.00', A58_XL: '250.00', A58_XO: '75.00' });
+    expect(f.cases.find((c) => c.code === 'K5')).toMatchObject({ statut: 'a_saisir', montant: null, proposition: { montant: '350.00' } });
+    expect(f.cases.find((c) => c.code === 'YJ')).toMatchObject({ statut: 'a_saisir', proposition: { montant: '75.00' } });
+    expect(calcB(f, 'K6').statut).toBe('abstention');
+    expect(prepB([], { A58_XB: '100.00' }).cases.find((c) => c.code === 'K5')!.proposition).toBeNull(); // source incomplète
+    expect(prepB([rvB('K5', '1.00')], { A58_XB: '100.00', A58_XL: '250.00' }).cases.find((c) => c.code === 'K5')!.proposition).toBeNull(); // saisi : plus de proposition
+  });
+  it('YN = ZV à 9S et YO = ZW à 9T quand toutes les lignes sont saisies ; rapprochement indicatif avec WI et WU du 2058-A', () => {
+    const lignes = FORMULAIRE_2058_B.calculs.find((k) => k.code === 'YN')!.composantes.map((x) => rvB(x.code, '10.00'));
+    const reprises = FORMULAIRE_2058_B.calculs.find((k) => k.code === 'YO')!.composantes.map((x) => rvB(x.code, '5.00'));
+    const f = prepB([...lignes, ...reprises], { A58_WI: '110.00', A58_WU: '50.00' });
+    expect(calcB(f, 'YN')).toMatchObject({ statut: 'etabli', montant: '110.00' });
+    expect(calcB(f, 'YO')).toMatchObject({ statut: 'etabli', montant: '55.00' });
+    expect(f.controles.find((c) => c.code === 'B58_YN_WI')?.statut).toBe('coherent');
+    expect(f.controles.find((c) => c.code === 'B58_YO_WU')).toMatchObject({ statut: 'ecart', ecart: '5.00' });
+    expect(prepB([...lignes.slice(1), ...reprises]).calculs.find((k) => k.code === 'YN')!.statut).toBe('abstention'); // ZV manquante
   });
 });

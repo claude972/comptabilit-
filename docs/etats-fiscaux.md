@@ -30,7 +30,7 @@ Périmètre explicite : **société commerciale soumise à l’impôt sur les so
 | 2033-G | partiel (D-117) | Nombre de filiales (905) et sept lignes par saisie ligne par ligne ; contrôles indicatifs | Tableaux supplémentaires |
 | 2056, 2057 | **non couvert** | — | Provisions, état des échéances |
 | 2058-A | partiel (D-118) | 73 cases par saisie ; XI, XJ, XN, XO calculés comme le formulaire et la notice ; contrôles indicatifs | Feuillets joints |
-| 2058-B, 2058-C | **non couvert** | — | Réintégrations et déductions extra-comptables, déficits, affectation du résultat |
+| 2058-B, 2058-C | partiel (D-119) | 29 et 47 cases par saisie ; K6, YK, YN, YO, ØF, ZH, ZJ, YX calculés comme le formulaire ; propositions et rapprochements avec le 2058-A | Libellés de nature des provisions, cellules sans code, rapprochement ZJ / YX avec le 2052 | | — | Réintégrations et déductions extra-comptables, déficits, affectation du résultat |
 | 2059-A à 2059-G | **non couvert** | — | Plus-values, valeur ajoutée fiscale, composition du capital, filiales |
 | 2033-C Immobilisations et amortissements (cadres I et II) | partiel (D-104) | Mêmes calculs que 2054 et 2055 au format simplifié, avec N-1 | Cadre III (plus-values et moins-values, prix de cession), colonne 5 (réévaluation) |
 | 2033-D à 2033-G | **non couvert** | — | Provisions et dérogatoires, valeur ajoutée, capital, filiales |

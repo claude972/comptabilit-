@@ -619,6 +619,62 @@ describe('2058-A (régime réel normal) : détermination du résultat fiscal par
   }, 120_000);
 });
 
+describe('2058-B et 2058-C (régime réel normal) : déficits, provisions non déductibles, affectation du résultat (D-119)', () => {
+  const forms = async () => (await liasse(exN, 'reel_normal')).json.formulairesCases as any[];
+  const unique = async (id: string) => (await forms()).find((f) => f.id === id);
+  const pb = (cle: string, montant: string, note = 'Saisie du cabinet pour l’essai') => api('remi', 'PUT', `/v1/exercices/${exN}/qualifications/renvois/B58_${cle}`, { montant, note });
+  const pc = (cle: string, montant: string, note = 'Saisie du cabinet pour l’essai') => api('remi', 'PUT', `/v1/exercices/${exN}/qualifications/renvois/C58_${cle}`, { montant, note });
+  const calc = (f: any, code: string) => f.calculs.find((c: any) => c.code === code);
+  const cas = (f: any, code: string) => f.cases.find((c: any) => c.code === code);
+
+  it('les trois formulaires du 2058 sont présents ; 2058-B : 29 cases, K6 / YK / YN / YO en abstention ; 2058-C : 47 cases', async () => {
+    const f = await forms();
+    expect(f.map((x) => x.id)).toEqual(['2058-A', '2058-B', '2058-C']);
+    const b = f[1], c = f[2];
+    expect(b.cases).toHaveLength(29);
+    for (const k of ['K6', 'YK', 'YN', 'YO']) expect(calc(b, k).statut).toBe('abstention');
+    expect(c.cases).toHaveLength(47);
+    expect(calc(c, 'ØF').statut).toBe('abstention');
+  }, 120_000);
+
+  it('2058-B : K5 et YJ proposés par le 2058-A, K6 et YK calculés comme le formulaire, YN et YO rapprochés de WI et WU', async () => {
+    // État du 2058-A laissé par l'essai précédent : XB et XL saisis ? XL = 8000 (imputation excessive), XO absent (bénéfice).
+    let b = await unique('2058-B');
+    const k5 = cas(b, 'K5');
+    expect(k5).toMatchObject({ statut: 'a_saisir', montant: null });
+    for (const [c, m] of [['K4', '1000.00'], ['K4BIS', '200.00'], ['K5', '300.00'], ['YJ', '0.00']] as const) expect((await pb(c, m, 'Suivi des déficits (essai)')).statut, c).toBeLessThan(300);
+    b = await unique('2058-B');
+    expect(calc(b, 'K6')).toMatchObject({ statut: 'etabli', montant: '900.00' });
+    expect(calc(b, 'YK')).toMatchObject({ statut: 'etabli', montant: '900.00' });
+    for (const code of ['ZV', 'ZW', '8X', '8Y', '8Z', '9A', '9B', '9C', '9D', '9E', '9F', '9G', '9H', '9J', '9K', '9L', '9M', '9N', '9P', '9R', '9S', '9T']) expect((await pb(code, code === 'ZV' ? '300.00' : '0.00', code === 'ZV' ? 'Indemnités de congés à payer (essai)' : 'Néant : aucune provision de cette nature')).statut, code).toBeLessThan(300);
+    b = await unique('2058-B');
+    expect(calc(b, 'YN')).toMatchObject({ statut: 'etabli', montant: '300.00' });
+    expect(calc(b, 'YO')).toMatchObject({ statut: 'etabli', montant: '0.00' });
+    expect(b.controles.find((c: any) => c.code === 'B58_YN_WI')).toBeUndefined(); // WI du 2058-A non saisie : pas de rapprochement
+    expect((await api('remi', 'PUT', `/v1/exercices/${exN}/qualifications/renvois/A58_WI`, { montant: '250.00', note: 'Provisions non déductibles du 2058-A (essai)' })).statut).toBeLessThan(300);
+    b = await unique('2058-B');
+    expect(b.controles.find((c: any) => c.code === 'B58_YN_WI')).toMatchObject({ statut: 'ecart', ecart: '50.00' });
+    expect(cas(b, 'YN')).toBeUndefined(); // YN est un calcul, pas une case saisissable
+  }, 120_000);
+
+  it('2058-C : TOTAL I et TOTAL II calculés, rapprochés (« le total I doit être égal au total II »), ZJ et YX calculés ; refus de forme', async () => {
+    for (const [c, m] of [['0C', '1000.00'], ['0D', '500.00'], ['0E', '0.00']] as const) expect((await pc(c, m, 'Origines du résultat (essai)')).statut, c).toBeLessThan(300);
+    for (const [c, m] of [['ZB', '75.00'], ['ZD', '0.00'], ['ZE', '1000.00'], ['ZF', '0.00'], ['ZG', '425.00']] as const) expect((await pc(c, m, 'Affectation du résultat (essai)')).statut, c).toBeLessThan(300);
+    let f = await unique('2058-C');
+    expect(calc(f, 'ØF')).toMatchObject({ statut: 'etabli', montant: '1500.00' });
+    expect(calc(f, 'ZH')).toMatchObject({ statut: 'etabli', montant: '1500.00' });
+    expect(f.controles.find((c: any) => c.code === 'C58_I_EGAL_II').statut).toBe('coherent');
+    expect((await pc('ZG', '400.00', 'Report à nouveau modifié (essai)')).statut).toBeLessThan(300);
+    f = await unique('2058-C');
+    expect(f.controles.find((c: any) => c.code === 'C58_I_EGAL_II')).toMatchObject({ statut: 'ecart', ecart: '25.00' });
+    for (const [c, m] of [['YW', '100.00'], ['9Z', '40.00']] as const) expect((await pc(c, m, 'Impôts et taxes (essai)')).statut, c).toBeLessThan(300);
+    expect(calc(await unique('2058-C'), 'YX')).toMatchObject({ statut: 'etabli', montant: '140.00' });
+    expect(calc(await unique('2058-C'), 'ZJ').statut).toBe('abstention');
+    expect((await pc('YW', '-1.00')).statut).toBe(400);
+    expect((await pc('ZZZ', '1.00')).statut).toBe(404);
+  }, 120_000);
+});
+
 describe('détail du compte de résultat : qualification tracée, abstention sans qualification', () => {
   it('sans qualification : totaux de la balance, France et exportations en abstention, renvois à saisir, exceptionnel détaillé', async () => {
     const d = await detail();

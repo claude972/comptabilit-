@@ -20,6 +20,9 @@ import {
   preparerFormulaireCases,
   cleCase,
   FORMULAIRE_2058_A,
+  FORMULAIRE_2058_B,
+  FORMULAIRE_2058_C,
+  type FormulaireProjet,
   type DefinitionFormulaire,
   preparerSaisiesTableaux,
   validerSaisieTableau,
@@ -62,9 +65,9 @@ const TABLEAU_SAISI = /^(2033C_III|2054BIS_A|2054BIS_B|2055_B|2055_C|2033D_C|203
 const LIGNE_TABLEAU = /^(0[1-9]|1[0-3]|REG|PV19|NEANT|B1|B2|NB)$/;
 const COMPTE_CA = /^70[0-9A-Za-z]{1,13}$/;
 /** Formulaires du régime réel normal servis par saisie case par case (moteur générique, D-118). */
-const FORMULAIRES_CASES: readonly DefinitionFormulaire[] = [FORMULAIRE_2058_A];
+const FORMULAIRES_CASES: readonly DefinitionFormulaire[] = [FORMULAIRE_2058_A, FORMULAIRE_2058_B, FORMULAIRE_2058_C];
 const CLES_FORMULAIRES_CASES = FORMULAIRES_CASES.flatMap((f) => f.cases.map((c) => cleCase(f.prefixe, c.code)));
-const CODE_RENVOI = /^[0-9A-Z_]{2,7}$/;
+const CODE_RENVOI = /^[0-9A-Z_]{2,12}$/;
 const RENVOIS_CONNUS = [...RENVOIS, ...RENVOIS_RSI, ...LIGNES_RESULTAT_FISCAL.map((l) => ({ code: l.cle })), ...DETAIL_RESULTAT_FISCAL.map((l) => ({ code: l.cle })), ...CLES_2033_D.map((cle) => ({ code: cle })), ...CLES_2033_E.map((cle) => ({ code: cle })), ...CLES_FORMULAIRES_CASES.map((cle) => ({ code: cle }))];
 /** Lignes du résultat fiscal qui se saisissent en positif ; seule la case 248 (écart de valeurs liquidatives négatif, « entre parenthèses » selon la notice) peut être négative. */
 const CLES_RESULTAT_FISCAL = new Set([...CLES_2033_D, ...CLES_2033_E, ...CLES_FORMULAIRES_CASES, ...LIGNES_RESULTAT_FISCAL.map((l) => l.cle), ...DETAIL_RESULTAT_FISCAL.filter((l) => !l.negatifPossible).map((l) => l.cle)]);
@@ -358,7 +361,18 @@ export class FiscalController {
       // Tableau 2033-G (filiales et participations, régime simplifié, D-117) : saisie ligne par ligne.
       const formulaire2033G = regime === 'reel_simplifie' ? preparerFormulaire2033G({ versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies }) : null;
       // Formulaires du régime réel normal par saisie case par case (2058-A, D-118).
-      const formulairesCases = regime === 'reel_normal' ? FORMULAIRES_CASES.map((f) => preparerFormulaireCases(f, { versionDonnees: exercice.versionDonnees, renvois: renvoisSaisis })) : null;
+      // Les formulaires sont préparés dans l'ordre : les valeurs établies des précédents (saisies retenues, calculs, résultat après imputation du 2058-A) alimentent les propositions et rapprochements des suivants.
+      const formulairesCases: FormulaireProjet[] | null = regime === 'reel_normal' ? [] : null;
+      if (formulairesCases !== null) {
+        const valeursAutres: Record<string, string> = {};
+        for (const def of FORMULAIRES_CASES) {
+          const f = preparerFormulaireCases(def, { versionDonnees: exercice.versionDonnees, renvois: renvoisSaisis, valeursAutres });
+          formulairesCases.push(f);
+          for (const x of f.cases) if (x.statut === 'saisi' && x.montant !== null) valeursAutres[x.cle] = x.montant;
+          for (const k of f.calculs) if (k.statut === 'etabli') valeursAutres[cleCase(def.prefixe, k.code)] = k.montant;
+          if (f.imputation?.apres.statut === 'etabli') valeursAutres[cleCase(def.prefixe, f.imputation.apres.sens === 'deficit' ? 'XO' : 'XN')] = f.imputation.apres.montant;
+        }
+      }
       const tableauxImmobilisations = preparerTableauxImmobilisations({
         lignes,
         exercice: { debut: exercice.debut, fin: exercice.fin },

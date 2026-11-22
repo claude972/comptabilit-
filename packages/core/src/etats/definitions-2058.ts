@@ -125,3 +125,160 @@ export const FORMULAIRE_2058_A: DefinitionFormulaire = {
     'Statut « projet » : aucune transmission, aucune validation professionnelle.',
   ],
 };
+
+const plusB = (...codes: string[]) => codes.map((code) => ({ code, signe: 1 as const }));
+const LIGNES_PROVISIONS_B = [
+  ['ZV', 'ZW', 'Indemnités pour congés à payer, charges sociales et fiscales correspondantes non déductibles (art. 39-1.1° bis al. 2 du CGI)'],
+  ['8X', '8Y', 'Provisions pour risques et charges, ligne 1'],
+  ['8Z', '9A', 'Provisions pour risques et charges, ligne 2'],
+  ['9B', '9C', 'Provisions pour risques et charges, ligne 3'],
+  ['9D', '9E', 'Provisions pour dépréciation, ligne 1'],
+  ['9F', '9G', 'Provisions pour dépréciation, ligne 2'],
+  ['9H', '9J', 'Provisions pour dépréciation, ligne 3'],
+  ['9K', '9L', 'Charges à payer, ligne 1'],
+  ['9M', '9N', 'Charges à payer, ligne 2'],
+  ['9P', '9R', 'Charges à payer, ligne 3'],
+  ['9S', '9T', 'Charges à payer, ligne 4'],
+] as const;
+
+/**
+ * 2058-B-SD « Déficits, indemnités pour congés à payer et provisions non déductibles » (D-119) : page 11 de `2050-liasse_5320.pdf`, cases lues par
+ * extraction positionnée puis vérifiées sur le rendu image (2026-11-22). Calculs énoncés par le formulaire : K6 = K4 + K4 bis − K5 (« différence »),
+ * YK = K6 + YJ (« somme »), YN = ZV à 9S et YO = ZW à 9T (« totaux »). K5 (« total lignes XB et XL du 2058-A ») et YJ (« ligne XO du 2058-A ») sont PROPOSÉES
+ * à partir du 2058-A, jamais retenues sans saisie ; YN et YO sont rapprochés indicativement des lignes WI et WU du 2058-A (« à reporter »).
+ */
+export const FORMULAIRE_2058_B: DefinitionFormulaire = {
+  id: '2058-B',
+  titre: '2058-B — Déficits, indemnités pour congés à payer et provisions non déductibles',
+  prefixe: 'B58',
+  source: '2050-liasse_5320.pdf, page 11 (2058-B-SD, millésime 2026).',
+  groupes: [
+    { id: 'I', titre: 'I — Suivi des déficits' },
+    { id: 'II', titre: 'II — Indemnités pour congés à payer, charges sociales et fiscales correspondantes' },
+    { id: 'III', titre: 'III — Provisions et charges à payer non déductibles pour l’assiette de l’impôt' },
+    { id: 'IV', titre: 'Conséquences de la méthode par composants (art. 237 septies du CGI)' },
+  ],
+  cases: [
+    c('K4', 'Déficits restant à reporter au titre de l’exercice précédent', 'I', 'Montant porté sur la ligne YK du 2058-B de l’exercice précédent (formulaire, renvoi 1) : à saisir, jamais déduit.'),
+    c('K4 bis', 'Déficits transférés de plein droit (art. 209-II-2 du CGI)', 'I', 'Identifier, opération par opération, la société d’origine sur feuillet séparé (formulaire, renvoi 2).'),
+    { code: 'K4 ter', libelle: 'Nombre d’opérations sur l’exercice (déficits transférés de plein droit)', groupe: 'I', type: 'entier' as const },
+    c('K5', 'Déficits imputés (total des lignes XB et XL du tableau 2058-A)', 'I', 'Proposition reprise du 2058-A quand XB et XL y sont saisis ; jamais retenue sans saisie.'),
+    c('YJ', 'Déficit de l’exercice (tableau 2058-A, ligne XO)', 'I', 'Proposition reprise du 2058-A quand le résultat après imputation est un déficit ; jamais retenue sans saisie.'),
+    c('ZT', 'Montant déductible correspondant aux droits acquis par les salariés (art. 39-1. 1° bis al. 1 du CGI), dotations de l’exercice', 'II'),
+    ...LIGNES_PROVISIONS_B.flatMap(([d, r, lib]) => [c(d, `${lib} — dotation de l’exercice`, 'III'), c(r, `${lib} — reprises sur l’exercice`, 'III')]),
+    c('L1', 'Conséquences de la méthode par composants : montant au début de l’exercice', 'IV', 'Seule case codée de ce cadre ; les cellules « imputations » et « montant net à la fin » n’ont pas de code sur le formulaire.'),
+  ],
+  calculs: [
+    { code: 'K6', libelle: 'Déficits reportables (différence K4 + K4 bis − K5)', groupe: 'I', composantes: [{ code: 'K4', signe: 1 }, { code: 'K4 bis', signe: 1 }, { code: 'K5', signe: -1 }] },
+    { code: 'YK', libelle: 'Total des déficits restant à reporter (somme K6 + YJ)', groupe: 'I', composantes: [{ code: 'K6', signe: 1 }, { code: 'YJ', signe: 1 }] },
+    { code: 'YN', libelle: 'TOTAUX : dotations (YN = ZV à 9S), à reporter ligne WI du 2058-A', groupe: 'III', composantes: plusB(...LIGNES_PROVISIONS_B.map((l) => l[0])) },
+    { code: 'YO', libelle: 'TOTAUX : reprises (YO = ZW à 9T), à reporter ligne WU du 2058-A', groupe: 'III', composantes: plusB(...LIGNES_PROVISIONS_B.map((l) => l[1])) },
+  ],
+  controles: [],
+  propositions: [
+    { code: 'K5', origine: 'Total des lignes XB et XL du 2058-A (saisies du cabinet)', sources: ['A58_XB', 'A58_XL'] },
+    { code: 'YJ', origine: 'Ligne XO du 2058-A (déficit après imputation)', sources: ['A58_XO'] },
+  ],
+  controlesExternes: [
+    { code: 'YN_WI', libelle: 'YN (dotations) et ligne WI du 2058-A', case: 'YN', externe: 'A58_WI' },
+    { code: 'YO_WU', libelle: 'YO (reprises) et ligne WU du 2058-A', case: 'YO', externe: 'A58_WU' },
+  ],
+  nonPrepare: [
+    'Libellé de nature de chaque ligne de provisions et de charges à payer (cellule de gauche, « à détailler sur feuillet séparé ») : à porter dans la justification de la saisie ; feuillet joint non préparé.',
+    'Cadre « conséquences de la méthode par composants » : seule la case L1 porte un code ; les cellules « imputations » et « montant net à la fin » (sans code) ne sont pas préparées.',
+    'Feuillet séparé des déficits transférés de plein droit : non préparé.',
+    'Aucune décision fiscale n’est prise par Comtaple.',
+  ],
+  limites: [
+    'Chaque case est une saisie justifiée du cabinet ; « néant » est une déclaration explicite ; une case sans saisie n’est jamais présumée nulle.',
+    'Calculés comme le formulaire l’énonce, uniquement quand toutes les composantes sont saisies : K6, YK, YN et YO.',
+    'Statut « projet » : aucune transmission, aucune validation professionnelle.',
+  ],
+};
+
+/**
+ * 2058-C-SD « Tableau d'affectation du résultat et renseignements divers » (D-119) : page 12 de `2050-liasse_5320.pdf`, cases lues par extraction
+ * positionnée puis vérifiées sur le rendu image. Calculs énoncés : TOTAL I (ØF) = origines, TOTAL II (ZH) = affectations (« le total I doit être égal au
+ * total II » : rapprochement indicatif), totaux de postes de charges (ZJ « total du poste correspondant à la ligne FW du 2052 », YX « ligne FX »).
+ */
+export const FORMULAIRE_2058_C: DefinitionFormulaire = {
+  id: '2058-C',
+  titre: '2058-C — Tableau d’affectation du résultat et renseignements divers',
+  prefixe: 'C58',
+  source: '2050-liasse_5320.pdf, page 12 (2058-C-SD, millésime 2026).',
+  groupes: [
+    { id: 'AFF', titre: 'Origines et affectations du résultat' },
+    { id: 'ENG', titre: 'Engagements' },
+    { id: 'ACH', titre: 'Détail des postes : autres achats et charges externes' },
+    { id: 'IMP', titre: 'Détail des postes : impôts et taxes' },
+    { id: 'DIV', titre: 'TVA et divers' },
+    { id: 'GRP', titre: 'Régime de groupe' },
+    { id: 'TI', titre: 'Travailleurs indépendants' },
+  ],
+  cases: [
+    c('ØC', 'Origines : report à nouveau figurant au bilan de l’exercice antérieur à celui pour lequel la déclaration est établie', 'AFF'),
+    c('ØD', 'Origines : résultat de l’exercice précédant celui pour lequel la déclaration est établie', 'AFF'),
+    c('ØE', 'Origines : prélèvements sur les réserves', 'AFF'),
+    c('ZB', 'Affectations aux réserves : réserves légales', 'AFF'),
+    c('ZD', 'Affectations aux réserves : autres réserves', 'AFF'),
+    c('ZE', 'Affectations : dividendes', 'AFF'),
+    c('ZF', 'Affectations : autres répartitions', 'AFF'),
+    c('ZG', 'Affectations : report à nouveau', 'AFF'),
+    c('YQ', 'Engagements de crédit-bail mobilier', 'ENG'),
+    c('J7', 'Engagements de crédit-bail mobilier : prix de revient des biens pris en crédit-bail', 'ENG', 'Case entre parenthèses du formulaire (« précisez le prix de revient »).'),
+    c('YR', 'Engagements de crédit-bail immobilier', 'ENG'),
+    c('YS', 'Effets portés à l’escompte et non échus', 'ENG'),
+    c('YT', 'Autres achats et charges externes : sous-traitance', 'ACH'),
+    c('XQ', 'Autres achats et charges externes : locations, charges locatives et de copropriété', 'ACH'),
+    c('J8', 'dont montant des loyers des biens pris en location pour une durée supérieure à 6 mois', 'ACH', 'Case entre parenthèses du formulaire.'),
+    c('YU', 'Autres achats et charges externes : personnel extérieur à l’entreprise', 'ACH'),
+    c('SS', 'Autres achats et charges externes : rémunérations d’intermédiaires et honoraires (hors rétrocessions)', 'ACH'),
+    c('YV', 'Autres achats et charges externes : rétrocessions d’honoraires, commissions et courtage', 'ACH'),
+    c('ST', 'Autres achats et charges externes : autres comptes', 'ACH'),
+    c('ES', 'dont cotisations versées aux organisations syndicales et professionnelles', 'ACH', 'Case entre parenthèses du formulaire.'),
+    c('YW', 'Impôts et taxes : CFE et CVAE', 'IMP'),
+    c('9Z', 'Impôts et taxes : autres impôts, taxes et versements assimilés', 'IMP'),
+    c('ZS', 'dont taxe intérieure de consommation sur les produits énergétiques', 'IMP', 'Case entre parenthèses du formulaire.'),
+    c('YY', 'TVA : montant de la TVA collectée', 'DIV'),
+    c('YZ', 'TVA : montant de la TVA déductible comptabilisée au cours de l’exercice au titre des biens et services ne constituant pas des immobilisations', 'DIV'),
+    c('ØB', 'Divers : montant brut des salaires (cf. dernière déclaration sociale nominative)', 'DIV'),
+    c('ØS', 'Divers : montant de la plus-value constatée en franchise d’impôt lors de la première option pour le régime simplifié d’imposition', 'DIV'),
+    c('ZK', 'Divers : taux d’intérêt le plus élevé servi aux associés à raison des sommes mises à la disposition de la société (en %)', 'DIV'),
+    { code: 'ZR', libelle: 'Divers : filiales et participations (liste au tableau 2059-G) : 1 si oui, 0 sinon', groupe: 'DIV', type: 'oui_non' as const },
+    c('RG', 'Divers : aides perçues ayant donné droit à la réduction d’impôt prévue au 4 de l’article 238 bis du CGI pour l’entreprise donatrice', 'DIV'),
+    c('RH', 'Divers : montant de l’investissement reçu ayant donné lieu à amortissement exceptionnel chez l’entreprise investisseur (art. 217 octies du CGI)', 'DIV'),
+    c('JA', 'Régime de groupe, société : résultat comme si elle n’avait jamais été membre du groupe', 'GRP'),
+    c('JK', 'Régime de groupe, société : plus-values à 15 %', 'GRP'),
+    c('JL', 'Régime de groupe, société : plus-values à 0 %', 'GRP'),
+    c('JM', 'Régime de groupe, société : plus-values à 19 %', 'GRP'),
+    c('JC', 'Régime de groupe, société : imputations', 'GRP'),
+    c('JD', 'Régime de groupe, groupe : résultat d’ensemble', 'GRP'),
+    c('JN', 'Régime de groupe, groupe : plus-values à 15 %', 'GRP'),
+    c('JO', 'Régime de groupe, groupe : plus-values à 0 %', 'GRP'),
+    c('JP', 'Régime de groupe, groupe : plus-values à 19 %', 'GRP'),
+    c('JF', 'Régime de groupe, groupe : imputations', 'GRP'),
+    { code: 'JH', libelle: 'Régime de groupe : indiquer 1 si société mère ou 2 si société filiale', groupe: 'GRP', type: 'entier' as const },
+    c('JJ', 'Régime de groupe : n° SIRET de la société mère du groupe', 'GRP', 'Identifiant numérique : à saisir sous forme de montant sans décimales ; le SIRET en clair figure dans la justification.'),
+    c('JQ', 'Travailleurs indépendants : sommes à réintégrer pour la détermination du revenu brut social', 'TI', 'Hors périmètre de la société à l’IS : à saisir ou déclarer néant.'),
+    c('JR', 'Travailleurs indépendants : sommes à déduire pour la détermination du revenu brut social', 'TI', 'Hors périmètre de la société à l’IS : à saisir ou déclarer néant.'),
+    c('JS', 'Travailleurs indépendants : revenu brut social (si le montant est négatif)', 'TI', 'Hors périmètre de la société à l’IS : à saisir ou déclarer néant.'),
+    c('JT', 'Travailleurs indépendants : revenu brut social (si le montant est positif)', 'TI', 'Hors périmètre de la société à l’IS : à saisir ou déclarer néant.'),
+  ],
+  calculs: [
+    { code: 'ØF', libelle: 'TOTAL I (origines)', groupe: 'AFF', composantes: plus('ØC', 'ØD', 'ØE') },
+    { code: 'ZH', libelle: 'TOTAL II (affectations)', groupe: 'AFF', composantes: plus('ZB', 'ZD', 'ZE', 'ZF', 'ZG') },
+    { code: 'ZJ', libelle: 'Total du poste correspondant à la ligne FW du tableau 2052-SD (autres achats et charges externes)', groupe: 'ACH', composantes: plus('YT', 'XQ', 'YU', 'SS', 'YV', 'ST') },
+    { code: 'YX', libelle: 'Total du poste correspondant à la ligne FX du tableau 2052-SD (impôts, taxes et versements assimilés)', groupe: 'IMP', composantes: plus('YW', '9Z') },
+  ],
+  controles: [{ code: 'I_EGAL_II', libelle: 'TOTAL I (origines) et TOTAL II (affectations)', total: 'ØF', somme: [{ code: 'ZH', signe: 1 }] }],
+  nonPrepare: [
+    'Rapprochement du total ZJ avec la ligne FW et du total YX avec la ligne FX du 2052 : non fait (les lignes calculées du 2052 ne sont pas reprises ici) ; la relation « total du poste » est lue sur le formulaire.',
+    'Cases JH et JJ (société mère ou filiale, SIRET de la société mère) : valeurs numériques seulement ; le SIRET en clair se porte dans la justification.',
+    'Aucune décision fiscale n’est prise par Comtaple.',
+  ],
+  limites: [
+    'Chaque case est une saisie justifiée du cabinet ; « néant » est une déclaration explicite ; une case sans saisie n’est jamais présumée nulle.',
+    'Calculés comme le formulaire l’énonce, uniquement quand toutes les composantes sont saisies : TOTAL I (ØF), TOTAL II (ZH), ZJ et YX. Le formulaire indique que le total I doit égaler le total II : rapprochement indicatif, jamais corrigé.',
+    'Statut « projet » : aucune transmission, aucune validation professionnelle.',
+  ],
+};

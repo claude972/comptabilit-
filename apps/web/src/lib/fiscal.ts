@@ -635,6 +635,7 @@ export interface CaseFormulaire {
   neant: boolean;
   montant: string | null;
   saisie: (TraceQualification & { code: string; montant: string }) | null;
+  proposition: { montant: string; origine: string } | null;
 }
 export type CelluleCalcFormulaire = { statut: 'etabli'; montant: string; code: string; etatCodeCase: string; calcul: string; libelle: string; groupe: string } | { statut: 'abstention'; motifs: string[]; code: string; etatCodeCase: string; libelle: string; groupe: string };
 export type ResultatSigneFormulaire = { statut: 'etabli'; sens: 'benefice' | 'deficit' | 'nul'; montant: string; codeCase: string } | { statut: 'abstention'; motifs: string[]; codesCases: string[] };

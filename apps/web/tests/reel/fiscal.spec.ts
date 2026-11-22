@@ -50,6 +50,11 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
     await expect(page.getByTestId('lignes-2055-b').locator('tr[data-b2055]')).toHaveCount(17);
     await expect(page.getByTestId('charges-reparties')).toBeVisible();
     await expect(page.getByTestId('lignes-2055-c').locator('tr[data-c2055]')).toHaveCount(2);
+    // 2058-B et 2058-C (D-119) : déficits, provisions non déductibles, affectation du résultat par saisie case par case.
+    await expect(page.getByTestId('formulaire-2058-B').locator('li[data-case-f]')).toHaveCount(29);
+    await expect(page.getByTestId('formulaire-2058-B').locator('li[data-calcul-f]')).toHaveCount(4);
+    await expect(page.getByTestId('formulaire-2058-C').locator('li[data-case-f]')).toHaveCount(47);
+    await expect(page.getByTestId('formulaire-2058-C').getByTestId('non-prepare-formulaire-2058-C')).toContainText('JH et JJ');
     // 2058-A (D-118) : détermination du résultat fiscal par saisie case par case ; XI / XJ en abstention sans TOTAL I et TOTAL II saisis.
     const a58 = page.getByTestId('formulaire-2058-A');
     await expect(a58).toBeVisible();

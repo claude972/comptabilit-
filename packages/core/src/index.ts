@@ -147,7 +147,7 @@ export { preparerFormulaire2033G } from './etats/formulaire-2033g.js';
 export type { DemandeFormulaire2033G, Formulaire2033GProjet, LigneFiliale } from './etats/formulaire-2033g.js';
 export { cleCase, preparerFormulaireCases } from './etats/formulaire-cases.js';
 export type { CaseFormulaire, CelluleCalc, DefinitionFormulaire, FormulaireProjet, ResultatSigneFormulaire } from './etats/formulaire-cases.js';
-export { FORMULAIRE_2058_A } from './etats/definitions-2058.js';
+export { FORMULAIRE_2058_A, FORMULAIRE_2058_B, FORMULAIRE_2058_C } from './etats/definitions-2058.js';
 
 // 16. tiers, factures et avoirs suivis, échéances et règlements — aide à la révision, recalculée à la lecture
 export { estDateIso } from './dates.js';

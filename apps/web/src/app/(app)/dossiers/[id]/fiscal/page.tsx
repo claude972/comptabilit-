@@ -1849,13 +1849,14 @@ function FormulaireCases({ f, fm, exerciceId, revision, evenements }: { f: Formu
                   {c.libelle} <span className="text-texte-doux">(case {c.code}, lue, vérifiée sur le PDF)</span> {badge(c.statut)}
                 </p>
                 {c.precision ? <p className="text-xs text-texte-doux">{c.precision}</p> : null}
+                {c.proposition && c.statut !== 'saisi' ? <p className="text-xs text-texte-doux" data-testid={`proposition-f-${c.cle}`}>Proposition : {fm(c.proposition.montant)} ({c.proposition.origine}), non retenue tant qu’elle n’est pas saisie.</p> : null}
                 {c.saisie ? (
                   <p className="text-xs text-texte-doux" data-testid={`trace-f-${c.cle}`}>
                     {c.neant ? 'Néant' : fm(c.saisie.montant)} · saisi le {formaterHorodatage(c.saisie.le)} sur la version {c.saisie.versionDonnees} des données · « {c.saisie.note} »
                   </p>
                 ) : null}
                 <HistoriqueLigne evenements={evenements} cle={c.cle} fm={fm} />
-                {revision ? <SaisirRenvoi exerciceId={exerciceId} code={c.cle} proposition={null} saisie={c.saisie ? { montant: c.saisie.montant, note: c.saisie.note } : null} avecNeant /> : null}
+                {revision ? <SaisirRenvoi exerciceId={exerciceId} code={c.cle} proposition={c.proposition?.montant ?? null} saisie={c.saisie ? { montant: c.saisie.montant, note: c.saisie.note } : null} avecNeant /> : null}
               </li>
             ))}
             {f.calculs.filter((k) => k.groupe === g.id).map((k) => (

@@ -314,6 +314,33 @@ if (process.argv.includes('--2058a')) {
   await page.getByTestId('controles-formulaire-2058-A').scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${sortie}fiscal-2058a-controles.png` });
 }
+// 2058-B et 2058-C (D-119) : saisies par les formulaires (MODIFIE le dossier fictif indiqué).
+if (process.argv.includes('--2058bc')) {
+  await page.goto(`${base}&vue=liasse&regime=reel_normal`);
+  await page.waitForLoadState('networkidle');
+  await page.evaluate(() => document.querySelectorAll('[data-testid^="groupe-formulaire-2058"]').forEach((d) => d.setAttribute('open', '')));
+  const saisir = async (prefixe, valeurs) => {
+    for (const [code, m] of Object.entries(valeurs)) {
+      const f = page.getByTestId(`renvoi-${prefixe}_${code}`);
+      await f.scrollIntoViewIfNeeded();
+      await f.getByLabel('Montant').fill(m);
+      await f.getByLabel('Justification (obligatoire)').fill(Number(m) === 0 ? 'Néant : aucune opération de cette nature (démonstration fictive)' : 'Valeur établie par le cabinet (démonstration fictive)');
+      await f.getByRole('button', { name: new RegExp(`Enregistrer le renvoi ${prefixe}_${code}`) }).click();
+      await f.getByText('Renvoi enregistré.').waitFor();
+    }
+  };
+  await saisir('B58', { K4: '1000.00', K4BIS: '0.00', K5: '2000.00', YJ: '0.00', ZT: '0.00', ZV: '300.00', ZW: '0.00', '8X': '0.00', '8Y': '0.00', '8Z': '0.00', '9A': '0.00', '9B': '0.00', '9C': '0.00', '9D': '0.00', '9E': '0.00', '9F': '0.00', '9G': '0.00', '9H': '0.00', '9J': '0.00', '9K': '250.00', '9L': '0.00', '9M': '0.00', '9N': '0.00', '9P': '0.00', '9R': '0.00', '9S': '0.00', '9T': '0.00' });
+  await saisir('C58', { '0C': '1000.00', '0D': '500.00', '0E': '0.00', ZB: '75.00', ZD: '0.00', ZE: '1000.00', ZF: '0.00', ZG: '425.00' });
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('controles-formulaire-2058-B').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2058b-controles.png` });
+  await page.evaluate(() => document.querySelectorAll('[data-testid^="groupe-formulaire-2058"]').forEach((d) => d.setAttribute('open', '')));
+  await page.locator('[data-calcul-f="YN"]').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2058b-totaux.png` });
+  await page.locator('[data-calcul-f="ØF"]').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2058c-affectation.png` });
+}
 // 2033-B (D-107) : « dont export » et lignes « dont » du régime simplifié.
 await page.goto(`${base}&vue=liasse&regime=reel_simplifie`);
 await page.waitForLoadState('networkidle');

@@ -7,7 +7,8 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { type LigneFec, analyserFec, enBlocs, genererFecSynthetique, genererReleveSynthetique } from '@comtaple/core';
-import { type Browser, type Page, expect, test } from '@playwright/test';
+import type { Browser, Page } from '@playwright/test';
+import { expect, test } from './base';
 import { ordinateur } from './profils';
 
 function motDePasse(): string {

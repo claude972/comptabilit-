@@ -10,7 +10,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { genererTexteFactureSynthetique } from '@comtaple/core';
-import { type Browser, type Page, expect, test } from '@playwright/test';
+import type { Browser, Page } from '@playwright/test';
+import { expect, test } from './base';
 import { ordinateur } from './profils';
 
 const RACINE = path.resolve(import.meta.dirname, '../../../..');

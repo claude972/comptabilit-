@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
+import { MarqueHydratation } from '@/components/hydratation';
 import { ServiceWorker } from '@/components/pwa';
 import './globals.css';
 
@@ -32,6 +33,7 @@ export default function Racine({ children }: { children: ReactNode }) {
         </a>
         {children}
         <ServiceWorker />
+        <MarqueHydratation />
       </body>
     </html>
   );

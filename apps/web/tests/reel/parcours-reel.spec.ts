@@ -1,7 +1,8 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { type Browser, type Page, expect, test } from '@playwright/test';
+import type { Browser, Page } from '@playwright/test';
+import { expect, test } from './base';
 import { ordinateur, telephone } from './profils';
 
 /** Mot de passe des comptes du royaume de développement, lu dans le .env local (jamais affiché). */

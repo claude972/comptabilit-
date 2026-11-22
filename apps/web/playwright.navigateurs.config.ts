@@ -12,7 +12,7 @@ export default defineConfig({
   expect: { timeout: 20_000 },
   workers: 1,
   fullyParallel: false,
-  reporter: [['list']],
+  reporter: [['list'], ['./tests/reel/diagnostic-reporter.ts']],
   use: { baseURL: 'http://localhost:3100', trace: 'retain-on-failure', actionTimeout: 60_000 },
   projects: [
     { name: 'firefox', use: { ...devices['Desktop Firefox'] } },

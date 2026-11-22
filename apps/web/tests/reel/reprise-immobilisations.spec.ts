@@ -7,7 +7,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './base';
 import { ordinateur } from './profils';
 
 const DOSSIER_DEMO = 'aaaaaaaa-0000-4000-8000-0000000000e1';

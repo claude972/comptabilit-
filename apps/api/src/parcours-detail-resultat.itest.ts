@@ -631,8 +631,8 @@ describe('2058-B et 2058-C (régime réel normal) : déficits, provisions non d�
 
   it('les trois formulaires du 2058 sont présents ; 2058-B : 29 cases, K6 / YK / YN / YO en abstention ; 2058-C : 47 cases', async () => {
     const f = await forms();
-    expect(f.map((x) => x.id)).toEqual(['2056', '2058-A', '2058-B', '2058-C', '2059-E']);
-    const b = f[2], c = f[3];
+    expect(f.map((x) => x.id)).toEqual(['2050-2051-RENVOIS', '2056', '2058-A', '2058-B', '2058-C', '2059-E']);
+    const b = f[3], c = f[4];
     expect(b.cases).toHaveLength(29);
     for (const k of ['K6', 'YK', 'YN', 'YO']) expect(calc(b, k).statut).toBe('abstention');
     expect(c.cases).toHaveLength(47);

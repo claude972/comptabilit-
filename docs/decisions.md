@@ -793,6 +793,13 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Limites, dites** : saisie du cabinet, non vérifiée au registre des immobilisations ; « dont composants » n'alimente aucune colonne calculée (la case n'est pas reliée à un total par le formulaire) ; pas de ventilation dans la colonne N-1.
 - **Preuves** : 6 tests du moteur (936 verts), essai d'intégration sur la pile réelle (71 verts avec le rapprochement fichier/balance), Playwright `fiscal.spec.ts`, captures `fiscal-2054-saisies-avant/apres.png` (`--2054cell`).
 
+### D-135 — Renvois des bilans 2050 et 2051 (régime réel normal) (2026-11-22)
+
+- **Source** : `2050-liasse_5320.pdf` (SHA-256 0bba3352…8453e1), pages 1 et 2 ; codes lus par extraction positionnée puis vérifiés sur le rendu image. **13 cases** servies par le moteur de formulaires par cases (préfixe `R51`) : bilan-actif CP (part à moins d'un an des immobilisations financières nettes) et CR (part à plus d'un an) ; bilan-passif 1B, 1C (écart de réévaluation incorporé au capital, réserve spéciale de réévaluation 1959), 1D, 1E (écart de réévaluation libre, réserve de réévaluation 1976), EK (dont écart d'équivalence), B1 (dont réserve spéciale des provisions pour fluctuation des cours), EJ (dont réserve relative à l'achat d'œuvres originales d'artistes vivants), EF (dont réserve spéciale des plus-values à long terme), EI (dont emprunts participatifs), EG (dettes et produits constatés d'avance à moins d'un an), EH (dont concours bancaires courants).
+- Saisie justifiée, historisée, néant distinct du manque. **Aucun calcul ni rapprochement inventé** : le formulaire n'énonce pas de relation arithmétique entre ces « dont » et les postes.
+- **Non préparé, dit** : cases sans code imprimé (« dont actions propres », « clause de réserve de propriété », « dont versé » du capital). Statut « projet ».
+- **Preuves** : test du moteur (937 verts), essai d'intégration (64 verts), Playwright `fiscal.spec.ts`.
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

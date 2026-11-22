@@ -14,8 +14,8 @@ Périmètre explicite : **société commerciale soumise à l’impôt sur les so
 
 | Tableau | État | Ce qui est préparé | Ce qui manque |
 |---|---|---|---|
-| 2050 Bilan-actif (réel normal) | partiel | Brut, amortissements et dépréciations, net de l’exercice, par poste ; colonne N-1 (D-103) | Renvois de bas de tableau, codes de cases ; euros entiers à l’écran (D-105) |
-| 2051 Bilan-passif | partiel | Montants de l’exercice (avant répartition) | idem |
+| 2050 Bilan-actif (réel normal) | partiel | Brut, amortissements et dépréciations, net de l’exercice, par poste ; colonne N-1 (D-103) ; renvois CP et CR saisis (D-135) | Autres renvois sans code, codes de cases ; euros entiers à l’écran (D-105) |
+| 2051 Bilan-passif | partiel | Montants de l’exercice (avant répartition) ; renvois (1) à (5) et « dont » saisis (D-135) | idem |
 | 2052 Compte de résultat | partiel | Montants de l’exercice jusqu’au résultat courant | idem + ventilation France / export du chiffre d’affaires |
 | 2053 Compte de résultat (suite) | partiel | Exceptionnel, participation, impôt, totaux, bénéfice ou perte | idem + détail des produits et charges exceptionnels |
 | 2033-A Bilan simplifié (régime simplifié) | partiel | Montants de l’exercice par ligne agrégée | idem + postes sans ligne certaine (voir 3.3) |

@@ -204,6 +204,7 @@ export {
   problemesCorrespondance,
   proposerCorrespondance,
 } from './immobilisations/reprise.js';
+export { estZip as estZipReprise, lireClasseurXlsx } from './immobilisations/xlsx.js';
 export type {
   CauseDoublon,
   ChampReprise,

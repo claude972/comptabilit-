@@ -126,16 +126,16 @@ export function ReprendreFichier({ entiteId }: { entiteId: string }) {
       <Carte className="space-y-3">
         <SousTitre className="text-base">1. Choisir le fichier</SousTitre>
         <p className="text-sm text-texte-doux">
-          Fichier CSV (séparateur point-virgule, virgule ou tabulation ; UTF-8 ou ISO-8859-15 ; virgule ou point décimal ; dates JJ/MM/AAAA ou AAAA-MM-JJ), {formaterTaille(TAILLE_MAX_FICHIER)} et 5 000 lignes au plus. Les classeurs Excel (.xlsx, .xls) ne sont pas pris en charge : enregistrez-les d’abord au format CSV.
+          Fichier CSV ou classeur XLSX (CSV : séparateur point-virgule, virgule ou tabulation ; UTF-8 ou ISO-8859-15 ; virgule ou point décimal ; dates JJ/MM/AAAA ou AAAA-MM-JJ), {formaterTaille(TAILLE_MAX_FICHIER)} et 5 000 lignes au plus. Les classeurs Excel au format .xlsx sont lus directement (première feuille visible non vide, valeurs enregistrées, dates en JJ/MM/AAAA, aucune formule évaluée) ; les anciens classeurs .xls ne sont pas pris en charge : enregistrez-les au format .xlsx ou CSV.
           Le contenu est lu comme du texte : aucune formule n’est exécutée.
         </p>
         <div>
-          <Libelle htmlFor={`${id}-fichier`}>Fichier des immobilisations (CSV)</Libelle>
+          <Libelle htmlFor={`${id}-fichier`}>Fichier des immobilisations (CSV ou XLSX)</Libelle>
           <input
             ref={entree}
             id={`${id}-fichier`}
             type="file"
-            accept=".csv,.txt,text/csv,text/plain"
+            accept=".csv,.txt,.xlsx,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             disabled={occupe}
             onChange={(e) => void choisir(e)}
             className="block min-h-11 w-full max-w-xl rounded-lg border border-bordure bg-surface px-3 py-2 text-base file:mr-3 file:min-h-9 file:rounded-md file:border-0 file:bg-surface-2 file:px-3"
@@ -163,6 +163,11 @@ export function ReprendreFichier({ entiteId }: { entiteId: string }) {
               <dt className="text-texte-doux">Empreinte SHA-256</dt>
               <dd className="break-all font-mono text-xs">{apercu.fichier.sha256}</dd>
             </dl>
+            {apercu.fichier.encodage === 'xlsx' ? (
+              <p className="text-sm text-texte-doux" data-testid="classeur-xlsx">
+                Classeur XLSX : séparateur et encodage sans objet.
+              </p>
+            ) : (
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <Libelle htmlFor={`${id}-sep`}>Séparateur {apercu.fichier.separateurImpose ? '(choisi)' : '(détecté)'}</Libelle>
@@ -204,6 +209,7 @@ export function ReprendreFichier({ entiteId }: { entiteId: string }) {
                 </Liste>
               </div>
             </div>
+            )}
             {apercu.fichier.avertissements.map((a) => (
               <Alerte key={a} ton="attention">
                 {a}

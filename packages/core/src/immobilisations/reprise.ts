@@ -12,6 +12,7 @@ import { Buffer } from 'node:buffer';
 import iconv from 'iconv-lite';
 import { normaliserEntete } from '../banque/csv.js';
 import { decoderTexteReleve } from '../banque/detection.js';
+import { estZip, lireClasseurXlsx } from './xlsx.js';
 import { dateCivileValide } from '../dates.js';
 import { analyserMontantFr, dec, versChaine } from '../montant.js';
 import { schemaImmobilisation } from './schema.js';
@@ -108,12 +109,12 @@ export interface FichierLu {
 function ouvrirFormat(octets: Buffer): void {
   const debut = octets.subarray(0, 8);
   if (debut[0] === 0x50 && debut[1] === 0x4b && (debut[2] === 0x03 || debut[2] === 0x05)) {
-    throw new ErreurReprise('format', 'Ce fichier est un classeur (XLSX, ODS) ou une archive : seul le format CSV est pris en charge. Enregistrez-le au format CSV (séparateur point-virgule) depuis votre tableur, puis déposez-le de nouveau.');
+    throw new ErreurReprise('format', 'Ce fichier est une archive (ODS, ZIP…) : seuls les formats CSV et XLSX sont pris en charge. Enregistrez-le au format CSV ou XLSX depuis votre tableur, puis déposez-le de nouveau.');
   }
   if (debut.equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]))) {
-    throw new ErreurReprise('format', 'Ce fichier est un ancien classeur (XLS) : seul le format CSV est pris en charge. Enregistrez-le au format CSV, puis déposez-le de nouveau.');
+    throw new ErreurReprise('format', 'Ce fichier est un ancien classeur (XLS) : seuls les formats CSV et XLSX sont pris en charge. Enregistrez-le au format XLSX ou CSV, puis déposez-le de nouveau.');
   }
-  if (debut.subarray(0, 4).toString('latin1') === '%PDF') throw new ErreurReprise('format', 'Ce fichier est un PDF : seul le format CSV est pris en charge.');
+  if (debut.subarray(0, 4).toString('latin1') === '%PDF') throw new ErreurReprise('format', 'Ce fichier est un PDF : seuls les formats CSV et XLSX sont pris en charge.');
 }
 
 function compterHorsGuillemets(ligne: string, c: string): number {
@@ -196,6 +197,28 @@ function decouper(texte: string, separateur: string): Array<{ numero: number; ce
   return sortie;
 }
 
+/** Classeur XLSX (D-124) : même résultat que le CSV, pour le même aperçu, la même correspondance et la même validation. */
+function lireXlsx(octets: Uint8Array): FichierLu {
+  const c = lireClasseurXlsx(octets);
+  const [entete, ...donnees] = c.lignes;
+  if (!entete) throw new ErreurReprise('sans_entetes', 'Le classeur ne contient aucune ligne d’en-têtes.');
+  if (entete.cellules.filter((x) => x.trim() !== '').length < 2) throw new ErreurReprise('sans_separateur', 'La première ligne du classeur ne comporte qu’une colonne : au moins deux colonnes sont attendues.');
+  if (donnees.length === 0) throw new ErreurReprise('sans_donnees', 'Le classeur ne contient que la ligne d’en-têtes : aucune immobilisation à reprendre.');
+  if (donnees.length > LIGNES_MAX_REPRISE) throw new ErreurReprise('trop_de_lignes', `Trop de lignes : ${donnees.length} lignes de données, maximum ${LIGNES_MAX_REPRISE}. Découpez le fichier en plusieurs fichiers.`);
+  const largeur = entete.cellules.length;
+  return {
+    encodage: 'xlsx',
+    encodageImpose: true,
+    separateur: ';',
+    separateurImpose: true,
+    entetes: entete.cellules.map((e) => e.trim()),
+    // Même nombre de colonnes que l'en-tête exigé par la lecture du CSV : une ligne plus longue est conservée pour être rejetée avec son motif.
+    lignes: donnees.map((l) => ({ numero: l.numero, cellules: l.cellules.length < largeur ? [...l.cellules, ...Array<string>(largeur - l.cellules.length).fill('')] : l.cellules })),
+    lignesVidesIgnorees: 0,
+    avertissements: c.avertissements,
+  };
+}
+
 /**
  * Lit un fichier CSV d'immobilisations. Refuse le fichier entier (ErreurReprise) s'il est vide, trop gros, d'un autre format,
  * binaire, sans séparateur, mal formé ou au-delà de 5 000 lignes. Ne lève jamais pour un problème propre à une ligne.
@@ -205,6 +228,7 @@ export function lireFichierReprise(octets: Uint8Array, options: OptionsLectureRe
   if (octets.length === 0) throw new ErreurReprise('vide', 'Le fichier est vide.');
   if (octets.length > TAILLE_MAX_REPRISE) throw new ErreurReprise('trop_gros', `Fichier trop volumineux : ${octets.length} octets, maximum ${TAILLE_MAX_REPRISE} octets (5 Mio).`);
   const tampon = Buffer.from(octets.buffer, octets.byteOffset, octets.byteLength);
+  if (estZip(octets)) return lireXlsx(octets);
   ouvrirFormat(tampon);
   const utf16 = (tampon[0] === 0xff && tampon[1] === 0xfe) || (tampon[0] === 0xfe && tampon[1] === 0xff);
   if (!utf16 && tampon.includes(0)) throw new ErreurReprise('binaire', 'Ce fichier contient des octets nuls : ce n’est pas un fichier texte CSV.');

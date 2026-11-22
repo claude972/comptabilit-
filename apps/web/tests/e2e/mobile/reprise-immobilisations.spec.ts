@@ -15,7 +15,7 @@ test.describe('reprise des immobilisations sur téléphone (émulation mobile, A
     await page.goto(`/dossiers/${ID.dupain}/inventaire/reprise`);
     expect(await sansDebordement(page)).toBe(true);
     const lignes = [ENTETE, ...Array.from({ length: 60 }, (_, i) => `Bien numéro ${i + 1} avec une désignation assez longue pour tester le retour à la ligne;218300;${100 + i},00;01/01/2024;12`), 'Ligne cassée;218300;abc;01/01/2024;12'];
-    await page.getByLabel('Fichier des immobilisations (CSV)').setInputFiles({ name: 'immobilisations.csv', mimeType: 'text/csv', buffer: Buffer.from(lignes.join('\n')) });
+    await page.getByLabel('Fichier des immobilisations (CSV ou XLSX)').setInputFiles({ name: 'immobilisations.csv', mimeType: 'text/csv', buffer: Buffer.from(lignes.join('\n')) });
     await expect(page.getByTestId('apercu-reprise')).toBeVisible();
     await expect(page.getByTestId('decomptes-apercu')).toContainText('Valides : 60');
     expect(await sansDebordement(page)).toBe(true);

@@ -95,7 +95,7 @@ describe('lecture du fichier : encodage, séparateur, structure', () => {
   });
 
   it('refus des formats non CSV : XLSX/ZIP, XLS, PDF, binaire', () => {
-    expect(refus(() => lireFichierReprise(new Uint8Array([0x50, 0x4b, 0x03, 0x04, 1, 2, 3]))).message).toMatch(/seul le format CSV/);
+    expect(refus(() => lireFichierReprise(new Uint8Array([0x50, 0x4b, 0x03, 0x04, 1, 2, 3]))).message).toMatch(/seuls les formats CSV et XLSX|archive ZIP illisible/);
     expect(refus(() => lireFichierReprise(new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 0]))).code).toBe('format');
     expect(refus(() => lireFichierReprise(octets('%PDF-1.7\n...'))).code).toBe('format');
     expect(refus(() => lireFichierReprise(new Uint8Array([65, 59, 66, 0, 10, 67]))).code).toBe('binaire');

@@ -39,7 +39,7 @@ test.describe('reprise des immobilisations — collaborateur', () => {
     await expect(page.getByText('Aucune reprise pour ce dossier.')).toBeVisible();
 
     // 1. Choix du fichier → aperçu.
-    await page.getByLabel('Fichier des immobilisations (CSV)').setInputFiles(fichier(FICHIER));
+    await page.getByLabel('Fichier des immobilisations (CSV ou XLSX)').setInputFiles(fichier(FICHIER));
     const apercu = page.getByTestId('apercu-reprise');
     await expect(apercu).toBeVisible();
     await expect(apercu).toContainText('Aperçu : rien n’est encore enregistré');
@@ -108,7 +108,7 @@ test.describe('reprise des immobilisations — collaborateur', () => {
     expect(csv).toMatch(/\r\n4;Rejetée;Date d’acquisition : Dégressif/);
 
     // Rejeu : le même fichier ne crée plus rien (toutes ses lignes valides ont déjà été reprises).
-    await page.getByLabel('Fichier des immobilisations (CSV)').setInputFiles(fichier(FICHIER));
+    await page.getByLabel('Fichier des immobilisations (CSV ou XLSX)').setInputFiles(fichier(FICHIER));
     await expect(page.getByTestId('decomptes-apercu')).toContainText('Valides : 0');
     await expect(page.locator('tr[data-ligne="2"]')).toContainText('déjà été reprise');
     await expect(page.getByText('Aucune ligne valide : il n’y a rien à importer.')).toBeVisible();
@@ -123,9 +123,9 @@ test.describe('reprise des immobilisations — collaborateur', () => {
 
   test('fichiers refusés avec un message clair : classeur Excel, trop de lignes, trop gros, vide', async ({ page }) => {
     await page.goto(reprise);
-    const entree = page.getByLabel('Fichier des immobilisations (CSV)');
+    const entree = page.getByLabel('Fichier des immobilisations (CSV ou XLSX)');
     await entree.setInputFiles(fichier(Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x14, 0, 6, 0]), 'immobilisations.xlsx'));
-    await expect(alerte(page)).toContainText('seul le format CSV est pris en charge');
+    await expect(alerte(page)).toContainText('seuls les formats CSV et XLSX sont pris en charge');
     await expect(page.getByTestId('apercu-reprise')).toHaveCount(0);
     const ligne = 'A;218300;1,00;;01/01/2024;12;;;';
     await entree.setInputFiles(fichier([ENTETE, ...Array.from({ length: 5001 }, () => ligne)].join('\n')));
@@ -144,7 +144,7 @@ test.describe('reprise des immobilisations — collaborateur', () => {
     await page.goto(reprise);
     const texte = ['Libellé,Compte,Montant,Date de mise en service,Durée', '"Écran œuvre, 2 pièces",218300,"1 234,50",2024-02-29,5'].join('\n');
     const brut = Buffer.from([...texte].map((c) => (c === 'œ' ? 0xbd : c.charCodeAt(0))));
-    await page.getByLabel('Fichier des immobilisations (CSV)').setInputFiles(fichier(brut));
+    await page.getByLabel('Fichier des immobilisations (CSV ou XLSX)').setInputFiles(fichier(brut));
     const apercu = page.getByTestId('apercu-reprise');
     await expect(apercu).toContainText('détecté : ISO-8859-15');
     await expect(page.getByLabel(/Séparateur/)).toHaveValue(',');
@@ -163,7 +163,7 @@ test.describe('reprise des immobilisations — collaborateur', () => {
 
   test('aperçu obsolète à la validation (une immobilisation identique apparaît entre-temps) : 409 expliqué, aperçu recalculé, rien d’importé', async ({ page }) => {
     await page.goto(reprise);
-    await page.getByLabel('Fichier des immobilisations (CSV)').setInputFiles(fichier([ENTETE, 'Bureau;218400;500,00;;01/01/2024;60;;;'].join('\n')));
+    await page.getByLabel('Fichier des immobilisations (CSV ou XLSX)').setInputFiles(fichier([ENTETE, 'Bureau;218400;500,00;;01/01/2024;60;;;'].join('\n')));
     await expect(page.getByTestId('decomptes-apercu')).toContainText('Valides : 1');
     await page.getByRole('checkbox', { name: /J’ai relu l’aperçu/ }).check();
     // Pendant ce temps, une personne saisit la même immobilisation à la main.
@@ -185,7 +185,7 @@ test.describe('reprise des immobilisations — collaborateur', () => {
   test('un lecteur voit les rapports mais ne peut pas importer ; le déposant est refusé', async ({ page, browser }) => {
     // Une première reprise par la collaboratrice.
     await page.goto(reprise);
-    await page.getByLabel('Fichier des immobilisations (CSV)').setInputFiles(fichier([ENTETE, 'Bureau;218400;500,00;;01/01/2024;60;;;'].join('\n')));
+    await page.getByLabel('Fichier des immobilisations (CSV ou XLSX)').setInputFiles(fichier([ENTETE, 'Bureau;218400;500,00;;01/01/2024;60;;;'].join('\n')));
     await page.getByRole('checkbox', { name: /J’ai relu l’aperçu/ }).check();
     await page.getByRole('button', { name: /Valider l’import/ }).click();
     await expect(page.getByTestId('rapport-reprise')).toBeVisible();
@@ -196,7 +196,7 @@ test.describe('reprise des immobilisations — collaborateur', () => {
     await alice.context().close();
     await page.goto(reprise);
     await expect(page.getByTestId('import-reserve')).toContainText('réservé au niveau « collaboration »');
-    await expect(page.getByLabel('Fichier des immobilisations (CSV)')).toHaveCount(0);
+    await expect(page.getByLabel('Fichier des immobilisations (CSV ou XLSX)')).toHaveCount(0);
     await expect(page.getByRole('region', { name: 'Reprises du fichier des immobilisations de ce dossier' })).toContainText('immobilisations.csv');
     expect(await statutBff(page, 'POST', `v1/dossiers/${ID.dupain}/reprises-immobilisations/apercu`, { nomFichier: 'a.csv', contenuBase64: Buffer.from(`${ENTETE}\nA;218300;1,00;;01/01/2024;12;;;`).toString('base64') })).toBe(403);
     // Le lien de l'inventaire devient une simple consultation des rapports.
@@ -206,7 +206,7 @@ test.describe('reprise des immobilisations — collaborateur', () => {
     const client = await (await browser.newContext({ storageState: etatDe('client') })).newPage();
     expect(await client.goto(`http://localhost:3000${reprise}`).then(() => statutBff(client, 'GET', `v1/dossiers/${ID.dupain}/reprises-immobilisations`))).toBe(403);
     await expect(client.getByTestId('rapport-reprise')).toHaveCount(0);
-    await expect(client.getByLabel('Fichier des immobilisations (CSV)')).toHaveCount(0);
+    await expect(client.getByLabel('Fichier des immobilisations (CSV ou XLSX)')).toHaveCount(0);
     await client.context().close();
   });
 });

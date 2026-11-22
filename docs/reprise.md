@@ -23,12 +23,13 @@ Document de passage pour reprendre le travail sans relire la conversation. À me
 | 2059-E, 2059-F, 2059-G (F et G = mêmes saisies que 2033-F et G) | D-120 | ce7e5ca |
 | 2059-A | D-121 | e7ae833 |
 | 2059-B, 2059-C, 2059-D (moteur de grilles) | D-122 | c248a4c |
-| 2065 (page 1) | D-123 | (ce commit) |
+| 2065 (page 1) | D-123 | ea2ccaf |
+| Import XLSX des immobilisations | D-124 | (ce commit) |
 
 ## Restes explicites (ordre de travail)
 1. ~~2059-A à D~~ FAIT (D-121, D-122).
 2. ~~2065~~ page 1 FAIT (D-123) ; restes : annexe 2065 bis-SD, cases à cocher, identification.
-3. **Import XLSX** de la reprise du fichier des immobilisations (exigence initiale, `exigences.md`, jamais optionnelle).
+3. ~~Import XLSX~~ FAIT (D-124) ; reste : rattachement de composants (`composantDe`) par import.
 4. **Restes des séries 2033 et 2058** : cadre IV du 2033-D (690 à 693), dates du 2033-E (024, 016, cessation), tableaux supplémentaires des 2033-F et G (et 2059-F et G), états joints du cadre III du 2033-C (> 10 cessions) et du cadre C du 2033-D (> 7 lignes), feuillet des déficits transférés de plein droit ; 2058-A : feuillets joints ; 2058-B : libellés de nature des provisions, cellules sans code du cadre « méthode par composants » ; 2058-C : rapprochement de ZJ et YX avec les lignes FW et FX du 2052.
 5. Restes antérieurs : 2054 (réévaluation, ventilation des diminutions, composants), 2056, 2057, renvois des tableaux 2050, 2051, 2054, 2055, 2033-A, scission biens / services des comptes 70 (convention à valider), détail (8) des exercices antérieurs du 2053.
 

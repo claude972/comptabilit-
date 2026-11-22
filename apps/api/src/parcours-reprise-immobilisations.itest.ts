@@ -5,6 +5,7 @@
  * dégressif enregistré mais non calculé, aucune immobilisation existante modifiée, journal historique intact.
  */
 import { randomBytes } from 'node:crypto';
+import { crc32, deflateRawSync } from 'node:zlib';
 import { genererFecSynthetique, TAILLE_MAX_REPRISE } from '@comtaple/core';
 import { urlBd } from '@comtaple/db';
 import { DEMO } from '@comtaple/db/amorcer';
@@ -359,7 +360,7 @@ describe('limites et fichiers refusés', () => {
     const xlsx = await apercu('chloe', dossier, Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0x06, 0x00]));
     expect(xlsx.statut).toBe(422);
     expect(xlsx.json).toMatchObject({ code: 'format' });
-    expect(xlsx.json.message).toMatch(/seul le format CSV est pris en charge/);
+    expect(xlsx.json.message).toMatch(/archive ZIP illisible|seuls les formats CSV et XLSX/);
     expect((await apercu('chloe', dossier, Buffer.from([65, 59, 0, 66]))).json.code).toBe('binaire');
     expect((await apercu('chloe', dossier, '   \n ')).json.code).toBe('vide');
     expect((await apercu('chloe', dossier, `${ENTETE}\n`)).json.code).toBe('sans_donnees');
@@ -429,5 +430,83 @@ describe('garanties de la base', () => {
     await expect(editeur.query(`insert into lignes_reprise_immobilisations (cabinet_id, entite_id, reprise_id, sha256, numero_ligne, statut, valeurs_lues) values ($1, $2, $3, repeat('d', 64), 99, 'creee', '{}')`, [cabinet, dossier, rep])).rejects.toThrow(/lignes_reprise_valeurs/);
     await expect(editeur.query(`insert into lignes_reprise_immobilisations (cabinet_id, entite_id, reprise_id, sha256, numero_ligne, statut, valeurs_lues) values ($1, $2, $3, repeat('d', 64), 99, 'rejetee', '{}')`, [cabinet, dossier, rep])).rejects.toThrow(/lignes_reprise_valeurs/);
     void fid;
+  });
+});
+
+/** Archive ZIP minimale (deflate) pour fabriquer des classeurs XLSX synthétiques. */
+function zipXlsx(parties: Record<string, string>): Buffer {
+  const locaux: Buffer[] = [];
+  const centraux: Buffer[] = [];
+  let decalage = 0;
+  for (const [nom, contenu] of Object.entries(parties)) {
+    const brut = Buffer.from(contenu, 'utf8');
+    const donnees = deflateRawSync(brut);
+    const nomB = Buffer.from(nom, 'utf8');
+    const crc = crc32(brut);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(20, 4); local.writeUInt16LE(8, 8); local.writeUInt32LE(crc, 14); local.writeUInt32LE(donnees.length, 18); local.writeUInt32LE(brut.length, 22); local.writeUInt16LE(nomB.length, 26);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0); central.writeUInt16LE(20, 4); central.writeUInt16LE(20, 6); central.writeUInt16LE(8, 10); central.writeUInt32LE(crc, 16); central.writeUInt32LE(donnees.length, 20); central.writeUInt32LE(brut.length, 24); central.writeUInt16LE(nomB.length, 28); central.writeUInt32LE(decalage, 42);
+    locaux.push(local, nomB, donnees);
+    centraux.push(central, nomB);
+    decalage += 30 + nomB.length + donnees.length;
+  }
+  const rep = Buffer.concat(centraux);
+  const fin = Buffer.alloc(22);
+  const n = Object.keys(parties).length;
+  fin.writeUInt32LE(0x06054b50, 0); fin.writeUInt16LE(n, 8); fin.writeUInt16LE(n, 10); fin.writeUInt32LE(rep.length, 12); fin.writeUInt32LE(decalage, 16);
+  return Buffer.concat([...locaux, rep, fin]);
+}
+
+describe('classeur XLSX (D-124) : même aperçu, même validation, mêmes garde-fous que le CSV', () => {
+  const NS = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
+  const chaines = ['Désignation', 'Compte', 'Valeur brute', 'Date de mise en service', 'Durée (mois)', 'Fourgon XLSX (fictif)', '=HYPERLINK("http://exemple.test","x")'];
+  const classeur = Buffer.from(
+    zipXlsx({
+      'xl/workbook.xml': `<workbook ${NS} xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Immo" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+      'xl/_rels/workbook.xml.rels': '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="x" Target="worksheets/sheet1.xml"/></Relationships>',
+      'xl/sharedStrings.xml': `<sst ${NS}>${chaines.map((c) => `<si><t>${c.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;')}</t></si>`).join('')}</sst>`,
+      'xl/styles.xml': `<styleSheet ${NS}><cellXfs count="2"><xf numFmtId="0"/><xf numFmtId="14"/></cellXfs></styleSheet>`,
+      'xl/worksheets/sheet1.xml': `<worksheet ${NS}><sheetData><row r="1">${[0, 1, 2, 3, 4].map((i) => `<c r="${'ABCDE'[i]}1" t="s"><v>${i}</v></c>`).join('')}</row><row r="2"><c r="A2" t="s"><v>5</v></c><c r="B2"><v>218200</v></c><c r="C2"><v>23500.75</v></c><c r="D2" s="1"><v>45366</v></c><c r="E2"><v>60</v></c></row><row r="3"><c r="A3" t="s"><v>6</v></c><c r="B3"><v>218300</v></c><c r="C3"><v>100</v></c><c r="D3" s="1"><v>45366</v></c><c r="E3"><v>12</v></c></row></sheetData></worksheet>`,
+    }),
+  );
+  let d = '';
+  const xlsxCorps = (extra: Record<string, unknown> = {}) => ({ nomFichier: 'immobilisations.xlsx', contenuBase64: classeur.toString('base64'), ...extra });
+
+  it('aperçu sans écriture : colonnes proposées, dates lues JJ/MM/AAAA, formule neutralisée, rien en base', async () => {
+    ({ dossier: d } = await creerDossier(`Société d’essai XLSX ${SEL} SAS (fictive)`));
+    const ap = await api('chloe', 'POST', `/v1/dossiers/${d}/reprises-immobilisations/apercu`, xlsxCorps());
+    expect(ap.statut).toBe(200);
+    expect(ap.json.fichier).toMatchObject({ encodage: 'xlsx', nbLignes: 2 });
+    expect(ap.json.fichier.avertissements.join(' ')).toMatch(/formules ne sont pas évaluées/);
+    expect(ap.json.correspondance).toMatchObject({ libelle: 0, compteImmobilisation: 1, baseAmortissable: 2, dateMiseEnService: 3, dureeMois: 4 });
+    expect(ap.json.lignes[0]).toMatchObject({ ligne: 2, statut: 'valide', lues: { dateMiseEnService: '15/03/2024', baseAmortissable: '23500,75' } });
+    expect(ap.json.lignes[1].lues.libelle).toBe('=HYPERLINK("http://exemple.test","x")'); // valeur conservée telle quelle, neutralisée à l'affichage
+    expect(await compter('immobilisations', d)).toBe(0);
+    expect(await compter('reprises_immobilisations', d)).toBe(0);
+  });
+
+  it('validation : immobilisations créées avec les dates et montants exacts ; rejeu idempotent ; un déposant est refusé', async () => {
+    const ap = await api('chloe', 'POST', `/v1/dossiers/${d}/reprises-immobilisations/apercu`, xlsxCorps());
+    const corpsValidation = xlsxCorps({ correspondance: ap.json.correspondance, empreinteApercu: ap.json.empreinteApercu, confirmation: true });
+    expect((await api('client', 'POST', `/v1/dossiers/${d}/reprises-immobilisations`, corpsValidation)).statut).toBe(403);
+    const r = await api('chloe', 'POST', `/v1/dossiers/${d}/reprises-immobilisations`, corpsValidation);
+    expect(r.statut).toBeLessThan(300);
+    const lignes = (await editeur.query(`select libelle, base_amortissable::text as base, date_mise_en_service::text as date, duree_mois from immobilisations where entite_id = $1 order by base_amortissable desc`, [d])).rows;
+    expect(lignes[0]).toMatchObject({ libelle: 'Fourgon XLSX (fictif)', base: '23500.75', date: '2024-03-15', duree_mois: 60 });
+    expect(await compter('immobilisations', d)).toBe(2);
+    const rejeu = await api('chloe', 'POST', `/v1/dossiers/${d}/reprises-immobilisations`, corpsValidation);
+    expect(rejeu.statut).toBeLessThan(300);
+    expect(await compter('immobilisations', d)).toBe(2);
+  });
+
+  it('classeur hostile : archive tronquée, partie corrompue, XML à DOCTYPE : 422 motivés, rien d’écrit', async () => {
+    const avant = await compter('reprises_immobilisations', d);
+    expect((await api('chloe', 'POST', `/v1/dossiers/${d}/reprises-immobilisations/apercu`, xlsxCorps({ contenuBase64: classeur.subarray(0, 120).toString('base64') }))).statut).toBe(422);
+    const xxe = zipXlsx({ 'xl/workbook.xml': '<!DOCTYPE x [<!ENTITY a "b">]><workbook/>' });
+    const r = await api('chloe', 'POST', `/v1/dossiers/${d}/reprises-immobilisations/apercu`, { nomFichier: 'x.xlsx', contenuBase64: xxe.toString('base64') });
+    expect(r.statut).toBe(422);
+    expect(r.json).toMatchObject({ code: 'format' });
+    expect(await compter('reprises_immobilisations', d)).toBe(avant);
   });
 });

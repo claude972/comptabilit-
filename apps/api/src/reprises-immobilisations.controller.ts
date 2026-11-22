@@ -20,6 +20,7 @@ import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery, ApiTags } from '@nestjs
 import {
   CHAMPS_REPRISE,
   CODES_CHAMPS_REPRISE,
+  estZipReprise,
   type CodeChampReprise,
   type CorrespondanceColonnes,
   ErreurReprise,
@@ -151,7 +152,7 @@ export class ReprisesImmobilisationsController {
   @ApiOperation({
     summary: 'APERÇU d’une reprise du fichier des immobilisations (CSV) : aucune écriture (niveau collaboration)',
     description:
-      'Lit le fichier (CSV, séparateur « ; » « , » ou tabulation détecté, UTF-8 ou ISO-8859-15 détecté, virgule ou point décimal, dates JJ/MM/AAAA ou AAAA-MM-JJ ; les classeurs XLSX/XLS ne sont pas pris en charge), propose la correspondance des colonnes d’après les en-têtes usuels (sans jamais deviner : une durée sans unité, une colonne ambiguë ne sont pas proposées) et renvoie, pour chaque ligne, son statut (valide, invalide avec motif, doublon). ' +
+      'Lit le fichier (CSV, séparateur « ; » « , » ou tabulation détecté, UTF-8 ou ISO-8859-15 détecté, virgule ou point décimal, dates JJ/MM/AAAA ou AAAA-MM-JJ ; les classeurs XLSX sont lus directement, première feuille visible non vide, valeurs enregistrées sans évaluer de formule ; les anciens classeurs XLS ne sont pas pris en charge), propose la correspondance des colonnes d’après les en-têtes usuels (sans jamais deviner : une durée sans unité, une colonne ambiguë ne sont pas proposées) et renvoie, pour chaque ligne, son statut (valide, invalide avec motif, doublon). ' +
       'Rien n’est écrit : ni immobilisation, ni fichier, ni journal. Le contenu est du texte inerte : aucune formule n’est évaluée. `empreinteApercu` est à renvoyer à la validation. Limites : 5 Mio, 5 000 lignes de données (refus 413 au-delà). `correspondance` (indice de colonne par champ) est facultative : sans elle, la proposition est utilisée.',
   })
   @ApiBody({ schema: schemaOpenApi(apercu) })
@@ -220,10 +221,11 @@ export class ReprisesImmobilisationsController {
       }
       if (a.resultat.comptes.valides === 0) throw new ConflictException({ message: 'Aucune ligne valide : rien à importer. Corrigez le fichier ou la correspondance des colonnes.', code: 'rien_a_importer' });
 
+      const typeMime = estZipReprise(octets) ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv';
       // Fichier original : stockage objet adressé par empreinte (comme les autres imports), puis ligne `fichiers`.
       const cle = cles.original(acces.cabinetId, a.empreinteFichier);
-      if (!(await this.stockage.existe(cle))) await this.stockage.deposer(cle, octets, 'text/csv');
-      const fich = await assurerFichierOriginal(tx, { cabinetId: acces.cabinetId, sha256: a.empreinteFichier, taille: octets.length, typeMimeDeclare: 'text/csv', cleStockage: cle });
+      if (!(await this.stockage.existe(cle))) await this.stockage.deposer(cle, octets, typeMime);
+      const fich = await assurerFichierOriginal(tx, { cabinetId: acces.cabinetId, sha256: a.empreinteFichier, taille: octets.length, typeMimeDeclare: typeMime, cleStockage: cle });
 
       const lignes = a.resultat.lignes;
       const [reprise] = await tx

@@ -53,7 +53,7 @@ test('reprise des immobilisations : aperçu sans écriture, confirmation, rappor
     await expect(page.getByText('Le dégressif reste non activé')).toBeVisible();
     const avant = await page.locator('section[aria-labelledby="titre-reprises"] tbody tr').count();
 
-    await page.getByLabel('Fichier des immobilisations (CSV)').setInputFiles(fichier);
+    await page.getByLabel('Fichier des immobilisations (CSV ou XLSX)').setInputFiles(fichier);
     await expect(page.getByTestId('apercu-reprise')).toBeVisible();
     await expect(page.getByTestId('decomptes-apercu')).toContainText('Valides : 3');
     await expect(page.getByTestId('decomptes-apercu')).toContainText('Invalides : 2');
@@ -69,7 +69,7 @@ test('reprise des immobilisations : aperçu sans écriture, confirmation, rappor
 
     // 360 px : aperçu lisible sans débordement.
     await page.setViewportSize({ width: 360, height: 800 });
-    await page.getByLabel('Fichier des immobilisations (CSV)').setInputFiles(fichier);
+    await page.getByLabel('Fichier des immobilisations (CSV ou XLSX)').setInputFiles(fichier);
     await expect(page.getByTestId('decomptes-apercu')).toContainText('Valides : 3');
     await sansDebordement('aperçu à 360 px');
 
@@ -97,7 +97,7 @@ test('reprise des immobilisations : aperçu sans écriture, confirmation, rappor
     await page.setViewportSize({ width: 1280, height: 900 });
 
     // Rejeu du même fichier : rien de plus à importer.
-    await page.getByLabel('Fichier des immobilisations (CSV)').setInputFiles(fichier);
+    await page.getByLabel('Fichier des immobilisations (CSV ou XLSX)').setInputFiles(fichier);
     await expect(page.getByTestId('decomptes-apercu')).toContainText('Valides : 0');
     await expect(page.getByText('Aucune ligne valide : il n’y a rien à importer.')).toBeVisible();
     await page.goto(`/dossiers/${DOSSIER_DEMO}/inventaire`);

@@ -21,9 +21,10 @@ Document de passage pour reprendre le travail sans relire la conversation. À me
 | Moteur générique de formulaires par cases, 2058-A | D-118 | f7d6981 |
 | 2058-B, 2058-C | D-119 | f4ade36 |
 | 2059-E, 2059-F, 2059-G (F et G = mêmes saisies que 2033-F et G) | D-120 | ce7e5ca |
+| 2059-A | D-121 | (ce commit) |
 
 ## Restes explicites (ordre de travail)
-1. **2059-A, 2059-B, 2059-C, 2059-D** (plus et moins-values, suivi, réserve spéciale) — page 13 à 16 de `2050-liasse_5320.pdf` ; pas de codes de cases : saisie ligne par ligne (`saisies_tableaux`).
+1. **2059-B, 2059-C, 2059-D** (suivi des plus et moins-values, réserve spéciale ; 2059-A FAIT, D-121) — pages 14 à 16 de `2050-liasse_5320.pdf` ; pas de codes de cases : saisie ligne par ligne (`saisies_tableaux`).
 2. **2065** (déclaration de résultats IS).
 3. **Import XLSX** de la reprise du fichier des immobilisations (exigence initiale, `exigences.md`, jamais optionnelle).
 4. **Restes des séries 2033 et 2058** : cadre IV du 2033-D (690 à 693), dates du 2033-E (024, 016, cessation), tableaux supplémentaires des 2033-F et G (et 2059-F et G), états joints du cadre III du 2033-C (> 10 cessions) et du cadre C du 2033-D (> 7 lignes), feuillet des déficits transférés de plein droit ; 2058-A : feuillets joints ; 2058-B : libellés de nature des provisions, cellules sans code du cadre « méthode par composants » ; 2058-C : rapprochement de ZJ et YX avec les lignes FW et FX du 2052.

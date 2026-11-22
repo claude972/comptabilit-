@@ -17,6 +17,7 @@ import {
   preparerFormulaire2033E,
   preparerFormulaire2033F,
   preparerFormulaire2033G,
+  preparerFormulaire2059A,
   preparerFormulaireCases,
   cleCase,
   FORMULAIRE_2058_A,
@@ -63,8 +64,8 @@ const montantSigne = schemaChaineDecimale;
 const ventilation = z.object({ montantFrance: montantSigne, montantExport: montantSigne, note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie la ventilation').max(2000) });
 const renvoiSaisie = z.object({ montant: montantSigne, note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie le montant').max(2000) });
 const saisieTableau = z.object({ valeurs: z.record(z.string().max(40), z.string().max(200)), note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie la saisie').max(2000) });
-const TABLEAU_SAISI = /^(2033C_III|2054BIS_A|2054BIS_B|2055_B|2055_C|2033D_C|2033F_NB|2033F_PM|2033F_PP|2033G_NB|2033G_FIL)$/;
-const LIGNE_TABLEAU = /^(0[1-9]|1[0-3]|REG|PV19|NEANT|B1|B2|NB)$/;
+const TABLEAU_SAISI = /^(2033C_III|2054BIS_A|2054BIS_B|2055_B|2055_C|2033D_C|2033F_NB|2033F_PM|2033F_PP|2033G_NB|2033G_FIL|2059A_IM|2059A_AUT)$/;
+const LIGNE_TABLEAU = /^(0[1-9]|1[0-9]|20|REG|PV19|NEANT|B1|B2|NB)$/;
 const COMPTE_CA = /^70[0-9A-Za-z]{1,13}$/;
 /** Formulaires du régime réel normal servis par saisie case par case (moteur générique, D-118). */
 const FORMULAIRES_CASES: readonly DefinitionFormulaire[] = [FORMULAIRE_2058_A, FORMULAIRE_2058_B, FORMULAIRE_2058_C, FORMULAIRE_2059_E];
@@ -375,6 +376,8 @@ export class FiscalController {
           if (f.imputation?.apres.statut === 'etabli') valeursAutres[cleCase(def.prefixe, f.imputation.apres.sens === 'deficit' ? 'XO' : 'XN')] = f.imputation.apres.montant;
         }
       }
+      // Tableau 2059-A (plus et moins-values, régime réel normal, D-121) : saisie ligne par ligne.
+      const formulaire2059A = regime === 'reel_normal' ? preparerFormulaire2059A({ versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies }) : null;
       const tableauxImmobilisations = preparerTableauxImmobilisations({
         lignes,
         exercice: { debut: exercice.debut, fin: exercice.fin },
@@ -410,6 +413,8 @@ export class FiscalController {
         formulaire2033F,
         /** Tableau 2033-G (filiales et participations) : saisie ligne par ligne, régime simplifié (D-117) ; null sinon. */
         formulaire2033G,
+        /** Tableau 2059-A (plus et moins-values) : saisie ligne par ligne, régime réel normal (D-121) ; null sinon. */
+        formulaire2059A,
         /** Formulaires du régime réel normal servis par saisie case par case (2058-A) : D-118 ; null au régime simplifié. */
         formulairesCases,
       };

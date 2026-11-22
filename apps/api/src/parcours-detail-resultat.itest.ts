@@ -699,6 +699,50 @@ describe('2059-E (régime réel normal) : effectifs et valeur ajoutée, mêmes c
   }, 120_000);
 });
 
+describe('2059-A (régime réel normal) : plus et moins-values par saisie ligne par ligne (D-121)', () => {
+  const f2059a = async () => (await liasse(exN, 'reel_normal')).json.formulaire2059A;
+  const ta = (tableau: string, ligne: string, valeurs: Record<string, string>, note = 'Registre des cessions (essai)', qui = 'remi') => api(qui, 'PUT', `/v1/exercices/${exN}/tableaux/${tableau}/${ligne}`, { valeurs, note });
+  const CESSION = { nature: 'Camionnette 2021 (fictive)', c2: '30000.00', c4: '0.00', c5: '24000.00', c6: '6000.00', c7: '9000.00', c8: '3000.00', c9: '3000.00' };
+
+  it('sans saisie : à saisir, cadres en abstention ; absent au régime simplifié ; refus de forme et de droits', async () => {
+    const f = await f2059a();
+    expect(f).toMatchObject({ statut: 'projet', etat: 'a_saisir', cadres: { A: { statut: 'abstention' } } });
+    expect(f.immobilisations).toHaveLength(12);
+    expect(f.autres).toHaveLength(7);
+    expect((await liasse(exN, 'reel_simplifie')).json.formulaire2059A).toBeNull();
+    expect((await ta('2059A_IM', '13', CESSION)).statut).toBe(400);
+    expect((await ta('2059A_AUT', '17', { c9: '1.00' })).statut).toBeGreaterThanOrEqual(400);
+    expect((await ta('2059A_AUT', '13', { c10a: '1.00' })).statut).toBe(400);
+    expect((await ta('2059A_IM', '01', CESSION, 'Essai collaborateur', 'chloe')).statut).toBeGreaterThanOrEqual(400);
+    expect((await ta('2059A_IM', '01', CESSION, 'Essai déposant', 'client')).statut).toBe(404);
+    expect((await f2059a()).etat).toBe('a_saisir');
+  }, 120_000);
+
+  it('cession et lignes fixes : totaux établis seulement à saisie complète, historique, retrait, néant', async () => {
+    expect((await ta('2059A_IM', '01', CESSION)).statut).toBeLessThan(300);
+    let f = await f2059a();
+    expect(f.etat).toBe('saisi');
+    expect(f.immobilisations[0]).toMatchObject({ statut: 'saisi', nature: 'Camionnette 2021 (fictive)', trace: { qualifieePar: DEMO.remi } });
+    expect(f.cadres.A.statut).toBe('abstention');
+    for (const l of ['13', '14', '15', '16']) expect((await ta('2059A_AUT', l, { c9: '0.00' })).statut).toBeLessThan(300);
+    expect((await ta('2059A_AUT', '18', { c10a: '0.00' })).statut).toBeLessThan(300);
+    expect((await ta('2059A_AUT', '19', { c10b: '100.00' })).statut).toBeLessThan(300);
+    expect((await ta('2059A_AUT', '20', { c11: '-5.00' })).statut).toBeLessThan(300);
+    f = await f2059a();
+    expect(f.cadres).toMatchObject({ A: { statut: 'etabli', montant: '3000.00' }, B: { statut: 'etabli', montant: '100.00' }, C: { statut: 'etabli', montant: '-5.00' } });
+    expect((await ta('2059A_IM', '01', { ...CESSION, c8: '2500.00' }, 'Correction (essai)')).statut).toBeLessThan(300);
+    f = await f2059a();
+    expect(f.controles.find((c: any) => c.code === 'A59_PV_01').statut).toBe('ecart');
+    const h = (await api('remi', 'GET', `/v1/exercices/${exN}/qualifications/historique?cle=2059A_IM:01`)).json.evenements as any[];
+    expect(h).toHaveLength(2);
+    for (const [t, l] of [['2059A_IM', '01'], ['2059A_AUT', '13'], ['2059A_AUT', '14'], ['2059A_AUT', '15'], ['2059A_AUT', '16'], ['2059A_AUT', '18'], ['2059A_AUT', '19'], ['2059A_AUT', '20']]) expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/${t}/${l}`)).statut).toBeLessThan(300);
+    expect((await f2059a()).etat).toBe('a_saisir');
+    expect((await ta('2059A_IM', 'NEANT', {}, 'Aucune cession sur l’exercice (essai)')).statut).toBeLessThan(300);
+    expect((await f2059a()).etat).toBe('neant');
+    expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/2059A_IM/NEANT`)).statut).toBeLessThan(300);
+  }, 120_000);
+});
+
 describe('détail du compte de résultat : qualification tracée, abstention sans qualification', () => {
   it('sans qualification : totaux de la balance, France et exportations en abstention, renvois à saisir, exceptionnel détaillé', async () => {
     const d = await detail();

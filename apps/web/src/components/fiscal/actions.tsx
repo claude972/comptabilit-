@@ -195,7 +195,7 @@ export function SaisieLigneTableau({ exerciceId, tableau, ligne, champs, noteCou
       data-testid={`saisie-${tableau}-${ligne}`}
       onSubmit={(e) => {
         e.preventDefault();
-        void appel.executer(`v1/exercices/${exerciceId}/tableaux/${tableau}/${ligne}`, { method: 'PUT', json: { valeurs: Object.fromEntries(Object.entries(valeurs).map(([k, v]) => [k, v.trim()])), note: note.trim() } }, 'Ligne enregistrée.');
+        void appel.executer(`v1/exercices/${exerciceId}/tableaux/${tableau}/${ligne}`, { method: 'PUT', json: { valeurs: Object.fromEntries(Object.entries(valeurs).map(([k, v]) => [k, v.trim()]).filter(([k, v]) => !(v === '' && champs.some((c) => c.cle === k && c.type === 'montant' && c.optionnel === true)))), note: note.trim() } }, 'Ligne enregistrée.');
       }}
     >
       <div className="flex flex-wrap items-end gap-2">

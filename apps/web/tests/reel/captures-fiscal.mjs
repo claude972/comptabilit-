@@ -341,6 +341,32 @@ if (process.argv.includes('--2058bc')) {
   await page.locator('[data-calcul-f="ØF"]').scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${sortie}fiscal-2058c-affectation.png` });
 }
+// 2059-A (D-121) : saisies par les formulaires (MODIFIE le dossier fictif indiqué), régime réel normal.
+if (process.argv.includes('--2059a')) {
+  await page.goto(`${base}&vue=liasse&regime=reel_normal`);
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('formulaire-2059-a').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2059a-avant.png` });
+  const c = page.getByTestId('saisie-2059A_IM-01');
+  await c.scrollIntoViewIfNeeded();
+  await c.getByLabel('Nature et date d’acquisition (colonne 1)').fill('Camionnette 2021 (démonstration fictive)');
+  for (const [libelle, v] of Object.entries({ '2 Valeur d’origine': '30000.00', '5 Autres amortissements': '24000.00', '6 Valeur résiduelle': '6000.00', '7 Prix de vente': '9000.00', '8 Plus-value ou moins-value': '3000.00', '9 Court terme': '3000.00' })) await c.getByLabel(libelle, { exact: true }).fill(v);
+  await c.getByLabel('Justification (obligatoire)').fill('Registre des cessions (démonstration fictive)');
+  await c.getByRole('button', { name: /^Enregistrer la cession 1/ }).click();
+  await c.getByText('Ligne enregistrée.').waitFor();
+  for (const [ligne, col] of [['13', '9 Court terme'], ['14', '9 Court terme'], ['15', '9 Court terme'], ['16', '9 Court terme'], ['18', '10 Long terme 19 %'], ['19', '10 Long terme 19 %'], ['20', '9 Court terme']]) {
+    const a = page.getByTestId(`saisie-2059A_AUT-${ligne}`);
+    await a.scrollIntoViewIfNeeded();
+    await a.getByLabel(col, { exact: true }).fill('0.00');
+    await a.getByLabel('Justification (obligatoire)').fill('Aucun élément à cette ligne (démonstration fictive)');
+    await a.getByRole('button', { name: new RegExp(`^Enregistrer la ligne ${ligne}`) }).click();
+    await a.getByText('Ligne enregistrée.').waitFor();
+  }
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('formulaire-2059-a').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2059a-apres.png` });
+}
 // 2033-B (D-107) : « dont export » et lignes « dont » du régime simplifié.
 await page.goto(`${base}&vue=liasse&regime=reel_simplifie`);
 await page.waitForLoadState('networkidle');

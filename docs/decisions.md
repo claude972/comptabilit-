@@ -686,6 +686,15 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Non préparé, dit** : périodes de référence et date de cessation du 2059-E (dates), tableaux supplémentaires des 2059-F et 2059-G ; mêmes limites que D-115, D-116, D-117. Statut « projet ».
 - **Preuves** : 3 tests du moteur pour le 2059-E (15 au total dans `formulaire-cases.test.ts`), 1 test d'intégration sur la pile réelle pour le 2059-E, adaptation des essais 2033-F et G (présents aux deux régimes), Playwright `fiscal.spec.ts`.
 
+### D-121 — Tableau 2059-A « Détermination des plus ou moins-values » (régime réel normal) (2026-11-22)
+
+- **Source** : `2050-liasse_5320.pdf` (SHA-256 0bba3352…8453e1), page 13 (2059-A-SD) ; disposition lue sur le **rendu image** (colonnes 1 à 6 de la partie A, colonnes 7 à 11 de la partie B, lignes 1 à 12 « Immobilisations », lignes 13 à 16 et 18 à 20 « Autres éléments », cadres A, B et C) ; le formulaire n'a pas de code de case : saisie ligne par ligne.
+- **Stockage** : tableaux saisis `2059A_IM` (lignes 01 à 12, ligne NEANT : tableau « néant ») et `2059A_AUT` (lignes 13 à 16, 18, 19, 20 ; colonnes permises par ligne selon les zones grisées du formulaire), dans `saisies_tableaux` et `historique_qualifications` ; migration 0057 additive (contraintes de forme du tableau et de la ligne, lignes jusqu'à 20). Nature obligatoire ; une case non remplie est une case vide, jamais un zéro (au moins une colonne renseignée) ; colonnes 2 à 5 et 7 positives, les autres algébriques.
+- **Calculs** : seuls ceux énoncés par le formulaire : cadre A = total algébrique de la colonne 9 (lignes 1 à 20), cadre B = total de la colonne 10 (trois taux), cadre C = total de la colonne 11. Établis uniquement si au moins une cession est saisie ET si les sept lignes fixes sont saisies (zéro compris) ; sinon abstention motivée, sans chiffre ; « à revoir » si les données changent.
+- **Contrôles indicatifs (jamais corrigés)** : col. 8 = col. 7 − col. 6 ; col. 9 + col. 10 = col. 8 ; néant et saisies simultanés. **Aucune décision fiscale** : la qualification (court terme, long terme 19 %, 15 % ou 12,8 %, 0 %) est celle que le cabinet saisit.
+- **Non préparé, dit** : identification, détail des « Divers » de la ligne 20 (note annexe), tableaux supplémentaires au-delà de douze lignes, report vers 2058-A et 2059-B, C, D. Statut « projet ».
+- **Preuves** : 4 tests du moteur (`formulaire-2059a.test.ts`), 2 tests d'intégration sur la pile réelle, Playwright `fiscal.spec.ts`, captures `fiscal-2059a-avant/apres.png` sur le dossier fictif (`--2059a`).
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

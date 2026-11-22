@@ -4,7 +4,7 @@ import { ChoixExercice } from '@/components/dossier';
 import { ErreurAcces } from '@/components/erreurs';
 import { CategorieAnnexe, ConfirmerRubrique, NeantTableau, QualifierCompte, SaisieCases, SaisieLigneTableau, SaisirRenvoi } from '@/components/fiscal/actions';
 import { Alerte, Carte, Etiquette, MentionProjet, SousTitre, Tableau } from '@/components/ui/base';
-import { type Abstention, type AnnexeProjet, type CelluleImmobilisation, type CelluleVentilation, type AmortissementsDerogatoiresProjet, type CadreIIIProjet, type CaseSaisie2033D, type CaseSaisie2033E, type CelluleCalculee2033D, type Formulaire2033EProjet, type Formulaire2033FProjet, type Formulaire2033GProjet, type FormulaireCasesProjet, type ResultatSigneFormulaire, type CelluleMontantSaisie, type Formulaire2033DProjet, LIGNES_DEROGATOIRES_2033D, LIGNES_PROVISIONS_2033D, type ChargesRepartiesProjet, LIBELLES_COLONNES_2055_B, type DetailResultatProjet, type EcartsReevaluationProjet, type EvenementQualification, LIBELLE_CLASSEMENT, type TableauxSaisisProjet, type ReponseHistorique, type ResultatSigne, LIBELLE_CATEGORIE, LIBELLE_ETAT_QUALIFICATION, type LiasseProjet, type ReponseAnnexe, type ReponseLiasse, type TableauxImmobilisationsProjet } from '@/lib/fiscal';
+import { type Abstention, type AnnexeProjet, type CelluleImmobilisation, type CelluleVentilation, type AmortissementsDerogatoiresProjet, type CadreIIIProjet, type CaseSaisie2033D, type CaseSaisie2033E, type CelluleCalculee2033D, type Formulaire2033EProjet, type Formulaire2033FProjet, type Formulaire2033GProjet, type Formulaire2059AProjet, LIBELLES_COLONNES_2059_A, type FormulaireCasesProjet, type ResultatSigneFormulaire, type CelluleMontantSaisie, type Formulaire2033DProjet, LIGNES_DEROGATOIRES_2033D, LIGNES_PROVISIONS_2033D, type ChargesRepartiesProjet, LIBELLES_COLONNES_2055_B, type DetailResultatProjet, type EcartsReevaluationProjet, type EvenementQualification, LIBELLE_CLASSEMENT, type TableauxSaisisProjet, type ReponseHistorique, type ResultatSigne, LIBELLE_CATEGORIE, LIBELLE_ETAT_QUALIFICATION, type LiasseProjet, type ReponseAnnexe, type ReponseLiasse, type TableauxImmobilisationsProjet } from '@/lib/fiscal';
 import { formaterHorodatage, formaterMontant, formaterMontantEuros } from '@/lib/montants';
 
 type Fm = (valeur: string | null | undefined) => string;
@@ -1893,6 +1893,99 @@ function FormulaireCases({ f, fm, exerciceId, revision, evenements }: { f: Formu
   );
 }
 
+/** Tableau 2059-A (plus et moins-values, régime réel normal) : saisie ligne par ligne, justifiée et historisée (D-121). */
+function Formulaire2059A({ f, fm, exerciceId, revision, evenements }: { f: Formulaire2059AProjet; fm: Fm; exerciceId: string; revision: boolean; evenements: EvenementQualification[] }) {
+  const badge = (statut: string) => <Etiquette ton={statut === 'saisi' ? 'succes' : 'attention'}>{statut === 'saisi' ? 'Saisi' : statut === 'a_revoir' ? 'À revoir : données modifiées' : 'À saisir'}</Etiquette>;
+  const m = (cle: string, valeur: string | undefined, optionnel = true) => ({ cle, libelle: LIBELLES_COLONNES_2059_A[cle] ?? cle, type: 'montant' as const, valeur: valeur ?? '', optionnel });
+  const total = (t: Formulaire2059AProjet['cadres']['A']) => (t.statut === 'etabli' ? <strong>{fm(t.montant)}</strong> : <span className="text-texte-doux">abstention : {t.motifs.join(' ')}</span>);
+  return (
+    <section className="space-y-4" aria-labelledby="titre-2059-a" data-testid="formulaire-2059-a">
+      <SousTitre id="titre-2059-a" className="text-base">
+        2059-A — Détermination des plus ou moins-values <MentionProjet />
+      </SousTitre>
+      <Alerte ton="attention" titre="Saisie du cabinet : le détail des cessions ne se déduit pas de la balance et la qualification fiscale n’est jamais décidée par le logiciel">
+        <p className="text-sm">
+          Chaque cession (lignes 1 à 12) et chaque ligne de la rubrique II (13 à 16, 18 à 20) se saisit avec une justification obligatoire, tracée et historisée. Une case non remplie est une case vide du formulaire, jamais un zéro ; « néant » est une déclaration explicite du tableau.
+        </p>
+        {f.limites.map((l) => (
+          <p key={l} className="text-sm">
+            {l}
+          </p>
+        ))}
+      </Alerte>
+      <ul className="space-y-1" aria-label="Contrôles du 2059-A" data-testid="controles-2059-a">
+        {f.controles.map((x) => (
+          <li key={x.code}>
+            <Etiquette ton={x.statut === 'coherent' ? 'succes' : x.statut === 'ecart' ? 'danger' : 'attention'}>{x.statut === 'coherent' ? 'Cohérent' : x.statut === 'ecart' ? 'Écart' : 'Non vérifiable'}</Etiquette> {x.message}
+            {x.ecart ? ` (écart : ${fm(x.ecart)})` : ''}
+          </li>
+        ))}
+      </ul>
+      <p className="text-sm" data-testid="etat-2059-a">
+        État du tableau : <strong>{f.etat === 'saisi' ? 'saisies présentes' : f.etat === 'neant' ? 'néant déclaré' : 'à saisir (ni saisie ni néant)'}</strong>
+        {f.neant ? ` — déclaré le ${formaterHorodatage(f.neant.le)} sur la version ${f.neant.versionDonnees} des données` : ''}.
+      </p>
+      <ul className="space-y-1 text-sm" data-testid="cadres-2059-a">
+        <li data-cadre="A">Cadre A — plus ou moins-value nette à court terme (total algébrique de la colonne 9) : {total(f.cadres.A)}</li>
+        <li data-cadre="B">Cadre B — plus ou moins-value nette à long terme (total algébrique de la colonne 10) : {total(f.cadres.B)}</li>
+        <li data-cadre="C">Cadre C — autres plus-values taxables à 19 % (colonne 11) : {total(f.cadres.C)}</li>
+      </ul>
+      {revision ? <NeantTableau exerciceId={exerciceId} tableau="2059A_IM" declare={f.etat === 'neant'} etiquette="tableau 2059-A (aucune cession)" /> : null}
+      <h3 className="text-sm font-semibold">I — Immobilisations (lignes 1 à 12)</h3>
+      <ul className="space-y-2" data-testid="cessions-2059-a">
+        {f.immobilisations.map((l) => (
+          <li key={l.ligne} className="rounded-lg border border-bordure p-3" data-cession={l.ligne}>
+            <p className="text-sm">
+              Ligne {Number(l.ligne)} — {l.statut === 'saisi' ? <strong>{l.nature}</strong> : badge(l.statut)}
+              {l.statut === 'saisi' ? <span className="text-texte-doux"> · {Object.entries(l.valeurs!).filter(([k]) => k !== 'nature').map(([k, x]) => `col. ${LIBELLES_COLONNES_2059_A[k] ?? k} : ${fm(x)}`).join(' · ')}</span> : null}
+            </p>
+            {l.trace ? (
+              <p className="text-xs text-texte-doux" data-testid={`trace-cession-${l.ligne}`}>
+                saisie le {formaterHorodatage(l.trace.le)} sur la version {l.trace.versionDonnees} des données · « {l.trace.note} »
+              </p>
+            ) : null}
+            <HistoriqueLigne evenements={evenements} cle={`2059A_IM:${l.ligne}`} fm={fm} />
+            {revision ? (
+              <SaisieLigneTableau
+                exerciceId={exerciceId}
+                tableau="2059A_IM"
+                ligne={l.ligne}
+                etiquette={`la cession ${Number(l.ligne)}`}
+                saisie={l.statut !== 'a_saisir'}
+                noteCourante={l.trace?.note ?? null}
+                champs={[{ cle: 'nature', libelle: 'Nature et date d’acquisition (colonne 1)', type: 'texte', valeur: l.nature ?? '' }, ...['c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9', 'c10a', 'c10b', 'c10c', 'c11'].map((k) => m(k, l.valeurs?.[k]))]}
+              />
+            ) : null}
+          </li>
+        ))}
+      </ul>
+      <h3 className="text-sm font-semibold">II — Autres éléments (lignes 13 à 16 et 18 à 20)</h3>
+      <ul className="space-y-2" data-testid="autres-2059-a">
+        {f.autres.map((l) => (
+          <li key={l.ligne} className="rounded-lg border border-bordure p-3" data-autre={l.ligne}>
+            <p className="text-sm">
+              Ligne {Number(l.ligne)} — {l.libelle} {badge(l.statut)}
+              {l.statut === 'saisi' ? <span className="text-texte-doux"> · {Object.entries(l.valeurs!).map(([k, x]) => `col. ${LIBELLES_COLONNES_2059_A[k] ?? k} : ${fm(x)}`).join(' · ')}</span> : null}
+            </p>
+            {l.trace ? (
+              <p className="text-xs text-texte-doux" data-testid={`trace-autre-${l.ligne}`}>
+                saisie le {formaterHorodatage(l.trace.le)} sur la version {l.trace.versionDonnees} des données · « {l.trace.note} »
+              </p>
+            ) : null}
+            <HistoriqueLigne evenements={evenements} cle={`2059A_AUT:${l.ligne}`} fm={fm} />
+            {revision ? <SaisieLigneTableau exerciceId={exerciceId} tableau="2059A_AUT" ligne={l.ligne} etiquette={`la ligne ${Number(l.ligne)}`} saisie={l.statut !== 'a_saisir'} noteCourante={l.trace?.note ?? null} champs={l.colonnes.map((k) => m(k, l.valeurs?.[k]))} /> : null}
+          </li>
+        ))}
+      </ul>
+      <ul className="list-disc pl-5 text-sm text-texte-doux" data-testid="2059-a-non-prepare">
+        {f.nonPrepare.map((n) => (
+          <li key={n}>Non préparé — {n}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function Annexe({ a, reponse, exerciceId, revision }: { a: AnnexeProjet; reponse: ReponseAnnexe; exerciceId: string; revision: boolean }) {
   const confirmations = new Map(reponse.confirmations.map((c) => [c.rubrique, c]));
   const requises = a.rubriques.filter((r) => r.requise);
@@ -2089,6 +2182,7 @@ export default async function PageFiscal({ params, searchParams }: { params: Pro
       {liasse?.ok && liasse.donnees.formulaire2033F ? <Formulaire2033F numero={regime === 'reel_normal' ? '2059' : '2033'} f={liasse.donnees.formulaire2033F} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.formulaire2033G ? <Formulaire2033G numero={regime === 'reel_normal' ? '2059' : '2033'} f={liasse.donnees.formulaire2033G} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.formulairesCases ? liasse.donnees.formulairesCases.map((f) => <FormulaireCases key={f.id} f={f} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} />) : null}
+      {liasse?.ok && liasse.donnees.formulaire2059A ? <Formulaire2059A f={liasse.donnees.formulaire2059A} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.detailResultat ? <DetailResultat d={liasse.donnees.detailResultat} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {annexe?.ok ? (
         annexe.donnees.resultat.statut === 'abstention' ? (

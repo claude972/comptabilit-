@@ -29,8 +29,8 @@ import { MENTION_PROJET } from './sources-fiscales.js';
 
 const ZERO = new Decimal(0);
 
-export type TableauSaisi = '2033C_III' | '2054BIS_A' | '2054BIS_B' | '2055_B' | '2055_C' | '2033D_C' | '2033F_NB' | '2033F_PM' | '2033F_PP' | '2033G_NB' | '2033G_FIL';
-export const TABLEAUX_SAISIS: readonly TableauSaisi[] = ['2033C_III', '2054BIS_A', '2054BIS_B', '2055_B', '2055_C', '2033D_C', '2033F_NB', '2033F_PM', '2033F_PP', '2033G_NB', '2033G_FIL'];
+export type TableauSaisi = '2033C_III' | '2054BIS_A' | '2054BIS_B' | '2055_B' | '2055_C' | '2033D_C' | '2033F_NB' | '2033F_PM' | '2033F_PP' | '2033G_NB' | '2033G_FIL' | '2059A_IM' | '2059A_AUT';
+export const TABLEAUX_SAISIS: readonly TableauSaisi[] = ['2033C_III', '2054BIS_A', '2054BIS_B', '2055_B', '2055_C', '2033D_C', '2033F_NB', '2033F_PM', '2033F_PP', '2033G_NB', '2033G_FIL', '2059A_IM', '2059A_AUT'];
 
 export interface SaisieTableau {
   tableau: TableauSaisi;
@@ -155,6 +155,25 @@ export function validerSaisieTableau(tableau: string, ligne: string, valeurs: un
       if (typeof v.pourcentage === 'string' && estChaineDecimale(v.pourcentage) && new Decimal(v.pourcentage).greaterThan(100)) e.push('pourcentage : au plus 100.');
     } else if (ligne === 'NEANT') exactement([]);
     else e.push(`Ligne inconnue pour le tableau 2033-G : ${ligne}.`);
+  } else if (tableau === '2059A_IM') {
+    if (/^(0[1-9]|1[0-2])$/.test(ligne)) {
+      const champs = ['c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9', 'c10a', 'c10b', 'c10c', 'c11'];
+      for (const k of Object.keys(v)) if (k !== 'nature' && !champs.includes(k)) e.push(`${k} : champ inconnu pour cette ligne.`);
+      if (typeof v.nature !== 'string' || v.nature.trim().length < 2 || v.nature.length > 200) e.push('nature : libellé de 2 à 200 caractères (nature et date d’acquisition).');
+      const presents = champs.filter((k) => k in v);
+      if (presents.length === 0) e.push('Au moins une colonne doit être renseignée (une case vide du formulaire n’est pas un zéro).');
+      for (const k of presents) decimal(k, ['c2', 'c3', 'c4', 'c5', 'c7'].includes(k));
+    } else if (ligne === 'NEANT') exactement([]);
+    else e.push(`Ligne inconnue pour le tableau 2059-A : ${ligne}.`);
+  } else if (tableau === '2059A_AUT') {
+    const colonnes: Record<string, string[]> = { '13': ['c9'], '14': ['c9'], '15': ['c9'], '16': ['c9'], '18': ['c10a', 'c10b', 'c10c'], '19': ['c10a', 'c10b', 'c10c'], '20': ['c9', 'c10a', 'c10b', 'c10c', 'c11'] };
+    const permis = colonnes[ligne];
+    if (permis !== undefined) {
+      for (const k of Object.keys(v)) if (!permis.includes(k)) e.push(`${k} : colonne non servie sur la ligne ${ligne} du formulaire.`);
+      const presents = permis.filter((k) => k in v);
+      if (presents.length === 0) e.push('Au moins une colonne doit être renseignée (zéro compris).');
+      for (const k of presents) decimal(k, ligne !== '20');
+    } else e.push(`Ligne inconnue pour la rubrique II du 2059-A : ${ligne}.`);
   } else if (tableau === '2054BIS_B') {
     if (ligne === 'B1' || ligne === 'B2') {
       exactement(['montant']);

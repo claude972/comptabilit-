@@ -125,6 +125,8 @@ export interface ReponseLiasse {
   formulaire2033F?: Formulaire2033FProjet | null;
   /** Tableau 2033-G (filiales et participations) ; null au régime réel normal (D-117). */
   formulaire2033G?: Formulaire2033GProjet | null;
+  /** Tableau 2059-A (plus et moins-values) ; null au régime simplifié (D-121). */
+  formulaire2059A?: Formulaire2059AProjet | null;
   /** Formulaires du régime réel normal servis par saisie case par case (2058-A, D-118) ; null au régime simplifié. */
   formulairesCases?: FormulaireCasesProjet[] | null;
 }
@@ -653,3 +655,32 @@ export interface FormulaireCasesProjet {
   limites: string[];
   mention: string;
 }
+
+/** Tableau 2059-A (D-121) : champ `formulaire2059A` de la réponse de la liasse. */
+export type TotalCadre2059A = { statut: 'etabli'; montant: string } | { statut: 'abstention'; motifs: string[] };
+export interface Formulaire2059AProjet {
+  statut: 'projet';
+  etat: 'a_saisir' | 'neant' | 'saisi';
+  immobilisations: Array<{ ligne: string; statut: StatutLigneSaisie; trace: TraceSaisie | null; nature: string | null; valeurs: Record<string, string> | null }>;
+  autres: Array<{ ligne: string; libelle: string; colonnes: string[]; statut: StatutLigneSaisie; trace: TraceSaisie | null; valeurs: Record<string, string> | null }>;
+  cadres: { A: TotalCadre2059A; B: TotalCadre2059A; C: TotalCadre2059A };
+  neant: TraceSaisie | null;
+  controles: Array<{ code: string; statut: 'coherent' | 'ecart' | 'non_verifie'; message: string; ecart?: string }>;
+  nonPrepare: string[];
+  limites: string[];
+  mention: string;
+}
+export const LIBELLES_COLONNES_2059_A: Record<string, string> = {
+  c2: '2 Valeur d’origine',
+  c3: '3 Valeur nette réévaluée',
+  c4: '4 Amortissements en franchise d’impôt',
+  c5: '5 Autres amortissements',
+  c6: '6 Valeur résiduelle',
+  c7: '7 Prix de vente',
+  c8: '8 Plus-value ou moins-value',
+  c9: '9 Court terme',
+  c10a: '10 Long terme 19 %',
+  c10b: '10 Long terme 15 % ou 12,80 %',
+  c10c: '10 Long terme 0 %',
+  c11: '11 Plus-value taxable à 19 %',
+};

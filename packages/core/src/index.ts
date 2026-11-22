@@ -144,6 +144,8 @@ export type { CaseSaisie2033E, DemandeFormulaire2033E, Formulaire2033EProjet } f
 export { LIBELLES_NOMBRES, preparerFormulaire2033F } from './etats/formulaire-2033f.js';
 export type { CaseNombre, DemandeFormulaire2033F, Formulaire2033FProjet, LigneAssocie } from './etats/formulaire-2033f.js';
 export { preparerFormulaire2033G } from './etats/formulaire-2033g.js';
+export { CHAMPS_2059_A_IM, LIBELLES_COLONNES_2059_A, LIGNES_2059_A_AUT, LIGNES_2059_A_IM, preparerFormulaire2059A } from './etats/formulaire-2059a.js';
+export type { DemandeFormulaire2059A, Formulaire2059AProjet, LigneAutre2059A, LigneImmobilisation2059A, TotalCadre2059A } from './etats/formulaire-2059a.js';
 export type { DemandeFormulaire2033G, Formulaire2033GProjet, LigneFiliale } from './etats/formulaire-2033g.js';
 export { cleCase, preparerFormulaireCases } from './etats/formulaire-cases.js';
 export type { CaseFormulaire, CelluleCalc, DefinitionFormulaire, FormulaireProjet, ResultatSigneFormulaire } from './etats/formulaire-cases.js';

@@ -9,6 +9,8 @@ export interface CaseLiasse {
   libelle: string;
   nature: 'poste' | 'total' | 'resultat';
   codeCase: string | null;
+  /** Actif du bilan (2050, 2033-A) : codes des colonnes brut et amortissements ; absent d'une API plus ancienne (D-156). */
+  codesActif?: { brut: string; amortissements: string | null } | null;
   etatCodeCase: 'a_confirmer' | 'verifie';
   brut?: string;
   amortissementsDepreciations?: string;

@@ -58,8 +58,10 @@ export interface LigneLiasseDefinition {
   rubriquesPcg: string[];
   /** Totaux et résultats : lignes additionnées (signe 1) ou retranchées (signe -1). */
   formule: Array<{ ligne: string; signe: 1 | -1 }>;
-  /** Toujours `null` dans cette version : aucun code de case n'a pu être vérifié sur le formulaire. */
+  /** Code de la case du montant (colonne unique) ; `null` : ligne regroupée par Comtaple, ligne d'ACTIF (voir `codesActif`) ou ligne non relue. */
   codeCase: string | null;
+  /** Actif du bilan : codes des colonnes « brut » et « amortissements, provisions » (la colonne « net » n'a pas de code imprimé) ; `null` hors actif ou non relu. */
+  codesActif: { brut: string; amortissements: string | null } | null;
   etatCodeCase: 'a_confirmer' | 'verifie';
   /** Réserve propre à la ligne (ventilation du formulaire non reproduite, par exemple). */
   note: string | null;
@@ -120,6 +122,7 @@ export interface CaseLiasse {
   libelle: string;
   nature: 'poste' | 'total' | 'resultat';
   codeCase: string | null;
+  codesActif: { brut: string; amortissements: string | null } | null;
   etatCodeCase: 'a_confirmer' | 'verifie';
   /** Actif du bilan uniquement. */
   brut?: ChaineDecimale;
@@ -372,7 +375,88 @@ const CODES_RN: Readonly<Record<string, string>> = {
   RN_2053_RESULTAT: 'HN',
 };
 
-const codeDe = (b: Pick<Brouillon, 'id' | 'tableau'>): string | null => (b.tableau === '2033-B' ? (CODES_2033_B[b.id] ?? null) : (CODES_RN[b.id] ?? null));
+
+/**
+ * Codes de cases du PASSIF du tableau 2033-A-SD (D-156), millésime 2026 : lus par extraction positionnée dans `2033-sd_5394.pdf` (SHA-256 ce4c5190…b6cb), page 1, puis VÉRIFIÉS sur le rendu image le
+ * 2026-11-22. L'ACTIF (deux codes par ligne : brut et amortissements) et les lignes regroupées (« autres dettes » = dettes fiscales et sociales 172 + comptes courants d'associés 173 + autres dettes 175) n'en portent pas.
+ */
+const CODES_2033_A: Readonly<Record<string, string>> = {
+  RSI_2033A_PASSIF_CAPITAL: '120',
+  RSI_2033A_PASSIF_ECARTS_REEVALUATION: '124',
+  RSI_2033A_PASSIF_RESERVE_LEGALE: '126',
+  RSI_2033A_PASSIF_RESERVES_REGLEMENTEES: '130',
+  RSI_2033A_PASSIF_AUTRES_RESERVES: '132',
+  RSI_2033A_PASSIF_REPORT_A_NOUVEAU: '134',
+  RSI_2033A_PASSIF_RESULTAT: '136',
+  RSI_2033A_PASSIF_SUBVENTIONS_INVESTISSEMENT: '137',
+  RSI_2033A_PASSIF_PROVISIONS_REGLEMENTEES: '140',
+  RSI_2033A_PASSIF_TOTAL_I: '142',
+  RSI_2033A_PASSIF_PROVISIONS: '154',
+  RSI_2033A_PASSIF_EMPRUNTS: '156',
+  RSI_2033A_PASSIF_AVANCES_RECUES: '164',
+  RSI_2033A_PASSIF_FOURNISSEURS: '166',
+  RSI_2033A_PASSIF_PRODUITS_CONSTATES_AVANCE: '174',
+  RSI_2033A_PASSIF_TOTAL_III: '176',
+  RSI_2033A_PASSIF_TOTAL_GENERAL: '180',
+};
+
+/**
+ * Codes de cases de l'ACTIF du 2050 et du 2033-A (D-156) : deux codes par ligne (brut, amortissements et provisions) ; la colonne « net » n'a pas de code imprimé. Lus par extraction
+ * positionnée (`2050-liasse_5320.pdf` page 1, `2033-sd_5394.pdf` page 1) puis VÉRIFIÉS sur le rendu image le 2026-11-22. Seules les LIGNES FEUILLES de même libellé que celui du formulaire
+ * portent des codes : les sous-totaux et totaux du 2050 (« actif immobilisé », « actif circulant », numérotation romaine de la liasse différente de celle du formulaire), « en-cours de
+ * production » (biens et services : deux lignes au formulaire), « produits finis » (« produits intermédiaires et finis ») et « instruments financiers à terme et jetons » n'en ont pas.
+ */
+const CODES_ACTIF: Readonly<Record<string, { brut: string; amortissements: string | null }>> = {
+  RN_2050_A_CAPITAL_SOUSCRIT_NON_APPELE: { brut: 'AA', amortissements: null },
+  RN_2050_A_FRAIS_ETABLISSEMENT: { brut: 'AB', amortissements: 'AC' },
+  RN_2050_A_FRAIS_DEVELOPPEMENT: { brut: 'CX', amortissements: 'CQ' },
+  RN_2050_A_CONCESSIONS_BREVETS: { brut: 'AF', amortissements: 'AG' },
+  RN_2050_A_FONDS_COMMERCIAL: { brut: 'AH', amortissements: 'AI' },
+  RN_2050_A_AUTRES_INCORPORELLES: { brut: 'AJ', amortissements: 'AK' },
+  RN_2050_A_INCORPORELLES_EN_COURS: { brut: 'AL', amortissements: 'AM' },
+  RN_2050_A_TERRAINS: { brut: 'AN', amortissements: 'AO' },
+  RN_2050_A_CONSTRUCTIONS: { brut: 'AP', amortissements: 'AQ' },
+  RN_2050_A_INSTALLATIONS_TECHNIQUES: { brut: 'AR', amortissements: 'AS' },
+  RN_2050_A_AUTRES_CORPORELLES: { brut: 'AT', amortissements: 'AU' },
+  RN_2050_A_CORPORELLES_EN_COURS: { brut: 'AV', amortissements: 'AW' },
+  RN_2050_A_PARTICIPATIONS: { brut: 'CS', amortissements: 'CT' },
+  RN_2050_A_TIAP: { brut: 'CU', amortissements: 'CV' },
+  RN_2050_A_CREANCES_PARTICIPATIONS: { brut: 'BB', amortissements: 'BC' },
+  RN_2050_A_AUTRES_TITRES_IMMOBILISES: { brut: 'BD', amortissements: 'BE' },
+  RN_2050_A_PRETS: { brut: 'BF', amortissements: 'BG' },
+  RN_2050_A_AUTRES_IMMOBILISATIONS_FINANCIERES: { brut: 'BH', amortissements: 'BI' },
+  RN_2050_A_STOCKS_MATIERES: { brut: 'BL', amortissements: 'BM' },
+  RN_2050_A_STOCKS_MARCHANDISES: { brut: 'BT', amortissements: 'BU' },
+  RN_2050_A_AVANCES_VERSEES: { brut: 'BV', amortissements: 'BW' },
+  RN_2050_A_CLIENTS: { brut: 'BX', amortissements: 'BY' },
+  RN_2050_A_AUTRES_CREANCES: { brut: 'BZ', amortissements: 'CA' },
+  RN_2050_A_CAPITAL_APPELE_NON_VERSE: { brut: 'CB', amortissements: 'CC' },
+  RN_2050_A_VMP: { brut: 'CD', amortissements: 'CE' },
+  RN_2050_A_DISPONIBILITES: { brut: 'CF', amortissements: 'CG' },
+  RN_2050_A_CHARGES_CONSTATEES_AVANCE: { brut: 'CH', amortissements: 'CI' },
+  RN_2050_A_FRAIS_EMISSION_EMPRUNTS: { brut: 'CW', amortissements: null },
+  RN_2050_A_PRIMES_REMBOURSEMENT: { brut: 'CM', amortissements: null },
+  RN_2050_A_ECARTS_CONVERSION: { brut: 'CN', amortissements: null },
+  RN_2050_TOTAL_GENERAL: { brut: 'CO', amortissements: '1A' },
+  RSI_2033A_ACTIF_FONDS_COMMERCIAL: { brut: '010', amortissements: '012' },
+  RSI_2033A_ACTIF_AUTRES_INCORPORELLES: { brut: '014', amortissements: '016' },
+  RSI_2033A_ACTIF_CORPORELLES: { brut: '028', amortissements: '030' },
+  RSI_2033A_ACTIF_FINANCIERES: { brut: '040', amortissements: '042' },
+  RSI_2033A_ACTIF_TOTAL_I: { brut: '044', amortissements: '048' },
+  RSI_2033A_ACTIF_STOCKS_MATIERES_EN_COURS: { brut: '050', amortissements: '052' },
+  RSI_2033A_ACTIF_STOCKS_MARCHANDISES: { brut: '060', amortissements: '062' },
+  RSI_2033A_ACTIF_AVANCES_VERSEES: { brut: '064', amortissements: '066' },
+  RSI_2033A_ACTIF_CLIENTS: { brut: '068', amortissements: '070' },
+  RSI_2033A_ACTIF_AUTRES_CREANCES: { brut: '072', amortissements: '074' },
+  RSI_2033A_ACTIF_VMP: { brut: '080', amortissements: '082' },
+  RSI_2033A_ACTIF_DISPONIBILITES: { brut: '084', amortissements: '086' },
+  RSI_2033A_ACTIF_CHARGES_CONSTATEES_AVANCE: { brut: '092', amortissements: '094' },
+  RSI_2033A_ACTIF_TOTAL_II: { brut: '096', amortissements: '098' },
+  RSI_2033A_ACTIF_TOTAL_GENERAL: { brut: '110', amortissements: '112' }
+};
+const codesActifDe = (b: Pick<Brouillon, 'id'>): { brut: string; amortissements: string | null } | null => CODES_ACTIF[b.id] ?? null;
+
+const codeDe = (b: Pick<Brouillon, 'id' | 'tableau'>): string | null => (b.tableau === '2033-B' ? (CODES_2033_B[b.id] ?? null) : b.tableau === '2033-A' ? (CODES_2033_A[b.id] ?? null) : (CODES_RN[b.id] ?? null));
 
 function finaliser(brouillons: Brouillon[]): LigneLiasseDefinition[] {
   return brouillons.map((b, i) => ({
@@ -386,7 +470,8 @@ function finaliser(brouillons: Brouillon[]): LigneLiasseDefinition[] {
     rubriquesPcg: b.rubriquesPcg ?? [],
     formule: b.formule ?? [],
     codeCase: codeDe(b),
-    etatCodeCase: codeDe(b) !== null ? 'verifie' : 'a_confirmer',
+    codesActif: codesActifDe(b),
+    etatCodeCase: codeDe(b) !== null || codesActifDe(b) !== null ? 'verifie' : 'a_confirmer',
     note: b.note ?? null,
   }));
 }
@@ -845,6 +930,7 @@ export function preparerLiasse(demande: DemandeLiasse): ResultatLiasse {
       libelle: l.libelle,
       nature: l.nature,
       codeCase: l.codeCase,
+      codesActif: l.codesActif,
       etatCodeCase: l.etatCodeCase,
       ...(l.avecColonnesActif ? { brut: versChaine(c.brut), amortissementsDepreciations: versChaine(c.deduction) } : {}),
       n1: valeurN1(l.id),

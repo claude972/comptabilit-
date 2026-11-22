@@ -41,8 +41,8 @@ describe('tables de liasse', () => {
       expect(t.source.verification).toBe('non_verifiee');
       expect(t.source.dateVerification).toBe('2026-11-19');
       // Codes lus ET vérifiés sur le rendu : 2033-B (trois chiffres) ; 2051, 2052, 2053 (deux caractères, D-155). Toute autre ligne : aucun code, « à confirmer ».
-      const AVEC_CODE = new Set(['2033-B', '2051', '2052', '2053']);
-      expect(t.lignes.every((l) => (l.codeCase !== null ? AVEC_CODE.has(l.tableau) && l.etatCodeCase === 'verifie' && (l.tableau === '2033-B' ? /^\d{3}$/ : /^[0-9A-Z]{2}$/).test(l.codeCase) : l.etatCodeCase === 'a_confirmer'))).toBe(true);
+      const AVEC_CODE = new Set(['2033-A', '2033-B', '2051', '2052', '2053']);
+      expect(t.lignes.every((l) => (l.codeCase !== null ? AVEC_CODE.has(l.tableau) && l.etatCodeCase === 'verifie' && (l.tableau === '2033-B' || l.tableau === '2033-A' ? /^\d{3}$/ : /^[0-9A-Z]{2}$/).test(l.codeCase) : l.codesActif !== null ? ['2050', '2033-A'].includes(l.tableau) && l.etatCodeCase === 'verifie' && l.codeCase === null : l.etatCodeCase === 'a_confirmer'))).toBe(true);
       expect(t.lignes.filter((l) => l.codeCase !== null).every((l) => AVEC_CODE.has(l.tableau))).toBe(true);
       expect(new Set(t.lignes.map((l) => l.id)).size).toBe(t.lignes.length);
     }
@@ -136,7 +136,7 @@ describe('liasse du régime réel normal (2050 à 2053)', () => {
 
   it('donne pour chaque case le montant, les comptes contributeurs et la traçabilité', () => {
     const c = caseDe(p, 'RN_2050_A_AUTRES_CORPORELLES');
-    expect(c).toMatchObject({ tableau: '2050', nature: 'poste', brut: '10000.00', amortissementsDepreciations: '4000.00', montant: '6000.00', codeCase: null, etatCodeCase: 'a_confirmer' });
+    expect(c).toMatchObject({ tableau: '2050', nature: 'poste', brut: '10000.00', amortissementsDepreciations: '4000.00', montant: '6000.00', codeCase: null, codesActif: { brut: 'AT', amortissements: 'AU' }, etatCodeCase: 'verifie' });
     expect(c.comptes).toEqual([
       { compteNum: '218300', compteLib: 'Compte 218300', montant: '10000.00', rubriquePcg: 'A_AUTRES_CORPORELLES', colonne: 'brut' },
       { compteNum: '281830', compteLib: 'Compte 281830', montant: '-4000.00', rubriquePcg: 'A_AUTRES_CORPORELLES', colonne: 'amortissements_depreciations' },
@@ -312,6 +312,17 @@ describe('codes de cases du tableau 2033-B (D-107) : lus puis vérifiés sur le 
 });
 
 describe('codes de cases des tableaux 2051, 2052 et 2053 (D-155)', () => {
+  it('2033-A : codes du PASSIF seulement (trois chiffres), actif et lignes regroupées sans code', () => {
+    const p = projet(preparerLiasse(demande([], { regime: 'reel_simplifie' })));
+    const t = p.tableaux.find((x) => x.code === '2033-A')!.lignes;
+    const l = (id: string) => t.find((x) => x.ligne === id)!;
+    expect(l('RSI_2033A_PASSIF_CAPITAL')).toMatchObject({ codeCase: '120', etatCodeCase: 'verifie' });
+    expect(l('RSI_2033A_PASSIF_TOTAL_GENERAL')).toMatchObject({ codeCase: '180' });
+    expect(l('RSI_2033A_PASSIF_AUTRES_DETTES')).toMatchObject({ codeCase: null, etatCodeCase: 'a_confirmer' });
+    expect(t.filter((x) => x.ligne.includes('_ACTIF_')).every((x) => x.codeCase === null)).toBe(true);
+    const codes = t.filter((x) => x.codeCase !== null).map((x) => x.codeCase);
+    expect(new Set(codes).size).toBe(codes.length);
+  });
   it('codes uniques par tableau, deux caractères, lignes regroupées par Comtaple sans code, 2050 non couvert', () => {
     const p = projet(preparerLiasse(demande([])));
     const par = (code: string) => p.tableaux.find((t) => t.code === code)!.lignes;
@@ -329,6 +340,25 @@ describe('codes de cases des tableaux 2051, 2052 et 2053 (D-155)', () => {
     expect(l('2051', 'P_CAPITAL')).toMatchObject({ codeCase: 'DA' });
     expect(l('2051', 'TOTAL_GENERAL')).toMatchObject({ codeCase: 'EE' });
     expect(l('2051', 'P_RESERVES')).toMatchObject({ codeCase: null }); // total des réserves : regroupement propre à Comtaple
-    expect(par('2050').every((x) => x.codeCase === null)).toBe(true);
+    expect(par('2050').every((x) => x.codeCase === null)).toBe(true); // l'actif porte des `codesActif`, pas de code unique
+  });
+});
+
+describe('codes de l\'ACTIF du 2050 et du 2033-A (D-156)', () => {
+  it('deux codes par ligne feuille de même libellé ; sous-totaux du 2050 et lignes regroupées sans code ; codes uniques', () => {
+    const rn = projet(preparerLiasse(demande([]))).tableaux.find((t) => t.code === '2050')!.lignes;
+    const a = (id: string) => rn.find((x) => x.ligne === `RN_2050_${id}`)!;
+    expect(a('A_FRAIS_ETABLISSEMENT')).toMatchObject({ codesActif: { brut: 'AB', amortissements: 'AC' }, etatCodeCase: 'verifie' });
+    expect(a('A_CLIENTS').codesActif).toEqual({ brut: 'BX', amortissements: 'BY' });
+    expect(a('TOTAL_GENERAL').codesActif).toEqual({ brut: 'CO', amortissements: '1A' });
+    expect(a('A_CAPITAL_SOUSCRIT_NON_APPELE').codesActif).toEqual({ brut: 'AA', amortissements: null });
+    for (const id of ['A_ACTIF_IMMOBILISE', 'A_ACTIF_CIRCULANT', 'A_IMMOBILISATIONS_INCORPORELLES', 'A_STOCKS_EN_COURS', 'A_STOCKS_PRODUITS_FINIS', 'A_INSTRUMENTS_FINANCIERS_JETONS']) expect(a(id), id).toMatchObject({ codesActif: null, etatCodeCase: 'a_confirmer' });
+    const toutes = rn.flatMap((x) => (x.codesActif ? [x.codesActif.brut, ...(x.codesActif.amortissements ? [x.codesActif.amortissements] : [])] : []));
+    expect(new Set(toutes).size).toBe(toutes.length);
+    const rsi = projet(preparerLiasse(demande([], { regime: 'reel_simplifie' }))).tableaux.find((t) => t.code === '2033-A')!.lignes;
+    const b = (id: string) => rsi.find((x) => x.ligne === `RSI_2033A_${id}`)!;
+    expect(b('ACTIF_TOTAL_I').codesActif).toEqual({ brut: '044', amortissements: '048' });
+    expect(b('ACTIF_CLIENTS').codesActif).toEqual({ brut: '068', amortissements: '070' });
+    expect(b('PASSIF_CAPITAL').codesActif).toBeNull();
   });
 });

@@ -105,7 +105,22 @@ function Liasse({ l, fm }: { l: LiasseProjet; fm: Fm }) {
                       {x.libelle}
                       {x.note ? <span className="block text-sm text-texte-doux">{x.note}</span> : null}
                     </th>
-                    <td>{x.codeCase ?? <span className="text-texte-doux">à confirmer</span>}</td>
+                    <td data-testid={`code-${x.ligne}`}>
+                      {x.codesActif ? (
+                        <span className="tabular-nums">
+                          {x.codesActif.brut}
+                          {x.codesActif.amortissements ? ` / ${x.codesActif.amortissements}` : ''}
+                          <span className="block text-xs text-texte-doux">brut{x.codesActif.amortissements ? ' / amort.' : ''}, vérifiés sur le PDF</span>
+                        </span>
+                      ) : x.codeCase !== null ? (
+                        <span className="tabular-nums">
+                          {x.codeCase}
+                          <span className="block text-xs text-texte-doux">vérifié sur le PDF</span>
+                        </span>
+                      ) : (
+                        <span className="text-texte-doux">à confirmer</span>
+                      )}
+                    </td>
                     {deuxColonnes ? (
                       <>
                         <td className="text-right tabular-nums">{x.brut !== undefined ? fm(x.brut) : ''}</td>

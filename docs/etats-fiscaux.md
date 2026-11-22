@@ -14,11 +14,11 @@ Périmètre explicite : **société commerciale soumise à l’impôt sur les so
 
 | Tableau | État | Ce qui est préparé | Ce qui manque |
 |---|---|---|---|
-| 2050 Bilan-actif (réel normal) | partiel | Brut, amortissements et dépréciations, net de l’exercice, par poste ; colonne N-1 (D-103) ; renvois CP et CR saisis (D-135) | Autres renvois sans code, codes de cases ; euros entiers à l’écran (D-105) |
+| 2050 Bilan-actif (réel normal) | partiel | Brut, amortissements et dépréciations, net de l’exercice, par poste ; colonne N-1 (D-103) ; renvois CP et CR saisis (D-135) ; codes de cases brut / amortissements vérifiés sur le rendu pour 31 lignes (D-156) | Sous-totaux et lignes regroupées sans code ; autres renvois sans code ; euros entiers à l’écran (D-105) |
 | 2051 Bilan-passif | partiel | Montants de l’exercice (avant répartition) ; renvois (1) à (5) et « dont » saisis (D-135) ; codes de cases vérifiés sur le rendu (32 lignes, D-155) | Lignes regroupées sans code |
 | 2052 Compte de résultat | partiel | Montants de l’exercice jusqu’au résultat courant ; codes de la colonne TOTAL vérifiés sur le rendu (43 lignes, D-155) | Ventilation France / export (D-106) |
 | 2053 Compte de résultat (suite) | partiel | Exceptionnel, participation, impôt, totaux, bénéfice ou perte ; détails (7) et (8) saisis (D-136) ; codes vérifiés sur le rendu (D-155) | — |
-| 2033-A Bilan simplifié (régime simplifié) | partiel | Montants de l’exercice par ligne agrégée ; renvois et « dont » (8 cases) saisis (D-135) | idem + postes sans ligne certaine (voir 3.3) |
+| 2033-A Bilan simplifié (régime simplifié) | partiel | Montants de l’exercice par ligne agrégée ; renvois et « dont » (8 cases) saisis (D-135) ; codes de cases vérifiés sur le rendu (actif 15 lignes, passif 17, D-156) | « Autres dettes » sans code (3 cases au formulaire) ; postes sans ligne certaine (voir 3.3) |
 | 2033-B Compte de résultat simplifié | partiel | Partie comptable seulement | idem + **toute la partie « résultat fiscal »** |
 | 2054 Immobilisations (cadres A et B) | partiel (D-104) | Valeurs brutes à l’ouverture et à la clôture, augmentations (débits), diminutions totales, par ligne du formulaire, avec N-1 et rapprochement avec le fichier des immobilisations | Réévaluations, ventilation des diminutions et « dont composants » : saisies justifiées (D-134), contrôle indicatif avec la balance ; euros entiers à l’écran (D-105) ; codes de cases lus, à confirmer |
 | 2055 cadres B et C | partiel (D-113) | Saisie ligne par ligne, colonne 7, totaux, non ventilé et montant net à la fin calculés comme le formulaire | Origine des dotations et reprises (décision du cabinet) ; 2053 HG et HC, 2056 TM et TN non préparés |

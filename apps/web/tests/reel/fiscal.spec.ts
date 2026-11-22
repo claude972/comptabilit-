@@ -179,6 +179,14 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2)).toBe(true);
 
+  // Codes de cases vérifiés sur le rendu des PDF officiels (D-155, D-156) : actif du 2050 (brut / amortissements), passif du 2051, 2052.
+  await page.goto(`/dossiers/${DOSSIER_DEMO}/fiscal?vue=liasse`);
+  await expect(page.getByTestId('code-RN_2050_A_FRAIS_ETABLISSEMENT')).toContainText('AB / AC');
+  await expect(page.getByTestId('code-RN_2050_TOTAL_GENERAL')).toContainText('CO / 1A');
+  await expect(page.getByTestId('code-RN_2051_P_CAPITAL')).toContainText('DA');
+  await expect(page.getByTestId('code-RN_2052_PE_CHIFFRE_AFFAIRES')).toContainText('FL');
+  await expect(page.getByTestId('code-RN_2052_PE_PRODUCTION_VENDUE')).toContainText('à confirmer'); // regroupement propre à Comtaple : jamais de code inventé
+
   // État joint imprimable / exportable (D-138) : identification, statut PROJET, limites, tableaux saisis, export CSV.
   await page.goto(`/dossiers/${DOSSIER_DEMO}/fiscal?vue=liasse`);
   // Hydratation terminée avant le clic (D-149) : en WebKit CI, un clic sur ce lien n'a abouti à aucune navigation (échec du 2026-11-22) ; hypothèse, non confirmée.

@@ -49,14 +49,17 @@ Document de passage pour reprendre le travail sans relire la conversation. À me
 - Méthode de vérification : extraction de texte positionnée (pdf.js, `pdfjs-dist` du dépôt) puis rendu image des pages dans le navigateur (serveur HTTP local temporaire, pdf.js), codes comparés à l'image. Ce n'est pas une validation professionnelle.
 
 ## GitHub : quota et CI
-- L'API GitHub a atteint sa limite (HTTP 403) à cause de surveillances par boucle ; réinitialisation à l'instant epoch 1795323833 (≈ 2026-11-22 07:03 UTC). **Aucune boucle de surveillance** ; faire UNE lecture groupée (`/actions/runs?per_page=15` puis annotations des jobs en échec) après le reset.
-- Verts, annotations lues : 533329a, 2106374, f2536f6 (étape des conteneurs d'analyse durcie réellement verte une fois).
-- **Défaut non résolu** : CI de f6295b8 en échec sur WebKit, test `ecrans-cabinet.spec.ts:125` « règle : proposée par la collaboratrice … effet visible dans la révision » (`origine-parametres` de la ligne `TIE-001` introuvable après 120 s). Intermittence ou défaut réel : non tranché ; à diagnostiquer sur les runs suivants (a487710 et après), sans masquer le test.
-- Sans verdict connu : a487710, 6a86aa7, 81aa858, 9566172, dbedb6c, 0d735c5, 11c11ed, f7d6981, f4ade36, ce7e5ca.
+- Le quota de l'API publique GitHub s'est reconstitué (vérifié le 2026-11-22 vers 05:45 UTC : 60/60, sans jeton). **Aucune boucle de surveillance** : lectures ponctuelles seulement (`/rate_limit` ne consomme rien) ; un run complet dure 30 à 40 min.
+- **Lecture groupée du 2026-11-22 ~05:45 UTC** (runs des 30 derniers commits) :
+  - **Succès** : f2536f6, 533329a, 2106374, a487710, 6a86aa7, 9566172, dbedb6c, 0d735c5, 11c11ed, f7d6981, f4ade36, 73f4de0 (étape des conteneurs d'analyse durcie : un succès est réel).
+  - **WebKit `ecrans-cabinet.spec.ts:125`** (échec de f6295b8) : **non reproduit** sur les huit exécutions suivantes (a487710 à f4ade36, toutes vertes) : intermittence probable, cause racine non établie ; le test n'est ni masqué ni assoupli, à surveiller.
+  - **81aa858** : échec de l'essai `analyse-conteneur.itest.ts` « arrêt forcé… 30 arrêts » (arrêt n° 28 : moteur bloqué, un conteneur résiduel) : c'est le défaut amont de dockerd déjà connu (P0 PARTIEL), non lié aux livraisons ; runs suivants verts.
+  - **ce7e5ca** : échec de `ecrans-cabinet.spec.ts:324` « veille… BOFiP lues » (« Veille NON assurée » attendue « assurée ») : le test dépend de la disponibilité réelle du site BOFiP depuis le runner (réseau externe) ; run suivant (73f4de0) vert. Fragilité signalée, test inchangé.
+  - **Échecs de e7ae833 à 048039f** (itest `parcours-detail-resultat` : 404 attendu, 400 reçu pour une ligne inconnue de tableau, lignes 236 et 313) : **régression réelle de mes livraisons D-121 à D-125** (la route acceptait des lignes plus larges) ; **corrigée dans 1c506a3** (D-126) en distinguant les familles de tableaux et en restaurant les 404 historiques. À confirmer sur les runs de 1c506a3 et suivants, en cours de lecture.
 - Les « verts » d'étapes `continue-on-error` ne se lisent que par les annotations, jamais par la conclusion.
 
 ## Garde-fous et état local
-- Données conservées : aucune suppression, aucune purge ; migrations 0050 à 0056 additives. Le disque Colima vide créé par erreur dans `/Volumes/Stockage/colima-dev-home/_lima/_disks/colima/` est **laissé intact** (suppression refusée par le garde-fou, à décider par son propriétaire).
+- Données conservées : aucune suppression, aucune purge ; migrations 0050 à 0064 additives. Le disque Colima vide créé par erreur dans `/Volumes/Stockage/colima-dev-home/_lima/_disks/colima/` est **laissé intact** (suppression refusée par le garde-fou, à décider par son propriétaire).
 - `scripts/verifier-profil-colima.sh` et `~/.comtaple-outils/env.sh` (LIMA_HOME forcé) protègent les autres projets ; ne jamais lancer `colima start` sans `source ~/.comtaple-outils/env.sh`.
 - Dossier fictif de démonstration : « Maison Lefèvre Distribution SAS (fictive) », dossier `1c624aea-e3c7-498e-bce0-bb72b4cf6552`, exercice `c2730848-08de-4ccb-b4e8-ca7d403cc9a0` ; captures dans `var/captures/` ; script `apps/web/tests/reel/captures-fiscal.mjs` (options `--2058a`, `--2058bc`, `--2033d`…).
 - Pile locale : API 4000, web 3100 ; reconstruction : `pnpm --filter … run build`, tuer le processus qui écoute sur 4000 / 3100 puis `sh scripts/applis.sh serveur|web`.

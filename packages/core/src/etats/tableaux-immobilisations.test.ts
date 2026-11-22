@@ -2,8 +2,9 @@
 import { describe, expect, it } from 'vitest';
 import type { LigneEcriture } from '../controles/types.js';
 import { piece } from '../jeux-etats-tests.js';
+import { validerSaisieTableau } from './saisies-tableaux.js';
 import type { ImmobilisationAAmortir } from './inventaire.js';
-import { type DemandeTableauxImmobilisations, type ResultatTableauxImmobilisations, type TableauImmobilisations, type TableauxImmobilisationsProjet, preparerTableauxImmobilisations } from './tableaux-immobilisations.js';
+import { type DemandeTableauxImmobilisations, type ResultatTableauxImmobilisations, type TableauImmobilisations, type TableauxImmobilisationsProjet, lignesSaisieImmobilisations, preparerTableauxImmobilisations } from './tableaux-immobilisations.js';
 
 const EX_N1 = { debut: '2025-01-01', fin: '2025-12-31' };
 const EX_N = { debut: '2026-01-01', fin: '2026-12-30' };
@@ -324,3 +325,60 @@ describe('codes de cases et sources', () => {
     for (const t of p.tableaux) for (const c of t.cadres) for (const l of c.lignes) for (const [cle, v] of Object.entries(l.cellules)) if (v.codeCase === null) expect(['diminutions_totales', 'reevaluation_valeur_origine'].includes(cle) || l.nature === 'non_ventile', `${t.code} ${c.id} ${l.id} ${cle}`).toBe(true);
   });
 });
+
+describe('cellules saisies : réévaluation, ventilation des diminutions, « dont composants » (D-134)', () => {
+  const TRACE = { note: 'Registre des immobilisations (essai)', qualifieePar: 'u-1', le: '2026-12-31T10:00:00Z', versionDonnees: 7 };
+  const rang = (cadre: 'A' | 'B', id: string) => lignesSaisieImmobilisations('reel_normal').find((l) => l.cadre === cadre && l.ligneId === id)!.ligne;
+  const saisie = (ligne: string, valeurs: Record<string, string>, v = 7) => ({ ligne, valeurs, ...TRACE, versionDonnees: v });
+  const avec = (saisies: ReturnType<typeof saisie>[]) => projet(preparerTableauxImmobilisations(demande({ saisiesCellules: saisies, versionDonnees: 7 })));
+
+  it('lignes saisissables : postes seulement, colonnes de la balance exclues, « dont composants » aux lignes qui en portent', () => {
+    const l = lignesSaisieImmobilisations('reel_normal');
+    expect(l.filter((x) => x.cadre === 'A')).toHaveLength(17);
+    expect(l.every((x) => !x.ligneId.startsWith('TOTAL'))).toBe(true);
+    expect(l.find((x) => x.ligne === rang('A', 'CONSTR_PROPRE'))!.colonnes.map((c) => c.cle)).toEqual(['augmentation_reevaluation', 'dont_composants']);
+    expect(l.find((x) => x.ligne === rang('B', 'TERRAINS'))!.colonnes.map((c) => c.cle)).toEqual(['diminution_virement', 'diminution_cession', 'reevaluation_valeur_origine']);
+    expect(lignesSaisieImmobilisations('reel_simplifie').map((x) => x.ligne)[0]).toBe('I01');
+  });
+  it('sans saisie : cellules à saisir ; la ventilation saisie établit les cellules et le contrôle indicatif la rapproche de la balance, sans correction', () => {
+    const sans = projet(preparerTableauxImmobilisations(demande()));
+    expect(valeur(sans, '2054', 'B', 'INST_TECH', 'diminution_cession').statut).toBe('a_saisir');
+    expect(p2(sans)).toBe(true);
+    const ok = avec([saisie(rang('B', 'INST_TECH'), { diminution_virement: '0.00', diminution_cession: '10000.00' })]);
+    expect(valeur(ok, '2054', 'B', 'INST_TECH', 'diminution_cession')).toMatchObject({ statut: 'etabli', montant: '10000.00' });
+    expect(controle(ok, 'ventilation_diminutions_INST_TECH')?.statut).toBe('ok');
+    const ko = avec([saisie(rang('B', 'INST_TECH'), { diminution_virement: '0.00', diminution_cession: '9000.00' })]);
+    expect(controle(ko, 'ventilation_diminutions_INST_TECH')).toMatchObject({ statut: 'ecart', ecart: '-1000.00' });
+    expect(valeur(ko, '2054', 'B', 'INST_TECH', 'diminutions_totales').montant).toBe('10000.00');
+  });
+  it('réévaluation et « dont composants » saisis ; saisie sur une autre version des données : à revoir, non retenue', () => {
+    const p = avec([saisie(rang('A', 'CONSTR_PROPRE'), { augmentation_reevaluation: '1200.00', dont_composants: '300.00' })]);
+    expect(valeur(p, '2054', 'A', 'CONSTR_PROPRE', 'augmentation_reevaluation')).toMatchObject({ statut: 'etabli', montant: '1200.00' });
+    expect(ligne(p, '2054', 'A', 'CONSTR_PROPRE').dontComposants).toMatchObject({ statut: 'etabli', montant: '300.00', motif: null });
+    expect(ligne(p, '2054', 'A', 'CONSTR_AUTRUI').dontComposants?.statut).toBe('a_saisir');
+    const vieux = avec([saisie(rang('A', 'CONSTR_PROPRE'), { augmentation_reevaluation: '1200.00' }, 3)]);
+    expect(valeur(vieux, '2054', 'A', 'CONSTR_PROPRE', 'augmentation_reevaluation').statut).toBe('a_saisir');
+    expect(vieux.saisiesCellules.find((x) => x.ligne === rang('A', 'CONSTR_PROPRE'))?.statut).toBe('a_revoir');
+  });
+  it('le total de la colonne saisie n’est établi que lorsque toutes les lignes sont saisies', () => {
+    const lignes = lignesSaisieImmobilisations('reel_normal').filter((l) => l.cadre === 'A');
+    const toutes = lignes.map((l) => saisie(l.ligne, { augmentation_reevaluation: '0.00' }));
+    expect(valeur(avec(toutes.slice(1)), '2054', 'A', 'TOTAL_GENERAL', 'augmentation_reevaluation').statut).toBe('a_saisir');
+    expect(valeur(avec(toutes), '2054', 'A', 'TOTAL_GENERAL', 'augmentation_reevaluation')).toMatchObject({ statut: 'etabli', montant: '0.00' });
+  });
+  it('2033-C cadre I : valeur d’origine réévaluée saisie par ligne', () => {
+    const p = projet(preparerTableauxImmobilisations({ ...demande({ regime: 'reel_simplifie', saisiesCellules: [saisie('I03', { reevaluation_valeur_origine: '500.00' })], versionDonnees: 7 }) }));
+    expect(p.saisiesCellules.find((x) => x.ligne === 'I03')?.statut).toBe('saisi');
+    expect(valeur(p, '2033-C', 'I', 'TERRAINS', 'reevaluation_valeur_origine')).toMatchObject({ statut: 'etabli', montant: '500.00' });
+  });
+  it('forme des saisies', () => {
+    expect(validerSaisieTableau('IMMO_CELL', rang('B', 'TERRAINS'), { diminution_cession: '5.00' })).toEqual([]);
+    expect(validerSaisieTableau('IMMO_CELL', rang('B', 'TERRAINS'), {}).join(' ')).toMatch(/Au moins une cellule/);
+    expect(validerSaisieTableau('IMMO_CELL', rang('B', 'TERRAINS'), { dont_composants: '1.00' }).join(' ')).toMatch(/non saisissable/);
+    expect(validerSaisieTableau('IMMO_CELL', rang('B', 'TERRAINS'), { diminution_cession: '-1.00' }).join(' ')).toMatch(/positif/);
+    expect(validerSaisieTableau('IMMO_CELL', 'B99', { diminution_cession: '1.00' }).join(' ')).toMatch(/Ligne inconnue/);
+    expect(validerSaisieTableau('IMMO_CELL', 'A21', { augmentation_reevaluation: '1.00' }).join(' ')).toMatch(/Ligne inconnue/);
+  });
+});
+const p2 = (p: TableauxImmobilisationsProjet) => p.saisiesCellules.every((x) => x.statut === 'a_saisir');
+

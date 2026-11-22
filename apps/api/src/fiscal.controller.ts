@@ -75,7 +75,7 @@ const montantSigne = schemaChaineDecimale;
 const ventilation = z.object({ montantFrance: montantSigne, montantExport: montantSigne, note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie la ventilation').max(2000) });
 const renvoiSaisie = z.object({ montant: montantSigne, note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie le montant').max(2000) });
 const saisieTableau = z.object({ valeurs: z.record(z.string().max(40), z.string().max(200)), note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie la saisie').max(2000) });
-const TABLEAU_SAISI = /^(2033C_III|2054BIS_A|2054BIS_B|2055_B|2055_C|2033D_C|2033F_NB|2033F_PM|2033F_PP|2033G_NB|2033G_FIL|2059A_IM|2059A_AUT|2059B_A|2059B_B|2059C_I|2059C_II|2059D_I|2059D_II|2065_C1|2065_C2|2065_C3|2065_C4|2065_F|2065_I|2065_D|2065_E|2033E_DATES|2057_A|2057_AX|2057_B|2057_BX|2065B_G|2065B_H|2065B_I|2065B_J1|2065B_J2|2065B_K|2033D_982|2058B_K4BIS|2058A_REINT|2058A_DEDUC)$/;
+const TABLEAU_SAISI = /^(2033C_III|2054BIS_A|2054BIS_B|2055_B|2055_C|2033D_C|2033F_NB|2033F_PM|2033F_PP|2033G_NB|2033G_FIL|2059A_IM|2059A_AUT|2059B_A|2059B_B|2059C_I|2059C_II|2059D_I|2059D_II|2065_C1|2065_C2|2065_C3|2065_C4|2065_F|2065_I|2065_D|2065_E|2033E_DATES|2057_A|2057_AX|2057_B|2057_BX|2065B_G|2065B_H|2065B_I|2065B_J1|2065B_J2|2065B_K|2033D_982|2058B_K4BIS|2058A_REINT|2058A_DEDUC|IMMO_CELL)$/;
 /** Lignes admises par la route, selon la famille de tableau : historiques (01 à 13…), 2059-A (01 à 20), grilles 2059-B à D, 2065 et dates du 2033-E (identifiants courts, forme validée contre la définition). */
 const LIGNE_HISTORIQUE = /^(0[1-9]|1[0-3]|REG|PV19|NEANT|B1|B2|NB)$/;
 const LIGNE_2059A = /^(0[1-9]|1[0-9]|20|NEANT)$/;
@@ -83,7 +83,7 @@ const LIGNE_2059A = /^(0[1-9]|1[0-9]|20|NEANT)$/;
 const LIGNE_ETAT_JOINT = /^(0[1-9]|[12][0-9]|30|REG|PV19|NEANT|NB)$/;
 const AVEC_ETAT_JOINT = /^(2033C_III|2033D_C|2033F_PM|2033F_PP|2033G_FIL)$/;
 const LIGNE_GRILLE = /^[0-9A-Z]{1,8}$/;
-const estGrille = (tableau: string) => TABLEAUX_GRILLES.includes(tableau);
+const estGrille = (tableau: string) => TABLEAUX_GRILLES.includes(tableau) || tableau === 'IMMO_CELL';
 const ligneAdmise = (tableau: string, ligne: string) => (estGrille(tableau) ? LIGNE_GRILLE : tableau.startsWith('2059A_') ? LIGNE_2059A : AVEC_ETAT_JOINT.test(tableau) ? LIGNE_ETAT_JOINT : LIGNE_HISTORIQUE).test(ligne);
 const COMPTE_CA = /^70[0-9A-Za-z]{1,13}$/;
 /** Formulaires du régime réel normal servis par saisie case par case (moteur générique, D-118). */
@@ -437,6 +437,8 @@ export class FiscalController {
         precedent: precedent ? { lignes: precedent.lignes, exercice: precedent.exercice } : null,
         motifPrecedentAbsent: motifPrecedent,
         options: { amortissementDegressifActive: this.cfg.AMORTISSEMENT_DEGRESSIF_ACTIVE },
+        saisiesCellules: saisies.filter((x) => x.tableau === 'IMMO_CELL'),
+        versionDonnees: exercice.versionDonnees,
       });
       return {
         exercice: { id: exercice.id, debut: exercice.debut, fin: exercice.fin, versionDonnees: exercice.versionDonnees },

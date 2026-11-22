@@ -82,7 +82,7 @@ export interface LigneImmobilisations {
   nature: 'poste' | 'total' | 'non_ventile';
   cellules: Record<string, CelluleImmobilisation>;
   comptes: Array<{ compteNum: string; compteLib: string; ouverture: string | null; augmentations: string | null; diminutions: string | null; cloture: string }>;
-  dontComposants: { codeCase: string | null; motif: string } | null;
+  dontComposants: { codeCase: string | null; montant: string | null; statut: 'a_saisir' | 'etabli'; motif: string | null } | null;
   fichierBrut: FichierLigneBrut | null;
   fichierAmortissements: FichierLigneAmortissements | null;
   note: string | null;
@@ -106,6 +106,8 @@ export interface TableauxImmobilisationsProjet {
   comparatif: { statut: 'fourni'; exercice: { debut: string; fin: string }; reserves: string[] } | { statut: 'indisponible'; motifs: string[] };
   fichier: { fourni: boolean; nbImmobilisations: number; degressif: { active: boolean; motif: string }; abstentions: Array<{ immobilisation: string; libelle: string; code: string; motif: string }> };
   controles: ControleEtat[];
+  /** Lignes saisissables des cellules que la balance ne déduit pas (D-134). */
+  saisiesCellules?: Array<{ ligne: string; cadre: 'A' | 'B' | 'I'; ligneId: string; libelle: string; colonnes: Array<{ cle: string; libelle: string }>; statut: StatutLigneSaisie; trace: TraceSaisie | null; valeurs: Record<string, string> | null }>;
 }
 export interface ReponseLiasse {
   exercice: { id: string; debut: string; fin: string };

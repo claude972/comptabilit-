@@ -1019,6 +1019,36 @@ describe('feuillets du régime réel normal : déficits transférés (K4 bis du 
   }, 120_000);
 });
 
+describe('2054 / 2033-C : cellules non déductibles de la balance saisies (réévaluation, ventilation, composants) (D-134)', () => {
+  const immo = async (regime: string) => (await liasse(exN, regime)).json.tableauxImmobilisations;
+  const put = (ligne: string, valeurs: Record<string, string>, qui = 'remi') => api(qui, 'PUT', `/v1/exercices/${exN}/tableaux/IMMO_CELL/${ligne}`, { valeurs, note: 'Registre des immobilisations (essai)' });
+
+  it('lignes saisissables aux deux régimes ; saisie retenue avec trace, cellule établie ; refus de forme et de droits ; retrait', async () => {
+    const n = await immo('reel_normal');
+    expect(n.statut).toBe('projet');
+    expect(n.saisiesCellules.filter((l: any) => l.cadre === 'A')).toHaveLength(17);
+    expect(n.saisiesCellules.filter((l: any) => l.cadre === 'B')).toHaveLength(17);
+    expect((await immo('reel_simplifie')).saisiesCellules.map((l: any) => l.ligne)[0]).toBe('I01');
+    const ligneB = n.saisiesCellules.find((l: any) => l.cadre === 'B' && l.ligneId === 'TERRAINS').ligne;
+    expect((await put(ligneB, { dont_composants: '1.00' })).statut).toBe(400);
+    expect((await put(ligneB, { diminution_cession: '-1.00' })).statut).toBe(400);
+    expect((await put('B99', { diminution_cession: '1.00' })).statut).toBe(404);
+    expect((await put(ligneB, { diminution_cession: '1.00' }, 'chloe')).statut).toBeGreaterThanOrEqual(400);
+    expect((await put(ligneB, { diminution_cession: '1.00' }, 'client')).statut).toBe(404);
+    expect((await put(ligneB, { diminution_virement: '0.00', diminution_cession: '0.00', reevaluation_valeur_origine: '0.00' })).statut).toBeLessThan(300);
+    const apres = await immo('reel_normal');
+    const l = apres.saisiesCellules.find((x: any) => x.ligne === ligneB);
+    expect(l).toMatchObject({ statut: 'saisi', trace: { qualifieePar: DEMO.remi } });
+    const terrains = apres.tableaux.find((t: any) => t.code === '2054').cadres.find((c: any) => c.id === 'B').lignes.find((x: any) => x.id === 'TERRAINS');
+    expect(terrains.cellules.reevaluation_valeur_origine).toMatchObject({ statut: 'etabli', montant: '0.00' });
+    const h = (await api('remi', 'GET', `/v1/exercices/${exN}/qualifications/historique?cle=IMMO_CELL:${ligneB}`)).json.evenements as any[];
+    expect(h).toHaveLength(1);
+    expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/IMMO_CELL/${ligneB}`)).statut).toBeLessThan(300);
+    const retire = (await immo('reel_normal')).tableaux.find((t: any) => t.code === '2054').cadres.find((c: any) => c.id === 'B').lignes.find((x: any) => x.id === 'TERRAINS');
+    expect(retire.cellules.reevaluation_valeur_origine.statut).toBe('a_saisir');
+  }, 120_000);
+});
+
 describe('détail du compte de résultat : qualification tracée, abstention sans qualification', () => {
   it('sans qualification : totaux de la balance, France et exportations en abstention, renvois à saisir, exceptionnel détaillé', async () => {
     const d = await detail();

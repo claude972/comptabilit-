@@ -456,6 +456,13 @@
       "when": 1795326110037,
       "tag": "0064_feuillets_2058",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1795326521702,
+      "tag": "0065_cellules_immobilisations",
+      "breakpoints": true
     }
   ]
 }

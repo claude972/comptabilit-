@@ -106,8 +106,8 @@ export interface LigneTableauImmobilisations {
   nature: 'poste' | 'total' | 'non_ventile';
   cellules: Record<string, CelluleImmobilisation>;
   comptes: CompteLigneImmobilisation[];
-  /** Cellule « dont composants » du formulaire (2054, cadre A) : jamais déduite. */
-  dontComposants: { codeCase: string | null; etatCodeCase: 'lu_a_confirmer' | 'a_confirmer'; montant: null; statut: 'a_saisir'; motif: string } | null;
+  /** Cellule « dont composants » du formulaire (2054, cadre A) : jamais déduite ; saisie justifiée du cabinet (D-134). */
+  dontComposants: { codeCase: string | null; etatCodeCase: 'lu_a_confirmer' | 'a_confirmer'; montant: ChaineDecimale | null; statut: 'a_saisir' | 'etabli'; motif: string | null } | null;
   fichierBrut: FichierLigneBrut | null;
   fichierAmortissements: FichierLigneAmortissements | null;
   note: string | null;
@@ -160,6 +160,10 @@ export interface DemandeTableauxImmobilisations {
   precedent?: { lignes: readonly LigneEcriture[]; exercice: { debut: string; fin: string } } | null;
   motifPrecedentAbsent?: string | null;
   options?: { amortissementDegressifActive?: boolean };
+  /** Saisies des cellules que la balance ne permet pas de déduire (réévaluation, ventilation des diminutions, « dont composants »), D-134. */
+  saisiesCellules?: readonly SaisieCelluleImmobilisations[];
+  /** Version des données de l'exercice : une saisie faite sur une autre version est « à revoir » et n'est pas retenue. */
+  versionDonnees?: number;
 }
 
 export type ComparatifImmobilisations =
@@ -193,9 +197,58 @@ export interface TableauxImmobilisationsProjet {
   /** Écarts AFFICHÉS, jamais corrigés. */
   controles: ControleEtat[];
   sources: SourceRegle[];
+  /** Lignes saisissables des cellules non déductibles de la balance (D-134), avec leur état. */
+  saisiesCellules: LigneSaisieImmobilisationsProjet[];
 }
 
 export type ResultatTableauxImmobilisations = TableauxImmobilisationsProjet | LiasseAbstention;
+
+// ───────────────────────────── Saisies des cellules non déductibles de la balance (D-134) ─────────────────────────────
+
+export const CLE_DONT_COMPOSANTS = 'dont_composants';
+export interface SaisieCelluleImmobilisations {
+  /** « A03 », « B03 » (2054 cadres A et B) ou « I03 » (2033-C cadre I) : cadre + rang de la ligne dans le formulaire. */
+  ligne: string;
+  valeurs: Record<string, string>;
+  note: string;
+  qualifieePar: string;
+  le: string;
+  versionDonnees: number;
+}
+export interface LigneSaisieImmobilisations {
+  ligne: string;
+  cadre: 'A' | 'B' | 'I';
+  ligneId: string;
+  libelle: string;
+  colonnes: Array<{ cle: string; libelle: string }>;
+}
+/** Lignes de postes (hors totaux) et colonnes que la balance ne déduit pas, par régime : réévaluation, ventilation des diminutions, valeur d'origine réévaluée, « dont composants ». */
+export function lignesSaisieImmobilisations(regime: RegimeLiasse): LigneSaisieImmobilisations[] {
+  const rang = (i: number) => String(i + 1).padStart(2, '0');
+  const lib = (cols: ColonneDef[], cle: string) => cols.find((c) => c.cle === cle)!.libelle;
+  if (regime === 'reel_normal') {
+    const a = colonnesBrutA();
+    const b = colonnesBrutB();
+    const sorties: LigneSaisieImmobilisations[] = [];
+    LIGNES_2054.forEach((l, i) => {
+      if (l.id in SOMMES_2054) return;
+      sorties.push({ ligne: `A${rang(i)}`, cadre: 'A', ligneId: l.id, libelle: l.libelle, colonnes: [{ cle: 'augmentation_reevaluation', libelle: lib(a, 'augmentation_reevaluation') }, ...(l.dont !== undefined ? [{ cle: CLE_DONT_COMPOSANTS, libelle: `Dont composants (case ${l.dont})` }] : [])] });
+      sorties.push({ ligne: `B${rang(i)}`, cadre: 'B', ligneId: l.id, libelle: l.libelle, colonnes: ['diminution_virement', 'diminution_cession', 'reevaluation_valeur_origine'].map((cle) => ({ cle, libelle: lib(b, cle) })) });
+    });
+    return sorties;
+  }
+  return LIGNES_2033C.flatMap((l, i) => (l.id === 'TOTAL' ? [] : [{ ligne: `I${rang(i)}`, cadre: 'I' as const, ligneId: l.id, libelle: l.libelle, colonnes: [{ cle: 'reevaluation_valeur_origine', libelle: 'Réévaluation légale : valeur d’origine des immobilisations en fin d’exercice' }] }]));
+}
+/** Description d'une ligne de saisie (tous régimes) ; `null` si inconnue. */
+export function descriptionLigneSaisieImmobilisations(ligne: string): LigneSaisieImmobilisations | null {
+  return [...lignesSaisieImmobilisations('reel_normal'), ...lignesSaisieImmobilisations('reel_simplifie')].find((l) => l.ligne === ligne) ?? null;
+}
+
+export interface LigneSaisieImmobilisationsProjet extends LigneSaisieImmobilisations {
+  statut: 'a_saisir' | 'saisi' | 'a_revoir';
+  trace: { note: string; qualifieePar: string; le: string; versionDonnees: number } | null;
+  valeurs: Record<string, string> | null;
+}
 
 export const TABLE_IMMOBILISATIONS = { id: 'LIASSE-IMMOBILISATIONS-AMORTISSEMENTS', version: '2026.1', millesimeFormulaire: '2026', etat: 'en_attente_de_validation_professionnelle' } as const;
 
@@ -474,14 +527,19 @@ function valeurPoste(c: ColonneDef, cumul: CumulLigne | undefined, aNouveaux: bo
 }
 
 /** Cellules d'une ligne : postes d'après les comptes, totaux d'après leurs composants (tout ou rien). */
-function cellulesDuCadre(cadre: CadreDef, calcul: CalculExercice): Map<string, Map<string, ValeurCellule>> {
+function cellulesDuCadre(cadre: CadreDef, calcul: CalculExercice, saisies?: ReadonlyMap<string, Readonly<Record<string, string>>>): Map<string, Map<string, ValeurCellule>> {
   const resultat = new Map<string, Map<string, ValeurCellule>>();
   const ordre = [...cadre.lignes, { id: NON_VENTILE, nature: 'poste' } as LigneDef];
   for (const l of ordre) {
     const cellules = new Map<string, ValeurCellule>();
     for (const c of cadre.colonnes) {
-      if (l.nature === 'poste') { cellules.set(c.cle, valeurPoste(c, calcul.parLigne.get(l.id), calcul.aNouveaux)); continue; }
-      if (c.origine === 'a_saisir') { cellules.set(c.cle, valeurPoste(c, undefined, calcul.aNouveaux)); continue; }
+      if (l.nature === 'poste') {
+        const v = valeurPoste(c, calcul.parLigne.get(l.id), calcul.aNouveaux);
+        const saisie = saisies?.get(l.id)?.[c.cle];
+        // Une saisie justifiée du cabinet établit la cellule que la balance ne permet pas de déduire (réévaluation, ventilation des diminutions).
+        cellules.set(c.cle, saisie !== undefined && v.statut === 'a_saisir' ? etabli(dec(saisie)) : v);
+        continue;
+      }
       let total = ZERO;
       let manque: string | null = null;
       for (const id of l.somme ?? []) {
@@ -489,7 +547,7 @@ function cellulesDuCadre(cadre: CadreDef, calcul: CalculExercice): Map<string, M
         if (v === undefined || v.montant === null) { manque = v?.motif ?? 'Une des lignes composant ce total n’est pas établie.'; break; }
         total = total.plus(v.montant);
       }
-      cellules.set(c.cle, manque === null ? etabli(total) : { montant: null, statut: 'abstention', motif: `Total non établi : ${manque}` });
+      cellules.set(c.cle, manque === null ? etabli(total) : c.origine === 'a_saisir' ? aSaisir(`Total non établi tant qu'une ligne composante n'est pas saisie : ${manque}`) : { montant: null, statut: 'abstention', motif: `Total non établi : ${manque}` });
     }
     resultat.set(l.id, cellules);
   }
@@ -598,11 +656,11 @@ interface ContexteFichier {
   abstentionsParImmobilisation: Map<string, number>;
 }
 
-function construireTableau(def: TableauDef, p: { lignes: readonly LigneEcriture[]; exercice: { debut: string; fin: string }; journaux: readonly string[]; precedent: { lignes: readonly LigneEcriture[]; exercice: { debut: string; fin: string } } | null; fichier: ContexteFichier }): TableauImmobilisations {
+function construireTableau(def: TableauDef, p: { saisies?: ReadonlyMap<string, ReadonlyMap<string, Readonly<Record<string, string>>>>; lignes: readonly LigneEcriture[]; exercice: { debut: string; fin: string }; journaux: readonly string[]; precedent: { lignes: readonly LigneEcriture[]; exercice: { debut: string; fin: string } } | null; fichier: ContexteFichier }): TableauImmobilisations {
   const cadres = def.cadres.map((cadre): CadreImmobilisations => {
     const n = calculerExercice(p.lignes, p.exercice.fin, p.journaux, cadre);
     const n1 = p.precedent === null ? null : calculerExercice(p.precedent.lignes, p.precedent.exercice.fin, p.journaux, cadre);
-    const valeursN = cellulesDuCadre(cadre, n);
+    const valeursN = cellulesDuCadre(cadre, n, p.saisies?.get(cadre.id));
     const valeursN1 = n1 === null ? null : cellulesDuCadre(cadre, n1);
     // Fichier : immobilisations regroupées par ligne du cadre (le compte d'amortissement se déduit du compte d'immobilisation : 2xyz → 28xyz).
     const parLigne = new Map<string, Classee[]>();
@@ -651,7 +709,10 @@ function construireTableau(def: TableauDef, p: { lignes: readonly LigneEcriture[
       }
       return {
         id: l.id, libelle: l.libelle, numeroRomain: l.romain ?? null, nature: l.nature, cellules, comptes,
-        dontComposants: l.dont === undefined ? null : { codeCase: l.dont, etatCodeCase: 'lu_a_confirmer', montant: null, statut: 'a_saisir', motif: MOTIF_DONT_COMPOSANTS },
+        dontComposants: l.dont === undefined ? null : ((): NonNullable<LigneTableauImmobilisations['dontComposants']> => {
+          const saisi = p.saisies?.get(cadre.id)?.get(l.id)?.[CLE_DONT_COMPOSANTS];
+          return saisi === undefined ? { codeCase: l.dont, etatCodeCase: 'lu_a_confirmer', montant: null, statut: 'a_saisir', motif: MOTIF_DONT_COMPOSANTS } : { codeCase: l.dont, etatCodeCase: 'lu_a_confirmer', montant: m2(dec(saisi)), statut: 'etabli', motif: null };
+        })(),
         fichierBrut: fb, fichierAmortissements: fa, note: l.note ?? null,
       };
     };
@@ -730,7 +791,16 @@ export function preparerTableauxImmobilisations(demande: DemandeTableauxImmobili
     }
   }
 
-  const tableaux = definitions(demande.regime).map((def) => construireTableau(def, { lignes: demande.lignes, exercice: demande.exercice, journaux, precedent, fichier }));
+  // Saisies des cellules non déductibles (D-134) : seules celles faites sur la version courante des données sont retenues.
+  const lignesSaisissables = lignesSaisieImmobilisations(demande.regime);
+  const saisiesRetenues = new Map<string, Map<string, Record<string, string>>>();
+  const saisiesProjet: LigneSaisieImmobilisationsProjet[] = lignesSaisissables.map((d) => {
+    const s = (demande.saisiesCellules ?? []).find((x) => x.ligne === d.ligne);
+    const statut: LigneSaisieImmobilisationsProjet['statut'] = s === undefined ? 'a_saisir' : demande.versionDonnees !== undefined && s.versionDonnees !== demande.versionDonnees ? 'a_revoir' : 'saisi';
+    if (statut === 'saisi') saisiesRetenues.set(d.cadre, (saisiesRetenues.get(d.cadre) ?? new Map()).set(d.ligneId, s!.valeurs));
+    return { ...d, statut, trace: s === undefined ? null : { note: s.note, qualifieePar: s.qualifieePar, le: s.le, versionDonnees: s.versionDonnees }, valeurs: statut === 'saisi' ? s!.valeurs : null };
+  });
+  const tableaux = definitions(demande.regime).map((def) => construireTableau(def, { saisies: saisiesRetenues, lignes: demande.lignes, exercice: demande.exercice, journaux, precedent, fichier }));
 
   // Totaux de contrôle.
   const rn = demande.regime === 'reel_normal';
@@ -793,6 +863,21 @@ export function preparerTableauxImmobilisations(demande: DemandeTableauxImmobili
         ? { code: 'fichier_dotations', statut: 'non_verifiable', message: `Dotation non rapprochable sur ${sansCalcul.length} ligne(s) (calcul incomplet ou à-nouveaux non identifiés) : voir les abstentions du moteur.`, ecart: null }
         : { code: 'fichier_dotations', statut: 'ok', message: 'Les dotations comptabilisées égalent les dotations calculées par le moteur sur toutes les lignes rapprochées.', ecart: '0.00' });
   }
+  // Ventilation des diminutions saisie : virements + cessions doivent égaler les diminutions totales de la balance (indicatif, jamais corrigé).
+  if (rn) {
+    const cadreB = brutT?.cadres.find((c) => c.id === 'B');
+    for (const l of cadreB?.lignes.filter((x) => x.nature === 'poste') ?? []) {
+      const vir = montantDe(l.cellules['diminution_virement']);
+      const ces = montantDe(l.cellules['diminution_cession']);
+      const tot = montantDe(l.cellules['diminutions_totales']);
+      const saisie = saisiesProjet.find((x) => x.cadre === 'B' && x.ligneId === l.id && x.statut === 'saisi' && x.valeurs !== null && ('diminution_virement' in x.valeurs || 'diminution_cession' in x.valeurs));
+      if (saisie === undefined || vir === null || ces === null || tot === null) continue;
+      controles.push(ctrl(`ventilation_diminutions_${l.id}`, vir.plus(ces).minus(tot),
+        `${l.libelle} : virements + cessions saisis égalent les diminutions de la balance.`,
+        `${l.libelle} : virements + cessions saisis diffèrent des diminutions de la balance.`,
+        `${l.libelle} : ventilation non vérifiable.`));
+    }
+  }
   // Dotations des amortissements au regard du compte 6811.
   const dot = amortT === undefined ? null : montantDe(cellule(amortT, cadreAmort, ligneTotalAmort, 'dotations'));
   const compte6811 = [...suivreComptes(demande.lignes, demande.exercice.fin, journaux).comptes.values()].filter((c) => c.compteNum.startsWith('6811')).reduce((s, c) => s.plus(c.debit).minus(c.credit), ZERO);
@@ -804,7 +889,7 @@ export function preparerTableauxImmobilisations(demande: DemandeTableauxImmobili
   const aNouveaux = suivreComptes(demande.lignes, demande.exercice.fin, journaux).aNouveauxIdentifies;
   const manques: string[] = [
     ...(aNouveaux ? [] : [MOTIF_SANS_A_NOUVEAUX]),
-    'Cellules à saisir : réévaluations, valeur d’origine, ventilation des diminutions lorsque des crédits existent, « dont composants » (voir le motif de chaque cellule).',
+    ...(saisiesProjet.some((x) => x.statut !== 'saisi') ? ['Cellules à saisir : réévaluations, valeur d’origine, ventilation des diminutions lorsque des crédits existent, « dont composants » (voir le motif de chaque cellule et les lignes de saisie en dessous).'] : []),
     ...tableaux.flatMap((t) => t.cadresNonCouverts.map((c) => `${t.code === '2033-C' ? '2033-C' : t.code} cadre ${c.cadre} « ${c.intitule} » non préparé : ${c.motif}`)),
     ...tableaux.flatMap((t) => t.cadres.flatMap((c) => c.lignes.filter((l) => l.nature === 'non_ventile').map((l) => `Tableau ${t.code}, cadre ${c.id} : ${l.comptes.length} compte(s) non ventilé(s) (${l.comptes.map((x) => x.compteNum).join(', ')}), hors totaux : à rattacher à une ligne.`))),
     ...controles.filter((c) => c.statut === 'ecart').map((c) => `Écart au contrôle ${c.code} : ${c.message}`),
@@ -847,5 +932,6 @@ export function preparerTableauxImmobilisations(demande: DemandeTableauxImmobili
     },
     controles,
     sources,
+    saisiesCellules: saisiesProjet,
   };
 }

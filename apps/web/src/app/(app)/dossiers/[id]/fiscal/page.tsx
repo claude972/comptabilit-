@@ -176,6 +176,47 @@ function CelluleMontant({ c, avecN1, fm }: { c: CelluleImmobilisation | undefine
   );
 }
 
+/** Saisie des cellules des tableaux d'immobilisations que la balance ne permet pas de déduire (réévaluation, ventilation des diminutions, « dont composants »), D-134. */
+function SaisiesImmobilisations({ t, fm, exerciceId, revision, evenements }: { t: TableauxImmobilisationsProjet; fm: Fm; exerciceId: string; revision: boolean; evenements: EvenementQualification[] }) {
+  const lignes = t.saisiesCellules ?? [];
+  if (lignes.length === 0) return null;
+  const badge = (statut: string) => <Etiquette ton={statut === 'saisi' ? 'succes' : 'attention'}>{statut === 'saisi' ? 'Saisi' : statut === 'a_revoir' ? 'À revoir : données modifiées' : 'À saisir'}</Etiquette>;
+  const cadres = Array.from(new Set(lignes.map((l) => l.cadre)));
+  const titre: Record<string, string> = { A: '2054 cadre A — réévaluation et « dont composants »', B: '2054 cadre B — ventilation des diminutions et valeur d’origine réévaluée', I: '2033-C cadre I — valeur d’origine des immobilisations réévaluées' };
+  return (
+    <section className="space-y-3" aria-labelledby="titre-saisies-immobilisations" data-testid="saisies-immobilisations">
+      <SousTitre id="titre-saisies-immobilisations" className="text-base">
+        Cellules à saisir des tableaux d’immobilisations <MentionProjet />
+      </SousTitre>
+      <p className="text-sm text-texte-doux">
+        La balance ne distingue ni les réévaluations, ni les virements de poste à poste des cessions, ni les composants : chaque cellule se saisit avec une justification obligatoire, tracée et historisée ; une cellule non saisie n’est jamais présumée nulle (zéro explicite). Le contrôle « virements + cessions = diminutions de la balance » est indicatif.
+      </p>
+      {cadres.map((cadre) => (
+        <details key={cadre} data-testid={`saisies-immobilisations-${cadre}`} open={lignes.some((l) => l.cadre === cadre && l.statut !== 'a_saisir')}>
+          <summary className="cursor-pointer font-semibold">{titre[cadre]}</summary>
+          <ul className="mt-2 space-y-2">
+            {lignes.filter((l) => l.cadre === cadre).map((l) => (
+              <li key={l.ligne} className="rounded-lg border border-bordure p-3" data-saisie-immo={l.ligne}>
+                <p className="text-sm">
+                  {l.libelle} {badge(l.statut)}
+                  {l.statut === 'saisi' ? <span className="text-texte-doux"> · {l.colonnes.filter((c) => l.valeurs && c.cle in l.valeurs).map((c) => `${c.libelle} : ${fm(l.valeurs![c.cle])}`).join(' · ')}</span> : null}
+                </p>
+                {l.trace ? (
+                  <p className="text-xs text-texte-doux" data-testid={`trace-immo-${l.ligne}`}>
+                    saisie le {formaterHorodatage(l.trace.le)} sur la version {l.trace.versionDonnees} des données · « {l.trace.note} »
+                  </p>
+                ) : null}
+                <HistoriqueLigne evenements={evenements} cle={`IMMO_CELL:${l.ligne}`} fm={fm} />
+                {revision ? <SaisieLigneTableau exerciceId={exerciceId} tableau="IMMO_CELL" ligne={l.ligne} etiquette={`la ligne ${l.ligne} (${l.libelle})`} saisie={l.statut !== 'a_saisir'} noteCourante={l.trace?.note ?? null} champs={l.colonnes.map((c) => ({ cle: c.cle, libelle: c.libelle, type: 'montant' as const, valeur: l.valeurs?.[c.cle] ?? '', optionnel: true }))} /> : null}
+              </li>
+            ))}
+          </ul>
+        </details>
+      ))}
+    </section>
+  );
+}
+
 function ImmobilisationsLiasse({ t, fm }: { t: TableauxImmobilisationsProjet | Abstention; fm: Fm }) {
   if (t.statut === 'abstention') return <BlocAbstention a={t} quoi="Tableaux d’immobilisations et d’amortissements" />;
   const avecN1 = t.comparatif.statut === 'fourni';
@@ -258,7 +299,7 @@ function ImmobilisationsLiasse({ t, fm }: { t: TableauxImmobilisationsProjet | A
                       {l.numeroRomain ? `${l.numeroRomain} — ` : ''}
                       {l.libelle}
                       {l.note ? <span className="block text-sm text-texte-doux">{l.note}</span> : null}
-                      {l.dontComposants ? <span className="block text-sm text-texte-doux">dont composants (case {l.dontComposants.codeCase}) : à saisir</span> : null}
+                      {l.dontComposants ? <span className="block text-sm text-texte-doux">dont composants (case {l.dontComposants.codeCase}) : {l.dontComposants.statut === 'etabli' ? fm(l.dontComposants.montant) : 'à saisir'}</span> : null}
                       {l.comptes.length || l.fichierBrut || l.fichierAmortissements ? (
                         <details className="text-sm">
                           <summary>Détail : comptes et fichier</summary>
@@ -2279,6 +2320,7 @@ export default async function PageFiscal({ params, searchParams }: { params: Pro
       ) : null}
       {liasse?.ok ? liasse.donnees.resultat.statut === 'abstention' ? <BlocAbstention a={liasse.donnees.resultat} quoi="Liasse fiscale" /> : <Liasse l={liasse.donnees.resultat} fm={fm} /> : null}
       {liasse?.ok && liasse.donnees.tableauxImmobilisations ? <ImmobilisationsLiasse t={liasse.donnees.tableauxImmobilisations} fm={fm} /> : null}
+      {liasse?.ok && liasse.donnees.tableauxImmobilisations && liasse.donnees.tableauxImmobilisations.statut === 'projet' ? <SaisiesImmobilisations t={liasse.donnees.tableauxImmobilisations} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.tableauxSaisis ? (
         liasse.donnees.tableauxSaisis.statut === 'abstention' ? (
           <BlocAbstention a={liasse.donnees.tableauxSaisis} quoi="Cadre III du 2033-C et 2054 bis" />

@@ -491,6 +491,25 @@ if (process.argv.includes('--2065bis')) {
   await page.getByTestId('calculs-2065B_G').scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${sortie}fiscal-2065bis-total.png` });
 }
+// 2054 (D-134) : saisie de cellules non déductibles de la balance (MODIFIE le dossier fictif indiqué), régime réel normal.
+if (process.argv.includes('--2054cell')) {
+  await page.goto(`${base}&vue=liasse&regime=reel_normal`);
+  await page.waitForLoadState('networkidle');
+  await page.evaluate(() => document.querySelectorAll('[data-testid^="saisies-immobilisations-"]').forEach((d) => d.setAttribute('open', '')));
+  await page.getByTestId('saisies-immobilisations').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2054-saisies-avant.png` });
+  const f = page.locator('[data-testid="saisies-immobilisations-A"] [data-saisie-immo]').filter({ hasText: 'Constructions sur sol propre' }).locator('form');
+  await f.scrollIntoViewIfNeeded();
+  await f.getByLabel(/Augmentations consécutives à une réévaluation/).fill('0.00');
+  await f.getByLabel(/Dont composants/).fill('0.00');
+  await f.getByLabel('Justification (obligatoire)').fill('Aucune réévaluation, aucun composant isolé (démonstration fictive)');
+  await f.getByRole('button', { name: /^Enregistrer la ligne A/ }).click();
+  await f.getByText('Ligne enregistrée.').waitFor();
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('tableaux-immobilisations').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2054-saisies-apres.png` });
+}
 // 2033-B (D-107) : « dont export » et lignes « dont » du régime simplifié.
 await page.goto(`${base}&vue=liasse&regime=reel_simplifie`);
 await page.waitForLoadState('networkidle');

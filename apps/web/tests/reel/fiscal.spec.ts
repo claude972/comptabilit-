@@ -67,6 +67,9 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
     // Feuillets du réel normal (D-133) : K4 bis (20 lignes), réintégrations et déductions diverses (20 + 20).
     await expect(page.getByTestId('grille-2058-B-K4BIS').locator('li[data-ligne-grille]')).toHaveCount(20);
     await expect(page.getByTestId('grille-2058-A-FEUILLETS').locator('li[data-ligne-grille]')).toHaveCount(40);
+    // Cellules non déductibles de la balance (D-134) : saisies du 2054 cadres A et B (17 + 17 lignes).
+    await expect(page.getByTestId('saisies-immobilisations-A').locator('li[data-saisie-immo]')).toHaveCount(17);
+    await expect(page.getByTestId('saisies-immobilisations-B').locator('li[data-saisie-immo]')).toHaveCount(17);
     // 2065 bis (D-131) : annexe, 10 + 10 + 2 + 2 + 4 + 2 lignes saisies une à une.
     await expect(page.getByTestId('grille-2065-BIS').locator('li[data-ligne-grille]')).toHaveCount(30);
     // 2057 (D-130) : état des échéances des créances et des dettes, 39 lignes saisies une à une.

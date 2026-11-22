@@ -146,6 +146,8 @@ export type { CaseNombre, DemandeFormulaire2033F, Formulaire2033FProjet, LigneAs
 export { preparerFormulaire2033G } from './etats/formulaire-2033g.js';
 export { CHAMPS_2059_A_IM, LIBELLES_COLONNES_2059_A, LIGNES_2059_A_AUT, LIGNES_2059_A_IM, preparerFormulaire2059A } from './etats/formulaire-2059a.js';
 export type { DemandeFormulaire2059A, Formulaire2059AProjet, LigneAutre2059A, LigneImmobilisation2059A, TotalCadre2059A } from './etats/formulaire-2059a.js';
+export { CLE_DONT_COMPOSANTS, descriptionLigneSaisieImmobilisations, lignesSaisieImmobilisations } from './etats/tableaux-immobilisations.js';
+export type { LigneSaisieImmobilisationsProjet, SaisieCelluleImmobilisations } from './etats/tableaux-immobilisations.js';
 export { GRILLE_2058A_FEUILLETS, GRILLE_2058B_K4BIS, GRILLE_2033D_982, GRILLE_2057, GRILLE_2065, GRILLE_2065_BIS, GRILLE_DATES_CVAE, GRILLES_2059, TABLEAUX_GRILLES, preparerGrille } from './etats/formulaire-grilles.js';
 export type { CadreGrilleProjet, CelluleGrille, ColonneGrille, DefinitionGrille, DemandeGrilles, GrilleProjet, LigneGrilleProjet } from './etats/formulaire-grilles.js';
 export type { DemandeFormulaire2033G, Formulaire2033GProjet, LigneFiliale } from './etats/formulaire-2033g.js';

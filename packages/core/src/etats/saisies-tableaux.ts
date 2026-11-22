@@ -26,12 +26,13 @@ import type { Balance } from './types.js';
 import { type ControleDetail, type EtatCodeCase } from './detail-resultat.js';
 import { type ImpotSurLeResultat, type LiasseAbstention, PERIMETRE_LIASSE, type RegimeLiasse, type TerritoireFiscal, motifsAbstention } from './liasse.js';
 import { descriptionLigneGrille } from './formulaire-grilles.js';
+import { descriptionLigneSaisieImmobilisations } from './tableaux-immobilisations.js';
 import { MENTION_PROJET } from './sources-fiscales.js';
 
 const ZERO = new Decimal(0);
 
-export type TableauSaisi = '2033C_III' | '2054BIS_A' | '2054BIS_B' | '2055_B' | '2055_C' | '2033D_C' | '2033F_NB' | '2033F_PM' | '2033F_PP' | '2033G_NB' | '2033G_FIL' | '2059A_IM' | '2059A_AUT' | '2059B_A' | '2059B_B' | '2059C_I' | '2059C_II' | '2059D_I' | '2059D_II' | '2065_C1' | '2065_C2' | '2065_C3' | '2065_C4' | '2065_F' | '2065_I' | '2065_D' | '2065_E' | '2033E_DATES' | '2057_A' | '2057_AX' | '2057_B' | '2057_BX' | '2065B_G' | '2065B_H' | '2065B_I' | '2065B_J1' | '2065B_J2' | '2065B_K' | '2033D_982' | '2058B_K4BIS' | '2058A_REINT' | '2058A_DEDUC';
-export const TABLEAUX_SAISIS: readonly TableauSaisi[] = ['2033C_III', '2054BIS_A', '2054BIS_B', '2055_B', '2055_C', '2033D_C', '2033F_NB', '2033F_PM', '2033F_PP', '2033G_NB', '2033G_FIL', '2059A_IM', '2059A_AUT', '2059B_A', '2059B_B', '2059C_I', '2059C_II', '2059D_I', '2059D_II', '2065_C1', '2065_C2', '2065_C3', '2065_C4', '2065_F', '2065_I', '2065_D', '2065_E', '2033E_DATES', '2057_A', '2057_AX', '2057_B', '2057_BX', '2065B_G', '2065B_H', '2065B_I', '2065B_J1', '2065B_J2', '2065B_K', '2033D_982', '2058B_K4BIS', '2058A_REINT', '2058A_DEDUC'];
+export type TableauSaisi = '2033C_III' | '2054BIS_A' | '2054BIS_B' | '2055_B' | '2055_C' | '2033D_C' | '2033F_NB' | '2033F_PM' | '2033F_PP' | '2033G_NB' | '2033G_FIL' | '2059A_IM' | '2059A_AUT' | '2059B_A' | '2059B_B' | '2059C_I' | '2059C_II' | '2059D_I' | '2059D_II' | '2065_C1' | '2065_C2' | '2065_C3' | '2065_C4' | '2065_F' | '2065_I' | '2065_D' | '2065_E' | '2033E_DATES' | '2057_A' | '2057_AX' | '2057_B' | '2057_BX' | '2065B_G' | '2065B_H' | '2065B_I' | '2065B_J1' | '2065B_J2' | '2065B_K' | '2033D_982' | '2058B_K4BIS' | '2058A_REINT' | '2058A_DEDUC' | 'IMMO_CELL';
+export const TABLEAUX_SAISIS: readonly TableauSaisi[] = ['2033C_III', '2054BIS_A', '2054BIS_B', '2055_B', '2055_C', '2033D_C', '2033F_NB', '2033F_PM', '2033F_PP', '2033G_NB', '2033G_FIL', '2059A_IM', '2059A_AUT', '2059B_A', '2059B_B', '2059C_I', '2059C_II', '2059D_I', '2059D_II', '2065_C1', '2065_C2', '2065_C3', '2065_C4', '2065_F', '2065_I', '2065_D', '2065_E', '2033E_DATES', '2057_A', '2057_AX', '2057_B', '2057_BX', '2065B_G', '2065B_H', '2065B_I', '2065B_J1', '2065B_J2', '2065B_K', '2033D_982', '2058B_K4BIS', '2058A_REINT', '2058A_DEDUC', 'IMMO_CELL'];
 
 export interface SaisieTableau {
   tableau: TableauSaisi;
@@ -194,6 +195,16 @@ export function validerSaisieTableau(tableau: string, ligne: string, valeurs: un
           if (typeof x !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(x) || Number.isNaN(Date.parse(`${x}T00:00:00Z`)) || new Date(`${x}T00:00:00Z`).toISOString().slice(0, 10) !== x) e.push(`${k} : date AAAA-MM-JJ valide attendue.`);
         } else decimal(k, !d.signees.includes(k));
       }
+    }
+  } else if (tableau === 'IMMO_CELL') {
+    const d = descriptionLigneSaisieImmobilisations(ligne);
+    if (d === null) e.push(`Ligne inconnue pour les cellules d'immobilisations : ${ligne}.`);
+    else {
+      const permises = d.colonnes.map((c) => c.cle);
+      for (const k of Object.keys(v)) if (!permises.includes(k)) e.push(`${k} : colonne non saisissable sur cette ligne.`);
+      const presentes = permises.filter((k) => k in v);
+      if (presentes.length === 0) e.push('Au moins une cellule doit être renseignée (zéro compris).');
+      for (const k of presentes) decimal(k, true);
     }
   } else if (tableau === '2054BIS_B') {
     if (ligne === 'B1' || ligne === 'B2') {

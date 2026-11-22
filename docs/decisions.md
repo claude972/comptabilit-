@@ -785,6 +785,14 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Limites, dites** : le formulaire ne fixe aucun modèle de feuillet : disposition propre à Comtaple, non officielle ; pas de « néant » (`neantPossible` faux) ; la nature des provisions du 2058-B et le cadre « méthode par composants » restent non préparés ; au-delà de vingt lignes : non préparé. Aucune décision fiscale. Statut « projet ».
 - **Migration 0064** additive. **Preuves** : test du moteur (930 tests du moteur verts), essai d'intégration (63 verts), Playwright `fiscal.spec.ts`.
 
+### D-134 — 2054 et 2033-C : cellules non déductibles de la balance saisies (2026-11-22, complète D-104)
+
+- **Besoin** (restes de D-104) : la balance ne distingue ni la réévaluation légale ou la mise en équivalence, ni la valeur d'origine réévaluée, ni les virements de poste à poste des cessions dans les diminutions, ni les composants (PCG art. 214-9) : ces cellules restaient « à saisir » sans moyen de les saisir.
+- **Décision** : saisie ligne par ligne dans `saisies_tableaux` (tableau `IMMO_CELL`, migration 0065 additive), une ligne par poste du formulaire (hors totaux), identifiée par cadre et rang (A01…, B01… au 2054 ; I01… au 2033-C) : cadre A du 2054 : augmentation par réévaluation et « dont composants » (aux lignes qui portent la case) ; cadre B : diminutions par virement, diminutions par cession ou mise hors service, valeur d'origine réévaluée ; cadre I du 2033-C : valeur d'origine réévaluée. Au moins une cellule renseignée, montants positifs, **zéro explicite** (jamais présumé), justification obligatoire, trace et historique ; saisie faite sur une autre version des données : « à revoir », non retenue.
+- **Effet sur les tableaux** : une cellule saisie devient « établie » ; les **totaux de ces colonnes ne sont établis que quand toutes les lignes composantes sont saisies** (sinon « à saisir »). **Contrôle indicatif, jamais corrigé** : virements + cessions saisis = diminutions de la balance (ligne par ligne). La balance reste la source des autres cellules.
+- **Limites, dites** : saisie du cabinet, non vérifiée au registre des immobilisations ; « dont composants » n'alimente aucune colonne calculée (la case n'est pas reliée à un total par le formulaire) ; pas de ventilation dans la colonne N-1.
+- **Preuves** : 6 tests du moteur (936 verts), essai d'intégration sur la pile réelle (71 verts avec le rapprochement fichier/balance), Playwright `fiscal.spec.ts`, captures `fiscal-2054-saisies-avant/apres.png` (`--2054cell`).
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

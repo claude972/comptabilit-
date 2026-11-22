@@ -633,6 +633,14 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Limites** : cases TM et TN du 2056 et lignes HG et HC du 2053 non préparées ; statut « projet », jamais « complet », aucune transmission, aucune validation professionnelle.
 - **Preuves** : 8 tests du moteur ajoutés (`saisies-tableaux.test.ts`, 25 au total), 5 tests d'intégration sur la pile réelle (`parcours-detail-resultat.itest.ts`, 25 au total : abstention, refus de forme et de droits, colonne 7 et totaux, cadre C, historique et retraits), Playwright `fiscal.spec.ts`, saisies jouées par les formulaires dans le navigateur sur le dossier fictif (captures).
 
+### D-114 — Tableau 2033-D (provisions, amortissements dérogatoires, déficits reportables, divers) : saisie case par case (2026-11-22)
+
+- **Sources** : `2033-sd_5394.pdf` (SHA-256 ce4c5190…b6cb), page 4 ; notice `2033-sd_5395.pdf` (SHA-256 b0a43522…d7a6d1), pages 12 à 14 (cases 983, 984, 860, 870, lignes 322 et 360). Les 68 cases (I-A : 36, I-B : 18, II : 7, III : 7) ont été lues par extraction positionnée puis **vérifiées sur le rendu image** (2026-11-22) ; le cadre C (sept lignes sans code, total 780) a été vérifié de même.
+- **Fait** : chaque case se saisit (justification obligatoire, trace, version des données, historique en ajout seul, « à revoir » si les données changent, niveau révision) avec **néant explicite distinct du manque** ; le cadre C se sert ligne par ligne (tableau `2033D_C`, migration 0054, additive, une contrainte de forme élargie) avec néant de tableau ; l'écran propose une saisie par ligne (quatre cases avec une justification commune et « néant pour les cases vides ») et le total de chaque ligne.
+- **Calculs : seulement ceux que la notice énonce** : case 870 = 984 + 860 (« somme des cases 984 et 860 ») ; case 780 = total des sept lignes du cadre C. Cases 983 et 860 : la notice les identifie à la ligne 360 et à la ligne 372 du 2033-B : elles sont **proposées** par la partie B (D-110) quand elle est établie, jamais retenues sans saisie. Tout le reste est un **contrôle indicatif**, jamais bloquant ni corrigé : début + augmentations − diminutions = fin par ligne, totaux de colonnes (hors « dont majorations »), totaux 770 / 775, case 780 avec la case 322 saisie au 2033-B, cases 983 et 860 avec le 2033-B, transfert de plein droit sans opération.
+- **Non préparé, dit** : cadre IV « Travailleurs indépendants » (cases 690 à 693), hors périmètre (société à l'IS) ; feuillet séparé des déficits transférés de plein droit ; état joint au-delà de sept lignes du cadre C. Aucune décision fiscale n'est prise ; statut « projet ».
+- **Preuves** : 9 tests du moteur (`formulaire-2033d.test.ts`), 5 tests d'intégration sur la pile réelle, Playwright `fiscal.spec.ts`, saisies jouées par les formulaires (captures : relevé des provisions, déficits avec 870 = 1 250,00).
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

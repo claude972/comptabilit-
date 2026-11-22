@@ -252,6 +252,84 @@ export function NeantTableau({ exerciceId, tableau, declare, etiquette }: { exer
   );
 }
 
+export interface CaseASaisir {
+  cle: string;
+  code: string;
+  libelle: string;
+  valeur: string;
+  saisie: boolean;
+}
+
+/**
+ * Saisie de PLUSIEURS cases d'une même ligne d'un formulaire (une saisie justifiée par case : `PUT v1/exercices/:id/qualifications/renvois/:cle`),
+ * avec une justification commune. « Néant pour les cases vides » déclare 0,00 explicitement ; une case laissée vide n'est pas touchée.
+ */
+export function SaisieCases({ exerciceId, cases, noteCourante, etiquette }: { exerciceId: string; cases: CaseASaisir[]; noteCourante: string | null; etiquette: string }) {
+  const appel = useAppel();
+  const [valeurs, setValeurs] = useState<Record<string, string>>(Object.fromEntries(cases.map((c) => [c.cle, c.valeur])));
+  const [note, setNote] = useState(noteCourante ?? '');
+  const id = useId();
+  const enregistrer = async (neantPourVides: boolean) => {
+    for (const c of cases) {
+      const v = (valeurs[c.cle] ?? '').trim();
+      const aEnvoyer = v !== '' ? v : neantPourVides && !c.saisie ? '0.00' : null;
+      if (aEnvoyer === null) continue;
+      const r = await appel.executer(`v1/exercices/${exerciceId}/qualifications/renvois/${c.cle}`, { method: 'PUT', json: { montant: aEnvoyer, note: note.trim() || 'Néant : aucune opération de cette nature, déclaré par le cabinet' } }, 'Case(s) enregistrée(s).');
+      if (r === null) return;
+    }
+  };
+  return (
+    <form
+      className="space-y-2"
+      data-testid={`cases-${etiquette}`}
+      onSubmit={(e) => {
+        e.preventDefault();
+        void enregistrer(false);
+      }}
+    >
+      <div className="flex flex-wrap items-end gap-2">
+        {cases.map((c) => (
+          <div key={c.cle}>
+            <Libelle htmlFor={`${id}-${c.cle}`}>
+              {c.libelle} (case {c.code})
+            </Libelle>
+            <Saisie id={`${id}-${c.cle}`} className="w-28" inputMode="decimal" placeholder="0.00" value={valeurs[c.cle] ?? ''} onChange={(e) => setValeurs({ ...valeurs, [c.cle]: e.target.value })} />
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="min-w-64 flex-1">
+          <Libelle htmlFor={`${id}-note`}>Justification (obligatoire, commune aux cases saisies)</Libelle>
+          <Saisie id={`${id}-note`} maxLength={2000} minLength={5} value={note} onChange={(e) => setNote(e.target.value)} required />
+        </div>
+        <Bouton type="submit" variante="secondaire" disabled={appel.occupe} aria-label={`Enregistrer les cases : ${etiquette}`}>
+          Enregistrer
+        </Bouton>
+        <Bouton type="button" variante="contour" disabled={appel.occupe || note.trim().length < 5} onClick={() => void enregistrer(true)} aria-label={`Néant pour les cases vides : ${etiquette}`}>
+          Néant pour les cases vides
+        </Bouton>
+        {cases.some((c) => c.saisie) ? (
+          <Bouton
+            type="button"
+            variante="contour"
+            disabled={appel.occupe}
+            onClick={async () => {
+              for (const c of cases.filter((x) => x.saisie)) {
+                const r = await appel.executer(`v1/exercices/${exerciceId}/qualifications/renvois/${c.cle}`, { method: 'DELETE' }, 'Saisie(s) retirée(s).');
+                if (r === null) return;
+              }
+            }}
+            aria-label={`Retirer les saisies : ${etiquette}`}
+          >
+            Retirer les saisies
+          </Bouton>
+        ) : null}
+      </div>
+      <Retours erreur={appel.erreur} succes={appel.succes} />
+    </form>
+  );
+}
+
 /** Reprise d'une proposition du moteur comme écriture d'inventaire proposée (`POST …/inventaire/propositions/:id/reprise`). */
 export function ReprendreProposition({ exerciceId, propositionId, libelle }: { exerciceId: string; propositionId: string; libelle: string }) {
   const appel = useAppel();

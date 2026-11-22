@@ -117,6 +117,8 @@ export interface ReponseLiasse {
   detailResultat?: DetailResultatProjet | Abstention | null;
   /** Cadre III du 2033-C (régime simplifié) ou 2054 bis (régime réel normal), saisies ligne par ligne (D-112). */
   tableauxSaisis?: TableauxSaisisProjet | Abstention;
+  /** Tableau 2033-D (régime simplifié, D-114) ; null au régime réel normal. */
+  formulaire2033D?: Formulaire2033DProjet | null;
 }
 export interface RubriqueAnnexe {
   id: string;
@@ -500,3 +502,52 @@ export const LIBELLE_CLASSEMENT: Record<string, string> = {
   long_terme_15_12_8: 'Long terme à 15 % ou 12,8 % (colonne 7)',
   long_terme_0: 'Long terme à 0 % (colonne 8)',
 };
+
+/** Tableau 2033-D (D-114) : champ `formulaire2033D` de la réponse de la liasse. */
+export interface CaseSaisie2033D {
+  cle: string;
+  codeCase: string;
+  etatCodeCase: string;
+  libelle: string;
+  cadre: 'I-A' | 'I-B' | 'II' | 'III';
+  type: 'montant' | 'entier';
+  statut: 'a_saisir' | 'saisi' | 'a_revoir';
+  neant: boolean;
+  montant: string | null;
+  saisie: (TraceQualification & { code: string; montant: string }) | null;
+  precision: string | null;
+  proposition: { montant: string; origine: string } | null;
+}
+export interface Formulaire2033DProjet {
+  statut: 'projet';
+  cases: CaseSaisie2033D[];
+  cadreC: { etat: 'a_saisir' | 'neant' | 'saisi'; lignes: Array<{ ligne: string; statut: StatutLigneSaisie; trace: TraceSaisie | null; nature: string | null; montant: string | null }>; total780: CelluleCalculee2033D; neant: TraceSaisie | null };
+  total870: CelluleCalculee2033D;
+  controles: Array<{ code: string; statut: 'coherent' | 'ecart' | 'non_verifie'; message: string; ecart?: string }>;
+  nonPrepare: string[];
+  limites: string[];
+  mention: string;
+}
+export type CelluleCalculee2033D = { statut: 'etabli'; montant: string; codeCase: string; etatCodeCase: string; calcul: string } | { statut: 'abstention'; motifs: string[]; codeCase: string; etatCodeCase: string };
+export const LIGNES_PROVISIONS_2033D: Array<{ id: string; libelle: string; cases: [string, string, string, string] }> = [
+  { id: 'AD', libelle: 'Provisions réglementées : amortissements dérogatoires', cases: ['600', '602', '604', '606'] },
+  { id: 'AD30', libelle: 'dont majorations exceptionnelles de 30 %', cases: ['601', '603', '605', '607'] },
+  { id: 'APR', libelle: 'Provisions réglementées : autres provisions réglementées', cases: ['610', '612', '614', '616'] },
+  { id: 'PRC', libelle: 'Provisions pour risques et charges', cases: ['620', '622', '624', '626'] },
+  { id: 'DIM', libelle: 'Provisions pour dépréciation : sur immobilisations', cases: ['630', '632', '634', '636'] },
+  { id: 'DST', libelle: 'Provisions pour dépréciation : sur stocks et en cours', cases: ['640', '642', '644', '646'] },
+  { id: 'DCL', libelle: 'Provisions pour dépréciation : sur comptes clients', cases: ['650', '652', '654', '656'] },
+  { id: 'DAU', libelle: 'Provisions pour dépréciation : autres', cases: ['660', '662', '664', '666'] },
+  { id: 'TOTAL', libelle: 'TOTAL', cases: ['680', '682', '684', '686'] },
+];
+export const LIGNES_DEROGATOIRES_2033D: Array<{ id: string; libelle: string; cases: [string, string] }> = [
+  { id: 'FC', libelle: 'Fonds commercial', cases: ['681', '683'] },
+  { id: 'INC', libelle: 'Autres immobilisations incorporelles', cases: ['700', '705'] },
+  { id: 'TER', libelle: 'Terrains', cases: ['710', '715'] },
+  { id: 'CON', libelle: 'Constructions', cases: ['720', '725'] },
+  { id: 'ITM', libelle: 'Installations techniques, matériel et outillage', cases: ['730', '735'] },
+  { id: 'IGA', libelle: 'Installations générales, agencements et aménagements divers', cases: ['740', '745'] },
+  { id: 'MTR', libelle: 'Matériel de transport', cases: ['750', '755'] },
+  { id: 'AIC', libelle: 'Autres immobilisations corporelles', cases: ['760', '765'] },
+  { id: 'TOTAL', libelle: 'TOTAL', cases: ['770', '775'] },
+];

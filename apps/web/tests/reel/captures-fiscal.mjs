@@ -176,6 +176,46 @@ if (process.argv.includes('--b2055')) {
   await page.getByTestId('non-ventile-2055-b').scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${sortie}fiscal-2055-apres.png` });
 }
+// 2033-D (D-114) : saisies par les formulaires (MODIFIE le dossier fictif indiqué).
+if (process.argv.includes('--2033d')) {
+  await page.goto(`${base}&vue=liasse&regime=reel_simplifie`);
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('formulaire-2033-d').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2033d-avant.png` });
+  const ligneCases = async (testid, valeurs, note) => {
+    const f = page.getByTestId(testid);
+    await f.scrollIntoViewIfNeeded();
+    for (const [code, v] of Object.entries(valeurs)) await f.getByLabel(new RegExp(`\\(case ${code}\\)$`)).fill(v);
+    await f.getByLabel('Justification (obligatoire, commune aux cases saisies)').fill(note);
+    await f.getByRole('button', { name: /^Enregistrer les cases/ }).click();
+    await f.getByText('Case(s) enregistrée(s).').waitFor();
+  };
+  await ligneCases('cases-provisions-AD', { 600: '100.00', 602: '50.00', 604: '20.00', 606: '130.00' }, 'Amortissements dérogatoires : relevé du registre (démonstration fictive)');
+  await ligneCases('cases-provisions-DCL', { 650: '400.00', 652: '150.00', 654: '50.00', 656: '500.00' }, 'Dépréciation des créances clients (démonstration fictive)');
+  await ligneCases('cases-derogatoires-FC', { 681: '40.00', 683: '0.00' }, 'Amortissement dérogatoire du fonds commercial (démonstration fictive)');
+  const lc = page.getByTestId('saisie-2033D_C-01');
+  await lc.scrollIntoViewIfNeeded();
+  await lc.getByLabel('Nature de la dotation non déductible').fill('Indemnités de congés à payer (démonstration fictive)');
+  await lc.getByLabel('Montant', { exact: true }).fill('300.00');
+  await lc.getByLabel('Justification (obligatoire)').fill('Dotation non déductible pour l’assiette de l’impôt (démonstration fictive)');
+  await lc.getByRole('button', { name: /^Enregistrer/ }).click();
+  await lc.getByText('Ligne enregistrée.').waitFor();
+  for (const [cle, m, n] of [['984', '1000.00', 'Déficits reportables sans limite de durée (démonstration fictive)'], ['860', '250.00', 'Déficit de l’exercice (démonstration fictive)']]) {
+    const f = page.getByTestId(`renvoi-D_${cle}`);
+    await f.scrollIntoViewIfNeeded();
+    await f.getByLabel('Montant').fill(m);
+    await f.getByLabel('Justification (obligatoire)').fill(n);
+    await f.getByRole('button', { name: new RegExp(`Enregistrer le renvoi D_${cle}`) }).click();
+    await f.getByText('Renvoi enregistré.').waitFor();
+  }
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('formulaire-2033-d').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2033d-apres.png` });
+  await page.getByRole('region', { name: 'Cadre I-A du tableau 2033-D : relevé des provisions' }).screenshot({ path: `${sortie}fiscal-2033d-provisions.png` });
+  await page.getByTestId('total-870').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2033d-deficits.png` });
+}
 // 2033-B (D-107) : « dont export » et lignes « dont » du régime simplifié.
 await page.goto(`${base}&vue=liasse&regime=reel_simplifie`);
 await page.waitForLoadState('networkidle');

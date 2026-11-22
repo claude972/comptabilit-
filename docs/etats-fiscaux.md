@@ -24,6 +24,7 @@ Périmètre explicite : **société commerciale soumise à l’impôt sur les so
 | 2055 cadres B et C | partiel (D-113) | Saisie ligne par ligne, colonne 7, totaux, non ventilé et montant net à la fin calculés comme le formulaire | Origine des dotations et reprises (décision du cabinet) ; 2053 HG et HC, 2056 TM et TN non préparés |
 | 2055 Amortissements (cadre A) | partiel (D-104) | Amortissements à l’ouverture, dotations, diminutions, clôture, avec N-1 ; dotation du moteur comparée à la dotation comptabilisée | Cadres B (amortissements dérogatoires) et C (charges réparties) |
 | 2054 bis | partiel (D-112) | Saisie ligne par ligne (cadres A et B), écart, colonne ⑥ et totaux calculés comme le formulaire | Aucune donnée de la balance ; colonne ⑤ non reconstituée |
+| 2033-D | partiel (D-114) | Cadres I-A, I-B, I-C, II et III par saisie case par case ; totaux 870 et 780 calculés comme la notice ; contrôles indicatifs | Cadre IV (travailleurs indépendants), feuillets joints |
 | 2056, 2057 | **non couvert** | — | Provisions, état des échéances |
 | 2058-A, 2058-B, 2058-C | **non couvert** | — | Réintégrations et déductions extra-comptables, déficits, affectation du résultat |
 | 2059-A à 2059-G | **non couvert** | — | Plus-values, valeur ajoutée fiscale, composition du capital, filiales |

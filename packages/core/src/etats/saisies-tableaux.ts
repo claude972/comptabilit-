@@ -29,8 +29,8 @@ import { MENTION_PROJET } from './sources-fiscales.js';
 
 const ZERO = new Decimal(0);
 
-export type TableauSaisi = '2033C_III' | '2054BIS_A' | '2054BIS_B' | '2055_B' | '2055_C';
-export const TABLEAUX_SAISIS: readonly TableauSaisi[] = ['2033C_III', '2054BIS_A', '2054BIS_B', '2055_B', '2055_C'];
+export type TableauSaisi = '2033C_III' | '2054BIS_A' | '2054BIS_B' | '2055_B' | '2055_C' | '2033D_C';
+export const TABLEAUX_SAISIS: readonly TableauSaisi[] = ['2033C_III', '2054BIS_A', '2054BIS_B', '2055_B', '2055_C', '2033D_C'];
 
 export interface SaisieTableau {
   tableau: TableauSaisi;
@@ -108,6 +108,13 @@ export function validerSaisieTableau(tableau: string, ligne: string, valeurs: un
       for (const k of ['debut', 'augmentations', 'dotations']) decimal(k, true);
     } else if (ligne === 'NEANT') exactement([]);
     else e.push(`Ligne inconnue pour le cadre C du 2055 : ${ligne}.`);
+  } else if (tableau === '2033D_C') {
+    if (/^0[1-7]$/.test(ligne)) {
+      exactement(['nature', 'montant']);
+      if (typeof v.nature !== 'string' || v.nature.trim().length < 2 || v.nature.length > 200) e.push('nature : libellé de 2 à 200 caractères.');
+      decimal('montant', true);
+    } else if (ligne === 'NEANT') exactement([]);
+    else e.push(`Ligne inconnue pour le cadre C du 2033-D : ${ligne}.`);
   } else if (tableau === '2054BIS_B') {
     if (ligne === 'B1' || ligne === 'B2') {
       exactement(['montant']);

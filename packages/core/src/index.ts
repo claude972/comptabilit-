@@ -137,6 +137,8 @@ export { CLASSEMENTS, LIBELLES_COLONNES_2055_B, LIBELLE_CLASSEMENT, LIBELLES_205
 export type {
   AmortissementsDerogatoiresProjet, CadreIIIProjet, CelluleCase, CelluleMontant, ChargesRepartiesProjet, LigneChargeRepartie, LigneDerogatoire, ClassementPlusValue, DemandeSaisiesTableaux, EcartsReevaluationProjet, LigneCession, LigneEcartReevaluation, ResultatSaisiesTableaux, SaisieTableau, StatutLigneSaisie, TableauSaisi, TraceSaisie,
 } from './etats/saisies-tableaux.js';
+export { CASES_2033_D, CLES_2033_D, COLONNES_PROVISIONS, LIGNES_CADRE_C, LIGNES_DEROGATOIRES, LIGNES_PROVISIONS, preparerFormulaire2033D } from './etats/formulaire-2033d.js';
+export type { CaseSaisie2033D, DemandeFormulaire2033D, Formulaire2033DProjet, LigneCadreC } from './etats/formulaire-2033d.js';
 
 // 16. tiers, factures et avoirs suivis, échéances et règlements — aide à la révision, recalculée à la lecture
 export { estDateIso } from './dates.js';

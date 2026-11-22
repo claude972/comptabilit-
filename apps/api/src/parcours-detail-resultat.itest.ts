@@ -356,6 +356,81 @@ describe('2055 cadres B (amortissements dérogatoires) et C (charges réparties)
   }, 120_000);
 });
 
+describe('2033-D (régime simplifié) : cases saisies, néant, abstention, calculs de la notice, contrôles indicatifs (D-114)', () => {
+  const f2033d = async () => (await liasse(exN, 'reel_simplifie')).json.formulaire2033D;
+  const cas = (f: any, code: string) => f.cases.find((c: any) => c.codeCase === code);
+  const dd = (cle: string, montant: string, note = 'Saisie du cabinet pour l’essai', qui = 'remi') => api(qui, 'PUT', `/v1/exercices/${exN}/qualifications/renvois/D_${cle}`, { montant, note });
+  const lc = (ligne: string, valeurs: Record<string, string>, note = 'Dotation non déductible (essai)') => api('remi', 'PUT', `/v1/exercices/${exN}/tableaux/2033D_C/${ligne}`, { valeurs, note });
+
+  it('sans saisie : 68 cases à saisir, 870 et 780 en abstention sans chiffre ; absent au régime normal', async () => {
+    const f = await f2033d();
+    expect(f.statut).toBe('projet');
+    expect(f.cases).toHaveLength(68);
+    expect(f.cases.every((c: any) => c.statut === 'a_saisir' && c.montant === null && c.etatCodeCase === 'lu_verifie')).toBe(true);
+    expect(f.total870).toMatchObject({ statut: 'abstention', codeCase: '870' });
+    expect(f.cadreC.total780).toMatchObject({ statut: 'abstention', codeCase: '780' });
+    expect((await liasse(exN, 'reel_normal')).json.formulaire2033D).toBeNull();
+    // 983 est proposée à partir de la case 360 du 2033-B quand elle est saisie (cas ici : néant), jamais retenue.
+    expect(cas(f, '983')).toMatchObject({ statut: 'a_saisir', montant: null });
+  }, 120_000);
+
+  it('refus : note, négatif, entier pour 982 ter, droits', async () => {
+    expect((await dd('600', '10.00', 'ok')).statut).toBe(400);
+    expect((await dd('600', '-10.00')).statut).toBe(400);
+    expect((await dd('982T', '2.5')).statut).toBe(400);
+    expect((await dd('600', '10.00', 'Essai collaborateur', 'chloe')).statut).toBeGreaterThanOrEqual(400);
+    expect((await dd('600', '10.00', 'Essai déposant', 'client')).statut).toBe(404);
+    expect((await dd('999', '10.00')).statut).toBe(404);
+    expect((await f2033d()).cases.every((c: any) => c.statut === 'a_saisir')).toBe(true);
+  });
+
+  it('cadre I : saisies, néant, contrôles indicatifs (fin = début + augmentations − diminutions) ; 870 = 984 + 860 ; trace et historique', async () => {
+    for (const [c, m] of [['600', '100.00'], ['602', '50.00'], ['604', '20.00'], ['606', '130.00'], ['610', '0.00']] as const) expect((await dd(c, m, c === '610' ? 'Néant : aucune autre provision réglementée' : 'Amortissements dérogatoires (essai)')).statut, c).toBeLessThan(300);
+    let f = await f2033d();
+    expect(cas(f, '610')).toMatchObject({ statut: 'saisi', neant: true });
+    expect(cas(f, '600')).toMatchObject({ statut: 'saisi', montant: '100.00', saisie: { qualifieePar: DEMO.remi } });
+    expect(f.controles.find((c: any) => c.code === 'D_FIN_AD').statut).toBe('coherent');
+    expect((await dd('606', '999.00', 'Fin erronée (essai)')).statut).toBeLessThan(300);
+    f = await f2033d();
+    expect(f.controles.find((c: any) => c.code === 'D_FIN_AD')).toMatchObject({ statut: 'ecart', ecart: '869.00' });
+    expect(cas(f, '606').montant).toBe('999.00'); // jamais corrigé
+    expect((await dd('984', '1000.00', 'Déficits reportables (essai)')).statut).toBeLessThan(300);
+    expect((await f2033d()).total870.statut).toBe('abstention');
+    expect((await dd('860', '250.50', 'Déficit de l’exercice (essai)')).statut).toBeLessThan(300);
+    expect((await f2033d()).total870).toMatchObject({ statut: 'etabli', montant: '1250.50', codeCase: '870' });
+    const h = (await api('remi', 'GET', `/v1/exercices/${exN}/qualifications/historique?cle=D_606`)).json.evenements as any[];
+    expect(h.map((e) => e.montant)).toEqual(['999.00', '130.00']);
+  }, 120_000);
+
+  it('cadre C : sept lignes par saisie de tableau, total 780 calculé, néant, historique', async () => {
+    expect((await lc('01', { nature: 'Indemnités de congés à payer', montant: '200.00' })).statut).toBeLessThan(300);
+    expect((await lc('02', { nature: 'Charges à payer non déductibles', montant: '100.50' })).statut).toBeLessThan(300);
+    expect((await lc('08', { nature: 'Congés', montant: '1.00' })).statut).toBe(400); // la ligne 08 n'existe pas au cadre C (sept lignes)
+    expect((await lc('03', { nature: 'x', montant: '-1.00' })).statut).toBe(400);
+    let f = await f2033d();
+    expect(f.cadreC.etat).toBe('saisi');
+    expect(f.cadreC.total780).toMatchObject({ statut: 'etabli', montant: '300.50', codeCase: '780' });
+    expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/2033D_C/01`)).statut).toBeLessThan(300);
+    expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/2033D_C/02`)).statut).toBeLessThan(300);
+    expect((await f2033d()).cadreC.total780.statut).toBe('abstention');
+    expect((await api('remi', 'PUT', `/v1/exercices/${exN}/tableaux/2033D_C/NEANT`, { valeurs: {}, note: 'Aucune dotation non déductible (essai)' })).statut).toBeLessThan(300);
+    f = await f2033d();
+    expect(f.cadreC).toMatchObject({ etat: 'neant', total780: { statut: 'etabli', montant: '0.00' } });
+    expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/2033D_C/NEANT`)).statut).toBeLessThan(300);
+  }, 120_000);
+
+  it('propositions 983 et 860 reprises de la partie B du 2033-B, jamais retenues sans saisie ; contrôle une fois saisies', async () => {
+    const d = (await liasse(exN, 'reel_simplifie')).json.detailResultat.resultatFiscal;
+    const l360 = d.lignes.find((l: any) => l.cle === 'RF_360');
+    let f = await f2033d();
+    if (l360.statut === 'saisi') expect(cas(f, '983')).toMatchObject({ statut: 'a_saisir', montant: null, proposition: { montant: l360.montant } });
+    expect((await dd('983', '1.00', 'Déficits imputés différents du 2033-B (essai)')).statut).toBeLessThan(300);
+    f = await f2033d();
+    expect(cas(f, '983')).toMatchObject({ statut: 'saisi', proposition: null });
+    if (l360.statut === 'saisi') expect(f.controles.find((c: any) => c.code === 'D_983_2033B')).toMatchObject({ statut: 'ecart' });
+  }, 120_000);
+});
+
 describe('détail du compte de résultat : qualification tracée, abstention sans qualification', () => {
   it('sans qualification : totaux de la balance, France et exportations en abstention, renvois à saisir, exceptionnel détaillé', async () => {
     const d = await detail();

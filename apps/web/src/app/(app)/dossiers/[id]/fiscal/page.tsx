@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ChoixExercice } from '@/components/dossier';
 import { ErreurAcces } from '@/components/erreurs';
-import { CategorieAnnexe, ConfirmerRubrique, NeantTableau, QualifierCompte, SaisieLigneTableau, SaisirRenvoi } from '@/components/fiscal/actions';
+import { CategorieAnnexe, ConfirmerRubrique, NeantTableau, QualifierCompte, SaisieCases, SaisieLigneTableau, SaisirRenvoi } from '@/components/fiscal/actions';
 import { Alerte, Carte, Etiquette, MentionProjet, SousTitre, Tableau } from '@/components/ui/base';
-import { type Abstention, type AnnexeProjet, type CelluleImmobilisation, type CelluleVentilation, type AmortissementsDerogatoiresProjet, type CadreIIIProjet, type CelluleMontantSaisie, type ChargesRepartiesProjet, LIBELLES_COLONNES_2055_B, type DetailResultatProjet, type EcartsReevaluationProjet, type EvenementQualification, LIBELLE_CLASSEMENT, type TableauxSaisisProjet, type ReponseHistorique, type ResultatSigne, LIBELLE_CATEGORIE, LIBELLE_ETAT_QUALIFICATION, type LiasseProjet, type ReponseAnnexe, type ReponseLiasse, type TableauxImmobilisationsProjet } from '@/lib/fiscal';
+import { type Abstention, type AnnexeProjet, type CelluleImmobilisation, type CelluleVentilation, type AmortissementsDerogatoiresProjet, type CadreIIIProjet, type CaseSaisie2033D, type CelluleCalculee2033D, type CelluleMontantSaisie, type Formulaire2033DProjet, LIGNES_DEROGATOIRES_2033D, LIGNES_PROVISIONS_2033D, type ChargesRepartiesProjet, LIBELLES_COLONNES_2055_B, type DetailResultatProjet, type EcartsReevaluationProjet, type EvenementQualification, LIBELLE_CLASSEMENT, type TableauxSaisisProjet, type ReponseHistorique, type ResultatSigne, LIBELLE_CATEGORIE, LIBELLE_ETAT_QUALIFICATION, type LiasseProjet, type ReponseAnnexe, type ReponseLiasse, type TableauxImmobilisationsProjet } from '@/lib/fiscal';
 import { formaterHorodatage, formaterMontant, formaterMontantEuros } from '@/lib/montants';
 
 type Fm = (valeur: string | null | undefined) => string;
@@ -1235,6 +1235,212 @@ function ChargesReparties({ t, fm, exerciceId, revision, evenements }: { t: Char
   );
 }
 
+function CelluleCaseD({ c, fm }: { c: CaseSaisie2033D | undefined; fm: Fm }) {
+  if (c === undefined) return null;
+  return (
+    <>
+      {c.statut === 'saisi' ? (c.neant ? <span className="text-texte-doux">néant</span> : <span className="tabular-nums">{c.type === 'entier' ? String(Number(c.montant)) : fm(c.montant)}</span>) : c.statut === 'a_revoir' ? <Etiquette ton="attention">à revoir</Etiquette> : c.proposition ? <span className="text-xs text-texte-doux" title={c.proposition.origine}>proposé : {fm(c.proposition.montant)}</span> : <span className="text-texte-doux">à saisir</span>}
+      <span className="block text-xs text-texte-doux">case {c.codeCase}</span>
+    </>
+  );
+}
+
+function CelluleCalc({ c, fm }: { c: CelluleCalculee2033D; fm: Fm }) {
+  return c.statut === 'etabli' ? (
+    <>
+      <strong className="tabular-nums">{fm(c.montant)}</strong>
+      <span className="block text-xs text-texte-doux">case {c.codeCase} · {c.calcul}</span>
+    </>
+  ) : (
+    <>
+      <span className="text-texte-doux" title={c.motifs.join(' ')}>
+        abstention
+      </span>
+      <span className="block text-xs text-texte-doux">case {c.codeCase} · {c.motifs.join(' ')}</span>
+    </>
+  );
+}
+
+/** Tableau 2033-D (provisions, amortissements dérogatoires, déficits reportables, divers) : saisie case par case, justifiée et historisée (D-114). */
+function Formulaire2033D({ f, fm, exerciceId, revision, evenements }: { f: Formulaire2033DProjet; fm: Fm; exerciceId: string; revision: boolean; evenements: EvenementQualification[] }) {
+  const parCode = new Map(f.cases.map((c) => [c.codeCase, c]));
+  const badge = (statut: string) => <Etiquette ton={statut === 'saisi' ? 'succes' : 'attention'}>{statut === 'saisi' ? 'Saisi' : statut === 'a_revoir' ? 'À revoir : données modifiées' : 'À saisir'}</Etiquette>;
+  const casesLigne = (codes: string[], libelles: string[]) =>
+    codes.map((code, i) => {
+      const c = parCode.get(code)!;
+      return { cle: c.cle, code, libelle: libelles[i]!, valeur: c.saisie?.montant ?? '', saisie: c.statut !== 'a_saisir' };
+    });
+  const note = (codes: string[]) => codes.map((c) => parCode.get(c)!.saisie?.note).find((n) => n) ?? null;
+  const aSaisir = (c: CaseSaisie2033D) => (
+    <li key={c.cle} className="rounded border border-bordure p-2" data-ligne-d={c.cle}>
+      <p className="text-sm">
+        {c.libelle} <span className="text-texte-doux">(case {c.codeCase}, lue, vérifiée sur le PDF)</span> {badge(c.statut)}
+        {c.proposition && c.statut !== 'saisi' ? <span className="text-xs text-texte-doux"> · proposition : {fm(c.proposition.montant)} ({c.proposition.origine}), non retenue</span> : null}
+      </p>
+      {c.precision ? <p className="text-xs text-texte-doux">{c.precision}</p> : null}
+      {c.saisie ? (
+        <p className="text-xs text-texte-doux" data-testid={`trace-d-${c.cle}`}>
+          {c.neant ? 'Néant' : fm(c.saisie.montant)} · saisi le {formaterHorodatage(c.saisie.le)} sur la version {c.saisie.versionDonnees} des données · « {c.saisie.note} »
+        </p>
+      ) : null}
+      <HistoriqueLigne evenements={evenements} cle={c.cle} fm={fm} />
+      {revision ? <SaisirRenvoi exerciceId={exerciceId} code={c.cle} proposition={c.proposition?.montant ?? null} saisie={c.saisie ? { montant: c.saisie.montant, note: c.saisie.note } : null} avecNeant /> : null}
+    </li>
+  );
+  return (
+    <section className="space-y-4" aria-labelledby="titre-2033-d" data-testid="formulaire-2033-d">
+      <SousTitre id="titre-2033-d" className="text-base">
+        2033-D — Relevé des provisions, amortissements dérogatoires, déficits reportables, divers <MentionProjet />
+      </SousTitre>
+      <Alerte ton="attention" titre="Saisie du cabinet : aucune de ces informations ne se déduit de la balance">
+        <p className="text-sm">
+          Chaque case se saisit avec une justification obligatoire, tracée et historisée ; « néant » est une déclaration explicite et une case sans saisie n’est jamais présumée nulle. Le logiciel ne calcule que ce que la notice énonce (case 870 = 984 + 860 ; case 780 = total du cadre C) ;
+          les autres rapprochements sont des contrôles indicatifs, jamais bloquants ni corrigés. Les cases 983 et 860, que la notice identifie aux lignes 360 et 372 du 2033-B, sont proposées quand la partie B est établie, jamais retenues sans saisie.
+        </p>
+        {f.limites.map((l) => (
+          <p key={l} className="text-sm">
+            {l}
+          </p>
+        ))}
+      </Alerte>
+      <ul className="space-y-1" aria-label="Contrôles du 2033-D" data-testid="controles-2033-d">
+        {f.controles.map((x) => (
+          <li key={x.code}>
+            <Etiquette ton={x.statut === 'coherent' ? 'succes' : x.statut === 'ecart' ? 'danger' : 'attention'}>{x.statut === 'coherent' ? 'Cohérent' : x.statut === 'ecart' ? 'Écart' : 'Non vérifiable'}</Etiquette> {x.message}
+            {x.ecart ? ` (écart : ${fm(x.ecart)})` : ''}
+          </li>
+        ))}
+      </ul>
+
+      <div className="space-y-2">
+        <h3 className="font-semibold">I-A — Nature des provisions</h3>
+        <Tableau legende="Cadre I-A du tableau 2033-D : relevé des provisions">
+          <thead>
+            <tr>
+              <th scope="col">Nature</th>
+              <th scope="col" className="text-right">Début de l’exercice</th>
+              <th scope="col" className="text-right">Augmentations (dotations)</th>
+              <th scope="col" className="text-right">Diminutions (reprises)</th>
+              <th scope="col" className="text-right">Fin de l’exercice</th>
+            </tr>
+          </thead>
+          <tbody data-testid="provisions-2033-d">
+            {LIGNES_PROVISIONS_2033D.map((l) => (
+              <tr key={l.id} data-provision={l.id}>
+                <th scope="row">{l.libelle}</th>
+                {l.cases.map((code) => (
+                  <td key={code} className="text-right">
+                    <CelluleCaseD c={parCode.get(code)} fm={fm} />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </Tableau>
+        {revision ? (
+          <ul className="space-y-2">
+            {LIGNES_PROVISIONS_2033D.map((l) => (
+              <li key={l.id} className="rounded border border-bordure p-2" data-saisie-provision={l.id}>
+                <p className="text-sm font-semibold">{l.libelle}</p>
+                <SaisieCases exerciceId={exerciceId} etiquette={`provisions-${l.id}`} noteCourante={note([...l.cases])} cases={casesLigne([...l.cases], ['Début', 'Dotations', 'Reprises', 'Fin'])} />
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="font-semibold">I-B — Mouvements affectant la provision pour amortissements dérogatoires</h3>
+        <Tableau legende="Cadre I-B du tableau 2033-D : amortissements dérogatoires">
+          <thead>
+            <tr>
+              <th scope="col">Immobilisations</th>
+              <th scope="col" className="text-right">Dotations</th>
+              <th scope="col" className="text-right">Reprises</th>
+            </tr>
+          </thead>
+          <tbody data-testid="derogatoires-2033-d">
+            {LIGNES_DEROGATOIRES_2033D.map((l) => (
+              <tr key={l.id} data-derogatoire={l.id}>
+                <th scope="row">{l.libelle}</th>
+                {l.cases.map((code) => (
+                  <td key={code} className="text-right">
+                    <CelluleCaseD c={parCode.get(code)} fm={fm} />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </Tableau>
+        {revision ? (
+          <ul className="space-y-2">
+            {LIGNES_DEROGATOIRES_2033D.map((l) => (
+              <li key={l.id} className="rounded border border-bordure p-2" data-saisie-derogatoire={l.id}>
+                <p className="text-sm font-semibold">{l.libelle}</p>
+                <SaisieCases exerciceId={exerciceId} etiquette={`derogatoires-${l.id}`} noteCourante={note([...l.cases])} cases={casesLigne([...l.cases], ['Dotations', 'Reprises'])} />
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="font-semibold">I-C — Dotations aux provisions et charges à payer non déductibles (sept lignes)</h3>
+        <p className="text-sm" data-testid="cadre-c-2033-d">
+          Total à reporter ligne 322 du 2033-B (case 780) : <CelluleCalc c={f.cadreC.total780} fm={fm} /> · état : <strong>{f.cadreC.etat === 'saisi' ? 'lignes saisies' : f.cadreC.etat === 'neant' ? 'néant déclaré' : 'à saisir (ni ligne ni néant)'}</strong>
+        </p>
+        <ul className="space-y-1">
+          {f.cadreC.lignes.map((l) => (
+            <li key={l.ligne} className="text-sm" data-ligne-c={l.ligne}>
+              {Number(l.ligne)} — {l.statut === 'saisi' ? `${l.nature} : ${fm(l.montant)}` : badge(l.statut)}
+              {l.trace ? <span className="text-xs text-texte-doux"> · saisie le {formaterHorodatage(l.trace.le)} sur la version {l.trace.versionDonnees} des données · « {l.trace.note} »</span> : null}
+              <HistoriqueLigne evenements={evenements} cle={`2033D_C:${l.ligne}`} fm={fm} />
+              {revision ? (
+                <SaisieLigneTableau
+                  exerciceId={exerciceId}
+                  tableau="2033D_C"
+                  ligne={l.ligne}
+                  etiquette={`la ligne ${Number(l.ligne)} du cadre C`}
+                  saisie={l.statut !== 'a_saisir'}
+                  noteCourante={l.trace?.note ?? null}
+                  champs={[
+                    { cle: 'nature', libelle: 'Nature de la dotation non déductible', type: 'texte', valeur: l.nature ?? '' },
+                    { cle: 'montant', libelle: 'Montant', type: 'montant', valeur: l.montant ?? '' },
+                  ]}
+                />
+              ) : null}
+            </li>
+          ))}
+        </ul>
+        {revision ? <NeantTableau exerciceId={exerciceId} tableau="2033D_C" declare={f.cadreC.etat === 'neant'} etiquette="cadre C du 2033-D (aucune dotation non déductible)" /> : null}
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="font-semibold">II — Déficits reportables</h3>
+        <p className="text-sm" data-testid="total-870">
+          Total des déficits restant à reporter (case 870) : <CelluleCalc c={f.total870} fm={fm} />
+        </p>
+        <ul className="space-y-2" data-testid="deficits-2033-d">
+          {f.cases.filter((c) => c.cadre === 'II').map(aSaisir)}
+        </ul>
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="font-semibold">III — Divers</h3>
+        <ul className="space-y-2" data-testid="divers-2033-d">
+          {f.cases.filter((c) => c.cadre === 'III').map(aSaisir)}
+        </ul>
+      </div>
+
+      <ul className="list-disc pl-5 text-sm text-texte-doux" data-testid="2033-d-non-prepare">
+        {f.nonPrepare.map((n) => (
+          <li key={n}>Non préparé — {n}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function Annexe({ a, reponse, exerciceId, revision }: { a: AnnexeProjet; reponse: ReponseAnnexe; exerciceId: string; revision: boolean }) {
   const confirmations = new Map(reponse.confirmations.map((c) => [c.rubrique, c]));
   const requises = a.rubriques.filter((r) => r.requise);
@@ -1426,6 +1632,7 @@ export default async function PageFiscal({ params, searchParams }: { params: Pro
           </>
         )
       ) : null}
+      {liasse?.ok && liasse.donnees.formulaire2033D ? <Formulaire2033D f={liasse.donnees.formulaire2033D} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.detailResultat ? <DetailResultat d={liasse.donnees.detailResultat} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {annexe?.ok ? (
         annexe.donnees.resultat.statut === 'abstention' ? (

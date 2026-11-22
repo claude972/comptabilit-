@@ -11,6 +11,8 @@ import {
   preparerAnnexe,
   preparerLiasse,
   preparerDetailResultat,
+  preparerFormulaire2033D,
+  CLES_2033_D,
   preparerSaisiesTableaux,
   validerSaisieTableau,
   type SaisieTableau,
@@ -48,13 +50,13 @@ const montantSigne = schemaChaineDecimale;
 const ventilation = z.object({ montantFrance: montantSigne, montantExport: montantSigne, note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie la ventilation').max(2000) });
 const renvoiSaisie = z.object({ montant: montantSigne, note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie le montant').max(2000) });
 const saisieTableau = z.object({ valeurs: z.record(z.string().max(40), z.string().max(200)), note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie la saisie').max(2000) });
-const TABLEAU_SAISI = /^(2033C_III|2054BIS_A|2054BIS_B|2055_B|2055_C)$/;
+const TABLEAU_SAISI = /^(2033C_III|2054BIS_A|2054BIS_B|2055_B|2055_C|2033D_C)$/;
 const LIGNE_TABLEAU = /^(0[1-9]|1[0-3]|REG|PV19|NEANT|B1|B2)$/;
 const COMPTE_CA = /^70[0-9A-Za-z]{1,13}$/;
 const CODE_RENVOI = /^[0-9A-Z_]{2,7}$/;
-const RENVOIS_CONNUS = [...RENVOIS, ...RENVOIS_RSI, ...LIGNES_RESULTAT_FISCAL.map((l) => ({ code: l.cle })), ...DETAIL_RESULTAT_FISCAL.map((l) => ({ code: l.cle }))];
+const RENVOIS_CONNUS = [...RENVOIS, ...RENVOIS_RSI, ...LIGNES_RESULTAT_FISCAL.map((l) => ({ code: l.cle })), ...DETAIL_RESULTAT_FISCAL.map((l) => ({ code: l.cle })), ...CLES_2033_D.map((cle) => ({ code: cle }))];
 /** Lignes du résultat fiscal qui se saisissent en positif ; seule la case 248 (écart de valeurs liquidatives négatif, « entre parenthèses » selon la notice) peut être négative. */
-const CLES_RESULTAT_FISCAL = new Set([...LIGNES_RESULTAT_FISCAL.map((l) => l.cle), ...DETAIL_RESULTAT_FISCAL.filter((l) => !l.negatifPossible).map((l) => l.cle)]);
+const CLES_RESULTAT_FISCAL = new Set([...CLES_2033_D, ...LIGNES_RESULTAT_FISCAL.map((l) => l.cle), ...DETAIL_RESULTAT_FISCAL.filter((l) => !l.negatifPossible).map((l) => l.cle)]);
 const RUBRIQUE = /^ANX-[0-9A-Za-z-]{1,24}$/;
 const PROPOSITION = /^[A-Za-z0-9:_|.-]{1,200}$/;
 
@@ -115,7 +117,7 @@ export class FiscalController {
     const trace = (r: (typeof rows)[number]) => ({ note: r.note, qualifieePar: r.qualifieePar, le: new Date(r.creeLe).toISOString(), versionDonnees: r.versionDonnees });
     const ventilations: QualificationVentilation[] = rows.filter((r) => r.nature === 'ventilation_ca').map((r) => ({ compte: r.cle, montantFrance: r.montant, montantExport: r.montantExport ?? '0.00', ...trace(r) }));
     const renvois: QualificationRenvoi[] = rows.filter((r) => r.nature === 'renvoi').map((r) => ({ code: r.cle, montant: r.montant, ...trace(r) }));
-    return preparerDetailResultat({
+    const resultat = preparerDetailResultat({
       balance: calculerBalance(c.lignes),
       exercice: { debut: c.exercice.debut, fin: c.exercice.fin },
       regime: c.regime,
@@ -129,6 +131,7 @@ export class FiscalController {
       ventilations,
       renvois,
     });
+    return { resultat, renvois };
   }
 
   /** Ajoute une ligne à l'historique (AJOUT SEUL, D-110) : chaque saisie et chaque retrait, avec son auteur, sa note et la version des données. */
@@ -211,6 +214,7 @@ export class FiscalController {
     if (!CODE_RENVOI.test(code) || !RENVOIS_CONNUS.some((r) => r.code === code)) throw new NotFoundException('Renvoi inconnu : les renvois préparés sont ' + RENVOIS_CONNUS.map((r) => r.code).join(', '));
     const d = valider(renvoiSaisie, corps);
     if (CLES_RESULTAT_FISCAL.has(code) && dec(d.montant).isNegative()) throw new BadRequestException('Les lignes du résultat fiscal se saisissent en positif (le sens est celui du formulaire) ; « néant » = 0.00 ; seule la case 248 admet un montant négatif');
+    if (code === 'D_982T' && !/^\d+(\.0+)?$/.test(d.montant)) throw new BadRequestException('Le nombre d’opérations (case 982 ter) est un entier positif');
     return this.bd.avecContexte(acces, async (tx) => {
       const [exercice] = await tx.select().from(s.exercices).where(eq(s.exercices.id, id));
       if (!exercice) throw new NotFoundException('Exercice introuvable');
@@ -318,7 +322,7 @@ export class FiscalController {
       const { immobilisations } = await this.fichierEnService(tx, entite.id, exercice.fin);
       // Résultat comptable de la ligne 310 du 2033-B (produits − charges, signé) : base de la partie B « résultat fiscal » (régime simplifié).
       const resultatComptable = resultat.statut === 'projet' && regime === 'reel_simplifie' ? (resultat.tableaux.flatMap((t) => t.lignes).find((l) => l.ligne === 'RSI_2033B_RESULTAT')?.montant ?? null) : null;
-      const detailResultat = await this.detailResultat(tx, { exercice, entite, lignes, regime, resultatComptable });
+      const { resultat: detailResultat, renvois: renvoisSaisis } = await this.detailResultat(tx, { exercice, entite, lignes, regime, resultatComptable });
       const saisiesRows = await tx.select().from(s.saisiesTableaux).where(eq(s.saisiesTableaux.exerciceId, id));
       const saisies: SaisieTableau[] = saisiesRows.map((r) => ({ tableau: r.tableau as SaisieTableau['tableau'], ligne: r.ligne, valeurs: r.valeurs as Record<string, string>, note: r.note, qualifieePar: r.auteurId, le: new Date(r.creeLe).toISOString(), versionDonnees: r.versionDonnees }));
       const tableauxSaisis = preparerSaisiesTableaux({
@@ -333,6 +337,8 @@ export class FiscalController {
         versionDonnees: exercice.versionDonnees,
         saisies,
       });
+      // Tableau 2033-D (régime simplifié, D-114) : cases saisies (clés D_…), cadre C par saisie de tableau, propositions 983 et 860 tirées de la partie B du 2033-B.
+      const formulaire2033D = regime === 'reel_simplifie' && detailResultat.statut === 'projet' ? preparerFormulaire2033D({ versionDonnees: exercice.versionDonnees, renvois: renvoisSaisis, saisiesTableaux: saisies, resultatFiscal: detailResultat.resultatFiscal }) : null;
       const tableauxImmobilisations = preparerTableauxImmobilisations({
         lignes,
         exercice: { debut: exercice.debut, fin: exercice.fin },
@@ -360,6 +366,8 @@ export class FiscalController {
         detailResultat,
         /** Cadre III du 2033-C (régime simplifié) ou 2054 bis et 2055 cadres B et C (régime réel normal) : saisies ligne par ligne, tracées et historisées (D-112, D-113). */
         tableauxSaisis,
+        /** Tableau 2033-D (provisions, amortissements dérogatoires, déficits reportables, divers) : saisie case par case, régime simplifié (D-114) ; null sinon. */
+        formulaire2033D,
       };
     });
   }

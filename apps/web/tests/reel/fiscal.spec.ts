@@ -75,6 +75,13 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
     await expect(detailRsi).toContainText('Détail du compte de résultat simplifié (2033-B)');
     await expect(detailRsi.getByTestId('renvois-detail').locator('li[data-renvoi="255"]')).toBeVisible();
     await expect(detailRsi.locator('#titre-2053')).toHaveCount(0);
+    // 2033-D (D-114) : cases saisies par le cabinet, total 870 et 780 en abstention sans saisie.
+    const d2033 = page.getByTestId('formulaire-2033-d');
+    await expect(d2033).toBeVisible();
+    await expect(d2033.getByTestId('provisions-2033-d').locator('tr[data-provision]')).toHaveCount(9);
+    await expect(d2033.getByTestId('derogatoires-2033-d').locator('tr[data-derogatoire]')).toHaveCount(9);
+    await expect(d2033.getByTestId('total-870')).toContainText('870');
+    await expect(d2033.getByTestId('2033-d-non-prepare')).toContainText('Cadre IV');
     // Cadre III du 2033-C (D-112) : dix lignes de cessions saisies par le cabinet, totaux en abstention sans saisie ni néant.
     await expect(page.getByTestId('cadre-iii')).toBeVisible();
     await expect(page.getByTestId('lignes-cessions').locator('tr[data-cession]')).toHaveCount(13);

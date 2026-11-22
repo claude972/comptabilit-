@@ -4,7 +4,7 @@ import { ChoixExercice } from '@/components/dossier';
 import { ErreurAcces } from '@/components/erreurs';
 import { CategorieAnnexe, ConfirmerRubrique, NeantTableau, QualifierCompte, SaisieCases, SaisieLigneTableau, SaisirRenvoi } from '@/components/fiscal/actions';
 import { Alerte, Carte, Etiquette, MentionProjet, SousTitre, Tableau } from '@/components/ui/base';
-import { type Abstention, type AnnexeProjet, type CelluleImmobilisation, type CelluleVentilation, type AmortissementsDerogatoiresProjet, type CadreIIIProjet, type CaseSaisie2033D, type CaseSaisie2033E, type CelluleCalculee2033D, type Formulaire2033EProjet, type Formulaire2033FProjet, type Formulaire2033GProjet, type Formulaire2059AProjet, LIBELLES_COLONNES_2059_A, type FormulaireCasesProjet, type ResultatSigneFormulaire, type CelluleMontantSaisie, type Formulaire2033DProjet, LIGNES_DEROGATOIRES_2033D, LIGNES_PROVISIONS_2033D, type ChargesRepartiesProjet, LIBELLES_COLONNES_2055_B, type DetailResultatProjet, type EcartsReevaluationProjet, type EvenementQualification, LIBELLE_CLASSEMENT, type TableauxSaisisProjet, type ReponseHistorique, type ResultatSigne, LIBELLE_CATEGORIE, LIBELLE_ETAT_QUALIFICATION, type LiasseProjet, type ReponseAnnexe, type ReponseLiasse, type TableauxImmobilisationsProjet } from '@/lib/fiscal';
+import { type Abstention, type AnnexeProjet, type CelluleImmobilisation, type CelluleVentilation, type AmortissementsDerogatoiresProjet, type CadreIIIProjet, type CaseSaisie2033D, type CaseSaisie2033E, type CelluleCalculee2033D, type Formulaire2033EProjet, type Formulaire2033FProjet, type Formulaire2033GProjet, type Formulaire2059AProjet, type GrilleProjet, type CelluleGrille, LIBELLES_COLONNES_2059_A, type FormulaireCasesProjet, type ResultatSigneFormulaire, type CelluleMontantSaisie, type Formulaire2033DProjet, LIGNES_DEROGATOIRES_2033D, LIGNES_PROVISIONS_2033D, type ChargesRepartiesProjet, LIBELLES_COLONNES_2055_B, type DetailResultatProjet, type EcartsReevaluationProjet, type EvenementQualification, LIBELLE_CLASSEMENT, type TableauxSaisisProjet, type ReponseHistorique, type ResultatSigne, LIBELLE_CATEGORIE, LIBELLE_ETAT_QUALIFICATION, type LiasseProjet, type ReponseAnnexe, type ReponseLiasse, type TableauxImmobilisationsProjet } from '@/lib/fiscal';
 import { formaterHorodatage, formaterMontant, formaterMontantEuros } from '@/lib/montants';
 
 type Fm = (valeur: string | null | undefined) => string;
@@ -1986,6 +1986,99 @@ function Formulaire2059A({ f, fm, exerciceId, revision, evenements }: { f: Formu
   );
 }
 
+/** Tableaux 2059-B, 2059-C et 2059-D (grilles) : saisie ligne par ligne, justifiée et historisée (D-122). */
+function Grille2059({ g, fm, exerciceId, revision, evenements }: { g: GrilleProjet; fm: Fm; exerciceId: string; revision: boolean; evenements: EvenementQualification[] }) {
+  const badge = (statut: string) => <Etiquette ton={statut === 'saisi' ? 'succes' : 'attention'}>{statut === 'saisi' ? 'Saisi' : statut === 'a_revoir' ? 'À revoir : données modifiées' : 'À saisir'}</Etiquette>;
+  const cellule = (c: CelluleGrille | undefined) => (c === undefined ? <span className="text-texte-doux">—</span> : c.statut === 'etabli' ? <strong>{fm(c.montant)}</strong> : <span className="text-texte-doux" title={c.motifs.join(' ')}>abstention</span>);
+  const id = g.id.toLowerCase();
+  return (
+    <section className="space-y-4" aria-labelledby={`titre-${id}`} data-testid={`grille-${g.id}`}>
+      <SousTitre id={`titre-${id}`} className="text-base">
+        {g.id} — {g.titre} <MentionProjet />
+      </SousTitre>
+      <Alerte ton="attention" titre="Saisie du cabinet : rien ne se déduit de la balance, aucune qualification ni imputation n’est décidée par le logiciel">
+        {g.limites.map((l) => (
+          <p key={l} className="text-sm">
+            {l}
+          </p>
+        ))}
+      </Alerte>
+      <ul className="space-y-1" aria-label={`Contrôles du ${g.id}`}>
+        {g.controles.map((x) => (
+          <li key={x.code}>
+            <Etiquette ton={x.statut === 'coherent' ? 'succes' : x.statut === 'ecart' ? 'danger' : 'attention'}>{x.statut === 'coherent' ? 'Cohérent' : x.statut === 'ecart' ? 'Écart' : 'Non vérifiable'}</Etiquette> {x.message}
+          </li>
+        ))}
+      </ul>
+      <p className="text-sm" data-testid={`etat-${id}`}>
+        État du tableau : <strong>{g.etat === 'saisi' ? 'saisies présentes' : g.etat === 'neant' ? 'néant déclaré' : 'à saisir (ni saisie ni néant)'}</strong>
+        {g.neant ? ` — déclaré le ${formaterHorodatage(g.neant.le)} sur la version ${g.neant.versionDonnees} des données` : ''}.
+      </p>
+      {revision ? <NeantTableau exerciceId={exerciceId} tableau={g.cadres[0]!.tableau} declare={g.etat === 'neant'} etiquette={`tableau ${g.id} (aucune donnée)`} /> : null}
+      {g.cadres.map((c) => (
+        <div key={c.tableau} className="space-y-2" data-cadre-grille={c.tableau}>
+          <h3 className="text-sm font-semibold">{c.titre}</h3>
+          <ul className="space-y-2" data-testid={`lignes-${c.tableau}`}>
+            {c.lignes.map((l) => (
+              <li key={l.ligne} className="rounded-lg border border-bordure p-3" data-ligne-grille={l.ligne}>
+                <p className="text-sm">
+                  {l.groupe ? <span className="text-texte-doux">{l.groupe} · </span> : null}
+                  {c.libelleOrigine ? `Ligne ${Number(l.ligne)}` : l.libelle} {l.statut === 'saisi' ? null : badge(l.statut)}
+                  {l.statut === 'saisi' ? (
+                    <span className="text-texte-doux">
+                      {l.origine ? ` · ${l.origine}` : ''} · {c.colonnes.filter((k) => l.valeurs && k.cle in l.valeurs).map((k) => `${k.libelle} : ${fm(l.valeurs![k.cle])}`).join(' · ')}
+                    </span>
+                  ) : null}
+                </p>
+                {l.calculee ? (
+                  <p className="text-xs" data-testid={`calculee-${c.tableau}-${l.ligne}`}>
+                    {c.colonneCalculee?.libelle} : {cellule(l.calculee)}
+                  </p>
+                ) : null}
+                {l.trace ? (
+                  <p className="text-xs text-texte-doux" data-testid={`trace-${c.tableau}-${l.ligne}`}>
+                    saisie le {formaterHorodatage(l.trace.le)} sur la version {l.trace.versionDonnees} des données · « {l.trace.note} »
+                  </p>
+                ) : null}
+                <HistoriqueLigne evenements={evenements} cle={`${c.tableau}:${l.ligne}`} fm={fm} />
+                {revision ? (
+                  <SaisieLigneTableau
+                    exerciceId={exerciceId}
+                    tableau={c.tableau}
+                    ligne={l.ligne}
+                    etiquette={`${c.libelleOrigine ? 'la ligne' : 'la ligne'} ${c.libelleOrigine ? Number(l.ligne) : l.ligne} du ${c.tableau}`}
+                    saisie={l.statut !== 'a_saisir'}
+                    noteCourante={l.trace?.note ?? null}
+                    champs={[...(c.libelleOrigine ? [{ cle: 'origine', libelle: c.libelleOrigine, type: 'texte' as const, valeur: l.origine ?? '' }] : []), ...c.colonnes.filter((k) => l.colonnes.includes(k.cle)).map((k) => ({ cle: k.cle, libelle: k.libelle, type: 'montant' as const, valeur: l.valeurs?.[k.cle] ?? '' }))]}
+                  />
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          {c.calculs.length > 0 ? (
+            <ul className="space-y-1 text-sm" data-testid={`calculs-${c.tableau}`}>
+              {c.calculs.map((k) => (
+                <li key={k.id} data-calcul-grille={k.id}>
+                  {k.libelle} : {Object.entries(k.cellules).map(([col, cel]) => (
+                    <span key={col} className="mr-3">
+                      {c.colonnes.find((x) => x.cle === col)?.libelle ?? col} : {cellule(cel)}
+                    </span>
+                  ))}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ))}
+      <ul className="list-disc pl-5 text-sm text-texte-doux" data-testid={`${id}-non-prepare`}>
+        {g.nonPrepare.map((n) => (
+          <li key={n}>Non préparé — {n}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function Annexe({ a, reponse, exerciceId, revision }: { a: AnnexeProjet; reponse: ReponseAnnexe; exerciceId: string; revision: boolean }) {
   const confirmations = new Map(reponse.confirmations.map((c) => [c.rubrique, c]));
   const requises = a.rubriques.filter((r) => r.requise);
@@ -2183,6 +2276,7 @@ export default async function PageFiscal({ params, searchParams }: { params: Pro
       {liasse?.ok && liasse.donnees.formulaire2033G ? <Formulaire2033G numero={regime === 'reel_normal' ? '2059' : '2033'} f={liasse.donnees.formulaire2033G} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.formulairesCases ? liasse.donnees.formulairesCases.map((f) => <FormulaireCases key={f.id} f={f} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} />) : null}
       {liasse?.ok && liasse.donnees.formulaire2059A ? <Formulaire2059A f={liasse.donnees.formulaire2059A} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
+      {liasse?.ok && liasse.donnees.grilles2059 ? liasse.donnees.grilles2059.map((g) => <Grille2059 key={g.id} g={g} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} />) : null}
       {liasse?.ok && liasse.donnees.detailResultat ? <DetailResultat d={liasse.donnees.detailResultat} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {annexe?.ok ? (
         annexe.donnees.resultat.statut === 'abstention' ? (

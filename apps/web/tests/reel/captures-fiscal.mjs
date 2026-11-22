@@ -367,6 +367,33 @@ if (process.argv.includes('--2059a')) {
   await page.getByTestId('formulaire-2059-a').scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${sortie}fiscal-2059a-apres.png` });
 }
+// 2059-B, 2059-C, 2059-D (D-122) : saisies par les formulaires (MODIFIE le dossier fictif indiqué), régime réel normal.
+if (process.argv.includes('--2059bcd')) {
+  await page.goto(`${base}&vue=liasse&regime=reel_normal`);
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('grille-2059-D').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2059d-avant.png` });
+  const remplir = async (tableau, ligne, valeurs, bouton, note) => {
+    const f = page.getByTestId(`saisie-${tableau}-${ligne}`);
+    await f.scrollIntoViewIfNeeded();
+    for (const [libelle, v] of Object.entries(valeurs)) await f.getByLabel(libelle, { exact: true }).fill(v);
+    await f.getByLabel('Justification (obligatoire)').fill(note);
+    await f.getByRole('button', { name: bouton }).click();
+    await f.getByText('Ligne enregistrée.').waitFor();
+  };
+  const t = (a, b) => ({ 'Taxées à 10 %': a, 'Taxées à 15 %': b, 'Taxées à 18 %': '0.00', 'Taxées à 19 %': '0.00', 'Taxées à 25 %': '0.00' });
+  await remplir('2059D_I', 'L1', t('100.00', '50.00'), /^Enregistrer la ligne L1/, 'Réserve de clôture N-1 (démonstration fictive)');
+  await remplir('2059D_I', 'L2', t('10.00', '0.00'), /^Enregistrer la ligne L2/, 'Aucune société absorbée sauf 10 (démonstration fictive)');
+  await remplir('2059D_I', 'L4', t('20.00', '5.00'), /^Enregistrer la ligne L4/, 'Prélèvements de l’exercice (démonstration fictive)');
+  await remplir('2059D_I', 'L5', t('0.00', '0.00'), /^Enregistrer la ligne L5/, 'Aucun prélèvement sans complément (démonstration fictive)');
+  await remplir('2059C_II', 'N', { '2 Moins-values à 19 % ou à 15 %': '100.00', '3 À 19 % ou 15 % imputables sur le résultat de l’exercice': '10.00', '5 Imputations sur le résultat de l’exercice': '30.00' }, /^Enregistrer la ligne N du 2059C_II/, 'Moins-value nette de l’exercice (démonstration fictive)');
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('grille-2059-D').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2059d-apres.png` });
+  await page.getByTestId('lignes-2059C_II').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2059c-apres.png` });
+}
 // 2033-B (D-107) : « dont export » et lignes « dont » du régime simplifié.
 await page.goto(`${base}&vue=liasse&regime=reel_simplifie`);
 await page.waitForLoadState('networkidle');

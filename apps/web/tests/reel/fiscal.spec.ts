@@ -56,6 +56,10 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
     await expect(a2059.getByTestId('cessions-2059-a').locator('li[data-cession]')).toHaveCount(12);
     await expect(a2059.getByTestId('autres-2059-a').locator('li[data-autre]')).toHaveCount(7);
     await expect(a2059.getByTestId('cadres-2059-a').locator('li[data-cadre]')).toHaveCount(3);
+    // 2059-B, 2059-C, 2059-D (D-122) : grilles saisies ligne par ligne, totaux en abstention sans saisie complète.
+    await expect(page.getByTestId('grille-2059-B').locator('li[data-ligne-grille]')).toHaveCount(28);
+    await expect(page.getByTestId('grille-2059-C').locator('li[data-ligne-grille]')).toHaveCount(22);
+    await expect(page.getByTestId('grille-2059-D').locator('li[data-ligne-grille]')).toHaveCount(5);
     // 2059-E, 2059-F, 2059-G (D-120) : effectifs, capital et filiales au régime réel normal (mêmes saisies que 2033-F et G).
     await expect(page.getByTestId('formulaire-2059-E').locator('li[data-case-f]')).toHaveCount(25);
     await expect(page.getByTestId('formulaire-2033-f')).toContainText('2059-F');

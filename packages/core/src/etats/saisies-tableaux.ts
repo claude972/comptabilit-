@@ -25,12 +25,13 @@ import { type ChaineDecimale, estChaineDecimale, versChaine } from '../montant.j
 import type { Balance } from './types.js';
 import { type ControleDetail, type EtatCodeCase } from './detail-resultat.js';
 import { type ImpotSurLeResultat, type LiasseAbstention, PERIMETRE_LIASSE, type RegimeLiasse, type TerritoireFiscal, motifsAbstention } from './liasse.js';
+import { descriptionLigneGrille } from './formulaire-grilles.js';
 import { MENTION_PROJET } from './sources-fiscales.js';
 
 const ZERO = new Decimal(0);
 
-export type TableauSaisi = '2033C_III' | '2054BIS_A' | '2054BIS_B' | '2055_B' | '2055_C' | '2033D_C' | '2033F_NB' | '2033F_PM' | '2033F_PP' | '2033G_NB' | '2033G_FIL' | '2059A_IM' | '2059A_AUT';
-export const TABLEAUX_SAISIS: readonly TableauSaisi[] = ['2033C_III', '2054BIS_A', '2054BIS_B', '2055_B', '2055_C', '2033D_C', '2033F_NB', '2033F_PM', '2033F_PP', '2033G_NB', '2033G_FIL', '2059A_IM', '2059A_AUT'];
+export type TableauSaisi = '2033C_III' | '2054BIS_A' | '2054BIS_B' | '2055_B' | '2055_C' | '2033D_C' | '2033F_NB' | '2033F_PM' | '2033F_PP' | '2033G_NB' | '2033G_FIL' | '2059A_IM' | '2059A_AUT' | '2059B_A' | '2059B_B' | '2059C_I' | '2059C_II' | '2059D_I' | '2059D_II';
+export const TABLEAUX_SAISIS: readonly TableauSaisi[] = ['2033C_III', '2054BIS_A', '2054BIS_B', '2055_B', '2055_C', '2033D_C', '2033F_NB', '2033F_PM', '2033F_PP', '2033G_NB', '2033G_FIL', '2059A_IM', '2059A_AUT', '2059B_A', '2059B_B', '2059C_I', '2059C_II', '2059D_I', '2059D_II'];
 
 export interface SaisieTableau {
   tableau: TableauSaisi;
@@ -174,6 +175,15 @@ export function validerSaisieTableau(tableau: string, ligne: string, valeurs: un
       if (presents.length === 0) e.push('Au moins une colonne doit être renseignée (zéro compris).');
       for (const k of presents) decimal(k, ligne !== '20');
     } else e.push(`Ligne inconnue pour la rubrique II du 2059-A : ${ligne}.`);
+  } else if (descriptionLigneGrille(tableau, ligne) !== null) {
+    const d = descriptionLigneGrille(tableau, ligne);
+    if (d === 'neant') exactement([]);
+    else if (d === 'inconnue' || d === null) e.push(`Ligne inconnue pour le tableau ${tableau} : ${ligne}.`);
+    else {
+      exactement(d.libre ? ['origine', ...d.colonnes] : d.colonnes);
+      if (d.libre && (typeof v.origine !== 'string' || v.origine.trim().length < 2 || v.origine.length > 200)) e.push('origine : libellé de 2 à 200 caractères.');
+      for (const k of d.colonnes) decimal(k, true);
+    }
   } else if (tableau === '2054BIS_B') {
     if (ligne === 'B1' || ligne === 'B2') {
       exactement(['montant']);

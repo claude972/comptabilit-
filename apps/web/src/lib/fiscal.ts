@@ -127,6 +127,8 @@ export interface ReponseLiasse {
   formulaire2033G?: Formulaire2033GProjet | null;
   /** Tableau 2059-A (plus et moins-values) ; null au régime simplifié (D-121). */
   formulaire2059A?: Formulaire2059AProjet | null;
+  /** Tableaux 2059-B, 2059-C et 2059-D (grilles saisies ligne par ligne) ; null au régime simplifié (D-122). */
+  grilles2059?: GrilleProjet[] | null;
   /** Formulaires du régime réel normal servis par saisie case par case (2058-A, D-118) ; null au régime simplifié. */
   formulairesCases?: FormulaireCasesProjet[] | null;
 }
@@ -684,3 +686,27 @@ export const LIBELLES_COLONNES_2059_A: Record<string, string> = {
   c10c: '10 Long terme 0 %',
   c11: '11 Plus-value taxable à 19 %',
 };
+
+/** Grilles 2059-B, 2059-C, 2059-D (D-122) : champ `grilles2059` de la réponse de la liasse. */
+export type CelluleGrille = { statut: 'etabli'; montant: string } | { statut: 'abstention'; motifs: string[] };
+export interface CadreGrilleProjet {
+  tableau: string;
+  titre: string;
+  colonnes: Array<{ cle: string; libelle: string }>;
+  colonneCalculee: { cle: string; libelle: string } | null;
+  libelleOrigine: string | null;
+  lignes: Array<{ ligne: string; libelle: string; groupe: string | null; colonnes: string[]; statut: StatutLigneSaisie; trace: TraceSaisie | null; origine: string | null; valeurs: Record<string, string> | null; calculee: CelluleGrille | null }>;
+  calculs: Array<{ id: string; libelle: string; cellules: Record<string, CelluleGrille> }>;
+}
+export interface GrilleProjet {
+  statut: 'projet';
+  id: string;
+  titre: string;
+  etat: 'a_saisir' | 'neant' | 'saisi';
+  cadres: CadreGrilleProjet[];
+  neant: TraceSaisie | null;
+  controles: Array<{ code: string; statut: 'coherent' | 'ecart' | 'non_verifie'; message: string; ecart?: string }>;
+  nonPrepare: string[];
+  limites: string[];
+  mention: string;
+}

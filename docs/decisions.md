@@ -695,6 +695,15 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Non préparé, dit** : identification, détail des « Divers » de la ligne 20 (note annexe), tableaux supplémentaires au-delà de douze lignes, report vers 2058-A et 2059-B, C, D. Statut « projet ».
 - **Preuves** : 4 tests du moteur (`formulaire-2059a.test.ts`), 2 tests d'intégration sur la pile réelle, Playwright `fiscal.spec.ts`, captures `fiscal-2059a-avant/apres.png` sur le dossier fictif (`--2059a`).
 
+### D-122 — Tableaux 2059-B, 2059-C et 2059-D (régime réel normal), moteur de grilles (2026-11-22)
+
+- **Sources** : `2050-liasse_5320.pdf` (SHA-256 0bba3352…8453e1), pages 14 (2059-B-SD), 15 (2059-C-SD) et 16 (2059-D-SD) ; disposition lue sur le **rendu image** (lignes fixes d'origine N à N-10, colonnes grisées, quatorze lignes libres du cadre B du 2059-B) ; pas de code de case.
+- **Moteur** (`formulaire-grilles.ts`) : une définition par tableau (lignes fixes avec colonnes servies, grille libre à libellé d'origine, lignes calculées, colonne calculée) ; stockage `saisies_tableaux` (`2059B_A`, `2059B_B`, `2059C_I`, `2059C_II`, `2059D_I`, `2059D_II`), historisation et néant (ligne NEANT du premier tableau) comme D-121 ; migration 0058 additive : contraintes de forme élargies (lignes alphanumériques majuscules de 1 à 8 caractères, validées par l'API contre la définition). Une ligne saisie exige toutes ses colonnes servies (zéro explicite) : aucun zéro présumé.
+- **Calculs énoncés par les formulaires seulement** : 2059-B TOTAL 1, TOTAL 2 et TOTAL du cadre B ; 2059-C colonne 6 du cadre II « solde (2 + 3 − 4 − 5) » (colonnes grisées ignorées) ; 2059-D lignes 3 (1 + 2), 6 (4 + 5) et 7 (3 − 6). Établis uniquement quand toutes les composantes sont saisies (cadre libre : au moins une ligne, aucune à revoir), sinon abstention motivée sans chiffre. Aucune formule inventée : le montant restant à réintégrer (2059-B), les soldes du cadre I du 2059-C et la clôture du cadre II du 2059-D restent saisis, et aucun rapprochement n'est supposé.
+- **Aucune décision fiscale** : pas de qualification ni d'imputation décidée par le logiciel ; liens avec 2059-A et 2058-A non automatiques.
+- **Non préparé, dit** : identification, cases à cocher d'en-tête, plus de quatorze lignes d'origine, report entre tableaux. Statut « projet ».
+- **Preuves** : 5 tests du moteur (`formulaire-grilles.test.ts`), 3 tests d'intégration sur la pile réelle, Playwright `fiscal.spec.ts`, captures `fiscal-2059d-avant/apres.png` et `fiscal-2059c-apres.png` (`--2059bcd`).
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

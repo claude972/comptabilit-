@@ -743,6 +743,57 @@ describe('2059-A (régime réel normal) : plus et moins-values par saisie ligne 
   }, 120_000);
 });
 
+describe('2059-B, 2059-C, 2059-D (régime réel normal) : grilles saisies ligne par ligne (D-122)', () => {
+  const grilles = async () => (await liasse(exN, 'reel_normal')).json.grilles2059 as any[];
+  const g = async (id: string) => (await grilles()).find((x) => x.id === id);
+  const tg = (tableau: string, ligne: string, valeurs: Record<string, string>, note = 'Suivi des plus et moins-values (essai)', qui = 'remi') => api(qui, 'PUT', `/v1/exercices/${exN}/tableaux/${tableau}/${ligne}`, { valeurs, note });
+  const suppr = (tableau: string, ligne: string) => api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/${tableau}/${ligne}`);
+
+  it('sans saisie : trois grilles à saisir, absentes au régime simplifié ; refus de forme et de droits', async () => {
+    expect((await grilles()).map((x) => [x.id, x.etat])).toEqual([['2059-B', 'a_saisir'], ['2059-C', 'a_saisir'], ['2059-D', 'a_saisir']]);
+    expect((await liasse(exN, 'reel_simplifie')).json.grilles2059).toBeNull();
+    expect((await tg('2059B_A', 'E3', { a: '1.00' })).statut).toBe(400);
+    expect((await tg('2059B_A', 'E3', { a: '1.00', b: '1.00', c: '1.00', d: '1.00' })).statut).toBe(400);
+    expect((await tg('2059C_II', 'N11', { c2: '1.00' })).statut).toBe(400);
+    expect((await tg('2059D_I', 'L3', { t10: '1.00' })).statut).toBe(400);
+    expect((await tg('2059D_I', 'L1', { t10: '1.00', t15: '1.00', t18: '1.00', t19: '1.00', t25: '1.00' }, 'Essai collaborateur', 'chloe')).statut).toBeGreaterThanOrEqual(400);
+    expect((await tg('2059D_I', 'L1', { t10: '1.00', t15: '1.00', t18: '1.00', t19: '1.00', t25: '1.00' }, 'Essai déposant', 'client')).statut).toBe(404);
+  }, 120_000);
+
+  it('2059-D : lignes 3, 6, 7 calculées quand les composantes sont saisies ; historique ; retrait ; néant', async () => {
+    const t = (a: string, b: string) => ({ t10: a, t15: b, t18: '0.00', t19: '0.00', t25: '0.00' });
+    for (const [l, v] of [['L1', t('100.00', '50.00')], ['L2', t('10.00', '0.00')], ['L4', t('20.00', '5.00')]] as const) expect((await tg('2059D_I', l, v)).statut).toBeLessThan(300);
+    let d = await g('2059-D');
+    expect(d.etat).toBe('saisi');
+    expect(d.cadres[0].calculs.find((c: any) => c.id === 'L3').cellules.t10).toMatchObject({ statut: 'etabli', montant: '110.00' });
+    expect(d.cadres[0].calculs.find((c: any) => c.id === 'L7').cellules.t10.statut).toBe('abstention'); // ligne 5 non saisie
+    expect((await tg('2059D_I', 'L5', t('0.00', '0.00'))).statut).toBeLessThan(300);
+    d = await g('2059-D');
+    expect(d.cadres[0].calculs.find((c: any) => c.id === 'L7').cellules).toMatchObject({ t10: { montant: '90.00' }, t15: { montant: '45.00' } });
+    const h = (await api('remi', 'GET', `/v1/exercices/${exN}/qualifications/historique?cle=2059D_I:L1`)).json.evenements as any[];
+    expect(h).toHaveLength(1);
+    for (const l of ['L1', 'L2', 'L4', 'L5']) expect((await suppr('2059D_I', l)).statut).toBeLessThan(300);
+    expect((await g('2059-D')).etat).toBe('a_saisir');
+    expect((await tg('2059D_I', 'NEANT', {}, 'Aucune réserve spéciale (essai)')).statut).toBeLessThan(300);
+    expect((await g('2059-D')).etat).toBe('neant');
+    expect((await suppr('2059D_I', 'NEANT')).statut).toBeLessThan(300);
+  }, 120_000);
+
+  it('2059-C et 2059-B : solde calculé par ligne ; cadre B libre avec origine ; retraits', async () => {
+    expect((await tg('2059C_II', 'N', { c2: '100.00', c3: '10.00', c5: '30.00' })).statut).toBeLessThan(300);
+    let c = await g('2059-C');
+    expect(c.cadres[1].lignes[0].calculee).toEqual({ statut: 'etabli', montant: '80.00' });
+    expect((await tg('2059B_B', '01', { origine: 'Fusion 2020 (fictive)', a: '100.00', b: '10.00', c: '20.00', d: '70.00' })).statut).toBeLessThan(300);
+    const b = await g('2059-B');
+    expect(b.cadres[1].calculs[0].cellules.d).toMatchObject({ statut: 'etabli', montant: '70.00' });
+    expect(b.cadres[0].calculs[0].cellules.a.statut).toBe('abstention');
+    expect((await suppr('2059C_II', 'N')).statut).toBeLessThan(300);
+    expect((await suppr('2059B_B', '01')).statut).toBeLessThan(300);
+    c = await g('2059-C');
+    expect(c.etat).toBe('a_saisir');
+  }, 120_000);
+});
+
 describe('détail du compte de résultat : qualification tracée, abstention sans qualification', () => {
   it('sans qualification : totaux de la balance, France et exportations en abstention, renvois à saisir, exceptionnel détaillé', async () => {
     const d = await detail();

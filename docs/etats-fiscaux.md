@@ -33,7 +33,7 @@ Périmètre explicite : **société commerciale soumise à l’impôt sur les so
 | 2058-B, 2058-C | partiel (D-119) | 29 et 47 cases par saisie ; K6, YK, YN, YO, ØF, ZH, ZJ, YX calculés comme le formulaire ; propositions et rapprochements avec le 2058-A | Libellés de nature des provisions, cellules sans code, rapprochement ZJ / YX avec le 2052 | | — | Réintégrations et déductions extra-comptables, déficits, affectation du résultat |
 | 2059-E, 2059-F, 2059-G | partiel (D-120) | Mêmes calculs et saisies que 2033-E, 2033-F et 2033-G (codes du régime réel normal pour le 2059-E) | Dates, tableaux supplémentaires |
 | 2059-A | partiel (D-121) | Cessions (12 lignes) et rubrique II (7 lignes) par saisie ligne par ligne ; cadres A, B, C calculés comme le formulaire ; contrôles indicatifs | Divers (note annexe), report vers 2058-A |
-| 2059-B, 2059-C, 2059-D | **non couvert** | — | Suivi des plus et moins-values, réserve spéciale |
+| 2059-B, 2059-C, 2059-D | partiel (D-122) | Grilles saisies ligne par ligne ; totaux, solde (2+3−4−5) et lignes 3, 6, 7 calculés comme les formulaires | En-têtes cochables, report entre tableaux |
 | 2033-C Immobilisations et amortissements (cadres I et II) | partiel (D-104) | Mêmes calculs que 2054 et 2055 au format simplifié, avec N-1 | Cadre III (plus-values et moins-values, prix de cession), colonne 5 (réévaluation) |
 | 2033-D à 2033-G | **non couvert** | — | Provisions et dérogatoires, valeur ajoutée, capital, filiales |
 | 2065 et annexes | **non couvert** | — | Résultat fiscal, identification, liquidation de l’impôt |

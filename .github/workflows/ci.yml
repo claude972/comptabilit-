@@ -77,25 +77,23 @@ jobs:
       # Firefox ne peut pas être lancé par l'agent sur le poste de développement (D-059) : la CI est son seul lieu d'exécution.
       - name: Navigateur Firefox, pile réelle
         run: sh scripts/ci-etape.sh "Firefox réel" pnpm --filter @comtaple/web exec playwright test --config playwright.navigateurs.config.ts --project=firefox
-      # ── EXPÉRIMENTAL (D-098 bis, point 5) : isolation des analyseurs en conteneurs dédiés ──────────────────────────────
-      # Jamais encore exécuté sur un exécuteur GitHub. `continue-on-error: true` : un échec n'arrête pas la CI mais reste VISIBLE
-      # (étape rouge, annotation de ci-etape.sh, diagnostic ci-dessous) ; à durcir (retrait de continue-on-error) seulement après
-      # plusieurs exécutions vertes. Placé en dernier des essais : un moteur Docker bloqué ne gêne aucune autre suite.
+      # ── Isolation des analyseurs en conteneurs dédiés (D-098 bis, D-109) ───────────────────────────────────────────────
+      # Étape EXPÉRIMENTALE jusqu'au 2026-11-21 (`continue-on-error`) ; durcie après trois exécutions vertes (4cfbff2, 5e3a581,
+      # 84717d9) : un échec de la construction ou des essais rend désormais la CI rouge. Diagnostic et nettoyage restent garantis.
+      # Placé en dernier des essais : un moteur Docker bloqué ne gêne aucune autre suite.
       # Pull anonyme des images officielles figées par digest (Dockerfile) et de l'image d'essai ; rien n'est poussé ni connecté.
-      - name: EXPÉRIMENTALE — construction de l'image d'analyse (conteneurs dédiés)
+      - name: Construction de l'image d'analyse (conteneurs dédiés)
         id: conteneur-image
-        continue-on-error: true
         timeout-minutes: 15
-        run: sh scripts/ci-etape.sh "Image d'analyse (experimentale)" sh -c 'docker build --target analyse -t comtaple-analyse:dev . && docker pull python:3.12.16-slim-bookworm'
-      - name: EXPÉRIMENTALE — essais d'analyse en conteneurs dédiés (analyse-conteneur.itest.ts)
+        run: sh scripts/ci-etape.sh "Image d'analyse" sh -c 'docker build --target analyse -t comtaple-analyse:dev . && docker pull python:3.12.16-slim-bookworm'
+      - name: Essais d'analyse en conteneurs dédiés (analyse-conteneur.itest.ts)
         id: conteneur-essais
         if: steps.conteneur-image.outcome == 'success'
-        continue-on-error: true
         timeout-minutes: 12
         env:
           ESSAIS_CONTENEUR: '1'
-        run: sh scripts/ci-etape.sh "Essais conteneurs (experimentale)" timeout --signal=KILL 660 pnpm --filter @comtaple/worker exec vitest run --config vitest.integration.config.ts src/analyse-conteneur.itest.ts
-      - name: EXPÉRIMENTALE — diagnostic du moteur (conteneurs, événements, journal)
+        run: sh scripts/ci-etape.sh "Essais conteneurs" timeout --signal=KILL 660 pnpm --filter @comtaple/worker exec vitest run --config vitest.integration.config.ts src/analyse-conteneur.itest.ts
+      - name: Diagnostic du moteur (si la construction ou les essais échouent) (conteneurs, événements, journal)
         if: always() && (steps.conteneur-image.outcome == 'failure' || steps.conteneur-essais.outcome == 'failure' || steps.conteneur-essais.outcome == 'cancelled')
         continue-on-error: true
         timeout-minutes: 3
@@ -106,7 +104,7 @@ jobs:
           echo "::group::version du moteur"; timeout 20 docker version || true; echo "::endgroup::"
           restants=$(timeout 20 docker ps -a -q --filter label=comtaple.analyse | wc -l)
           echo "::warning title=EXPERIMENTALE conteneurs d'analyse::${restants} conteneur(s) d'analyse encore present(s) apres les essais (voir docs/exploitation.md paragraphe 17)"
-      - name: EXPÉRIMENTALE — nettoyage des conteneurs d'analyse
+      - name: Nettoyage des conteneurs d'analyse
         if: always()
         continue-on-error: true
         timeout-minutes: 3

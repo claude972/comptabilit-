@@ -807,7 +807,7 @@ describe('2065-SD (page 1) : récapitulation des éléments d’imposition saisi
 
   it('sans saisie : à saisir aux deux régimes ; refus de forme, de néant et de droits', async () => {
     expect(await f2065()).toMatchObject({ statut: 'projet', id: '2065', etat: 'a_saisir' });
-    expect((await f2065('reel_simplifie')).cadres).toHaveLength(8);
+    expect((await f2065('reel_simplifie')).cadres).toHaveLength(10);
     expect((await t('2065_C1', 'DEF', { m: '-1.00' })).statut).toBe(400);
     expect((await t('2065_C1', 'NEANT', {})).statut).toBe(404);
     expect((await t('2065_C1', 'XX', { m: '1.00' })).statut).toBe(404);

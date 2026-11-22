@@ -2088,7 +2088,7 @@ function Grille2059({ g, fm, exerciceId, revision, evenements }: { g: GrilleProj
                   {c.libelleOrigine ? `Ligne ${Number(l.ligne)}` : l.libelle} {l.statut === 'saisi' ? null : badge(l.statut)}
                   {l.statut === 'saisi' ? (
                     <span className="text-texte-doux">
-                      {l.origine ? ` · ${l.origine}` : ''} · {c.colonnes.filter((k) => l.valeurs && k.cle in l.valeurs).map((k) => `${k.libelle} : ${k.type === 'date' || k.type === 'texte' || k.type === 'annee' ? l.valeurs![k.cle] : fm(l.valeurs![k.cle])}`).join(' · ')}
+                      {l.origine ? ` · ${l.origine}` : ''} · {c.colonnes.filter((k) => l.valeurs && k.cle in l.valeurs).map((k) => `${k.libelle} : ${k.type === 'booleen' ? (l.valeurs![k.cle] === 'oui' ? 'oui' : 'non') : k.type === 'date' || k.type === 'texte' || k.type === 'annee' ? l.valeurs![k.cle] : fm(l.valeurs![k.cle])}`).join(' · ')}
                     </span>
                   ) : null}
                 </p>
@@ -2111,7 +2111,7 @@ function Grille2059({ g, fm, exerciceId, revision, evenements }: { g: GrilleProj
                     etiquette={`${c.libelleOrigine ? 'la ligne' : 'la ligne'} ${c.libelleOrigine ? Number(l.ligne) : l.ligne} du ${c.tableau}`}
                     saisie={l.statut !== 'a_saisir'}
                     noteCourante={l.trace?.note ?? null}
-                    champs={[...(c.libelleOrigine ? [{ cle: 'origine', libelle: c.libelleOrigine, type: 'texte' as const, valeur: l.origine ?? '' }] : []), ...c.colonnes.filter((k) => l.colonnes.includes(k.cle)).map((k) => ({ cle: k.cle, libelle: k.libelle, type: (k.type === 'date' || k.type === 'texte' || k.type === 'annee' ? 'texte' : 'montant') as 'texte' | 'montant', valeur: l.valeurs?.[k.cle] ?? '' }))]}
+                    champs={[...(c.libelleOrigine ? [{ cle: 'origine', libelle: c.libelleOrigine, type: 'texte' as const, valeur: l.origine ?? '' }] : []), ...c.colonnes.filter((k) => l.colonnes.includes(k.cle)).map((k) => ({ cle: k.cle, libelle: k.libelle, type: (k.type === 'booleen' ? 'choix' : k.type === 'date' || k.type === 'texte' || k.type === 'annee' ? 'texte' : 'montant') as 'texte' | 'montant' | 'choix', ...(k.type === 'booleen' ? { options: [{ valeur: 'non', libelle: 'Non' }, { valeur: 'oui', libelle: 'Oui' }] } : {}), valeur: l.valeurs?.[k.cle] ?? '' }))]}
                   />
                 ) : null}
               </li>

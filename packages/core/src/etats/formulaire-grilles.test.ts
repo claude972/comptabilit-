@@ -72,7 +72,7 @@ describe('grilles 2059', () => {
   it('2065 : rubriques saisies une à une, montants signés seulement où le formulaire le demande, aucun néant', () => {
     const f = preparerGrille(GRILLE_2065, { versionDonnees: 7, saisiesTableaux: [s('2065_C1', 'BN', { m: '12345.00' })] });
     expect(f.etat).toBe('saisi');
-    expect(f.cadres.map((c) => c.tableau)).toEqual(['2065_C1', '2065_C2', '2065_C3', '2065_C4', '2065_F', '2065_I', '2065_D', '2065_E']);
+    expect(f.cadres.map((c) => c.tableau)).toEqual(['2065_C1', '2065_C2', '2065_C3', '2065_C4', '2065_F', '2065_I', '2065_D', '2065_E', '2065_X', '2065_T']);
     expect(f.cadres[0]!.lignes.map((l) => l.statut)).toEqual(['saisi', 'a_saisir', 'a_saisir', 'a_saisir']);
     expect(f.cadres.every((c) => c.calculs.length === 0)).toBe(true);
     expect(preparerGrille(GRILLE_2065, { versionDonnees: 7, saisiesTableaux: [] }).etat).toBe('a_saisir');
@@ -81,6 +81,9 @@ describe('grilles 2059', () => {
     expect(validerSaisieTableau('2065_C1', 'NEANT', {}).join(' ')).toMatch(/Ligne inconnue/);
     expect(validerSaisieTableau('2065_F', 'TAUX', { m: '0.25' })).toEqual([]);
     expect(validerSaisieTableau('2065_E', 'X', { m: '1.00' }).join(' ')).toMatch(/Ligne inconnue/);
+    expect(validerSaisieTableau('2065_X', 'INFO', { v: 'oui' })).toEqual([]);
+    expect(validerSaisieTableau('2065_X', 'INFO', { v: 'peut-être' }).join(' ')).toMatch(/« oui » ou « non »/);
+    expect(validerSaisieTableau('2065_T', 'LOGIC', { t: 'Logiciel comptable (fictif)' })).toEqual([]);
   });
   it('dates du 2033-E / 2059-E : période de référence et cessation saisies en AAAA-MM-JJ, ordre contrôlé sans correction', () => {
     const f = preparerGrille(GRILLE_DATES_CVAE, { versionDonnees: 7, saisiesTableaux: [s('2033E_DATES', 'PER', { debut: '2025-01-01', fin: '2025-12-31' })] });

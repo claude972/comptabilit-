@@ -809,6 +809,13 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Limites, dites** : la balance ne détaille pas la nature ni le rattachement à un exercice antérieur ; au-delà de dix lignes par cadre : non préparé ; aucune décision fiscale. Statut « projet ».
 - **Preuves** : test du moteur (939 verts), essai d'intégration sur la pile réelle (65 verts), Playwright `fiscal.spec.ts` (20 lignes).
 
+### D-137 — 2065-SD : cases à cocher, comptabilité informatisée et activités (2026-11-22, complète D-123)
+
+- **Source** : `2065-sd_5381.pdf` (SHA-256 c4f8d735…07d06de), page 1, lue sur le rendu image : cases à cocher « déclaration souscrite pour le résultat d'ensemble du groupe », « PME innovante », « option pour le régime optionnel de taxation au tonnage (art. 209-0 B) », « changement d'activité », « option pour le crédit d'impôt outre-mer (art. 244 quater W) » ; « comptabilité informatisée : OUI / NON » ; texte « activités exercées » et « indication du logiciel utilisé ».
+- **Décision** : deux cadres de plus au 2065 (`2065_X` : six réponses « oui » / « non » ; `2065_T` : deux textes), saisies justifiées, tracées, historisées par le moteur de grilles (colonne de type « booleen » : « oui » ou « non » exactement), migration 0067 additive. **Aucune option n'est cochée par défaut ni déduite** : une case non saisie n'est ni « oui » ni « non » ; aucune décision fiscale (une option relève du cabinet).
+- **Non préparé, dit** : identification de l'entreprise, adresses, date d'entrée dans le groupe, société mère (reprises du dossier) ; signatures, professionnel de l'expertise comptable, conseil, identité du déclarant, examen de conformité fiscale. Statut « projet ».
+- **Preuves** : tests du moteur (939 verts), essai d'intégration (65 verts), Playwright (38 lignes du 2065).
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

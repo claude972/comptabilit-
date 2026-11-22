@@ -708,7 +708,7 @@ export type CelluleGrille = { statut: 'etabli'; montant: string } | { statut: 'a
 export interface CadreGrilleProjet {
   tableau: string;
   titre: string;
-  colonnes: Array<{ cle: string; libelle: string; type?: 'montant' | 'date' | 'texte' | 'annee' }>;
+  colonnes: Array<{ cle: string; libelle: string; type?: 'montant' | 'date' | 'texte' | 'annee' | 'booleen' }>;
   colonneCalculee: { cle: string; libelle: string } | null;
   libelleOrigine: string | null;
   lignes: Array<{ ligne: string; libelle: string; groupe: string | null; colonnes: string[]; statut: StatutLigneSaisie; trace: TraceSaisie | null; origine: string | null; valeurs: Record<string, string> | null; calculee: CelluleGrille | null }>;

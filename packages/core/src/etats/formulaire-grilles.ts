@@ -22,7 +22,7 @@ export interface ColonneGrille {
   /** Montant algébrique (le formulaire demande d'indiquer + ou −) ; sinon positif. */
   signe?: boolean;
   /** Nature de la colonne : montant (défaut) ou date (AAAA-MM-JJ, jour réel du calendrier). */
-  type?: 'montant' | 'date' | 'texte' | 'annee';
+  type?: 'montant' | 'date' | 'texte' | 'annee' | 'booleen';
 }
 export interface LigneGrille {
   ligne: string;
@@ -196,10 +196,25 @@ export const GRILLE_2065: DefinitionGrille = {
     unique('2065_I', 'I — Contribution exceptionnelle sur les grandes entreprises de transport maritime (CTM)', [['BASE', 'Base d’imposition'], ['TAUX', 'Taux d’imposition']]),
     unique('2065_D', 'D — Imputations', [['D1', '1. Au titre des revenus mobiliers de source française ou étrangère, ayant donné lieu à la délivrance d’un certificat de crédits d’impôts'], ['D2', '2. Au titre des revenus auxquels est attaché, en vertu d’une convention fiscale, un crédit d’impôt représentatif de l’impôt de l’État, territoire ou collectivité étranger']]),
     unique('2065_E', 'E — Contribution annuelle sur les revenus locatifs', [['REC', 'Recettes nettes soumises à la contribution de 2,5 %']]),
+    {
+      tableau: '2065_X',
+      titre: 'Options et déclarations (cases à cocher, comptabilité informatisée, activité)',
+      colonnes: [{ cle: 'v', libelle: 'Réponse', type: 'booleen' }],
+      lignes: [
+        { ligne: 'GRP', libelle: 'Déclaration souscrite pour le résultat d’ensemble du groupe (case à cocher)' },
+        { ligne: 'PME', libelle: 'PME innovante (case à cocher)' },
+        { ligne: 'TON', libelle: 'Option pour le régime optionnel de taxation au tonnage, art. 209-0 B du CGI, entreprises de transport maritime (case à cocher)' },
+        { ligne: 'CHACT', libelle: 'Changement d’activité (case à cocher)' },
+        { ligne: 'OMER', libelle: 'Option pour le crédit d’impôt outre-mer dans le secteur productif, art. 244 quater W du CGI (case à cocher)' },
+        { ligne: 'INFO', libelle: 'L’entreprise dispose-t-elle d’une comptabilité informatisée ? (oui / non)' },
+      ],
+      calculs: [],
+    },
+    { tableau: '2065_T', titre: 'Activités exercées et logiciel de comptabilité', colonnes: [{ cle: 't', libelle: 'Texte', type: 'texte' }], lignes: [{ ligne: 'ACTIV', libelle: 'Activités exercées' }, { ligne: 'LOGIC', libelle: 'Si oui, indication du logiciel utilisé' }], calculs: [] },
   ],
   nonPrepare: [
-    'Identification de l’entreprise, régime fiscal des groupes, activité, exercice, option pour le régime du tonnage, PME innovante : reprises du dossier, non ressaisies ici.',
-    'Cases à cocher (option pour le crédit d’impôt outre-mer, art. 244 quater W ; comptabilité informatisée et logiciel) et rubriques de signature, professionnel de l’expertise comptable, examen de conformité fiscale : non préparées.',
+    'Identification de l’entreprise (désignation, SIRET, adresses), exercice, date d’entrée dans le groupe et société mère : reprises du dossier, non ressaisies ici. Les cases à cocher d’option et la comptabilité informatisée se déclarent dans le cadre « Options et déclarations ».',
+    'Rubriques de signature, nom et adresse du professionnel de l’expertise comptable et du conseil, identité du déclarant, examen de conformité fiscale (ECF) : non préparées.',
     'Annexe 2065 bis-SD (répartition des revenus distribués, rémunérations versées aux associés, divers, MVLT du régime simplifié, dons) : non préparée.',
     'Liquidation de l’impôt : calculée par l’administration au dépôt électronique, non préparée ici ; aucun montant d’impôt n’est calculé.',
     'Report depuis les tableaux 2058-A, 2033-D, 2059-A à D : non automatique ; les montants du cadre C sont saisis par le cabinet.',
@@ -514,7 +529,7 @@ const TOUTES: readonly DefinitionGrille[] = [...GRILLES_2059, GRILLE_2065, GRILL
 export const TABLEAUX_GRILLES: readonly string[] = TOUTES.flatMap((g) => g.cadres.map((c) => c.tableau));
 
 /** Lignes admises pour un tableau en grille : `null` si le tableau n'est pas une grille. Utilisée par la validation de forme. */
-export function descriptionLigneGrille(tableau: string, ligne: string): { colonnes: readonly string[]; signees: readonly string[]; dates: readonly string[]; textes: readonly string[]; annees: readonly string[]; libre: boolean } | 'neant' | 'inconnue' | null {
+export function descriptionLigneGrille(tableau: string, ligne: string): { colonnes: readonly string[]; signees: readonly string[]; dates: readonly string[]; textes: readonly string[]; annees: readonly string[]; booleens: readonly string[]; libre: boolean } | 'neant' | 'inconnue' | null {
   for (const g of TOUTES)
     for (const c of g.cadres) {
       if (c.tableau !== tableau) continue;
@@ -523,9 +538,10 @@ export function descriptionLigneGrille(tableau: string, ligne: string): { colonn
       const dates = c.colonnes.filter((x) => x.type === 'date').map((x) => x.cle);
       const textes = c.colonnes.filter((x) => x.type === 'texte').map((x) => x.cle);
       const annees = c.colonnes.filter((x) => x.type === 'annee').map((x) => x.cle);
-      if (c.libre !== undefined) return /^(0[1-9]|1[0-9]|20)$/.test(ligne) && Number(ligne) <= c.libre.max ? { colonnes: c.colonnes.map((x) => x.cle), signees, dates, textes, annees, libre: true } : 'inconnue';
+      const booleens = c.colonnes.filter((x) => x.type === 'booleen').map((x) => x.cle);
+      if (c.libre !== undefined) return /^(0[1-9]|1[0-9]|20)$/.test(ligne) && Number(ligne) <= c.libre.max ? { colonnes: c.colonnes.map((x) => x.cle), signees, dates, textes, annees, booleens, libre: true } : 'inconnue';
       const l = c.lignes.find((x) => x.ligne === ligne);
-      return l ? { colonnes: l.colonnes ?? c.colonnes.map((x) => x.cle), signees, dates, textes, annees, libre: false } : 'inconnue';
+      return l ? { colonnes: l.colonnes ?? c.colonnes.map((x) => x.cle), signees, dates, textes, annees, booleens, libre: false } : 'inconnue';
     }
   return null;
 }

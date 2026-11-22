@@ -61,7 +61,7 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
     await expect(page.getByTestId('grille-2059-C').locator('li[data-ligne-grille]')).toHaveCount(22);
     await expect(page.getByTestId('grille-2059-D').locator('li[data-ligne-grille]')).toHaveCount(5);
     // 2065-SD (D-123) : récapitulation des éléments d'imposition saisie rubrique par rubrique.
-    await expect(page.getByTestId('grille-2065').locator('li[data-ligne-grille]')).toHaveCount(30);
+    await expect(page.getByTestId('grille-2065').locator('li[data-ligne-grille]')).toHaveCount(38);
     // Dates du 2033-E / 2059-E (D-126) et cadre IV du 2033-D (D-126).
     await expect(page.getByTestId('grille-2033-E-DATES').locator('li[data-ligne-grille]')).toHaveCount(2);
     // Feuillets du réel normal (D-133) : K4 bis (20 lignes), réintégrations et déductions diverses (20 + 20).

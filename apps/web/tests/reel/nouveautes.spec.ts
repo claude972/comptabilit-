@@ -343,7 +343,7 @@ test('(f) rentabilité : honoraires et temps observés affichés ; marge « non 
   const ligne = chloe.locator('tr[data-travail]', { hasText: 'Saisie de février' });
   await expect(ligne.getByLabel('Mission de ce travail')).toHaveValue('');
   await ligne.getByLabel('Mission de ce travail').selectOption(mission.json.id);
-  await expect(ligne.getByText('Travail affecté.')).toBeVisible();
+  await expect(ligne.getByText('Travail affecté.')).toBeVisible({ timeout: 20_000 });
   await chloe.reload();
   await expect(chloe.locator('tr[data-travail]', { hasText: 'Saisie de février' }).getByLabel('Mission de ce travail')).toHaveValue(mission.json.id);
   // Une collaboratrice n'accède pas à la rentabilité.

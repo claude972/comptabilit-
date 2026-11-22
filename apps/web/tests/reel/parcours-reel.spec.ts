@@ -22,7 +22,10 @@ async function seConnecter(page: Page, email: string, destination: string) {
   await page.waitForURL(/^http:\/\/localhost:3100\//);
 }
 
-const SEL = randomBytes(4).toString('hex').toUpperCase();
+// Alphabet SANS caractères que l'OCR confond (0/O/D, 1/I/L, 5/S, 8/B, 2/Z, G/6) : le numéro de facture doit être lu à l'identique sur tout
+// moteur de rendu (la CI Firefox a échoué quand le tirage aléatoire contenait des caractères ambigus : « Numéro : non extrait »).
+const ALPHABET_LISIBLE = 'ACEFHKMNPRTWXY347';
+const SEL = Array.from(randomBytes(8), (o) => ALPHABET_LISIBLE[o % ALPHABET_LISIBLE.length]).join('');
 const NUMERO = `FA-2026-${SEL}`;
 // Facture fictive : 1 000,00 HT + 200,00 de TVA à 20 % = 1 200,00 TTC.
 const TEXTE = [
@@ -41,8 +44,8 @@ const TEXTE = [
 
 /** Image de facture rendue par un navigateur : aucun texte exploitable sans OCR. Ce n'est pas une photo réelle. */
 async function imageFacture(browser: Browser): Promise<Buffer> {
-  const page = await browser.newPage({ viewport: { width: 1240, height: 1100 } });
-  await page.setContent(`<body style="margin:60px;background:#fff"><pre style="font:24px/1.7 Helvetica,Arial,sans-serif;color:#111"></pre></body>`);
+  const page = await browser.newPage({ viewport: { width: 1400, height: 1200 } });
+  await page.setContent(`<body style="margin:60px;background:#fff"><pre style="font:30px/1.7 Helvetica,Arial,sans-serif;color:#111"></pre></body>`);
   await page.locator('pre').evaluate((el, t) => (el.textContent = t), TEXTE);
   const image = await page.screenshot({ type: 'png' });
   await page.close();

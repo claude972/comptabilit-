@@ -13,7 +13,7 @@
  */
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { mkdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import http from 'node:http';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -399,7 +399,10 @@ sortie({'enfants': enfants, 'refus': refus})`,
 
 // ── Lanceur restreint (proxy filtrant de l'API du moteur) : l'architecture de production, jouée en local ─────────────
 const LANCEUR = resolve(fileURLToPath(new URL('.', import.meta.url)), '../../../scripts/lanceur-analyse.mjs');
-const SOCKET_MOTEUR = process.env.DOCKER_HOST?.replace(/^unix:\/\//, '') ?? join(homedir(), '.comtaple-outils/colima/default/docker.sock');
+// Socket du moteur : DOCKER_HOST s'il est défini ; sinon celui de Colima (poste de développement) s'il existe ; sinon le socket standard
+// d'un exécuteur (CI GitHub). Le repli sur le seul chemin Colima faisait échouer les essais du lanceur sur l'exécuteur (« moteur injoignable »).
+const SOCKET_COLIMA = join(homedir(), '.comtaple-outils/colima/default/docker.sock');
+const SOCKET_MOTEUR = process.env.DOCKER_HOST?.replace(/^unix:\/\//, '') ?? (existsSync(SOCKET_COLIMA) ? SOCKET_COLIMA : '/var/run/docker.sock');
 
 interface LanceurEnCours {
   socket: string;

@@ -78,8 +78,8 @@ jobs:
       - name: Navigateur Firefox, pile réelle
         run: sh scripts/ci-etape.sh "Firefox réel" pnpm --filter @comtaple/web exec playwright test --config playwright.navigateurs.config.ts --project=firefox
       # ── Isolation des analyseurs en conteneurs dédiés (D-098 bis, D-109) ───────────────────────────────────────────────
-      # Étape EXPÉRIMENTALE jusqu'au 2026-11-21 (`continue-on-error`) ; durcie après trois exécutions vertes (4cfbff2, 5e3a581,
-      # 84717d9) : un échec de la construction ou des essais rend désormais la CI rouge. Diagnostic et nettoyage restent garantis.
+      # Étape EXPÉRIMENTALE jusqu'au 2026-11-21 (`continue-on-error`, dont la conclusion « success » masquait des échecs
+      # visibles seulement en annotation) ; durcie : un échec de la construction ou des essais rend désormais la CI rouge. Diagnostic et nettoyage restent garantis.
       # Placé en dernier des essais : un moteur Docker bloqué ne gêne aucune autre suite.
       # Pull anonyme des images officielles figées par digest (Dockerfile) et de l'image d'essai ; rien n'est poussé ni connecté.
       - name: Construction de l'image d'analyse (conteneurs dédiés)

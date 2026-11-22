@@ -807,8 +807,14 @@ describe('2065-SD (page 1) : récapitulation des éléments d’imposition saisi
 
   it('sans saisie : à saisir aux deux régimes ; refus de forme, de néant et de droits', async () => {
     expect(await f2065()).toMatchObject({ statut: 'projet', id: '2065', etat: 'a_saisir' });
-    expect((await f2065('reel_simplifie')).cadres).toHaveLength(10);
+    expect((await f2065('reel_simplifie')).cadres).toHaveLength(12);
     expect((await t('2065_C1', 'DEF', { m: '-1.00' })).statut).toBe(400);
+    const idn = (await liasse(exN, 'reel_normal')).json.identification;
+    expect(idn).toMatchObject({ designation: expect.any(String) });
+    expect((await t('2065_ID', 'SIRET', { t: '123' })).statut).toBe(400);
+    expect((await t('2065_ID', 'SIRET', { t: '12345678901234' })).statut).toBeLessThan(300);
+    expect((await f2065()).cadres.find((c: any) => c.tableau === '2065_ID').lignes[0]).toMatchObject({ statut: 'saisi', valeurs: { t: '12345678901234' } });
+    expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/2065_ID/SIRET`)).statut).toBeLessThan(300);
     expect((await t('2065_C1', 'NEANT', {})).statut).toBe(404);
     expect((await t('2065_C1', 'XX', { m: '1.00' })).statut).toBe(404);
     expect((await t('2065_C1', 'BN', { m: '1.00' }, 'Essai collaborateur', 'chloe')).statut).toBeGreaterThanOrEqual(400);

@@ -31,8 +31,8 @@ import { MENTION_PROJET } from './sources-fiscales.js';
 
 const ZERO = new Decimal(0);
 
-export type TableauSaisi = '2033C_III' | '2054BIS_A' | '2054BIS_B' | '2055_B' | '2055_C' | '2033D_C' | '2033F_NB' | '2033F_PM' | '2033F_PP' | '2033G_NB' | '2033G_FIL' | '2059A_IM' | '2059A_AUT' | '2059B_A' | '2059B_B' | '2059C_I' | '2059C_II' | '2059D_I' | '2059D_II' | '2065_C1' | '2065_C2' | '2065_C3' | '2065_C4' | '2065_F' | '2065_I' | '2065_D' | '2065_E' | '2033E_DATES' | '2057_A' | '2057_AX' | '2057_B' | '2057_BX' | '2065B_G' | '2065B_H' | '2065B_I' | '2065B_J1' | '2065B_J2' | '2065B_K' | '2033D_982' | '2058B_K4BIS' | '2058A_REINT' | '2058A_DEDUC' | 'IMMO_CELL' | '2053_D7' | '2053_D8' | '2065_X' | '2065_T' | '2058B_NAT' | '2058B_COMP';
-export const TABLEAUX_SAISIS: readonly TableauSaisi[] = ['2033C_III', '2054BIS_A', '2054BIS_B', '2055_B', '2055_C', '2033D_C', '2033F_NB', '2033F_PM', '2033F_PP', '2033G_NB', '2033G_FIL', '2059A_IM', '2059A_AUT', '2059B_A', '2059B_B', '2059C_I', '2059C_II', '2059D_I', '2059D_II', '2065_C1', '2065_C2', '2065_C3', '2065_C4', '2065_F', '2065_I', '2065_D', '2065_E', '2033E_DATES', '2057_A', '2057_AX', '2057_B', '2057_BX', '2065B_G', '2065B_H', '2065B_I', '2065B_J1', '2065B_J2', '2065B_K', '2033D_982', '2058B_K4BIS', '2058A_REINT', '2058A_DEDUC', 'IMMO_CELL', '2053_D7', '2053_D8', '2065_X', '2065_T', '2058B_NAT', '2058B_COMP'];
+export type TableauSaisi = '2033C_III' | '2054BIS_A' | '2054BIS_B' | '2055_B' | '2055_C' | '2033D_C' | '2033F_NB' | '2033F_PM' | '2033F_PP' | '2033G_NB' | '2033G_FIL' | '2059A_IM' | '2059A_AUT' | '2059B_A' | '2059B_B' | '2059C_I' | '2059C_II' | '2059D_I' | '2059D_II' | '2065_C1' | '2065_C2' | '2065_C3' | '2065_C4' | '2065_F' | '2065_I' | '2065_D' | '2065_E' | '2033E_DATES' | '2057_A' | '2057_AX' | '2057_B' | '2057_BX' | '2065B_G' | '2065B_H' | '2065B_I' | '2065B_J1' | '2065B_J2' | '2065B_K' | '2033D_982' | '2058B_K4BIS' | '2058A_REINT' | '2058A_DEDUC' | 'IMMO_CELL' | '2053_D7' | '2053_D8' | '2065_X' | '2065_T' | '2058B_NAT' | '2058B_COMP' | '2065_ID' | '2065_IDG';
+export const TABLEAUX_SAISIS: readonly TableauSaisi[] = ['2033C_III', '2054BIS_A', '2054BIS_B', '2055_B', '2055_C', '2033D_C', '2033F_NB', '2033F_PM', '2033F_PP', '2033G_NB', '2033G_FIL', '2059A_IM', '2059A_AUT', '2059B_A', '2059B_B', '2059C_I', '2059C_II', '2059D_I', '2059D_II', '2065_C1', '2065_C2', '2065_C3', '2065_C4', '2065_F', '2065_I', '2065_D', '2065_E', '2033E_DATES', '2057_A', '2057_AX', '2057_B', '2057_BX', '2065B_G', '2065B_H', '2065B_I', '2065B_J1', '2065B_J2', '2065B_K', '2033D_982', '2058B_K4BIS', '2058A_REINT', '2058A_DEDUC', 'IMMO_CELL', '2053_D7', '2053_D8', '2065_X', '2065_T', '2058B_NAT', '2058B_COMP', '2065_ID', '2065_IDG'];
 
 export interface SaisieTableau {
   tableau: TableauSaisi;
@@ -183,6 +183,9 @@ export function validerSaisieTableau(tableau: string, ligne: string, valeurs: un
     else {
       exactement(d.libre ? ['origine', ...d.colonnes] : d.colonnes);
       if (d.libre && (typeof v.origine !== 'string' || v.origine.trim().length < 2 || v.origine.length > 200)) e.push('origine : libellé de 2 à 200 caractères.');
+      const t = typeof v.t === 'string' ? v.t.trim() : '';
+      if (((tableau === '2065_ID' && ligne === 'SIRET') || (tableau === '2065_IDG' && ligne === 'MERESIR')) && t !== '' && !/^\d{14}$/.test(t)) e.push('t : SIRET de 14 chiffres, sans espace.');
+      if (tableau === '2065_ID' && ligne === 'MEL' && t !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t)) e.push('t : adresse électronique valide attendue.');
       for (const k of d.colonnes) {
         if (d.booleens.includes(k)) {
           if (v[k] !== 'oui' && v[k] !== 'non') e.push(`${k} : « oui » ou « non » attendu.`);

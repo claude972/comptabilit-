@@ -35,7 +35,7 @@ export default async function PageEtatJoint({ params, searchParams }: { params: 
   const tableaux = etatJointDe(liasse.donnees);
   const edition = formaterHorodatage(new Date().toISOString());
   const identification = [
-    `Dossier : ${ctx.dossier.raisonSociale}${ctx.dossier.formeJuridique ? ` (${ctx.dossier.formeJuridique})` : ''}`,
+    `Dossier : ${ctx.dossier.raisonSociale}${ctx.dossier.formeJuridique ? ` (${ctx.dossier.formeJuridique})` : ''} — SIREN ${liasse.donnees.identification?.siren ?? 'non renseigné au dossier'}`,
     `Exercice : du ${exercice.debut} au ${exercice.fin} (version ${exercice.versionDonnees} des données)`,
     `Régime : ${REGIMES[regime]}`,
     `Édité le ${edition} — PROJET, non validé`,

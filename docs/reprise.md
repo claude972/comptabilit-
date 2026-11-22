@@ -41,7 +41,7 @@ Document de passage pour reprendre le travail sans relire la conversation. À me
 
 ## Restes explicites (ordre de travail)
 1. ~~2059-A à D~~ FAIT (D-121, D-122).
-2. ~~2065~~ page 1 FAIT (D-123), annexe 2065 bis FAITE (D-131) ; restes : identification, signatures, liquidation (options saisies, D-137).
+2. ~~2065~~ page 1 FAIT (D-123), annexe 2065 bis FAITE (D-131) ; restes : signatures (jamais), liquidation (options D-137 et identification D-140 saisies).
 3. ~~Import XLSX~~ FAIT (D-124) ; composants par import FAIT (D-125).
 4. **Restes des séries 2033 et 2058** (la série 2033 n'est PAS déclarée complète) : formule du revenu brut social (cadre IV du 2033-D saisi seulement, D-126) ; état papier joint lui-même (lignes d'état joint saisies, D-128) ; (2058-B libellés et composants FAITS, D-139) ; cadre « méthode par composants » du 2058-B ; signatures et liquidation du 2065 ; en attente de vérification : CI et défaut WebKit (une seule lecture groupée après le reset du quota GitHub, 2026-11-22 07:03 UTC environ).
 5. Restes antérieurs : (les tableaux 2054 et 2055 ne portent pas de renvois ; renvois 2050, 2051 et 2033-A FAITS, D-135), scission biens / services des comptes 70 (convention à valider), détail (8) du 2053 FAIT (D-136).

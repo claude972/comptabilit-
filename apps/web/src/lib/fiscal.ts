@@ -133,6 +133,8 @@ export interface ReponseLiasse {
   grilles2059?: GrilleProjet[] | null;
   /** Déclaration de résultats 2065-SD (page 1), deux régimes (D-123). */
   formulaire2065?: GrilleProjet | null;
+  /** Identification reprise du dossier (D-140). */
+  identification?: { designation: string; siren: string | null; formeJuridique: string | null; codeNaf: string | null };
   /** Dates du 2033-E / 2059-E (D-126). */
   datesCvae?: GrilleProjet | null;
   /** État des échéances des créances et des dettes (2057), régime réel normal (D-130). */

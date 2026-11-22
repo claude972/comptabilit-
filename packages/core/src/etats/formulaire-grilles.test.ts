@@ -72,7 +72,7 @@ describe('grilles 2059', () => {
   it('2065 : rubriques saisies une à une, montants signés seulement où le formulaire le demande, aucun néant', () => {
     const f = preparerGrille(GRILLE_2065, { versionDonnees: 7, saisiesTableaux: [s('2065_C1', 'BN', { m: '12345.00' })] });
     expect(f.etat).toBe('saisi');
-    expect(f.cadres.map((c) => c.tableau)).toEqual(['2065_C1', '2065_C2', '2065_C3', '2065_C4', '2065_F', '2065_I', '2065_D', '2065_E', '2065_X', '2065_T']);
+    expect(f.cadres.map((c) => c.tableau)).toEqual(['2065_C1', '2065_C2', '2065_C3', '2065_C4', '2065_F', '2065_I', '2065_D', '2065_E', '2065_X', '2065_ID', '2065_IDG', '2065_T']);
     expect(f.cadres[0]!.lignes.map((l) => l.statut)).toEqual(['saisi', 'a_saisir', 'a_saisir', 'a_saisir']);
     expect(f.cadres.every((c) => c.calculs.length === 0)).toBe(true);
     expect(preparerGrille(GRILLE_2065, { versionDonnees: 7, saisiesTableaux: [] }).etat).toBe('a_saisir');
@@ -178,5 +178,15 @@ describe('grilles 2059', () => {
     expect(avec.cadres[1]!.lignes[0]!.valeurs).toEqual({ imputations: '10.00', netfin: '90.00' });
     expect(validerSaisieTableau('2058B_NAT', '8Y', { t: 'x' }).join(' ')).toMatch(/Ligne inconnue/);
     expect(validerSaisieTableau('2058B_COMP', 'L1', { imputations: '1.00' }).join(' ')).toMatch(/obligatoire/);
+  });
+  it('2065 identification : SIRET de 14 chiffres, mél valide, groupe ; rien n’est deviné', () => {
+    expect(validerSaisieTableau('2065_ID', 'SIRET', { t: '12345678901234' })).toEqual([]);
+    expect(validerSaisieTableau('2065_ID', 'SIRET', { t: '123456789' }).join(' ')).toMatch(/14 chiffres/);
+    expect(validerSaisieTableau('2065_ID', 'MEL', { t: 'compta@exemple.test' })).toEqual([]);
+    expect(validerSaisieTableau('2065_ID', 'MEL', { t: 'pas un mel' }).join(' ')).toMatch(/électronique/);
+    expect(validerSaisieTableau('2065_IDG', 'ENTREE', { d: '2024-01-01' })).toEqual([]);
+    expect(validerSaisieTableau('2065_IDG', 'MERESIR', { t: 'abc' }).join(' ')).toMatch(/14 chiffres/);
+    const f = preparerGrille(GRILLE_2065, { versionDonnees: 7, saisiesTableaux: [] });
+    expect(f.cadres.find((c) => c.tableau === '2065_ID')!.lignes.map((l) => l.statut)).toEqual(['a_saisir', 'a_saisir', 'a_saisir', 'a_saisir', 'a_saisir']);
   });
 });

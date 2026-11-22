@@ -2347,6 +2347,11 @@ export default async function PageFiscal({ params, searchParams }: { params: Pro
       {liasse?.ok && liasse.donnees.formulairesCases ? liasse.donnees.formulairesCases.map((f) => <FormulaireCases key={f.id} f={f} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} />) : null}
       {liasse?.ok && liasse.donnees.formulaire2059A ? <Formulaire2059A f={liasse.donnees.formulaire2059A} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.grilles2059 ? liasse.donnees.grilles2059.map((g) => <Grille2059 key={g.id} g={g} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} />) : null}
+      {liasse?.ok && liasse.donnees.formulaire2065 && liasse.donnees.identification ? (
+        <p className="text-sm" data-testid="identification-2065">
+          2065 — identification reprise du dossier (non ressaisie) : <strong>{liasse.donnees.identification.designation}</strong> · SIREN {liasse.donnees.identification.siren ?? 'non renseigné au dossier'} · forme juridique {liasse.donnees.identification.formeJuridique ?? 'non renseignée'} · code NAF {liasse.donnees.identification.codeNaf ?? 'non renseigné'} · exercice du {exercice.debut} au {exercice.fin}.
+        </p>
+      ) : null}
       {liasse?.ok && liasse.donnees.formulaire2065 ? <Grille2059 g={liasse.donnees.formulaire2065} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.formulaire2057 ? <Grille2059 g={liasse.donnees.formulaire2057} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.detail2053 ? <Grille2059 g={liasse.donnees.detail2053} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}

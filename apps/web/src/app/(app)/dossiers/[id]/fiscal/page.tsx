@@ -4,7 +4,7 @@ import { ChoixExercice } from '@/components/dossier';
 import { ErreurAcces } from '@/components/erreurs';
 import { CategorieAnnexe, ConfirmerRubrique, NeantTableau, QualifierCompte, SaisieCases, SaisieLigneTableau, SaisirRenvoi } from '@/components/fiscal/actions';
 import { Alerte, Carte, Etiquette, MentionProjet, SousTitre, Tableau } from '@/components/ui/base';
-import { type Abstention, type AnnexeProjet, type CelluleImmobilisation, type CelluleVentilation, type AmortissementsDerogatoiresProjet, type CadreIIIProjet, type CaseSaisie2033D, type CaseSaisie2033E, type CelluleCalculee2033D, type Formulaire2033EProjet, type CelluleMontantSaisie, type Formulaire2033DProjet, LIGNES_DEROGATOIRES_2033D, LIGNES_PROVISIONS_2033D, type ChargesRepartiesProjet, LIBELLES_COLONNES_2055_B, type DetailResultatProjet, type EcartsReevaluationProjet, type EvenementQualification, LIBELLE_CLASSEMENT, type TableauxSaisisProjet, type ReponseHistorique, type ResultatSigne, LIBELLE_CATEGORIE, LIBELLE_ETAT_QUALIFICATION, type LiasseProjet, type ReponseAnnexe, type ReponseLiasse, type TableauxImmobilisationsProjet } from '@/lib/fiscal';
+import { type Abstention, type AnnexeProjet, type CelluleImmobilisation, type CelluleVentilation, type AmortissementsDerogatoiresProjet, type CadreIIIProjet, type CaseSaisie2033D, type CaseSaisie2033E, type CelluleCalculee2033D, type Formulaire2033EProjet, type Formulaire2033FProjet, type CelluleMontantSaisie, type Formulaire2033DProjet, LIGNES_DEROGATOIRES_2033D, LIGNES_PROVISIONS_2033D, type ChargesRepartiesProjet, LIBELLES_COLONNES_2055_B, type DetailResultatProjet, type EcartsReevaluationProjet, type EvenementQualification, LIBELLE_CLASSEMENT, type TableauxSaisisProjet, type ReponseHistorique, type ResultatSigne, LIBELLE_CATEGORIE, LIBELLE_ETAT_QUALIFICATION, type LiasseProjet, type ReponseAnnexe, type ReponseLiasse, type TableauxImmobilisationsProjet } from '@/lib/fiscal';
 import { formaterHorodatage, formaterMontant, formaterMontantEuros } from '@/lib/montants';
 
 type Fm = (valeur: string | null | undefined) => string;
@@ -1539,6 +1539,171 @@ function Formulaire2033E({ f, fm, exerciceId, revision, evenements }: { f: Formu
   );
 }
 
+/** Tableau 2033-F (composition du capital social) : saisie ligne par ligne, justifiée et historisée (D-116). */
+function Formulaire2033F({ f, fm, exerciceId, revision, evenements }: { f: Formulaire2033FProjet; fm: Fm; exerciceId: string; revision: boolean; evenements: EvenementQualification[] }) {
+  const badge = (statut: string) => <Etiquette ton={statut === 'saisi' ? 'succes' : 'attention'}>{statut === 'saisi' ? 'Saisi' : statut === 'a_revoir' ? 'À revoir : données modifiées' : 'À saisir'}</Etiquette>;
+  const t = (cle: string, libelle: string, valeur: string | undefined, optionnel = false) => ({ cle, libelle, type: 'texte' as const, valeur: valeur ?? '', optionnel });
+  const m = (cle: string, libelle: string, valeur: string | undefined) => ({ cle, libelle, type: 'montant' as const, valeur: valeur ?? '' });
+  const adresse = (v: Record<string, string> | null) => [
+    t('adresseNumero', 'N°', v?.adresseNumero, true), t('adresseVoie', 'Voie', v?.adresseVoie, true), t('codePostal', 'Code postal', v?.codePostal, true), t('commune', 'Commune', v?.commune, true), t('pays', 'Pays', v?.pays, true),
+  ];
+  return (
+    <section className="space-y-4" aria-labelledby="titre-2033-f" data-testid="formulaire-2033-f">
+      <SousTitre id="titre-2033-f" className="text-base">
+        2033-F — Composition du capital social <MentionProjet />
+      </SousTitre>
+      <Alerte ton="attention" titre="Saisie du cabinet : le registre des associés est tenu par la société, rien ne se déduit de la balance">
+        <p className="text-sm">
+          Chaque ligne (quatre personnes morales, deux personnes physiques) et les nombres 901 à 904 se saisissent avec une justification obligatoire, tracée et historisée ; « néant » est une déclaration explicite du tableau. Les cases 905 (901 + 903) et 906 (902 + 904) sont calculées comme le formulaire l’énonce,
+          quand 901 à 904 sont saisies. Les rapprochements (pourcentages, nombres d’associés et de parts) sont indicatifs. Les lignes de personnes physiques contiennent des données personnelles : elles restent dans les tables protégées du cabinet.
+        </p>
+        {f.limites.map((l) => (
+          <p key={l} className="text-sm">
+            {l}
+          </p>
+        ))}
+      </Alerte>
+      <ul className="space-y-1" aria-label="Contrôles du 2033-F" data-testid="controles-2033-f">
+        {f.controles.map((x) => (
+          <li key={x.code}>
+            <Etiquette ton={x.statut === 'coherent' ? 'succes' : x.statut === 'ecart' ? 'danger' : 'attention'}>{x.statut === 'coherent' ? 'Cohérent' : x.statut === 'ecart' ? 'Écart' : 'Non vérifiable'}</Etiquette> {x.message}
+            {x.ecart ? ` (écart : ${fm(x.ecart)})` : ''}
+          </li>
+        ))}
+      </ul>
+      <p className="text-sm" data-testid="etat-2033-f">
+        État du tableau : <strong>{f.etat === 'saisi' ? 'saisies présentes' : f.etat === 'neant' ? 'néant déclaré' : 'à saisir (ni saisie ni néant)'}</strong>
+        {f.neant ? ` — déclaré le ${formaterHorodatage(f.neant.le)} sur la version ${f.neant.versionDonnees} des données` : ''}.
+      </p>
+      <Tableau legende="Nombres d’associés et de parts du tableau 2033-F">
+        <tbody data-testid="nombres-2033-f">
+          {f.nombres.cases.map((c) => (
+            <tr key={c.code} data-nombre={c.code}>
+              <th scope="row">
+                {c.libelle}
+                <span className="block text-xs font-normal text-texte-doux">case {c.code} (lue, vérifiée sur le PDF)</span>
+              </th>
+              <td className="text-right tabular-nums">{c.montant !== null ? (c.neant ? 'néant' : fm(c.montant)) : c.statut === 'a_revoir' ? 'à revoir' : 'à saisir'}</td>
+            </tr>
+          ))}
+          <tr data-nombre="905" className="font-semibold">
+            <th scope="row">Total des lignes 901 + 903 (nombre d’associés)</th>
+            <td className="text-right">
+              <CelluleCalc c={f.nombres.total905} fm={fm} />
+            </td>
+          </tr>
+          <tr data-nombre="906" className="font-semibold">
+            <th scope="row">Total des lignes 902 + 904 (nombre de parts ou d’actions)</th>
+            <td className="text-right">
+              <CelluleCalc c={f.nombres.total906} fm={fm} />
+            </td>
+          </tr>
+        </tbody>
+      </Tableau>
+      {revision ? (
+        <div className="space-y-2" data-testid="saisie-nombres-2033-f">
+          <p className="text-sm font-semibold">Nombres d’associés et de parts {badge(f.nombres.statut)}</p>
+          <HistoriqueLigne evenements={evenements} cle="2033F_NB:NB" fm={fm} />
+          <SaisieLigneTableau
+            exerciceId={exerciceId}
+            tableau="2033F_NB"
+            ligne="NB"
+            etiquette="les nombres 901 à 904"
+            saisie={f.nombres.statut !== 'a_saisir'}
+            noteCourante={f.nombres.trace?.note ?? null}
+            champs={f.nombres.cases.map((c) => ({ cle: `c${c.code}`, libelle: `${c.code}`, type: 'montant' as const, valeur: c.montant ?? '' }))}
+          />
+          <NeantTableau exerciceId={exerciceId} tableau="2033F_NB" declare={f.etat === 'neant'} etiquette="tableau 2033-F (aucun associé à déclarer)" />
+        </div>
+      ) : null}
+      <div className="space-y-2">
+        <h3 className="font-semibold">I — Capital détenu par les personnes morales</h3>
+        <ul className="space-y-2" data-testid="personnes-morales-2033-f">
+          {f.personnesMorales.map((l) => (
+            <li key={l.ligne} className="rounded-lg border border-bordure p-3" data-associe-pm={l.ligne}>
+              <p className="text-sm">
+                Personne morale {Number(l.ligne)} — {l.statut === 'saisi' ? <strong>{l.valeurs!.denomination}</strong> : badge(l.statut)}
+                {l.statut === 'saisi' ? <span className="text-texte-doux"> · {l.valeurs!.formeJuridique} · SIREN {l.valeurs!.siren || 'non applicable'} · {fm(l.valeurs!.pourcentage)} % · {fm(l.valeurs!.parts)} parts ou actions</span> : null}
+              </p>
+              {l.trace ? (
+                <p className="text-xs text-texte-doux" data-testid={`trace-pm-${l.ligne}`}>
+                  saisie le {formaterHorodatage(l.trace.le)} sur la version {l.trace.versionDonnees} des données · « {l.trace.note} »
+                </p>
+              ) : null}
+              <HistoriqueLigne evenements={evenements} cle={`2033F_PM:${l.ligne}`} fm={fm} />
+              {revision ? (
+                <SaisieLigneTableau
+                  exerciceId={exerciceId}
+                  tableau="2033F_PM"
+                  ligne={l.ligne}
+                  etiquette={`la personne morale ${Number(l.ligne)}`}
+                  saisie={l.statut !== 'a_saisir'}
+                  noteCourante={l.trace?.note ?? null}
+                  champs={[
+                    t('formeJuridique', 'Forme juridique', l.valeurs?.formeJuridique, true),
+                    t('denomination', 'Dénomination', l.valeurs?.denomination),
+                    t('siren', 'N° SIREN (si établie en France)', l.valeurs?.siren, true),
+                    m('pourcentage', '% de détention', l.valeurs?.pourcentage),
+                    m('parts', 'Nb de parts ou actions', l.valeurs?.parts),
+                    ...adresse(l.valeurs),
+                  ]}
+                />
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="space-y-2">
+        <h3 className="font-semibold">II — Capital détenu par les personnes physiques</h3>
+        <ul className="space-y-2" data-testid="personnes-physiques-2033-f">
+          {f.personnesPhysiques.map((l) => (
+            <li key={l.ligne} className="rounded-lg border border-bordure p-3" data-associe-pp={l.ligne}>
+              <p className="text-sm">
+                Personne physique {Number(l.ligne)} — {l.statut === 'saisi' ? <strong>{l.valeurs!.titre} {l.valeurs!.nomFamille} {l.valeurs!.prenoms}</strong> : badge(l.statut)}
+                {l.statut === 'saisi' ? <span className="text-texte-doux"> · {fm(l.valeurs!.pourcentage)} % · {fm(l.valeurs!.parts)} parts ou actions</span> : null}
+              </p>
+              {l.trace ? (
+                <p className="text-xs text-texte-doux" data-testid={`trace-pp-${l.ligne}`}>
+                  saisie le {formaterHorodatage(l.trace.le)} sur la version {l.trace.versionDonnees} des données · « {l.trace.note} »
+                </p>
+              ) : null}
+              <HistoriqueLigne evenements={evenements} cle={`2033F_PP:${l.ligne}`} fm={fm} />
+              {revision ? (
+                <SaisieLigneTableau
+                  exerciceId={exerciceId}
+                  tableau="2033F_PP"
+                  ligne={l.ligne}
+                  etiquette={`la personne physique ${Number(l.ligne)}`}
+                  saisie={l.statut !== 'a_saisir'}
+                  noteCourante={l.trace?.note ?? null}
+                  champs={[
+                    { cle: 'titre', libelle: 'Titre', type: 'choix', options: [{ valeur: 'M', libelle: 'M' }, { valeur: 'MME', libelle: 'MME' }], valeur: l.valeurs?.titre ?? 'M' },
+                    t('nomFamille', 'Nom de famille', l.valeurs?.nomFamille),
+                    t('nomUsage', 'Nom d’usage', l.valeurs?.nomUsage, true),
+                    t('prenoms', 'Prénom(s)', l.valeurs?.prenoms, true),
+                    m('pourcentage', '% de détention', l.valeurs?.pourcentage),
+                    m('parts', 'Nb de parts ou actions', l.valeurs?.parts),
+                    t('naissanceDate', 'Date de naissance (AAAA-MM-JJ)', l.valeurs?.naissanceDate, true),
+                    t('naissanceDepartement', 'N° département de naissance', l.valeurs?.naissanceDepartement, true),
+                    t('naissanceCommune', 'Commune de naissance', l.valeurs?.naissanceCommune, true),
+                    t('naissancePays', 'Pays de naissance', l.valeurs?.naissancePays, true),
+                    ...adresse(l.valeurs),
+                  ]}
+                />
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </div>
+      <ul className="list-disc pl-5 text-sm text-texte-doux" data-testid="2033-f-non-prepare">
+        {f.nonPrepare.map((n) => (
+          <li key={n}>Non préparé — {n}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function Annexe({ a, reponse, exerciceId, revision }: { a: AnnexeProjet; reponse: ReponseAnnexe; exerciceId: string; revision: boolean }) {
   const confirmations = new Map(reponse.confirmations.map((c) => [c.rubrique, c]));
   const requises = a.rubriques.filter((r) => r.requise);
@@ -1732,6 +1897,7 @@ export default async function PageFiscal({ params, searchParams }: { params: Pro
       ) : null}
       {liasse?.ok && liasse.donnees.formulaire2033D ? <Formulaire2033D f={liasse.donnees.formulaire2033D} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.formulaire2033E ? <Formulaire2033E f={liasse.donnees.formulaire2033E} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
+      {liasse?.ok && liasse.donnees.formulaire2033F ? <Formulaire2033F f={liasse.donnees.formulaire2033F} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.detailResultat ? <DetailResultat d={liasse.donnees.detailResultat} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {annexe?.ok ? (
         annexe.donnees.resultat.statut === 'abstention' ? (

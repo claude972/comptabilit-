@@ -482,6 +482,55 @@ describe('2033-E (régime simplifié) : effectifs et valeur ajoutée, totaux cal
   }, 120_000);
 });
 
+describe('2033-F (régime simplifié) : composition du capital par saisie ligne par ligne (D-116)', () => {
+  const f2033f = async () => (await liasse(exN, 'reel_simplifie')).json.formulaire2033F;
+  const tf = (tableau: string, ligne: string, valeurs: Record<string, string>, note = 'Registre des associés au 31 décembre (essai)', qui = 'remi') => api(qui, 'PUT', `/v1/exercices/${exN}/tableaux/${tableau}/${ligne}`, { valeurs, note });
+  const PM = { formeJuridique: 'SAS', denomination: 'Holding Exemple (fictive)', siren: '123456789', adresseNumero: '12', adresseVoie: 'rue de l’Exemple', codePostal: '75000', commune: 'Paris', pays: 'France', pourcentage: '60.00', parts: '600.00' };
+  const PP = { titre: 'MME', nomFamille: 'Durand (fictive)', nomUsage: '', prenoms: 'Alice', naissanceDate: '1980-05-17', naissanceDepartement: '75', naissanceCommune: 'Paris', naissancePays: 'France', adresseNumero: '3', adresseVoie: 'avenue du Test', codePostal: '69000', commune: 'Lyon', pays: 'France', pourcentage: '40.00', parts: '400.00' };
+
+  it('sans saisie : 905 et 906 en abstention sans chiffre ; absent au régime normal', async () => {
+    const f = await f2033f();
+    expect(f).toMatchObject({ statut: 'projet', etat: 'a_saisir' });
+    expect(f.nombres.total905).toMatchObject({ statut: 'abstention', codeCase: '905' });
+    expect(f.personnesMorales).toHaveLength(4);
+    expect(f.personnesPhysiques).toHaveLength(2);
+    expect((await liasse(exN, 'reel_normal')).json.formulaire2033F).toBeNull();
+  }, 120_000);
+
+  it('refus de forme et de droits', async () => {
+    expect((await tf('2033F_PM', '01', { ...PM, siren: '12' })).statut).toBe(400);
+    expect((await tf('2033F_PM', '01', { ...PM, pourcentage: '101.00' })).statut).toBe(400);
+    expect((await tf('2033F_PP', '01', { ...PP, titre: 'X' })).statut).toBe(400);
+    expect((await tf('2033F_PM', '05', PM)).statut).toBe(400);
+    expect((await tf('2033F_PM', '01', PM, 'Essai collaborateur', 'chloe')).statut).toBeGreaterThanOrEqual(400);
+    expect((await tf('2033F_PM', '01', PM, 'Essai déposant', 'client')).statut).toBe(404);
+    expect((await f2033f()).etat).toBe('a_saisir');
+  });
+
+  it('nombres 901 à 904, une personne morale et une personne physique : 905 et 906 calculés, contrôles indicatifs, trace et historique', async () => {
+    expect((await tf('2033F_NB', 'NB', { c901: '1', c902: '600.00', c903: '1', c904: '400.00' })).statut).toBeLessThan(300);
+    expect((await tf('2033F_PM', '01', PM)).statut).toBeLessThan(300);
+    expect((await tf('2033F_PP', '01', PP)).statut).toBeLessThan(300);
+    let f = await f2033f();
+    expect(f.etat).toBe('saisi');
+    expect(f.nombres.total905).toMatchObject({ statut: 'etabli', montant: '2.00', codeCase: '905' });
+    expect(f.nombres.total906).toMatchObject({ statut: 'etabli', montant: '1000.00', codeCase: '906' });
+    expect(f.personnesMorales[0]).toMatchObject({ statut: 'saisi', valeurs: { denomination: 'Holding Exemple (fictive)', siren: '123456789' }, trace: { qualifieePar: DEMO.remi } });
+    expect(f.controles.find((c: any) => c.code === 'F_POURCENTAGES').statut).toBe('coherent');
+    expect((await tf('2033F_PP', '02', { ...PP, nomFamille: 'Martin (fictif)', titre: 'M', pourcentage: '10.00', parts: '0.00' })).statut).toBeLessThan(300);
+    f = await f2033f();
+    expect(f.controles.find((c: any) => c.code === 'F_POURCENTAGES')).toMatchObject({ statut: 'ecart', ecart: '10.00' });
+    const h = (await api('remi', 'GET', `/v1/exercices/${exN}/qualifications/historique?cle=2033F_PM:01`)).json.evenements as any[];
+    expect(h).toHaveLength(1);
+    expect(JSON.parse(h[0].montant)).toMatchObject({ denomination: 'Holding Exemple (fictive)' });
+    expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/2033F_PP/02`)).statut).toBeLessThan(300);
+    expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/2033F_PM/01`)).statut).toBeLessThan(300);
+    expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/2033F_PP/01`)).statut).toBeLessThan(300);
+    expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/2033F_NB/NB`)).statut).toBeLessThan(300);
+    expect((await f2033f()).etat).toBe('a_saisir');
+  }, 120_000);
+});
+
 describe('détail du compte de résultat : qualification tracée, abstention sans qualification', () => {
   it('sans qualification : totaux de la balance, France et exportations en abstention, renvois à saisir, exceptionnel détaillé', async () => {
     const d = await detail();

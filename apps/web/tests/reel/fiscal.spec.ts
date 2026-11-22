@@ -75,6 +75,13 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
     await expect(detailRsi).toContainText('Détail du compte de résultat simplifié (2033-B)');
     await expect(detailRsi.getByTestId('renvois-detail').locator('li[data-renvoi="255"]')).toBeVisible();
     await expect(detailRsi.locator('#titre-2053')).toHaveCount(0);
+    // 2033-F (D-116) : composition du capital par saisie ligne par ligne ; 905 et 906 en abstention sans saisie.
+    const f2033 = page.getByTestId('formulaire-2033-f');
+    await expect(f2033).toBeVisible();
+    await expect(f2033.getByTestId('personnes-morales-2033-f').locator('li[data-associe-pm]')).toHaveCount(4);
+    await expect(f2033.getByTestId('personnes-physiques-2033-f').locator('li[data-associe-pp]')).toHaveCount(2);
+    await expect(f2033.getByTestId('nombres-2033-f')).toContainText('905');
+    await expect(f2033.getByTestId('2033-f-non-prepare')).toContainText('Tableaux supplémentaires');
     // 2033-E (D-115) : effectifs et valeur ajoutée par saisie ; totaux en abstention tant que toutes les composantes ne sont pas saisies.
     const e2033 = page.getByTestId('formulaire-2033-e');
     await expect(e2033).toBeVisible();

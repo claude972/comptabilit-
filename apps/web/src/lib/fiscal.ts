@@ -121,6 +121,8 @@ export interface ReponseLiasse {
   formulaire2033D?: Formulaire2033DProjet | null;
   /** Tableau 2033-E (effectifs, valeur ajoutée, CVAE) ; null au régime réel normal (D-115). */
   formulaire2033E?: Formulaire2033EProjet | null;
+  /** Tableau 2033-F (composition du capital social) ; null au régime réel normal (D-116). */
+  formulaire2033F?: Formulaire2033FProjet | null;
 }
 export interface RubriqueAnnexe {
   id: string;
@@ -578,6 +580,26 @@ export interface Formulaire2033EProjet {
   total3: CelluleCalculee2033D;
   valeurAjoutee137: CelluleCalculee2033D;
   valeurAjoutee117: CelluleCalculee2033D;
+  controles: Array<{ code: string; statut: 'coherent' | 'ecart' | 'non_verifie'; message: string; ecart?: string }>;
+  nonPrepare: string[];
+  limites: string[];
+  mention: string;
+}
+
+/** Tableau 2033-F (D-116) : champ `formulaire2033F` de la réponse de la liasse. */
+export interface LigneAssocie {
+  ligne: string;
+  statut: StatutLigneSaisie;
+  trace: TraceSaisie | null;
+  valeurs: Record<string, string> | null;
+}
+export interface Formulaire2033FProjet {
+  statut: 'projet';
+  etat: 'a_saisir' | 'neant' | 'saisi';
+  nombres: { cases: Array<{ code: string; libelle: string; etatCodeCase: string; statut: StatutLigneSaisie; montant: string | null; neant: boolean }>; trace: TraceSaisie | null; statut: StatutLigneSaisie; total905: CelluleCalculee2033D; total906: CelluleCalculee2033D };
+  personnesMorales: LigneAssocie[];
+  personnesPhysiques: LigneAssocie[];
+  neant: TraceSaisie | null;
   controles: Array<{ code: string; statut: 'coherent' | 'ecart' | 'non_verifie'; message: string; ecart?: string }>;
   nonPrepare: string[];
   limites: string[];

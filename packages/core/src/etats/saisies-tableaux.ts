@@ -29,8 +29,8 @@ import { MENTION_PROJET } from './sources-fiscales.js';
 
 const ZERO = new Decimal(0);
 
-export type TableauSaisi = '2033C_III' | '2054BIS_A' | '2054BIS_B' | '2055_B' | '2055_C' | '2033D_C';
-export const TABLEAUX_SAISIS: readonly TableauSaisi[] = ['2033C_III', '2054BIS_A', '2054BIS_B', '2055_B', '2055_C', '2033D_C'];
+export type TableauSaisi = '2033C_III' | '2054BIS_A' | '2054BIS_B' | '2055_B' | '2055_C' | '2033D_C' | '2033F_NB' | '2033F_PM' | '2033F_PP';
+export const TABLEAUX_SAISIS: readonly TableauSaisi[] = ['2033C_III', '2054BIS_A', '2054BIS_B', '2055_B', '2055_C', '2033D_C', '2033F_NB', '2033F_PM', '2033F_PP'];
 
 export interface SaisieTableau {
   tableau: TableauSaisi;
@@ -115,6 +115,29 @@ export function validerSaisieTableau(tableau: string, ligne: string, valeurs: un
       decimal('montant', true);
     } else if (ligne === 'NEANT') exactement([]);
     else e.push(`Ligne inconnue pour le cadre C du 2033-D : ${ligne}.`);
+  } else if (tableau === '2033F_NB') {
+    if (ligne === 'NB') {
+      exactement(['c901', 'c902', 'c903', 'c904']);
+      for (const k of ['c901', 'c902', 'c903', 'c904']) decimal(k, true);
+    } else if (ligne === 'NEANT') exactement([]);
+    else e.push(`Ligne inconnue pour le tableau 2033-F : ${ligne}.`);
+  } else if (tableau === '2033F_PM' || tableau === '2033F_PP') {
+    const pm = tableau === '2033F_PM';
+    const maxLigne = pm ? 4 : 2;
+    if (/^0[1-9]$/.test(ligne) && Number(ligne) <= maxLigne) {
+      const textes = pm ? ['formeJuridique', 'denomination', 'siren', 'adresseNumero', 'adresseVoie', 'codePostal', 'commune', 'pays'] : ['titre', 'nomFamille', 'nomUsage', 'prenoms', 'naissanceDate', 'naissanceDepartement', 'naissanceCommune', 'naissancePays', 'adresseNumero', 'adresseVoie', 'codePostal', 'commune', 'pays'];
+      exactement([...textes, 'pourcentage', 'parts']);
+      for (const k of textes) if (typeof v[k] !== 'string' || (v[k] as string).length > 200) e.push(`${k} : texte de 200 caractères au plus (peut être vide si l'information n'existe pas).`);
+      const obligatoire = pm ? 'denomination' : 'nomFamille';
+      if (typeof v[obligatoire] !== 'string' || (v[obligatoire] as string).trim().length < 1) e.push(`${obligatoire} : obligatoire.`);
+      if (pm && typeof v.siren === 'string' && v.siren !== '' && !/^\d{9}$/.test(v.siren)) e.push('siren : 9 chiffres ou vide (société non établie en France).');
+      if (!pm && v.titre !== 'M' && v.titre !== 'MME') e.push('titre : « M » ou « MME » (formulaire, renvoi 2).');
+      if (!pm && typeof v.naissanceDate === 'string' && v.naissanceDate !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(v.naissanceDate)) e.push('naissanceDate : AAAA-MM-JJ ou vide.');
+      decimal('pourcentage', true);
+      if (typeof v.pourcentage === 'string' && estChaineDecimale(v.pourcentage) && new Decimal(v.pourcentage).greaterThan(100)) e.push('pourcentage : au plus 100.');
+      decimal('parts', true);
+    } else if (ligne === 'NEANT') exactement([]);
+    else e.push(`Ligne inconnue pour le tableau 2033-F : ${ligne}.`);
   } else if (tableau === '2054BIS_B') {
     if (ligne === 'B1' || ligne === 'B2') {
       exactement(['montant']);

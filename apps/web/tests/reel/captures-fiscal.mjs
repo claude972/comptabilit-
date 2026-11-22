@@ -240,6 +240,34 @@ if (process.argv.includes('--2033e')) {
   await page.getByTestId('groupe-2033-e-III').scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${sortie}fiscal-2033e-charges.png` });
 }
+// 2033-F (D-116) : saisies par les formulaires (MODIFIE le dossier fictif indiqué).
+if (process.argv.includes('--2033f')) {
+  await page.goto(`${base}&vue=liasse&regime=reel_simplifie`);
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('formulaire-2033-f').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2033f-avant.png` });
+  const remplir = async (testid, valeurs, note, bouton) => {
+    const f = page.getByTestId(testid);
+    await f.scrollIntoViewIfNeeded();
+    for (const [libelle, v] of Object.entries(valeurs)) {
+      const champ = f.getByLabel(libelle, { exact: true });
+      if ((await champ.evaluate((e) => e.tagName)) === 'SELECT') await champ.selectOption({ value: v });
+      else await champ.fill(v);
+    }
+    await f.getByLabel('Justification (obligatoire)').fill(note);
+    await f.getByRole('button', { name: new RegExp(`^Enregistrer ${bouton}`) }).click();
+    await f.getByText('Ligne enregistrée.').waitFor();
+  };
+  await remplir('saisie-2033F_NB-NB', { 901: '1', 902: '600.00', 903: '1', 904: '400.00' }, 'Registre des associés au 31 décembre (démonstration fictive)', 'les nombres');
+  await remplir('saisie-2033F_PM-01', { 'Forme juridique': 'SAS', Dénomination: 'Holding Exemple (démonstration fictive)', 'N° SIREN (si établie en France)': '123456789', '% de détention': '60.00', 'Nb de parts ou actions': '600.00', 'N°': '12', Voie: 'rue de l’Exemple', 'Code postal': '75000', Commune: 'Paris', Pays: 'France' }, 'Associée personne morale inscrite au registre (démonstration fictive)', 'la personne morale 1');
+  await remplir('saisie-2033F_PP-01', { Titre: 'MME', 'Nom de famille': 'Durand (démonstration fictive)', 'Nom d’usage': '', 'Prénom(s)': 'Alice', '% de détention': '40.00', 'Nb de parts ou actions': '400.00', 'Date de naissance (AAAA-MM-JJ)': '1980-05-17', 'N° département de naissance': '75', 'Commune de naissance': 'Paris', 'Pays de naissance': 'France', 'N°': '3', Voie: 'avenue du Test', 'Code postal': '69000', Commune: 'Lyon', Pays: 'France' }, 'Associée personne physique inscrite au registre (démonstration fictive)', 'la personne physique 1');
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('formulaire-2033-f').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2033f-apres.png` });
+  await page.getByTestId('nombres-2033-f').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2033f-nombres.png` });
+}
 // 2033-B (D-107) : « dont export » et lignes « dont » du régime simplifié.
 await page.goto(`${base}&vue=liasse&regime=reel_simplifie`);
 await page.waitForLoadState('networkidle');

@@ -176,6 +176,8 @@ export interface ChampSaisie {
   type: 'texte' | 'montant' | 'choix';
   options?: Array<{ valeur: string; libelle: string }>;
   valeur?: string;
+  /** Champ pouvant rester vide (information inexistante) : envoyé vide, jamais présumé. */
+  optionnel?: boolean;
 }
 
 /**
@@ -209,7 +211,7 @@ export function SaisieLigneTableau({ exerciceId, tableau, ligne, champs, noteCou
                 ))}
               </Liste>
             ) : (
-              <Saisie id={`${id}-${c.cle}`} className={c.type === 'montant' ? 'w-28' : ''} inputMode={c.type === 'montant' ? 'decimal' : undefined} placeholder={c.type === 'montant' ? '0.00' : undefined} maxLength={c.type === 'texte' ? 200 : 20} value={valeurs[c.cle]} onChange={(e) => setValeurs({ ...valeurs, [c.cle]: e.target.value })} required />
+              <Saisie id={`${id}-${c.cle}`} className={c.type === 'montant' ? 'w-28' : ''} inputMode={c.type === 'montant' ? 'decimal' : undefined} placeholder={c.type === 'montant' ? '0.00' : undefined} maxLength={c.type === 'texte' ? 200 : 20} value={valeurs[c.cle]} onChange={(e) => setValeurs({ ...valeurs, [c.cle]: e.target.value })} required={c.optionnel !== true} />
             )}
           </div>
         ))}

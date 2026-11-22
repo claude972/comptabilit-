@@ -15,6 +15,7 @@ import {
   CLES_2033_D,
   CLES_2033_E,
   preparerFormulaire2033E,
+  preparerFormulaire2033F,
   preparerSaisiesTableaux,
   validerSaisieTableau,
   type SaisieTableau,
@@ -52,8 +53,8 @@ const montantSigne = schemaChaineDecimale;
 const ventilation = z.object({ montantFrance: montantSigne, montantExport: montantSigne, note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie la ventilation').max(2000) });
 const renvoiSaisie = z.object({ montant: montantSigne, note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie le montant').max(2000) });
 const saisieTableau = z.object({ valeurs: z.record(z.string().max(40), z.string().max(200)), note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie la saisie').max(2000) });
-const TABLEAU_SAISI = /^(2033C_III|2054BIS_A|2054BIS_B|2055_B|2055_C|2033D_C)$/;
-const LIGNE_TABLEAU = /^(0[1-9]|1[0-3]|REG|PV19|NEANT|B1|B2)$/;
+const TABLEAU_SAISI = /^(2033C_III|2054BIS_A|2054BIS_B|2055_B|2055_C|2033D_C|2033F_NB|2033F_PM|2033F_PP)$/;
+const LIGNE_TABLEAU = /^(0[1-9]|1[0-3]|REG|PV19|NEANT|B1|B2|NB)$/;
 const COMPTE_CA = /^70[0-9A-Za-z]{1,13}$/;
 const CODE_RENVOI = /^[0-9A-Z_]{2,7}$/;
 const RENVOIS_CONNUS = [...RENVOIS, ...RENVOIS_RSI, ...LIGNES_RESULTAT_FISCAL.map((l) => ({ code: l.cle })), ...DETAIL_RESULTAT_FISCAL.map((l) => ({ code: l.cle })), ...CLES_2033_D.map((cle) => ({ code: cle })), ...CLES_2033_E.map((cle) => ({ code: cle }))];
@@ -344,6 +345,8 @@ export class FiscalController {
       const formulaire2033D = regime === 'reel_simplifie' && detailResultat.statut === 'projet' ? preparerFormulaire2033D({ versionDonnees: exercice.versionDonnees, renvois: renvoisSaisis, saisiesTableaux: saisies, resultatFiscal: detailResultat.resultatFiscal }) : null;
       // Tableau 2033-E (effectifs et valeur ajoutée, régime simplifié, D-115) : cases saisies (clés E_…), totaux calculés comme le formulaire seulement quand tout est saisi.
       const formulaire2033E = regime === 'reel_simplifie' ? preparerFormulaire2033E({ versionDonnees: exercice.versionDonnees, exercice: { debut: exercice.debut, fin: exercice.fin }, renvois: renvoisSaisis }) : null;
+      // Tableau 2033-F (composition du capital, régime simplifié, D-116) : saisie ligne par ligne.
+      const formulaire2033F = regime === 'reel_simplifie' ? preparerFormulaire2033F({ versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies }) : null;
       const tableauxImmobilisations = preparerTableauxImmobilisations({
         lignes,
         exercice: { debut: exercice.debut, fin: exercice.fin },
@@ -375,6 +378,8 @@ export class FiscalController {
         formulaire2033D,
         /** Tableau 2033-E (effectifs, valeur ajoutée, CVAE) : saisie case par case, régime simplifié (D-115) ; null sinon. */
         formulaire2033E,
+        /** Tableau 2033-F (composition du capital social) : saisie ligne par ligne, régime simplifié (D-116) ; null sinon. */
+        formulaire2033F,
       };
     });
   }

@@ -30,7 +30,7 @@ export interface DefinitionCase2033D {
   cle: string;
   codeCase: string;
   libelle: string;
-  cadre: 'I-A' | 'I-B' | 'II' | 'III';
+  cadre: 'I-A' | 'I-B' | 'II' | 'III' | 'IV';
   type: TypeCase;
   precision?: string;
 }
@@ -80,6 +80,10 @@ const casesDefinitions = (): DefinitionCase2033D[] => {
     { cle: 'D_378', codeCase: '378', libelle: 'Montant de la TVA déductible sur biens et services (sauf immobilisations)', cadre: 'III', type: 'montant' },
     { cle: 'D_399', codeCase: '399', libelle: 'Montant des prélèvements personnels de l’exploitant', cadre: 'III', type: 'montant', precision: 'Notice : prélèvements de marchandises ou financiers effectués par l’exploitant ou le dirigeant pour ses besoins personnels ou ceux de ses salariés.' },
     { cle: 'D_398', codeCase: '398', libelle: 'Aides perçues ayant donné droit à la réduction d’impôt prévue au 4 de l’article 238 bis du CGI pour l’entreprise donatrice', cadre: 'III', type: 'montant' },
+    { cle: 'D_690', codeCase: '690', libelle: 'Sommes à réintégrer pour la détermination du revenu brut social', cadre: 'IV', type: 'montant', precision: 'Notice : somme des montants exonérés au titre de dispositifs d’incitation fiscale non déductibles pour le revenu brut social (majorations et amortissements exceptionnels, provisions réglementées, déductions exceptionnelles…), des plus-values à court terme exonérées déduites en 350, des revenus de brevets à 10 %, de la participation et de l’intéressement de l’entrepreneur individuel, du bénéfice d’une activité non professionnelle déduit en 350.' },
+    { cle: 'D_691', codeCase: '691', libelle: 'Sommes à déduire pour la détermination du revenu brut social', cadre: 'IV', type: 'montant', precision: 'Notice : indemnités journalières (sécurité sociale, contrat Madelin) incluses dans les produits comptables et déficit ou charges d’une activité non professionnelle réintégrés en 330.' },
+    { cle: 'D_692', codeCase: '692', libelle: 'Revenu brut social (si le montant est négatif)', cadre: 'IV', type: 'montant', precision: 'Notice : cumul de 312 ou − 314, 380, 348, 316, 318, 322, 324, 330, 251, − 350, 655, 643, 645, 647, 648, 641, 990, 649, + 690, − 691 ; pour les gérants et associés (hors entreprises individuelles et EURL), déduire en plus 316 et 247. Montant négatif : case 692, saisi en valeur absolue.' },
+    { cle: 'D_693', codeCase: '693', libelle: 'Revenu brut social (si le montant est positif)', cadre: 'IV', type: 'montant', precision: 'Voir case 692 : montant positif : case 693.' },
     { cle: 'D_397', codeCase: '397', libelle: 'Montant de l’investissement reçu ayant donné lieu à amortissement exceptionnel chez l’entreprise investisseur (art. 217 octies du CGI)', cadre: 'III', type: 'montant' },
   );
   return d;
@@ -246,6 +250,8 @@ export function preparerFormulaire2033D(demande: DemandeFormulaire2033D): Formul
         : { code: `D_${code}_2033B`, statut: 'ecart', message: `Case ${code} (${c.montant}) diffère de la valeur du 2033-B (${ref.montant}) : le formulaire demande de les reporter l’une sur l’autre. Rien n’est corrigé. Contrôle indicatif.`, ecart: versChaine(ecart) });
     }
   }
+  const c692 = valeur('692'), c693 = valeur('693');
+  if (c692 !== null && c693 !== null && !c692.isZero() && !c693.isZero()) controles.push({ code: 'D_RBS_EXCLUSIF', statut: 'ecart', message: 'Cases 692 (revenu brut social négatif) et 693 (positif) toutes deux non nulles : la notice n’en admet qu’une. Rien n’est corrigé. Contrôle indicatif.' });
   const ctrl982B = parCode('982 bis'), ctrl982T = parCode('982 ter');
   if (ctrl982B.statut === 'saisi' && !new Decimal(ctrl982B.montant!).isZero() && ctrl982T.statut === 'saisi' && new Decimal(ctrl982T.montant!).isZero()) controles.push({ code: 'D_982_OPERATIONS', statut: 'ecart', message: 'Des déficits sont transférés de plein droit (982 bis) mais le nombre d’opérations (982 ter) est nul : à vérifier.' });
   const nonSaisies = cases.filter((c) => c.statut !== 'saisi').length;
@@ -258,7 +264,7 @@ export function preparerFormulaire2033D(demande: DemandeFormulaire2033D): Formul
     total870,
     controles,
     nonPrepare: [
-      'Cadre IV « Travailleurs indépendants » (cases 690, 691, 692, 693 : revenu brut social) : hors périmètre, la préparation ne couvre que la société commerciale à l’impôt sur les sociétés.',
+      'Cadre IV « Travailleurs indépendants » (690 à 693, revenu brut social) : saisi case par case, justifié ; le revenu brut social n’est PAS calculé : la formule de la notice dépend de la rubrique 380 (cotisations personnelles de l’exploitant), non préparée, et de la qualité du déclarant (déduction supplémentaire des rubriques 316 et 247 hors entreprises individuelles et EURL, que le dossier ne détermine pas). Seule l’exclusivité 692 / 693 est contrôlée.',
       'Feuillet séparé des déficits transférés de plein droit (identification de la société d’origine, opération par opération) : non préparé.',
       'Au-delà de sept lignes, le cadre C exige un état du même modèle joint : non préparé.',
       'Explications de la notice sur chaque case (nature des provisions, calcul du déductible) : consultables dans la notice 2033-NOT-SD ; aucune décision fiscale n’est prise par Comtaple.',

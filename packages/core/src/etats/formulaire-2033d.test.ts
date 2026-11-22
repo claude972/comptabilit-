@@ -24,8 +24,8 @@ const prep = (renvois: QualificationRenvoi[] = [], saisiesTableaux: SaisieTablea
 const cas = (f: ReturnType<typeof prep>, code: string) => f.cases.find((c) => c.codeCase === code)!;
 
 describe('2033-D : définition des cases', () => {
-  it('69 cases lues sur le formulaire (cadres I-A, I-B, II, III), clés uniques', () => {
-    expect(CASES_2033_D.length).toBe(36 + 18 + 7 + 7); // I-A : 9 lignes × 4 ; I-B : 9 lignes × 2 ; II : 7 ; III : 7
+  it('72 cases lues sur le formulaire (cadres I-A, I-B, II, III, IV), clés uniques', () => {
+    expect(CASES_2033_D.length).toBe(36 + 18 + 7 + 7 + 4); // I-A : 9 lignes × 4 ; I-B : 9 lignes × 2 ; II : 7 ; III : 7 ; IV : 4
     expect(new Set(CASES_2033_D.map((c) => c.cle)).size).toBe(CASES_2033_D.length);
     expect(CASES_2033_D.map((c) => c.codeCase)).toEqual(expect.arrayContaining(['600', '606', '680', '686', '681', '683', '770', '775', '982', '982 bis', '982 ter', '983', '984', '860', '381', '325', '327', '374', '378', '399', '398', '397']));
   });
@@ -93,9 +93,18 @@ describe('2033-D : contrôles indicatifs du cadre I', () => {
     expect(prep([...lignes, rv('770', '70.00')]).controles.find((c) => c.code === 'D_DEROG_770')).toMatchObject({ statut: 'ecart', ecart: '-10.00' });
   });
 
-  it('transfert de plein droit sans opération : signalé ; cadre IV hors périmètre : dit', () => {
+  it('cadre IV (690 à 693) : saisi case par case ; revenu brut social jamais calculé ; 692 et 693 exclusifs', () => {
+    const f = prep([rv('690', '1200.00'), rv('691', '0.00'), rv('693', '5000.00')]);
+    expect(cas(f, '690')).toMatchObject({ statut: 'saisi', montant: '1200.00', cadre: 'IV', etatCodeCase: 'lu_verifie' });
+    expect(cas(f, '691').neant).toBe(true);
+    expect(cas(f, '692').statut).toBe('a_saisir');
+    expect(f.controles.some((c) => c.code === 'D_RBS_EXCLUSIF')).toBe(false);
+    expect(prep([rv('692', '10.00'), rv('693', '5000.00')]).controles.find((c) => c.code === 'D_RBS_EXCLUSIF')?.statut).toBe('ecart');
+    expect(prep([rv('692', '0.00'), rv('693', '5000.00')]).controles.some((c) => c.code === 'D_RBS_EXCLUSIF')).toBe(false);
+    expect(prep().nonPrepare.join(' ')).toMatch(/n’est PAS calculé/);
+  });
+  it('transfert de plein droit sans opération : signalé', () => {
     expect(prep([rv('982B', '500.00'), rv('982T', '0.00')]).controles.some((c) => c.code === 'D_982_OPERATIONS')).toBe(true);
-    expect(prep().nonPrepare.join(' ')).toMatch(/Cadre IV/);
   });
 });
 

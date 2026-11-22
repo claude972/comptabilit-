@@ -21,6 +21,8 @@ export interface ColonneGrille {
   libelle: string;
   /** Montant algébrique (le formulaire demande d'indiquer + ou −) ; sinon positif. */
   signe?: boolean;
+  /** Nature de la colonne : montant (défaut) ou date (AAAA-MM-JJ, jour réel du calendrier). */
+  type?: 'montant' | 'date';
 }
 export interface LigneGrille {
   ligne: string;
@@ -44,11 +46,13 @@ export interface CadreGrille {
   /** Grille libre : lignes 01 à `max` avec un libellé d'origine saisi. */
   libre?: { max: number; libelleOrigine: string };
   calculs: readonly CalculGrille[];
+  /** Contrôles indicatifs d'ordre entre deux colonnes date d'une même ligne (la première ne doit pas suivre la seconde). */
+  ordreDates?: ReadonlyArray<[string, string]>;
   /** Colonne calculée par ligne : somme signée d'autres colonnes de la MÊME ligne (les colonnes non servies sont ignorées). */
   colonneCalculee?: { cle: string; libelle: string; termes: ReadonlyArray<{ col: string; signe: 1 | -1 }> };
 }
 export interface DefinitionGrille {
-  id: '2059-B' | '2059-C' | '2059-D' | '2065';
+  id: '2059-B' | '2059-C' | '2059-D' | '2065' | '2033-E-DATES';
   titre: string;
   /** Tableau portant la ligne NEANT du formulaire ; absent si le formulaire n'a pas de « néant » (le 2065 est toujours servi). */
   neantSur?: string;
@@ -198,19 +202,47 @@ export const GRILLE_2065: DefinitionGrille = {
   ],
 };
 
-const TOUTES: readonly DefinitionGrille[] = [...GRILLES_2059, GRILLE_2065];
+/** Dates du formulaire 2033-E-SD / 2059-E-SD (page 5 de `2033-sd_5394.pdf`) : période de référence (cases 024 et 016) et date de cessation. Mêmes saisies aux deux régimes. */
+export const GRILLE_DATES_CVAE: DefinitionGrille = {
+  id: '2033-E-DATES',
+  titre: 'Déclaration des effectifs et valeur ajoutée (2033-E / 2059-E) — période de référence et date de cessation',
+  cadres: [
+    {
+      tableau: '2033E_DATES',
+      titre: 'Dates du cadre « mono-établissement » du formulaire',
+      colonnes: [
+        { cle: 'debut', libelle: 'Période de référence : du (case 024) — AAAA-MM-JJ', type: 'date' },
+        { cle: 'fin', libelle: 'Période de référence : au (case 016) — AAAA-MM-JJ', type: 'date' },
+        { cle: 'cessation', libelle: 'Date de cessation — AAAA-MM-JJ', type: 'date' },
+      ],
+      lignes: [
+        { ligne: 'PER', libelle: 'Période de référence (cases 024 et 016)', colonnes: ['debut', 'fin'] },
+        { ligne: 'CES', libelle: 'Date de cessation', colonnes: ['cessation'] },
+      ],
+      calculs: [],
+      ordreDates: [['debut', 'fin']],
+    },
+  ],
+  nonPrepare: [
+    'Aucune proposition n’est reprise des dates de l’exercice : la période de référence de la CVAE est déclarée par le cabinet, justifiée.',
+    'La date de cessation n’est servie qu’en cas de cessation d’activité : une ligne non saisie n’est pas présumée vide (elle n’a simplement pas été déclarée).',
+  ],
+};
+
+const TOUTES: readonly DefinitionGrille[] = [...GRILLES_2059, GRILLE_2065, GRILLE_DATES_CVAE];
 export const TABLEAUX_GRILLES: readonly string[] = TOUTES.flatMap((g) => g.cadres.map((c) => c.tableau));
 
 /** Lignes admises pour un tableau en grille : `null` si le tableau n'est pas une grille. Utilisée par la validation de forme. */
-export function descriptionLigneGrille(tableau: string, ligne: string): { colonnes: readonly string[]; signees: readonly string[]; libre: boolean } | 'neant' | 'inconnue' | null {
+export function descriptionLigneGrille(tableau: string, ligne: string): { colonnes: readonly string[]; signees: readonly string[]; dates: readonly string[]; libre: boolean } | 'neant' | 'inconnue' | null {
   for (const g of TOUTES)
     for (const c of g.cadres) {
       if (c.tableau !== tableau) continue;
       if (ligne === 'NEANT') return g.neantSur === tableau ? 'neant' : 'inconnue';
       const signees = c.colonnes.filter((x) => x.signe === true).map((x) => x.cle);
-      if (c.libre !== undefined) return /^(0[1-9]|1[0-9])$/.test(ligne) && Number(ligne) <= c.libre.max ? { colonnes: c.colonnes.map((x) => x.cle), signees, libre: true } : 'inconnue';
+      const dates = c.colonnes.filter((x) => x.type === 'date').map((x) => x.cle);
+      if (c.libre !== undefined) return /^(0[1-9]|1[0-9])$/.test(ligne) && Number(ligne) <= c.libre.max ? { colonnes: c.colonnes.map((x) => x.cle), signees, dates, libre: true } : 'inconnue';
       const l = c.lignes.find((x) => x.ligne === ligne);
-      return l ? { colonnes: l.colonnes ?? c.colonnes.map((x) => x.cle), signees, libre: false } : 'inconnue';
+      return l ? { colonnes: l.colonnes ?? c.colonnes.map((x) => x.cle), signees, dates, libre: false } : 'inconnue';
     }
   return null;
 }
@@ -330,6 +362,10 @@ export function preparerGrille(def: DefinitionGrille, demande: DemandeGrilles): 
     const avecCalculs = def.cadres.some((c) => c.calculs.length > 0 || c.colonneCalculee !== undefined);
     controles.push({ code: `${def.id}_SANS_SAISIE`, statut: 'non_verifie', message: avecCalculs ? 'Les lignes sans saisie ne sont jamais présumées nulles : les totaux ne sont établis que lorsque toutes leurs composantes sont saisies (zéro compris).' : 'Les rubriques sans saisie ne sont jamais présumées nulles : une rubrique à zéro se saisit explicitement.' });
   }
+  for (const c of def.cadres)
+    for (const [a, b] of c.ordreDates ?? [])
+      for (const l of cadres.find((x) => x.tableau === c.tableau)!.lignes)
+        if (l.valeurs?.[a] !== undefined && l.valeurs[b] !== undefined && l.valeurs[a]! > l.valeurs[b]!) controles.push({ code: `${def.id}_ORDRE_${l.ligne}`, statut: 'ecart', message: `${l.libelle} : la date de début (${l.valeurs[a]}) suit la date de fin (${l.valeurs[b]}). Rien n’est corrigé. Contrôle indicatif.` });
   return {
     statut: 'projet',
     id: def.id,

@@ -362,13 +362,14 @@ describe('2033-D (régime simplifié) : cases saisies, néant, abstention, calcu
   const dd = (cle: string, montant: string, note = 'Saisie du cabinet pour l’essai', qui = 'remi') => api(qui, 'PUT', `/v1/exercices/${exN}/qualifications/renvois/D_${cle}`, { montant, note });
   const lc = (ligne: string, valeurs: Record<string, string>, note = 'Dotation non déductible (essai)') => api('remi', 'PUT', `/v1/exercices/${exN}/tableaux/2033D_C/${ligne}`, { valeurs, note });
 
-  it('sans saisie : 68 cases à saisir, 870 et 780 en abstention sans chiffre ; absent au régime normal', async () => {
+  it('sans saisie : 72 cases à saisir, 870 et 780 en abstention sans chiffre ; absent au régime normal', async () => {
     const f = await f2033d();
     expect(f.statut).toBe('projet');
-    expect(f.cases).toHaveLength(68);
+    expect(f.cases).toHaveLength(72);
     expect(f.cases.every((c: any) => c.statut === 'a_saisir' && c.montant === null && c.etatCodeCase === 'lu_verifie')).toBe(true);
     expect(f.total870).toMatchObject({ statut: 'abstention', codeCase: '870' });
     expect(f.cadreC.total780).toMatchObject({ statut: 'abstention', codeCase: '780' });
+    expect(f.cases.filter((c: any) => c.cadre === 'IV').map((c: any) => c.codeCase)).toEqual(['690', '691', '692', '693']);
     expect((await liasse(exN, 'reel_normal')).json.formulaire2033D).toBeNull();
     // 983 est proposée à partir de la case 360 du 2033-B quand elle est saisie (cas ici : néant), jamais retenue.
     expect(cas(f, '983')).toMatchObject({ statut: 'a_saisir', montant: null });
@@ -754,8 +755,8 @@ describe('2059-B, 2059-C, 2059-D (régime réel normal) : grilles saisies ligne 
     expect((await liasse(exN, 'reel_simplifie')).json.grilles2059).toBeNull();
     expect((await tg('2059B_A', 'E3', { a: '1.00' })).statut).toBe(400);
     expect((await tg('2059B_A', 'E3', { a: '1.00', b: '1.00', c: '1.00', d: '1.00' })).statut).toBe(400);
-    expect((await tg('2059C_II', 'N11', { c2: '1.00' })).statut).toBe(400);
-    expect((await tg('2059D_I', 'L3', { t10: '1.00' })).statut).toBe(400);
+    expect((await tg('2059C_II', 'N11', { c2: '1.00' })).statut).toBe(404);
+    expect((await tg('2059D_I', 'L3', { t10: '1.00' })).statut).toBe(404);
     expect((await tg('2059D_I', 'L1', { t10: '1.00', t15: '1.00', t18: '1.00', t19: '1.00', t25: '1.00' }, 'Essai collaborateur', 'chloe')).statut).toBeGreaterThanOrEqual(400);
     expect((await tg('2059D_I', 'L1', { t10: '1.00', t15: '1.00', t18: '1.00', t19: '1.00', t25: '1.00' }, 'Essai déposant', 'client')).statut).toBe(404);
   }, 120_000);
@@ -802,8 +803,8 @@ describe('2065-SD (page 1) : récapitulation des éléments d’imposition saisi
     expect(await f2065()).toMatchObject({ statut: 'projet', id: '2065', etat: 'a_saisir' });
     expect((await f2065('reel_simplifie')).cadres).toHaveLength(8);
     expect((await t('2065_C1', 'DEF', { m: '-1.00' })).statut).toBe(400);
-    expect((await t('2065_C1', 'NEANT', {})).statut).toBe(400);
-    expect((await t('2065_C1', 'XX', { m: '1.00' })).statut).toBe(400);
+    expect((await t('2065_C1', 'NEANT', {})).statut).toBe(404);
+    expect((await t('2065_C1', 'XX', { m: '1.00' })).statut).toBe(404);
     expect((await t('2065_C1', 'BN', { m: '1.00' }, 'Essai collaborateur', 'chloe')).statut).toBeGreaterThanOrEqual(400);
     expect((await t('2065_C1', 'BN', { m: '1.00' }, 'Essai déposant', 'client')).statut).toBe(404);
   }, 120_000);
@@ -819,6 +820,25 @@ describe('2065-SD (page 1) : récapitulation des éléments d’imposition saisi
     expect(h).toHaveLength(1);
     for (const [tb, l] of [['2065_C1', 'BN'], ['2065_C4', 'SIIC']]) expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/${tb}/${l}`)).statut).toBeLessThan(300);
     expect((await f2065()).etat).toBe('a_saisir');
+  }, 120_000);
+});
+
+describe('2033-E / 2059-E : dates (période de référence, cessation) saisies aux deux régimes (D-126)', () => {
+  const dates = async (regime: string) => (await liasse(exN, regime)).json.datesCvae;
+  const td = (ligne: string, valeurs: Record<string, string>, qui = 'remi') => api(qui, 'PUT', `/v1/exercices/${exN}/tableaux/2033E_DATES/${ligne}`, { valeurs, note: 'Dates de la déclaration des effectifs (essai)' });
+
+  it('à saisir aux deux régimes ; dates valides seulement ; trace et retrait ; refus de droits', async () => {
+    for (const r of ['reel_normal', 'reel_simplifie']) expect(await dates(r)).toMatchObject({ id: '2033-E-DATES', etat: 'a_saisir' });
+    expect((await td('PER', { debut: '01/01/2025', fin: '2025-12-31' })).statut).toBe(400);
+    expect((await td('PER', { debut: '2025-01-01' })).statut).toBe(400);
+    expect((await td('PER', { debut: '2025-01-01', fin: '2025-12-31' }, 'chloe')).statut).toBeGreaterThanOrEqual(400);
+    expect((await td('PER', { debut: '2025-01-01', fin: '2025-12-31' })).statut).toBeLessThan(300);
+    expect((await td('CES', { cessation: '2025-06-30' })).statut).toBeLessThan(300);
+    const d = await dates('reel_simplifie');
+    expect(d.cadres[0].lignes[0]).toMatchObject({ statut: 'saisi', valeurs: { debut: '2025-01-01', fin: '2025-12-31' }, trace: { qualifieePar: DEMO.remi } });
+    expect((await dates('reel_normal')).cadres[0].lignes[1].valeurs).toEqual({ cessation: '2025-06-30' });
+    for (const l of ['PER', 'CES']) expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/2033E_DATES/${l}`)).statut).toBeLessThan(300);
+    expect((await dates('reel_normal')).etat).toBe('a_saisir');
   }, 120_000);
 });
 

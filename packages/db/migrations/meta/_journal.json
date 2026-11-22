@@ -421,6 +421,13 @@
       "when": 1795324160854,
       "tag": "0059_formulaire_2065",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1795324787693,
+      "tag": "0060_dates_cvae",
+      "breakpoints": true
     }
   ]
 }

@@ -416,6 +416,23 @@ if (process.argv.includes('--2065')) {
   await page.getByTestId('grille-2065').scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${sortie}fiscal-2065-apres.png` });
 }
+// Dates du 2033-E et cadre IV du 2033-D (D-126) : saisies par les formulaires (MODIFIE le dossier fictif indiqué), régime simplifié.
+if (process.argv.includes('--2033reste')) {
+  await page.goto(`${base}&vue=liasse&regime=reel_simplifie`);
+  await page.waitForLoadState('networkidle');
+  const per = page.getByTestId('saisie-2033E_DATES-PER');
+  await per.scrollIntoViewIfNeeded();
+  await per.getByLabel('Période de référence : du (case 024) — AAAA-MM-JJ').fill('2025-01-01');
+  await per.getByLabel('Période de référence : au (case 016) — AAAA-MM-JJ').fill('2025-12-31');
+  await per.getByLabel('Justification (obligatoire)').fill('Exercice de douze mois (démonstration fictive)');
+  await per.getByRole('button', { name: /^Enregistrer la ligne PER/ }).click();
+  await per.getByText('Ligne enregistrée.').waitFor();
+  await page.getByTestId('grille-2033-E-DATES').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2033e-dates.png` });
+  const c690 = page.getByTestId('travailleurs-independants-2033-d');
+  await c690.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2033d-cadre-iv.png` });
+}
 // 2033-B (D-107) : « dont export » et lignes « dont » du régime simplifié.
 await page.goto(`${base}&vue=liasse&regime=reel_simplifie`);
 await page.waitForLoadState('networkidle');

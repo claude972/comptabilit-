@@ -1,6 +1,6 @@
 /** Recette des grilles 2059-B, 2059-C et 2059-D (D-122) : saisie ligne par ligne, calculs énoncés seulement à composantes saisies. */
 import { describe, expect, it } from 'vitest';
-import { GRILLE_2065, GRILLES_2059, preparerGrille } from './formulaire-grilles.js';
+import { GRILLE_2065, GRILLE_DATES_CVAE, GRILLES_2059, preparerGrille } from './formulaire-grilles.js';
 import { type SaisieTableau, validerSaisieTableau } from './saisies-tableaux.js';
 
 const TRACE = { note: 'Suivi des plus-values (essai)', qualifieePar: 'u-1', le: '2026-12-31T10:00:00Z', versionDonnees: 7 };
@@ -81,5 +81,18 @@ describe('grilles 2059', () => {
     expect(validerSaisieTableau('2065_C1', 'NEANT', {}).join(' ')).toMatch(/Ligne inconnue/);
     expect(validerSaisieTableau('2065_F', 'TAUX', { m: '0.25' })).toEqual([]);
     expect(validerSaisieTableau('2065_E', 'X', { m: '1.00' }).join(' ')).toMatch(/Ligne inconnue/);
+  });
+  it('dates du 2033-E / 2059-E : période de référence et cessation saisies en AAAA-MM-JJ, ordre contrôlé sans correction', () => {
+    const f = preparerGrille(GRILLE_DATES_CVAE, { versionDonnees: 7, saisiesTableaux: [s('2033E_DATES', 'PER', { debut: '2025-01-01', fin: '2025-12-31' })] });
+    expect(f.cadres[0]!.lignes.map((l) => l.statut)).toEqual(['saisi', 'a_saisir']);
+    expect(f.controles.some((c) => c.code.includes('ORDRE'))).toBe(false);
+    const g = preparerGrille(GRILLE_DATES_CVAE, { versionDonnees: 7, saisiesTableaux: [s('2033E_DATES', 'PER', { debut: '2025-12-31', fin: '2025-01-01' })] });
+    expect(g.controles.find((c) => c.code.includes('ORDRE'))?.statut).toBe('ecart');
+    expect(g.cadres[0]!.lignes[0]!.valeurs).toEqual({ debut: '2025-12-31', fin: '2025-01-01' });
+    expect(validerSaisieTableau('2033E_DATES', 'CES', { cessation: '2025-06-30' })).toEqual([]);
+    expect(validerSaisieTableau('2033E_DATES', 'CES', { cessation: '30/06/2025' }).join(' ')).toMatch(/date AAAA-MM-JJ/);
+    expect(validerSaisieTableau('2033E_DATES', 'CES', { cessation: '2025-02-30' }).join(' ')).toMatch(/date AAAA-MM-JJ/);
+    expect(validerSaisieTableau('2033E_DATES', 'PER', { debut: '2025-01-01' }).join(' ')).toMatch(/obligatoire/);
+    expect(validerSaisieTableau('2033E_DATES', 'NEANT', {}).join(' ')).toMatch(/Ligne inconnue/);
   });
 });

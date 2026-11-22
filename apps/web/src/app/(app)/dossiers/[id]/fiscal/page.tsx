@@ -1432,6 +1432,13 @@ function Formulaire2033D({ f, fm, exerciceId, revision, evenements }: { f: Formu
         </ul>
       </div>
 
+      <div className="space-y-2">
+        <h3 className="font-semibold">IV — Travailleurs indépendants (revenu brut social)</h3>
+        <ul className="space-y-2" data-testid="travailleurs-independants-2033-d">
+          {f.cases.filter((c) => c.cadre === 'IV').map(aSaisir)}
+        </ul>
+      </div>
+
       <ul className="list-disc pl-5 text-sm text-texte-doux" data-testid="2033-d-non-prepare">
         {f.nonPrepare.map((n) => (
           <li key={n}>Non préparé — {n}</li>
@@ -1994,7 +2001,7 @@ function Grille2059({ g, fm, exerciceId, revision, evenements }: { g: GrilleProj
   return (
     <section className="space-y-4" aria-labelledby={`titre-${id}`} data-testid={`grille-${g.id}`}>
       <SousTitre id={`titre-${id}`} className="text-base">
-        {g.id} — {g.titre} <MentionProjet />
+        {g.id === '2033-E-DATES' ? '2033-E / 2059-E' : g.id} — {g.titre} <MentionProjet />
       </SousTitre>
       <Alerte ton="attention" titre="Saisie du cabinet : rien ne se déduit de la balance, aucune qualification ni imputation n’est décidée par le logiciel">
         {g.limites.map((l) => (
@@ -2014,7 +2021,7 @@ function Grille2059({ g, fm, exerciceId, revision, evenements }: { g: GrilleProj
         État du tableau : <strong>{g.etat === 'saisi' ? 'saisies présentes' : g.etat === 'neant' ? 'néant déclaré' : 'à saisir (ni saisie ni néant)'}</strong>
         {g.neant ? ` — déclaré le ${formaterHorodatage(g.neant.le)} sur la version ${g.neant.versionDonnees} des données` : ''}.
       </p>
-      {revision && g.id !== '2065' ? <NeantTableau exerciceId={exerciceId} tableau={g.cadres[0]!.tableau} declare={g.etat === 'neant'} etiquette={`tableau ${g.id} (aucune donnée)`} /> : null}
+      {revision && g.id !== '2065' && g.id !== '2033-E-DATES' ? <NeantTableau exerciceId={exerciceId} tableau={g.cadres[0]!.tableau} declare={g.etat === 'neant'} etiquette={`tableau ${g.id} (aucune donnée)`} /> : null}
       {g.cadres.map((c) => (
         <div key={c.tableau} className="space-y-2" data-cadre-grille={c.tableau}>
           <h3 className="text-sm font-semibold">{c.titre}</h3>
@@ -2026,7 +2033,7 @@ function Grille2059({ g, fm, exerciceId, revision, evenements }: { g: GrilleProj
                   {c.libelleOrigine ? `Ligne ${Number(l.ligne)}` : l.libelle} {l.statut === 'saisi' ? null : badge(l.statut)}
                   {l.statut === 'saisi' ? (
                     <span className="text-texte-doux">
-                      {l.origine ? ` · ${l.origine}` : ''} · {c.colonnes.filter((k) => l.valeurs && k.cle in l.valeurs).map((k) => `${k.libelle} : ${fm(l.valeurs![k.cle])}`).join(' · ')}
+                      {l.origine ? ` · ${l.origine}` : ''} · {c.colonnes.filter((k) => l.valeurs && k.cle in l.valeurs).map((k) => `${k.libelle} : ${k.type === 'date' ? l.valeurs![k.cle] : fm(l.valeurs![k.cle])}`).join(' · ')}
                     </span>
                   ) : null}
                 </p>
@@ -2049,7 +2056,7 @@ function Grille2059({ g, fm, exerciceId, revision, evenements }: { g: GrilleProj
                     etiquette={`${c.libelleOrigine ? 'la ligne' : 'la ligne'} ${c.libelleOrigine ? Number(l.ligne) : l.ligne} du ${c.tableau}`}
                     saisie={l.statut !== 'a_saisir'}
                     noteCourante={l.trace?.note ?? null}
-                    champs={[...(c.libelleOrigine ? [{ cle: 'origine', libelle: c.libelleOrigine, type: 'texte' as const, valeur: l.origine ?? '' }] : []), ...c.colonnes.filter((k) => l.colonnes.includes(k.cle)).map((k) => ({ cle: k.cle, libelle: k.libelle, type: 'montant' as const, valeur: l.valeurs?.[k.cle] ?? '' }))]}
+                    champs={[...(c.libelleOrigine ? [{ cle: 'origine', libelle: c.libelleOrigine, type: 'texte' as const, valeur: l.origine ?? '' }] : []), ...c.colonnes.filter((k) => l.colonnes.includes(k.cle)).map((k) => ({ cle: k.cle, libelle: k.libelle, type: (k.type === 'date' ? 'texte' : 'montant') as 'texte' | 'montant', valeur: l.valeurs?.[k.cle] ?? '' }))]}
                   />
                 ) : null}
               </li>
@@ -2278,6 +2285,7 @@ export default async function PageFiscal({ params, searchParams }: { params: Pro
       {liasse?.ok && liasse.donnees.formulaire2059A ? <Formulaire2059A f={liasse.donnees.formulaire2059A} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.grilles2059 ? liasse.donnees.grilles2059.map((g) => <Grille2059 key={g.id} g={g} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} />) : null}
       {liasse?.ok && liasse.donnees.formulaire2065 ? <Grille2059 g={liasse.donnees.formulaire2065} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
+      {liasse?.ok && liasse.donnees.datesCvae ? <Grille2059 g={liasse.donnees.datesCvae} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.detailResultat ? <DetailResultat d={liasse.donnees.detailResultat} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {annexe?.ok ? (
         annexe.donnees.resultat.statut === 'abstention' ? (

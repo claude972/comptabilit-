@@ -62,6 +62,8 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
     await expect(page.getByTestId('grille-2059-D').locator('li[data-ligne-grille]')).toHaveCount(5);
     // 2065-SD (D-123) : récapitulation des éléments d'imposition saisie rubrique par rubrique.
     await expect(page.getByTestId('grille-2065').locator('li[data-ligne-grille]')).toHaveCount(30);
+    // Dates du 2033-E / 2059-E (D-126) et cadre IV du 2033-D (D-126).
+    await expect(page.getByTestId('grille-2033-E-DATES').locator('li[data-ligne-grille]')).toHaveCount(2);
     // 2059-E, 2059-F, 2059-G (D-120) : effectifs, capital et filiales au régime réel normal (mêmes saisies que 2033-F et G).
     await expect(page.getByTestId('formulaire-2059-E').locator('li[data-case-f]')).toHaveCount(25);
     await expect(page.getByTestId('formulaire-2033-f')).toContainText('2059-F');
@@ -127,6 +129,7 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
     await expect(d2033.getByTestId('derogatoires-2033-d').locator('tr[data-derogatoire]')).toHaveCount(9);
     await expect(d2033.getByTestId('total-870')).toContainText('870');
     await expect(d2033.getByTestId('2033-d-non-prepare')).toContainText('Cadre IV');
+    await expect(d2033.getByTestId('travailleurs-independants-2033-d').locator('li')).toHaveCount(4);
     // Cadre III du 2033-C (D-112) : dix lignes de cessions saisies par le cabinet, totaux en abstention sans saisie ni néant.
     await expect(page.getByTestId('cadre-iii')).toBeVisible();
     await expect(page.getByTestId('lignes-cessions').locator('tr[data-cession]')).toHaveCount(13);

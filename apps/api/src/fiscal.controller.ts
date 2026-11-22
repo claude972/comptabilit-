@@ -20,6 +20,8 @@ import {
   preparerFormulaire2059A,
   GRILLES_2059,
   GRILLE_2065,
+  GRILLE_DATES_CVAE,
+  TABLEAUX_GRILLES,
   preparerGrille,
   preparerFormulaireCases,
   cleCase,
@@ -67,8 +69,13 @@ const montantSigne = schemaChaineDecimale;
 const ventilation = z.object({ montantFrance: montantSigne, montantExport: montantSigne, note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie la ventilation').max(2000) });
 const renvoiSaisie = z.object({ montant: montantSigne, note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie le montant').max(2000) });
 const saisieTableau = z.object({ valeurs: z.record(z.string().max(40), z.string().max(200)), note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie la saisie').max(2000) });
-const TABLEAU_SAISI = /^(2033C_III|2054BIS_A|2054BIS_B|2055_B|2055_C|2033D_C|2033F_NB|2033F_PM|2033F_PP|2033G_NB|2033G_FIL|2059A_IM|2059A_AUT|2059B_A|2059B_B|2059C_I|2059C_II|2059D_I|2059D_II|2065_C1|2065_C2|2065_C3|2065_C4|2065_F|2065_I|2065_D|2065_E)$/;
-const LIGNE_TABLEAU = /^[0-9A-Z]{1,8}$/;
+const TABLEAU_SAISI = /^(2033C_III|2054BIS_A|2054BIS_B|2055_B|2055_C|2033D_C|2033F_NB|2033F_PM|2033F_PP|2033G_NB|2033G_FIL|2059A_IM|2059A_AUT|2059B_A|2059B_B|2059C_I|2059C_II|2059D_I|2059D_II|2065_C1|2065_C2|2065_C3|2065_C4|2065_F|2065_I|2065_D|2065_E|2033E_DATES)$/;
+/** Lignes admises par la route, selon la famille de tableau : historiques (01 à 13…), 2059-A (01 à 20), grilles 2059-B à D, 2065 et dates du 2033-E (identifiants courts, forme validée contre la définition). */
+const LIGNE_HISTORIQUE = /^(0[1-9]|1[0-3]|REG|PV19|NEANT|B1|B2|NB)$/;
+const LIGNE_2059A = /^(0[1-9]|1[0-9]|20|NEANT)$/;
+const LIGNE_GRILLE = /^[0-9A-Z]{1,8}$/;
+const estGrille = (tableau: string) => TABLEAUX_GRILLES.includes(tableau);
+const ligneAdmise = (tableau: string, ligne: string) => (estGrille(tableau) ? LIGNE_GRILLE : tableau.startsWith('2059A_') ? LIGNE_2059A : LIGNE_HISTORIQUE).test(ligne);
 const COMPTE_CA = /^70[0-9A-Za-z]{1,13}$/;
 /** Formulaires du régime réel normal servis par saisie case par case (moteur générique, D-118). */
 const FORMULAIRES_CASES: readonly DefinitionFormulaire[] = [FORMULAIRE_2058_A, FORMULAIRE_2058_B, FORMULAIRE_2058_C, FORMULAIRE_2059_E];
@@ -266,9 +273,10 @@ export class FiscalController {
   @ApiBody({ schema: schemaOpenApi(saisieTableau) })
   async saisirLigneTableau(@AccesCourant() acces: Acces, @Param('id') id: string, @Param('tableau') tableau: string, @Param('ligne') ligne: string, @Body() corps: unknown) {
     exigerUuid(id);
-    if (!TABLEAU_SAISI.test(tableau) || !LIGNE_TABLEAU.test(ligne)) throw new NotFoundException('Tableau ou ligne inconnu');
+    if (!TABLEAU_SAISI.test(tableau) || !ligneAdmise(tableau, ligne)) throw new NotFoundException('Tableau ou ligne inconnu');
     const d = valider(saisieTableau, corps);
     const erreurs = validerSaisieTableau(tableau, ligne, d.valeurs);
+    if (estGrille(tableau) && erreurs.some((e) => e.startsWith('Ligne inconnue'))) throw new NotFoundException('Tableau ou ligne inconnu');
     if (erreurs.length > 0) throw new BadRequestException(erreurs.join(' '));
     return this.bd.avecContexte(acces, async (tx) => {
       const [exercice] = await tx.select().from(s.exercices).where(eq(s.exercices.id, id));
@@ -286,7 +294,7 @@ export class FiscalController {
   @ApiOperation({ summary: 'Retirer la saisie d’une ligne du cadre III du 2033-C ou du 2054 bis (niveau révision)' })
   async retirerLigneTableau(@AccesCourant() acces: Acces, @Param('id') id: string, @Param('tableau') tableau: string, @Param('ligne') ligne: string) {
     exigerUuid(id);
-    if (!TABLEAU_SAISI.test(tableau) || !LIGNE_TABLEAU.test(ligne)) throw new NotFoundException('Tableau ou ligne inconnu');
+    if (!TABLEAU_SAISI.test(tableau) || !ligneAdmise(tableau, ligne)) throw new NotFoundException('Tableau ou ligne inconnu');
     return this.bd.avecContexte(acces, async (tx) => {
       const [exercice] = await tx.select().from(s.exercices).where(eq(s.exercices.id, id));
       if (!exercice) throw new NotFoundException('Exercice introuvable');
@@ -385,6 +393,8 @@ export class FiscalController {
       const grilles2059 = regime === 'reel_normal' ? GRILLES_2059.map((g) => preparerGrille(g, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies })) : null;
       // Déclaration de résultats 2065-SD (page 1, D-123) : servie aux deux régimes, saisie rubrique par rubrique.
       const formulaire2065 = preparerGrille(GRILLE_2065, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies });
+      // Dates du 2033-E / 2059-E (période de référence, cessation, D-126) : saisies aux deux régimes.
+      const datesCvae = preparerGrille(GRILLE_DATES_CVAE, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies });
       const tableauxImmobilisations = preparerTableauxImmobilisations({
         lignes,
         exercice: { debut: exercice.debut, fin: exercice.fin },
@@ -426,6 +436,8 @@ export class FiscalController {
         grilles2059,
         /** Déclaration de résultats 2065-SD, page 1 (cadres C, D, E, F, I) : saisie rubrique par rubrique, deux régimes (D-123). */
         formulaire2065,
+        /** Dates du 2033-E / 2059-E : période de référence (024, 016) et date de cessation, deux régimes (D-126). */
+        datesCvae,
         /** Formulaires du régime réel normal servis par saisie case par case (2058-A) : D-118 ; null au régime simplifié. */
         formulairesCases,
       };

@@ -131,6 +131,8 @@ export interface ReponseLiasse {
   grilles2059?: GrilleProjet[] | null;
   /** Déclaration de résultats 2065-SD (page 1), deux régimes (D-123). */
   formulaire2065?: GrilleProjet | null;
+  /** Dates du 2033-E / 2059-E (D-126). */
+  datesCvae?: GrilleProjet | null;
   /** Formulaires du régime réel normal servis par saisie case par case (2058-A, D-118) ; null au régime simplifié. */
   formulairesCases?: FormulaireCasesProjet[] | null;
 }
@@ -523,7 +525,7 @@ export interface CaseSaisie2033D {
   codeCase: string;
   etatCodeCase: string;
   libelle: string;
-  cadre: 'I-A' | 'I-B' | 'II' | 'III';
+  cadre: 'I-A' | 'I-B' | 'II' | 'III' | 'IV';
   type: 'montant' | 'entier';
   statut: 'a_saisir' | 'saisi' | 'a_revoir';
   neant: boolean;
@@ -694,7 +696,7 @@ export type CelluleGrille = { statut: 'etabli'; montant: string } | { statut: 'a
 export interface CadreGrilleProjet {
   tableau: string;
   titre: string;
-  colonnes: Array<{ cle: string; libelle: string }>;
+  colonnes: Array<{ cle: string; libelle: string; type?: 'montant' | 'date' }>;
   colonneCalculee: { cle: string; libelle: string } | null;
   libelleOrigine: string | null;
   lignes: Array<{ ligne: string; libelle: string; groupe: string | null; colonnes: string[]; statut: StatutLigneSaisie; trace: TraceSaisie | null; origine: string | null; valeurs: Record<string, string> | null; calculee: CelluleGrille | null }>;

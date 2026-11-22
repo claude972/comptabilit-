@@ -145,6 +145,8 @@ export interface ReponseLiasse {
   formulaire2065Bis?: GrilleProjet | null;
   /** Feuillet des déficits transférés de plein droit, régime simplifié (D-132). */
   feuilletDeficits?: GrilleProjet | null;
+  /** Reprise explicite de la ventilation des en-cours et produits dans les cases BN à BS du projet 2050 (D-170) ; null au régime simplifié. */
+  reprise2050Stocks?: Reprise2050StocksProjet | null;
   /** Feuillets du régime réel normal (2058-B K4 bis, 2058-A détails), D-133. */
   feuilles2058?: GrilleProjet[] | null;
   /** Détails (7) et (8) du 2053, régime réel normal (D-136). */
@@ -736,4 +738,15 @@ export interface GrilleProjet {
   nonPrepare: string[];
   limites: string[];
   mention: string;
+}
+
+/** Reprise explicite de la ventilation des en-cours et produits dans les cases BN à BS du projet 2050 (D-170). */
+export interface Reprise2050StocksProjet {
+  statut: 'projet';
+  etat: 'aucune_decision' | 'decision_a_revoir' | 'decision_retiree' | 'decidee';
+  decision: TraceSaisie | null;
+  cases: Array<{ code: 'BN' | 'BO' | 'BP' | 'BQ' | 'BR' | 'BS'; libelle: string; montant: string | null; statut: 'repris' | 'abstention'; motif: string | null }>;
+  totalEnCours: { brut: string | null; amortissements: string | null };
+  sources: { enCoursBrut: string | null; enCoursAmortissements: string | null; produitsBrut: string | null; produitsAmortissements: string | null };
+  notes: string[];
 }

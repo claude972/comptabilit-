@@ -81,7 +81,7 @@ if (!dossier) {
   const c = (m) => ({ c1: m, c2: m, c3: '0.00' });
   const d4 = (m) => ({ c1: m, c2: m, c3: '0.00', c4: '0.00' });
   await tab('2057_A', 'VA', c('100.00')); await tab('2057_A', 'UX', c('900.00')); await tab('2057_A', 'VS', c('55.00'));
-  await tab('2050_STOCKS', 'ECB', { c1: '700.00', c2: '100.00' }); await tab('2050_STOCKS', 'ECS', { c1: '300.00', c2: '0.00' }); await tab('2050_STOCKS', 'PIF', { c1: '450.00', c2: '0.00' });
+  await tab('2050_STOCKS', 'ECB', { c1: '700.00', c2: '100.00' }); await tab('2050_STOCKS', 'ECS', { c1: '300.00', c2: '0.00' }); await tab('2050_STOCKS', 'PIF', { c1: '450.00', c2: '0.00' }); await tab('2050_STOCKS', 'REPRISE', { v: 'oui' });
   await tab('2057_A', 'UL', c('500.00')); await tab('2057_A', 'UP', c('1000.00')); await tab('2057_B', '7Z', d4('2000.00')); await tab('2057_B', '8J', d4('300.00'));
   await tab('2057_B', '8B', d4('700.00')); await tab('2057_B', '8L', d4('30.00'));
   await tab('2057_F_PRET', '01', { origine: 'Actions fictives (prêtées)', m: '800.00' });
@@ -113,5 +113,9 @@ ok(k57('CCA_BILAN')?.statut === 'ecart' && k57('CCA_BILAN').ecart === '5.00', `c
 ok(['CREANCES_PARTICIPATIONS_BILAN', 'PRETS_BILAN', 'AUTRES_OBLIG_BILAN', 'DETTES_IMMOS_BILAN'].every((x) => k57(x)?.statut === 'coherent'), `rapprochement 2057 / projet de bilan (D-167) : créances rattachées 500, prêts 1000, autres emprunts obligataires 2000, dettes sur immobilisations 300 : ${['CREANCES_PARTICIPATIONS_BILAN', 'PRETS_BILAN', 'AUTRES_OBLIG_BILAN', 'DETTES_IMMOS_BILAN'].map((x) => k57(x)?.statut).join('/')}`);
 const g50 = liasse.feuilles2058.find((g) => g.id === '2050-STOCKS'); const k50 = (c) => g50.controles.find((x) => x.code === `2050-STOCKS_${c}`);
 ok(g50.etat === 'saisi' && k50('EN_COURS_BRUT')?.statut === 'coherent' && k50('EN_COURS_AMORT')?.statut === 'coherent' && k50('PIF_BRUT')?.statut === 'ecart' && k50('PIF_BRUT').ecart === '-50.00', `2050, ventilation des en-cours (D-169) : biens 700 + services 300 = 1000 du bilan (cohérent), dépréciation 100 (cohérent) ; produits intermédiaires et finis 450 contre 500 au bilan : écart ${k50('PIF_BRUT')?.ecart} AFFICHÉ, rien corrigé`);
+const r50 = liasse.reprise2050Stocks; const c50 = (c) => r50.cases.find((x) => x.code === c);
+ok(r50.etat === 'decidee' && ['BN', 'BO', 'BP', 'BQ'].every((c) => c50(c).statut === 'repris') && c50('BN').montant === '700.00' && c50('BP').montant === '300.00' && r50.totalEnCours.brut === '1000.00' && c50('BR').statut === 'abstention' && c50('BR').montant === null && /-50\.00/.test(c50('BR').motif), `2050, reprise EXPLICITE (D-170) : BN 700,00, BO 100,00, BP 300,00, BQ 0,00 retenus (total 1000,00 = montant source) ; BR en abstention (${c50('BR')?.motif?.slice(0, 70)}…) ; bilan source et totaux du 2050 inchangés`);
+const lAct = liasse.resultat.tableaux.flatMap((x) => x.lignes); const srcEC = lAct.find((l) => l.ligne === 'RN_2050_A_STOCKS_EN_COURS');
+ok(srcEC?.brut === '1000.00' && srcEC?.amortissementsDepreciations === '100.00' && srcEC?.codesActif == null, `le poste source « en-cours de production » du projet 2050 reste 1000,00 / 100,00 (non réécrit, sans code de case) : les cases BN à BP ne s’y ajoutent pas`);
 console.log(`\nLien local : ${WEB}/dossiers/${dossier}/fiscal?vue=liasse`);
 console.log(JSON.stringify({ dossier, exercice }));

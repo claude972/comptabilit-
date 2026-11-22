@@ -772,11 +772,12 @@ export const GRILLE_2050_STOCKS: DefinitionGrille = {
     {
       tableau: '2050_STOCKS',
       titre: '2050, actif circulant — lignes BN à BS',
-      colonnes: cr(['c1', 'Brut'], ['c2', 'Amortissements et provisions']),
+      colonnes: [...cr(['c1', 'Brut'], ['c2', 'Amortissements et provisions']), { cle: 'v', libelle: 'Reprise décidée', type: 'booleen' }],
       lignes: [
-        { ligne: 'ECB', libelle: 'En cours de production de biens (brut BN, amortissements et provisions BO)' },
-        { ligne: 'ECS', libelle: 'En cours de production de services (brut BP, amortissements et provisions BQ)' },
-        { ligne: 'PIF', libelle: 'Produits intermédiaires et finis (brut BR, amortissements et provisions BS)' },
+        { ligne: 'ECB', libelle: 'En cours de production de biens (brut BN, amortissements et provisions BO)', colonnes: ['c1', 'c2'] },
+        { ligne: 'ECS', libelle: 'En cours de production de services (brut BP, amortissements et provisions BQ)', colonnes: ['c1', 'c2'] },
+        { ligne: 'PIF', libelle: 'Produits intermédiaires et finis (brut BR, amortissements et provisions BS)', colonnes: ['c1', 'c2'] },
+        { ligne: 'REPRISE', libelle: 'Décision du cabinet : reprendre ces montants dans les cases BN à BS du projet 2050 (« oui » seulement si les montants ventilés égalent le montant source du projet de bilan ; « non » retire la reprise)', colonnes: ['v'] },
       ],
       calculs: [{ id: 'TOTAL_EN_COURS', libelle: 'Total des en-cours ventilés (biens + services)', colonnes: ['c1', 'c2'], termes: [{ ref: ['ECB', 'ECS'], signe: 1 }] }],
       controlesExternes: [
@@ -790,7 +791,7 @@ export const GRILLE_2050_STOCKS: DefinitionGrille = {
   nonPrepare: [
     'La répartition entre « biens » et « services » n’est jamais déduite des comptes : le cabinet la saisit avec sa justification ; les comptes 33 et 34 du projet de bilan restent le montant source, rapproché du total ventilé (écart affiché, jamais corrigé).',
     'Sans saisie, les cases BN à BS du 2050 restent vides (abstention) : une ligne non ventilée n’est ni présumée nulle ni répartie par le logiciel.',
-    'La reprise des montants saisis dans les cases BN à BS du 2050 imprimé n’est pas automatique : ils figurent dans cet état joint et à l’écran, et se reportent à la main.',
+    'La reprise dans les cases BN à BS du projet 2050 est une DÉCISION EXPLICITE du cabinet (ligne « REPRISE », justifiée, historisée). Elle n’est appliquée, case par case, que si le montant ventilé égale le montant source du projet de bilan ; sinon la case reste en abstention avec le motif. Le bilan source n’est jamais réécrit et les totaux du 2050 restent ceux du projet de bilan : les cases BN à BS sont du détail de ces mêmes montants, jamais ajouté aux totaux.',
   ],
 };
 

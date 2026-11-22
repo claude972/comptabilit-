@@ -91,7 +91,7 @@ test('reports 2059 → 2058-A, feuillets du 2056 et du 2057, rapprochement du 20
   const c3 = (m: string) => ({ c1: m, c2: m, c3: '0.00' });
   const c4 = (m: string) => ({ c1: m, c2: m, c3: '0.00', c4: '0.00' });
   await tab('2057_A', 'VA', c3('100.00')); await tab('2057_A', 'UX', c3('900.00')); await tab('2057_A', 'VS', c3('55.00'));
-  await tab('2050_STOCKS', 'ECB', { c1: '700.00', c2: '100.00' }); await tab('2050_STOCKS', 'ECS', { c1: '300.00', c2: '0.00' }); await tab('2050_STOCKS', 'PIF', { c1: '450.00', c2: '0.00' });
+  await tab('2050_STOCKS', 'ECB', { c1: '700.00', c2: '100.00' }); await tab('2050_STOCKS', 'ECS', { c1: '300.00', c2: '0.00' }); await tab('2050_STOCKS', 'PIF', { c1: '450.00', c2: '0.00' }); await tab('2050_STOCKS', 'REPRISE', { v: 'oui' });
   await tab('2057_A', 'UL', c3('500.00')); await tab('2057_A', 'UP', c3('1000.00')); await tab('2057_B', '7Z', c4('2000.00')); await tab('2057_B', '8J', c4('300.00'));
   await tab('2057_B', '8B', c4('700.00')); await tab('2057_B', '8L', c4('30.00'));
   await tab('2057_F_PRET', '01', { origine: 'Actions fictives', m: '800.00' });
@@ -126,6 +126,9 @@ test('reports 2059 → 2058-A, feuillets du 2056 et du 2057, rapprochement du 20
   const g50 = liasse.feuilles2058.find((g: any) => g.id === '2050-STOCKS');
   expect(g50.controles.find((x: any) => x.code === '2050-STOCKS_EN_COURS_BRUT').statut).toBe('coherent');
   expect(g50.controles.find((x: any) => x.code === '2050-STOCKS_PIF_BRUT')).toMatchObject({ statut: 'ecart', ecart: '-50.00' });
+  const r50 = liasse.reprise2050Stocks;
+  expect(r50.etat).toBe('decidee');
+  expect(r50.cases.map((c: any) => [c.code, c.montant])).toEqual([['BN', '700.00'], ['BO', '100.00'], ['BP', '300.00'], ['BQ', '0.00'], ['BR', null], ['BS', '0.00']]);
   for (const x of ['CREANCES_PARTICIPATIONS_BILAN', 'PRETS_BILAN', 'AUTRES_OBLIG_BILAN', 'DETTES_IMMOS_BILAN']) expect(k57(x)?.statut, x).toBe('coherent');
   expect(liasse.feuilles2058.find((g: any) => g.id === '2057-FEUILLETS').cadres[0].calculs[0].cellules.m).toMatchObject({ statut: 'etabli', montant: '800.00' });
 
@@ -148,10 +151,14 @@ test('reports 2059 → 2058-A, feuillets du 2056 et du 2057, rapprochement du 20
   await expect(page.getByText(/Rappel de la plus-value de l’exercice relevant du taux de 15 %/).first()).toBeVisible();
   await expect(page.getByText(/voir également le tableau 2059-A.*sans énoncer d’égalité/).first()).toBeVisible();
   await expect(page.getByText(/charges constatées d’avance du projet de bilan.*55\.00 ici contre 50\.00/).first()).toBeVisible();
+  await expect(page.locator('[data-testid="reprise-2050-stocks"] [data-case="BN"]')).toContainText('700');
+  await expect(page.locator('[data-testid="reprise-2050-stocks"] [data-case="BR"]')).toContainText('abstention');
   await page.goto(`/dossiers/${dossier}/fiscal/etat-joint?exercice=${exercice}&regime=reel_normal`);
   await expect(page.locator('[data-tableau-joint="2056-FEUILLETS/2056_F_ARC"]')).toContainText('Provision constituée en 2024');
   await expect(page.locator('[data-tableau-joint="2057-FEUILLETS/2057_F_PRET"]')).toContainText('800.00');
   await expect(page.locator('[data-tableau-joint="2050-STOCKS/2050_STOCKS"]')).toContainText('700.00');
+  await expect(page.locator('[data-tableau-joint="liasse-2050-STOCKS-REPRISE"]')).toContainText('700.00');
+  await expect(page.locator('[data-tableau-joint="liasse-2050-STOCKS-REPRISE"]')).toContainText('abstention');
   await expect(page.locator('[data-tableau-joint="2059-B/2059B_ENT"]')).toContainText('Formulaire déposé au titre de l’IR');
   await expect(page.locator('[data-tableau-joint="2059-C/2059C_RAPPEL"]')).toContainText('2000.00');
   await expect(page.locator('[data-tableau-joint="2058-A"]')).toContainText('proposition non retenue : 20.00');

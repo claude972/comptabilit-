@@ -5,7 +5,7 @@ import { ChoixExercice } from '@/components/dossier';
 import { ErreurAcces } from '@/components/erreurs';
 import { CategorieAnnexe, ConfirmerRubrique, NeantTableau, QualifierCompte, SaisieCases, SaisieLigneTableau, SaisirRenvoi } from '@/components/fiscal/actions';
 import { Alerte, Carte, Etiquette, MentionProjet, SousTitre, Tableau } from '@/components/ui/base';
-import { type Abstention, type AnnexeProjet, type CelluleImmobilisation, type CelluleVentilation, type AmortissementsDerogatoiresProjet, type CadreIIIProjet, type CaseSaisie2033D, type CaseSaisie2033E, type CelluleCalculee2033D, type Formulaire2033EProjet, type Formulaire2033FProjet, type Formulaire2033GProjet, type Formulaire2059AProjet, type GrilleProjet, type CelluleGrille, LIBELLES_COLONNES_2059_A, type FormulaireCasesProjet, type ResultatSigneFormulaire, type CelluleMontantSaisie, type Formulaire2033DProjet, LIGNES_DEROGATOIRES_2033D, LIGNES_PROVISIONS_2033D, type ChargesRepartiesProjet, LIBELLES_COLONNES_2055_B, type DetailResultatProjet, type EcartsReevaluationProjet, type EvenementQualification, LIBELLE_CLASSEMENT, type TableauxSaisisProjet, type ReponseHistorique, type ResultatSigne, LIBELLE_CATEGORIE, LIBELLE_ETAT_QUALIFICATION, type LiasseProjet, type ReponseAnnexe, type ReponseLiasse, type TableauxImmobilisationsProjet } from '@/lib/fiscal';
+import { type Abstention, type Reprise2050StocksProjet, type AnnexeProjet, type CelluleImmobilisation, type CelluleVentilation, type AmortissementsDerogatoiresProjet, type CadreIIIProjet, type CaseSaisie2033D, type CaseSaisie2033E, type CelluleCalculee2033D, type Formulaire2033EProjet, type Formulaire2033FProjet, type Formulaire2033GProjet, type Formulaire2059AProjet, type GrilleProjet, type CelluleGrille, LIBELLES_COLONNES_2059_A, type FormulaireCasesProjet, type ResultatSigneFormulaire, type CelluleMontantSaisie, type Formulaire2033DProjet, LIGNES_DEROGATOIRES_2033D, LIGNES_PROVISIONS_2033D, type ChargesRepartiesProjet, LIBELLES_COLONNES_2055_B, type DetailResultatProjet, type EcartsReevaluationProjet, type EvenementQualification, LIBELLE_CLASSEMENT, type TableauxSaisisProjet, type ReponseHistorique, type ResultatSigne, LIBELLE_CATEGORIE, LIBELLE_ETAT_QUALIFICATION, type LiasseProjet, type ReponseAnnexe, type ReponseLiasse, type TableauxImmobilisationsProjet } from '@/lib/fiscal';
 import { formaterHorodatage, formaterMontant, formaterMontantEuros } from '@/lib/montants';
 
 type Fm = (valeur: string | null | undefined) => string;
@@ -2074,6 +2074,47 @@ function Formulaire2059A({ f, fm, exerciceId, revision, evenements }: { f: Formu
 }
 
 /** Tableaux 2059-B, 2059-C et 2059-D (grilles) : saisie ligne par ligne, justifiée et historisée (D-122). */
+const ETAT_REPRISE_2050: Record<string, string> = { aucune_decision: 'aucune reprise décidée : cases en abstention', decision_a_revoir: 'décision à revoir (données modifiées depuis)', decision_retiree: 'reprise retirée par le cabinet : cases en abstention', decidee: 'reprise décidée par le cabinet' };
+
+/** Cases BN à BS RETENUES du projet 2050 (D-170) : mêmes montants que l’état joint, le CSV et le PDF ; jamais ajoutées aux totaux du 2050. */
+function Reprise2050({ r, fm }: { r: Reprise2050StocksProjet; fm: (m: string) => string }) {
+  return (
+    <section className="space-y-2 rounded border border-bordure p-3" data-testid="reprise-2050-stocks" data-etat={r.etat}>
+      <h3 className="text-sm font-semibold">2050, actif circulant — cases BN à BS retenues</h3>
+      <p className="text-sm">
+        État : <strong>{ETAT_REPRISE_2050[r.etat] ?? r.etat}</strong>
+        {r.decision ? ` — décision justifiée : « ${r.decision.note} »` : ''}. Pour reprendre la ventilation, saisir « oui » à la ligne « Décision du cabinet » du tableau 2050-STOCKS ci-dessus (avec sa justification).
+      </p>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left">
+            <th className="pr-2">Case</th>
+            <th className="pr-2">Ligne</th>
+            <th className="text-right">Montant retenu</th>
+          </tr>
+        </thead>
+        <tbody>
+          {r.cases.map((c) => (
+            <tr key={c.code} data-case={c.code} data-statut={c.statut}>
+              <td className="pr-2 font-mono">{c.code}</td>
+              <td className="pr-2">{c.libelle}</td>
+              <td className="text-right tabular-nums">{c.montant !== null ? fm(c.montant) : <span className="text-texte-doux">abstention : {c.motif}</span>}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="text-sm" data-testid="reprise-2050-total">
+        Total des en-cours retenus (BN + BP ; BO + BQ) : {r.totalEnCours.brut !== null ? fm(r.totalEnCours.brut) : '—'} / {r.totalEnCours.amortissements !== null ? fm(r.totalEnCours.amortissements) : '—'}. Montant source du projet de bilan : {r.sources.enCoursBrut !== null ? fm(r.sources.enCoursBrut) : '—'} / {r.sources.enCoursAmortissements !== null ? fm(r.sources.enCoursAmortissements) : '—'}.
+      </p>
+      <ul className="list-disc pl-5 text-xs text-texte-doux">
+        {r.notes.map((n) => (
+          <li key={n}>{n}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function Grille2059({ g, fm, exerciceId, revision, evenements }: { g: GrilleProjet; fm: Fm; exerciceId: string; revision: boolean; evenements: EvenementQualification[] }) {
   const badge = (statut: string) => <Etiquette ton={statut === 'saisi' ? 'succes' : 'attention'}>{statut === 'saisi' ? 'Saisi' : statut === 'a_revoir' ? 'À revoir : données modifiées' : 'À saisir'}</Etiquette>;
   const cellule = (c: CelluleGrille | undefined) => (c === undefined ? <span className="text-texte-doux">—</span> : c.statut === 'etabli' ? <strong>{fm(c.montant)}</strong> : <span className="text-texte-doux" title={c.motifs.join(' ')}>abstention</span>);
@@ -2381,6 +2422,7 @@ export default async function PageFiscal({ params, searchParams }: { params: Pro
       {liasse?.ok && liasse.donnees.formulaire2057 ? <Grille2059 g={liasse.donnees.formulaire2057} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.detail2053 ? <Grille2059 g={liasse.donnees.detail2053} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.feuilles2058 ? liasse.donnees.feuilles2058.map((g) => <Grille2059 key={g.id} g={g} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} />) : null}
+      {liasse?.ok && liasse.donnees.reprise2050Stocks ? <Reprise2050 r={liasse.donnees.reprise2050Stocks} fm={fm} /> : null}
       {liasse?.ok && liasse.donnees.feuilletDeficits ? <Grille2059 g={liasse.donnees.feuilletDeficits} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.formulaire2065Bis ? <Grille2059 g={liasse.donnees.formulaire2065Bis} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.datesCvae ? <Grille2059 g={liasse.donnees.datesCvae} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}

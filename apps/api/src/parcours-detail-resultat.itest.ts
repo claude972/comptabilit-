@@ -1040,6 +1040,18 @@ describe('2054 / 2033-C : cellules non déductibles de la balance saisies (réé
     const f1 = await sto();
     expect(f1.etat).toBe('saisi');
     expect(f1.cadres[0].lignes.find((l: any) => l.ligne === 'ECB').valeurs).toMatchObject({ c1: '710.00' });
+    // Reprise (D-170) : sans décision, abstention ; décision « oui » sans montant source rapproché : toujours abstention (aucun écrasement, rien de présumé).
+    const rep0 = (await liasse(exN, 'reel_normal')).json.reprise2050Stocks;
+    expect(rep0.etat).toBe('aucune_decision');
+    expect(rep0.cases.every((c: any) => c.statut === 'abstention' && c.montant === null)).toBe(true);
+    expect((await ecrire('ECS', { c1: '300.00', c2: '0.00' })).statut).toBeLessThan(300);
+    expect((await ecrire('REPRISE', { v: 'oui' }, 'Reprise décidée après relecture du dossier de production (essai)')).statut).toBeLessThan(300);
+    expect((await ecrire('REPRISE', { c1: '1.00' })).statut).toBeGreaterThanOrEqual(400);
+    const rep1 = (await liasse(exN, 'reel_normal')).json.reprise2050Stocks;
+    expect(rep1.etat).toBe('decidee');
+    expect(rep1.decision.note).toMatch(/Reprise décidée/);
+    expect(rep1.cases.every((c: any) => c.statut === 'abstention' && c.montant === null)).toBe(true); // aucun montant source du bilan pour cet exercice : rien n'est repris
+    expect((await liasse(exN, 'reel_simplifie')).json.reprise2050Stocks ?? null).toBeNull();
     expect((await ecrire('XYZ', { c1: '1.00' })).statut).toBeGreaterThanOrEqual(400);
     expect((await ecrire('ECS', { c1: '1.00' }, 'ab')).statut).toBeGreaterThanOrEqual(400); // justification obligatoire
   });

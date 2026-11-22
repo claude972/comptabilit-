@@ -1,5 +1,6 @@
 /** Recette des grilles 2059-B, 2059-C et 2059-D (D-122) : saisie ligne par ligne, calculs énoncés seulement à composantes saisies. */
 import { describe, expect, it } from 'vitest';
+import { reprendreVentilation2050 } from './reprise-2050-stocks.js';
 import { GRILLE_2050_STOCKS, GRILLE_2058B_COMPLEMENTS, GRILLE_2053_DETAIL, GRILLE_2033D_982, GRILLE_2058A_FEUILLETS, GRILLE_2058B_K4BIS, GRILLE_2056_FEUILLETS, GRILLE_2057, GRILLE_2057_FEUILLETS, GRILLE_2059A_NOTE, GRILLE_2065, GRILLE_2065_BIS, GRILLE_DATES_CVAE, GRILLES_2059, preparerGrille } from './formulaire-grilles.js';
 import { type SaisieTableau, validerSaisieTableau } from './saisies-tableaux.js';
 
@@ -326,5 +327,49 @@ describe('2050 : ventilation explicite des en-cours et produits (D-169)', () => 
     // Une seule des deux lignes saisie : le total ventilé n'est pas comparé (règle D-154), rien n'est réparti.
     const une = preparerGrille(GRILLE_2050_STOCKS, { versionDonnees: 7, saisiesTableaux: [v('ECB', '700.00')], valeursAutres: { BIL_EN_COURS_BRUT: '1000.00' } });
     expect(une.controles.find((x) => x.code === '2050-STOCKS_EN_COURS_BRUT')?.statut).not.toBe('ecart');
+  });
+});
+
+describe('2050 : reprise EXPLICITE de la ventilation dans les cases BN à BS (D-170)', () => {
+  const src = { BIL_EN_COURS_BRUT: '1000.00', BIL_EN_COURS_AMORT: '100.00', BIL_PIF_BRUT: '500.00', BIL_PIF_AMORT: '0.00' };
+  const v = (l: string, c1: string, c2 = '0.00') => s('2050_STOCKS', l, { c1, c2 });
+  const rep = (oui: boolean, x: Partial<SaisieTableau> = {}) => s('2050_STOCKS', 'REPRISE', { v: oui ? 'oui' : 'non' }, x);
+  const calc = (saisies: SaisieTableau[], vd = 7) => reprendreVentilation2050(preparerGrille(GRILLE_2050_STOCKS, { versionDonnees: vd, saisiesTableaux: saisies, valeursAutres: src }), src);
+  const cas = (r: ReturnType<typeof calc>, c: string) => r.cases.find((x) => x.code === c)!;
+
+  it('sans décision : toutes les cases en abstention, même avec des montants ventilés', () => {
+    const r = calc([v('ECB', '700.00', '100.00'), v('ECS', '300.00'), v('PIF', '500.00')]);
+    expect(r.etat).toBe('aucune_decision');
+    expect(r.cases.every((c) => c.statut === 'abstention' && c.montant === null)).toBe(true);
+    expect(r.totalEnCours).toEqual({ brut: null, amortissements: null });
+  });
+  it('décision « oui » et montants égaux au montant source : cases reprises, totaux des en-cours égaux au montant source, trace conservée', () => {
+    const r = calc([v('ECB', '700.00', '100.00'), v('ECS', '300.00'), v('PIF', '500.00'), rep(true)]);
+    expect(r.etat).toBe('decidee');
+    expect(r.decision?.note).toBeTruthy();
+    expect(r.cases.map((c) => [c.code, c.montant])).toEqual([['BN', '700.00'], ['BO', '100.00'], ['BP', '300.00'], ['BQ', '0.00'], ['BR', '500.00'], ['BS', '0.00']]);
+    expect(r.totalEnCours).toEqual({ brut: '1000.00', amortissements: '100.00' });
+  });
+  it('écart avec le montant source : la case concernée reste en abstention avec l’écart, les autres sont reprises, rien n’est corrigé', () => {
+    const r = calc([v('ECB', '700.00', '100.00'), v('ECS', '300.00'), v('PIF', '450.00'), rep(true)]);
+    expect(cas(r, 'BN').statut).toBe('repris');
+    expect(cas(r, 'BR')).toMatchObject({ statut: 'abstention', montant: null });
+    expect(cas(r, 'BR').motif).toContain('-50.00');
+    expect(r.sources.produitsBrut).toBe('500.00');
+  });
+  it('une seule ligne d’en-cours saisie : aucune reprise de l’en-cours (rien n’est présumé nul) ; décision retirée ou périmée : abstention', () => {
+    const une = calc([v('ECB', '1000.00', '100.00'), rep(true)]);
+    expect(cas(une, 'BN').statut).toBe('abstention');
+    expect(cas(une, 'BP').motif).toContain('non saisie');
+    expect(calc([v('ECB', '700.00', '100.00'), v('ECS', '300.00'), rep(false)]).etat).toBe('decision_retiree');
+    const perimee = calc([v('ECB', '700.00', '100.00'), v('ECS', '300.00'), rep(true)], 8);
+    expect(perimee.etat).toBe('decision_a_revoir');
+    expect(perimee.cases.every((c) => c.statut === 'abstention')).toBe(true);
+  });
+  it('la ligne REPRISE n’accepte que la colonne « v » et une valeur booléenne', () => {
+    expect(validerSaisieTableau('2050_STOCKS', 'REPRISE', { v: 'oui' })).toEqual([]);
+    expect(validerSaisieTableau('2050_STOCKS', 'REPRISE', { c1: '1.00' }).length).toBeGreaterThan(0);
+    expect(validerSaisieTableau('2050_STOCKS', 'REPRISE', { v: 'peut-être' }).length).toBeGreaterThan(0);
+    expect(validerSaisieTableau('2050_STOCKS', 'ECB', { c1: '1.00', c2: '0.00', v: 'oui' }).length).toBeGreaterThan(0);
   });
 });

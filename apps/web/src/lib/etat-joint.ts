@@ -6,6 +6,8 @@
 import type { AmortissementsDerogatoiresProjet, CadreIIIProjet, CelluleMontantSaisie, ChargesRepartiesProjet, EcartsReevaluationProjet, CelluleGrille, Formulaire2033DProjet, Formulaire2033EProjet, FormulaireCasesProjet, Formulaire2033FProjet, Formulaire2033GProjet, Formulaire2059AProjet, GrilleProjet, LiasseProjet, ReponseLiasse, TableauxImmobilisationsProjet } from './fiscal';
 import { LIBELLES_COLONNES_2055_B, LIBELLES_COLONNES_2059_A } from './fiscal';
 
+import type { Reprise2050StocksProjet } from './fiscal';
+
 export interface TableauEtatJoint {
   id: string;
   titre: string;
@@ -273,6 +275,23 @@ function depuisLiasse(p: LiasseProjet): TableauEtatJoint[] {
   });
 }
 
+const ETAT_REPRISE: Record<string, string> = { aucune_decision: 'aucune reprise décidée (cases en abstention)', decision_a_revoir: 'décision à revoir (données modifiées depuis)', decision_retiree: 'reprise retirée par le cabinet', decidee: 'reprise décidée par le cabinet' };
+
+/** Cases BN à BS RETENUES du projet 2050 (D-170) : mêmes montants que l'écran, jamais ajoutés aux totaux du 2050. */
+function depuisReprise2050(r: Reprise2050StocksProjet): TableauEtatJoint[] {
+  return [
+    {
+      id: 'liasse-2050-STOCKS-REPRISE',
+      titre: '2050 — actif circulant : cases BN à BS retenues (reprise explicite de la ventilation des en-cours et produits)',
+      etat: ETAT_REPRISE[r.etat] ?? r.etat,
+      colonnes: ['Ligne', 'Code de case', 'Montant retenu'],
+      lignes: r.cases.map((c) => ({ libelle: c.libelle, statut: c.statut === 'repris' ? 'repris' : 'abstention', cellules: [c.code, c.montant ?? `abstention : ${c.motif ?? ''}`] })),
+      totaux: [{ libelle: 'Total des en-cours retenus (BN + BP ; BO + BQ), détail du poste « en-cours de production » du projet de bilan', cellules: [`brut ${r.totalEnCours.brut ?? '—'}`, `amortissements et provisions ${r.totalEnCours.amortissements ?? '—'}`] }],
+      limites: [...r.notes, ...(r.decision ? [`Décision du cabinet : ${r.decision.note}`] : [])],
+    },
+  ];
+}
+
 /** Tous les tableaux saisis par lignes de la réponse de la liasse, dans l'ordre des numéros de tableau. */
 export function etatJointDe(l: ReponseLiasse): TableauEtatJoint[] {
   const nom = l.regimeDemande === 'reel_normal' ? '2059' : '2033';
@@ -289,6 +308,7 @@ export function etatJointDe(l: ReponseLiasse): TableauEtatJoint[] {
     ...(l.formulaire2057 ? depuisGrille(l.formulaire2057) : []),
     ...(l.detail2053 ? depuisGrille(l.detail2053) : []),
     ...(l.feuilles2058 ?? []).flatMap(depuisGrille),
+    ...(l.reprise2050Stocks ? depuisReprise2050(l.reprise2050Stocks) : []),
     ...(l.feuilletDeficits ? depuisGrille(l.feuilletDeficits) : []),
     ...(l.formulaire2033F ? depuis2033F(l.formulaire2033F, nom) : []),
     ...(l.formulaire2033G ? depuis2033G(l.formulaire2033G, nom) : []),

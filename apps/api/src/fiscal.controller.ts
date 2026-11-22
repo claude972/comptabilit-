@@ -29,6 +29,7 @@ import {
   projeterBilan,
   GRILLE_2057,
   GRILLE_2050_STOCKS,
+  reprendreVentilation2050,
   GRILLE_2057_FEUILLETS,
   GRILLE_2059A_NOTE,
   GRILLE_2065,
@@ -481,7 +482,10 @@ export class FiscalController {
         }
       }
       // Ventilation explicite des en-cours et produits du 2050 (D-169) : saisie du cabinet, montants sources du projet de bilan conservés et rapprochés.
-      if (feuilles2058) feuilles2058.push(preparerGrille(GRILLE_2050_STOCKS, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies, valeursAutres: valeursBilan2057 }));
+      const grilleStocks2050 = feuilles2058 ? preparerGrille(GRILLE_2050_STOCKS, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies, valeursAutres: valeursBilan2057 }) : null;
+      if (feuilles2058 && grilleStocks2050) feuilles2058.push(grilleStocks2050);
+      // Reprise EXPLICITE dans les cases BN à BS (D-170) : décision du cabinet, jamais d'écrasement ni de réécriture du bilan ; les totaux du 2050 restent ceux du projet de bilan.
+      const reprise2050Stocks = grilleStocks2050 ? reprendreVentilation2050(grilleStocks2050, valeursBilan2057) : null;
       const formulaire2057 = regime === 'reel_normal' ? preparerGrille(GRILLE_2057, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies, valeursAutres: valeursBilan2057 }) : null;
       // Dates du 2033-E / 2059-E (période de référence, cessation, D-126) : saisies aux deux régimes.
       const datesCvae = preparerGrille(GRILLE_DATES_CVAE, { versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies });
@@ -534,6 +538,7 @@ export class FiscalController {
         datesCvae,
         /** État des échéances des créances et des dettes (2057) : saisie ligne par ligne, régime réel normal (D-130) ; null sinon. */
         formulaire2057,
+        reprise2050Stocks,
         /** Annexe 2065 bis-SD (revenus distribués, rémunérations, divers, régime simplifié, dons) : saisie ligne par ligne, deux régimes (D-131). */
         formulaire2065Bis,
         /** Feuillet des déficits transférés de plein droit (982 bis, 982 ter) : saisie ligne par ligne, régime simplifié (D-132) ; null sinon. */

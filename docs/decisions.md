@@ -867,6 +867,11 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Correction des futurs jeux d'essai** : ces deux suites déposent désormais l'objet réel dans le stockage avec l'empreinte SHA-256 réelle avant d'insérer la ligne. Vérifié : 33 lignes `essai-isolement` créées par la nouvelle exécution (52 essais verts), 0 absente du stockage.
 - **Non fait, dit** : les 1 874 lignes historiques ne sont ni supprimées ni réécrites (données conservées) ; cette base locale reste donc en échec à l'essai de restauration. La **démonstration d'une restauration stricte réussie sur une base d'essai cohérente séparée n'est pas faite** (il faudrait amorcer une base et un stockage neufs, puis rejouer l'essai complet, ~25 minutes) ; le second essai lancé avec l'exemption a été interrompu et ne vaut pas validation. Aucune restauration entière inchangée n'a été relancée en boucle ; les instances d'essai interrompues ont été détruites (seules celles de l'essai).
 
+### D-145 — Démonstration d'une restauration STRICTE sur base et stockage neufs dédiés (2026-11-22)
+- **Fait** : `scripts/demo-restauration-stricte.mjs` crée quatre conteneurs `comtaple-demo-*` jetables (base et stockage d'origine, base et stockage restaurés, identifiants aléatoires, ports dédiés), applique les 70 migrations réelles, dépose 24 objets synthétiques avec leur SHA-256 réel et 8 lignes de journal chaînées par la base, sauvegarde (`pg_dump` + `objets.mjs sauvegarder`), restaure dans des instances séparées, puis vérifie : toutes les références relues et conformes (`objets.mjs verifier`, inchangé, **aucune exclusion**, 24/24 comparées à l'empreinte de la base), journal d'audit restauré intègre (8 lignes), RLS forcé sur toutes les tables à `cabinet_id`, preuve de lecture par la classe `Stockage` de l'application. **Contrôle négatif** : un objet retiré du stockage restauré fait échouer le même vérificateur (code 1). Tout est détruit à la fin ; aucune donnée de l'application n'est lue ni écrite.
+- **Résultat** : DÉMONSTRATION RÉUSSIE (exécution unique du 2026-11-22). La base locale historique reste en échec strict (D-144), inchangée.
+- **Limite dite** : jeu synthétique de 24 objets (≈ 0,1 Mo), pas la volumétrie de production ; ce n'est pas un essai sur les données historiques.
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

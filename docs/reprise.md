@@ -63,7 +63,7 @@ Document de passage pour reprendre le travail sans relire la conversation. À me
 - Les « verts » d'étapes `continue-on-error` ne se lisent que par les annotations, jamais par la conclusion.
 
 ## Essai de restauration (2026-11-22)
-ÉCHEC conservé : journal Alpha (historique, D-038) et 1 874 lignes de fixtures d'essai sans objet (D-144) ; fixtures corrigées pour l'avenir ; restauration stricte réussie sur base cohérente séparée : à démontrer.
+ÉCHEC conservé : journal Alpha (historique, D-038) et 1 874 lignes de fixtures d'essai sans objet (D-144) ; fixtures corrigées pour l'avenir ; restauration stricte réussie sur base et stockage neufs cohérents : démontrée (D-145, `scripts/demo-restauration-stricte.mjs`, contrôle négatif inclus).
 
 ## Garde-fous et état local
 - Données conservées : aucune suppression, aucune purge ; migrations 0050 à 0064 additives. Le disque Colima vide créé par erreur dans `/Volumes/Stockage/colima-dev-home/_lima/_disks/colima/` est **laissé intact** (suppression refusée par le garde-fou, à décider par son propriétaire).

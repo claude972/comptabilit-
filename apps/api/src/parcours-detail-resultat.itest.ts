@@ -570,6 +570,55 @@ describe('2033-G (régime simplifié) : filiales et participations par saisie li
   }, 120_000);
 });
 
+describe('2058-A (régime réel normal) : détermination du résultat fiscal par saisie case par case (D-118)', () => {
+  const f2058 = async () => ((await liasse(exN, 'reel_normal')).json.formulairesCases as any[]).find((f) => f.id === '2058-A');
+  const aa = (cle: string, montant: string, note = 'Saisie du cabinet pour l’essai', qui = 'remi') => api(qui, 'PUT', `/v1/exercices/${exN}/qualifications/renvois/A58_${cle}`, { montant, note });
+  const cas = (f: any, code: string) => f.cases.find((c: any) => c.code === code);
+  const calc = (f: any, code: string) => f.calculs.find((c: any) => c.code === code);
+
+  it('sans saisie : 73 cases à saisir, XI et XJ en abstention sans chiffre ; absent au régime simplifié', async () => {
+    const f = await f2058();
+    expect(f.statut).toBe('projet');
+    expect(f.cases).toHaveLength(73);
+    expect(f.cases.every((c: any) => c.statut === 'a_saisir' && c.montant === null && c.etatCodeCase === 'lu_verifie')).toBe(true);
+    expect(calc(f, 'XI').statut).toBe('abstention');
+    expect(f.imputation.avant.statut).toBe('abstention');
+    expect((await liasse(exN, 'reel_simplifie')).json.formulairesCases).toBeNull();
+  }, 120_000);
+
+  it('refus : négatif, note, clé inconnue, droits', async () => {
+    expect((await aa('WA', '-1.00')).statut).toBe(400);
+    expect((await aa('WA', '1.00', 'ok')).statut).toBe(400);
+    expect((await aa('ZZ', '1.00')).statut).toBe(404);
+    expect((await aa('WA', '1.00', 'Essai collaborateur', 'chloe')).statut).toBeGreaterThanOrEqual(400);
+    expect((await aa('WA', '1.00', 'Essai déposant', 'client')).statut).toBe(404);
+    expect((await f2058()).cases.every((c: any) => c.statut === 'a_saisir')).toBe(true);
+  });
+
+  it('XE saisi : contrôle indicatif ; TOTAL I et II saisis : XI / XJ calculés ; imputation XN ; trace et historique', async () => {
+    for (const [c, m] of [['WD', '10.00'], ['WE', '10.00'], ['WF', '10.00'], ['WG', '10.00'], ['RA', '10.00'], ['RB', '10.00'], ['XE', '40.00']] as const) expect((await aa(c, m, 'Réintégrations de la ligne XE (essai)')).statut, c).toBeLessThan(300);
+    let f = await f2058();
+    expect(f.controles.find((c: any) => c.code === 'A58_XE').statut).toBe('coherent');
+    expect((await aa('XE', '45.00', 'Total erroné (essai)')).statut).toBeLessThan(300);
+    f = await f2058();
+    expect(f.controles.find((c: any) => c.code === 'A58_XE')).toMatchObject({ statut: 'ecart', ecart: '5.00' });
+    expect(cas(f, 'XE').montant).toBe('45.00'); // jamais corrigé
+    for (const [c, m] of [['WR', '9000.00'], ['XH', '1500.00'], ['ZL', '0.00'], ['XL', '2000.00']] as const) expect((await aa(c, m, c === 'ZL' ? 'Néant : aucun report en arrière' : 'Total saisi par le cabinet (essai)')).statut, c).toBeLessThan(300);
+    f = await f2058();
+    expect(calc(f, 'XI')).toMatchObject({ statut: 'etabli', montant: '7500.00' });
+    expect(calc(f, 'XJ')).toMatchObject({ statut: 'etabli', montant: '0.00' });
+    expect(f.imputation.plafond.montant).toBe('7500.00');
+    expect(f.imputation.apres).toMatchObject({ statut: 'etabli', sens: 'benefice', montant: '5500.00', codeCase: 'XN' });
+    expect(cas(f, 'ZL')).toMatchObject({ statut: 'saisi', neant: true });
+    expect((await aa('XL', '8000.00', 'Imputation excessive (essai)')).statut).toBeLessThan(300);
+    f = await f2058();
+    expect(f.imputation.apres.statut).toBe('abstention');
+    expect(f.controles.find((c: any) => c.code === 'A58_IMPUTATION')).toMatchObject({ statut: 'ecart', ecart: '500.00' });
+    const h = (await api('remi', 'GET', `/v1/exercices/${exN}/qualifications/historique?cle=A58_XE`)).json.evenements as any[];
+    expect(h.map((e) => e.montant)).toEqual(['45.00', '40.00']);
+  }, 120_000);
+});
+
 describe('détail du compte de résultat : qualification tracée, abstention sans qualification', () => {
   it('sans qualification : totaux de la balance, France et exportations en abstention, renvois à saisir, exceptionnel détaillé', async () => {
     const d = await detail();

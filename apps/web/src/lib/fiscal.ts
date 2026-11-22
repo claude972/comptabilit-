@@ -125,6 +125,8 @@ export interface ReponseLiasse {
   formulaire2033F?: Formulaire2033FProjet | null;
   /** Tableau 2033-G (filiales et participations) ; null au régime réel normal (D-117). */
   formulaire2033G?: Formulaire2033GProjet | null;
+  /** Formulaires du régime réel normal servis par saisie case par case (2058-A, D-118) ; null au régime simplifié. */
+  formulairesCases?: FormulaireCasesProjet[] | null;
 }
 export interface RubriqueAnnexe {
   id: string;
@@ -615,6 +617,36 @@ export interface Formulaire2033GProjet {
   nombre: { codeCase: string; etatCodeCase: string; statut: StatutLigneSaisie; montant: string | null; neant: boolean; trace: TraceSaisie | null };
   filiales: LigneAssocie[];
   neant: TraceSaisie | null;
+  controles: Array<{ code: string; statut: 'coherent' | 'ecart' | 'non_verifie'; message: string; ecart?: string }>;
+  nonPrepare: string[];
+  limites: string[];
+  mention: string;
+}
+
+/** Moteur générique de formulaires par cases (D-118) : champ `formulairesCases` de la réponse de la liasse. */
+export interface CaseFormulaire {
+  code: string;
+  cle: string;
+  libelle: string;
+  groupe: string;
+  precision?: string;
+  etatCodeCase: string;
+  statut: 'a_saisir' | 'saisi' | 'a_revoir';
+  neant: boolean;
+  montant: string | null;
+  saisie: (TraceQualification & { code: string; montant: string }) | null;
+}
+export type CelluleCalcFormulaire = { statut: 'etabli'; montant: string; code: string; etatCodeCase: string; calcul: string; libelle: string; groupe: string } | { statut: 'abstention'; motifs: string[]; code: string; etatCodeCase: string; libelle: string; groupe: string };
+export type ResultatSigneFormulaire = { statut: 'etabli'; sens: 'benefice' | 'deficit' | 'nul'; montant: string; codeCase: string } | { statut: 'abstention'; motifs: string[]; codesCases: string[] };
+export interface FormulaireCasesProjet {
+  statut: 'projet';
+  id: string;
+  titre: string;
+  source: string;
+  groupes: Array<{ id: string; titre: string }>;
+  cases: CaseFormulaire[];
+  calculs: CelluleCalcFormulaire[];
+  imputation: { avant: ResultatSigneFormulaire; plafond: { montant: string; regle: string } | null; apres: ResultatSigneFormulaire } | null;
   controles: Array<{ code: string; statut: 'coherent' | 'ecart' | 'non_verifie'; message: string; ecart?: string }>;
   nonPrepare: string[];
   limites: string[];

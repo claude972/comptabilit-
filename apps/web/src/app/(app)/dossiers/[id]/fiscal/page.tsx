@@ -4,7 +4,7 @@ import { ChoixExercice } from '@/components/dossier';
 import { ErreurAcces } from '@/components/erreurs';
 import { CategorieAnnexe, ConfirmerRubrique, NeantTableau, QualifierCompte, SaisieCases, SaisieLigneTableau, SaisirRenvoi } from '@/components/fiscal/actions';
 import { Alerte, Carte, Etiquette, MentionProjet, SousTitre, Tableau } from '@/components/ui/base';
-import { type Abstention, type AnnexeProjet, type CelluleImmobilisation, type CelluleVentilation, type AmortissementsDerogatoiresProjet, type CadreIIIProjet, type CaseSaisie2033D, type CaseSaisie2033E, type CelluleCalculee2033D, type Formulaire2033EProjet, type Formulaire2033FProjet, type Formulaire2033GProjet, type CelluleMontantSaisie, type Formulaire2033DProjet, LIGNES_DEROGATOIRES_2033D, LIGNES_PROVISIONS_2033D, type ChargesRepartiesProjet, LIBELLES_COLONNES_2055_B, type DetailResultatProjet, type EcartsReevaluationProjet, type EvenementQualification, LIBELLE_CLASSEMENT, type TableauxSaisisProjet, type ReponseHistorique, type ResultatSigne, LIBELLE_CATEGORIE, LIBELLE_ETAT_QUALIFICATION, type LiasseProjet, type ReponseAnnexe, type ReponseLiasse, type TableauxImmobilisationsProjet } from '@/lib/fiscal';
+import { type Abstention, type AnnexeProjet, type CelluleImmobilisation, type CelluleVentilation, type AmortissementsDerogatoiresProjet, type CadreIIIProjet, type CaseSaisie2033D, type CaseSaisie2033E, type CelluleCalculee2033D, type Formulaire2033EProjet, type Formulaire2033FProjet, type Formulaire2033GProjet, type FormulaireCasesProjet, type ResultatSigneFormulaire, type CelluleMontantSaisie, type Formulaire2033DProjet, LIGNES_DEROGATOIRES_2033D, LIGNES_PROVISIONS_2033D, type ChargesRepartiesProjet, LIBELLES_COLONNES_2055_B, type DetailResultatProjet, type EcartsReevaluationProjet, type EvenementQualification, LIBELLE_CLASSEMENT, type TableauxSaisisProjet, type ReponseHistorique, type ResultatSigne, LIBELLE_CATEGORIE, LIBELLE_ETAT_QUALIFICATION, type LiasseProjet, type ReponseAnnexe, type ReponseLiasse, type TableauxImmobilisationsProjet } from '@/lib/fiscal';
 import { formaterHorodatage, formaterMontant, formaterMontantEuros } from '@/lib/montants';
 
 type Fm = (valeur: string | null | undefined) => string;
@@ -1789,6 +1789,109 @@ function Formulaire2033G({ f, fm, exerciceId, revision, evenements }: { f: Formu
   );
 }
 
+function ResultatSigneF({ r, fm, testid }: { r: ResultatSigneFormulaire; fm: Fm; testid: string }) {
+  if (r.statut === 'abstention') {
+    return (
+      <div data-testid={testid} data-statut="abstention">
+        <Etiquette ton="attention">Abstention</Etiquette> <span className="text-xs text-texte-doux">(cases {r.codesCases.join(' / ')})</span>
+        <ul className="list-disc pl-5 text-sm">
+          {r.motifs.map((m) => (
+            <li key={m}>{m}</li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+  return (
+    <div data-testid={testid} data-statut="etabli" data-sens={r.sens}>
+      <strong className="tabular-nums">{fm(r.montant)}</strong> — {r.sens === 'benefice' ? 'bénéfice' : r.sens === 'deficit' ? 'déficit' : 'résultat nul'} <span className="text-xs text-texte-doux">(case {r.codeCase}, lue, vérifiée sur le PDF)</span>
+    </div>
+  );
+}
+
+/** Formulaire du régime réel normal servi par le moteur générique : saisie case par case, calculs énoncés par le formulaire seulement, contrôles indicatifs (D-118). */
+function FormulaireCases({ f, fm, exerciceId, revision, evenements }: { f: FormulaireCasesProjet; fm: Fm; exerciceId: string; revision: boolean; evenements: EvenementQualification[] }) {
+  const badge = (statut: string) => <Etiquette ton={statut === 'saisi' ? 'succes' : 'attention'}>{statut === 'saisi' ? 'Saisi' : statut === 'a_revoir' ? 'À revoir : données modifiées' : 'À saisir'}</Etiquette>;
+  const idHtml = `formulaire-${f.id}`;
+  return (
+    <section className="space-y-4" aria-labelledby={`titre-${idHtml}`} data-testid={idHtml}>
+      <SousTitre id={`titre-${idHtml}`} className="text-base">
+        {f.titre} <MentionProjet />
+      </SousTitre>
+      <Alerte ton="attention" titre="Saisie du cabinet : aucune de ces informations ne se déduit de la balance">
+        <p className="text-sm">
+          Chaque case se saisit avec une justification obligatoire, tracée et historisée ; « néant » est une déclaration explicite et une case sans saisie n’est jamais présumée nulle. Le logiciel ne calcule que ce que le formulaire énonce, quand toutes les composantes sont saisies ;
+          les rapprochements entre un total de ligne et ses composantes sont des contrôles indicatifs, jamais bloquants ni corrigés. Source : {f.source}
+        </p>
+        {f.limites.map((l) => (
+          <p key={l} className="text-sm">
+            {l}
+          </p>
+        ))}
+      </Alerte>
+      <ul className="space-y-1" aria-label={`Contrôles du ${f.titre}`} data-testid={`controles-${idHtml}`}>
+        {f.controles.map((x) => (
+          <li key={x.code}>
+            <Etiquette ton={x.statut === 'coherent' ? 'succes' : x.statut === 'ecart' ? 'danger' : 'attention'}>{x.statut === 'coherent' ? 'Cohérent' : x.statut === 'ecart' ? 'Écart' : 'Non vérifiable'}</Etiquette> {x.message}
+            {x.ecart ? ` (écart : ${fm(x.ecart)})` : ''}
+          </li>
+        ))}
+      </ul>
+      {f.groupes.map((g) => (
+        <details key={g.id} className="rounded-lg border border-bordure p-3" open={g.id === f.groupes[0]?.id} data-testid={`groupe-${idHtml}-${g.id}`}>
+          <summary className="cursor-pointer font-semibold">
+            {g.titre} ({f.cases.filter((c) => c.groupe === g.id && c.statut === 'saisi').length} / {f.cases.filter((c) => c.groupe === g.id).length} saisies)
+          </summary>
+          <ul className="mt-2 space-y-2">
+            {f.cases.filter((c) => c.groupe === g.id).map((c) => (
+              <li key={c.cle} className="rounded border border-bordure p-2" data-case-f={c.cle}>
+                <p className="text-sm">
+                  {c.libelle} <span className="text-texte-doux">(case {c.code}, lue, vérifiée sur le PDF)</span> {badge(c.statut)}
+                </p>
+                {c.precision ? <p className="text-xs text-texte-doux">{c.precision}</p> : null}
+                {c.saisie ? (
+                  <p className="text-xs text-texte-doux" data-testid={`trace-f-${c.cle}`}>
+                    {c.neant ? 'Néant' : fm(c.saisie.montant)} · saisi le {formaterHorodatage(c.saisie.le)} sur la version {c.saisie.versionDonnees} des données · « {c.saisie.note} »
+                  </p>
+                ) : null}
+                <HistoriqueLigne evenements={evenements} cle={c.cle} fm={fm} />
+                {revision ? <SaisirRenvoi exerciceId={exerciceId} code={c.cle} proposition={null} saisie={c.saisie ? { montant: c.saisie.montant, note: c.saisie.note } : null} avecNeant /> : null}
+              </li>
+            ))}
+            {f.calculs.filter((k) => k.groupe === g.id).map((k) => (
+              <li key={k.code} className="rounded border border-bordure bg-surface-2 p-2" data-calcul-f={k.code}>
+                <p className="text-sm">
+                  <strong>{k.libelle}</strong> <span className="text-texte-doux">(case {k.code}, calculée)</span>
+                </p>
+                <CelluleCalc c={{ ...k, codeCase: k.code } as CelluleCalculee2033D} fm={fm} />
+              </li>
+            ))}
+          </ul>
+        </details>
+      ))}
+      {f.imputation ? (
+        <div className="space-y-1" data-testid={`imputation-${idHtml}`}>
+          <h3 className="font-semibold">Résultat fiscal avant et après imputation des déficits</h3>
+          <p className="text-sm">
+            Avant imputation : <ResultatSigneF r={f.imputation.avant} fm={fm} testid={`avant-${idHtml}`} />
+          </p>
+          <p className="text-sm" data-testid={`plafond-${idHtml}`}>
+            Plafond d’imputation : {f.imputation.plafond ? <><strong className="tabular-nums">{fm(f.imputation.plafond.montant)}</strong> <span className="text-xs text-texte-doux">{f.imputation.plafond.regle}</span></> : <span className="text-texte-doux">sans objet (pas de bénéfice établi)</span>}
+          </p>
+          <p className="text-sm">
+            Après imputation : <ResultatSigneF r={f.imputation.apres} fm={fm} testid={`apres-${idHtml}`} />
+          </p>
+        </div>
+      ) : null}
+      <ul className="list-disc pl-5 text-sm text-texte-doux" data-testid={`non-prepare-${idHtml}`}>
+        {f.nonPrepare.map((n) => (
+          <li key={n}>Non préparé — {n}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function Annexe({ a, reponse, exerciceId, revision }: { a: AnnexeProjet; reponse: ReponseAnnexe; exerciceId: string; revision: boolean }) {
   const confirmations = new Map(reponse.confirmations.map((c) => [c.rubrique, c]));
   const requises = a.rubriques.filter((r) => r.requise);
@@ -1984,6 +2087,7 @@ export default async function PageFiscal({ params, searchParams }: { params: Pro
       {liasse?.ok && liasse.donnees.formulaire2033E ? <Formulaire2033E f={liasse.donnees.formulaire2033E} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.formulaire2033F ? <Formulaire2033F f={liasse.donnees.formulaire2033F} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.formulaire2033G ? <Formulaire2033G f={liasse.donnees.formulaire2033G} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
+      {liasse?.ok && liasse.donnees.formulairesCases ? liasse.donnees.formulairesCases.map((f) => <FormulaireCases key={f.id} f={f} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} />) : null}
       {liasse?.ok && liasse.donnees.detailResultat ? <DetailResultat d={liasse.donnees.detailResultat} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {annexe?.ok ? (
         annexe.donnees.resultat.statut === 'abstention' ? (

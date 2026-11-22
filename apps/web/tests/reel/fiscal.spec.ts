@@ -50,6 +50,12 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
     await expect(page.getByTestId('lignes-2055-b').locator('tr[data-b2055]')).toHaveCount(17);
     await expect(page.getByTestId('charges-reparties')).toBeVisible();
     await expect(page.getByTestId('lignes-2055-c').locator('tr[data-c2055]')).toHaveCount(2);
+    // 2058-A (D-118) : détermination du résultat fiscal par saisie case par case ; XI / XJ en abstention sans TOTAL I et TOTAL II saisis.
+    const a58 = page.getByTestId('formulaire-2058-A');
+    await expect(a58).toBeVisible();
+    await expect(a58.locator('li[data-case-f]')).toHaveCount(73);
+    await expect(a58.getByTestId('imputation-formulaire-2058-A')).toContainText('Plafond d’imputation');
+    await expect(a58.getByTestId('non-prepare-formulaire-2058-A')).toContainText('feuillet séparé');
     // 2054 bis (D-112) : tableau servi par saisie, sans saisie les totaux restent en abstention.
     await expect(page.getByTestId('ecarts-reevaluation')).toBeVisible();
     await expect(page.getByTestId('lignes-2054-bis').locator('tr[data-bis]')).toHaveCount(10);

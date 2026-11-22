@@ -17,6 +17,10 @@ import {
   preparerFormulaire2033E,
   preparerFormulaire2033F,
   preparerFormulaire2033G,
+  preparerFormulaireCases,
+  cleCase,
+  FORMULAIRE_2058_A,
+  type DefinitionFormulaire,
   preparerSaisiesTableaux,
   validerSaisieTableau,
   type SaisieTableau,
@@ -57,10 +61,13 @@ const saisieTableau = z.object({ valeurs: z.record(z.string().max(40), z.string(
 const TABLEAU_SAISI = /^(2033C_III|2054BIS_A|2054BIS_B|2055_B|2055_C|2033D_C|2033F_NB|2033F_PM|2033F_PP|2033G_NB|2033G_FIL)$/;
 const LIGNE_TABLEAU = /^(0[1-9]|1[0-3]|REG|PV19|NEANT|B1|B2|NB)$/;
 const COMPTE_CA = /^70[0-9A-Za-z]{1,13}$/;
+/** Formulaires du régime réel normal servis par saisie case par case (moteur générique, D-118). */
+const FORMULAIRES_CASES: readonly DefinitionFormulaire[] = [FORMULAIRE_2058_A];
+const CLES_FORMULAIRES_CASES = FORMULAIRES_CASES.flatMap((f) => f.cases.map((c) => cleCase(f.prefixe, c.code)));
 const CODE_RENVOI = /^[0-9A-Z_]{2,7}$/;
-const RENVOIS_CONNUS = [...RENVOIS, ...RENVOIS_RSI, ...LIGNES_RESULTAT_FISCAL.map((l) => ({ code: l.cle })), ...DETAIL_RESULTAT_FISCAL.map((l) => ({ code: l.cle })), ...CLES_2033_D.map((cle) => ({ code: cle })), ...CLES_2033_E.map((cle) => ({ code: cle }))];
+const RENVOIS_CONNUS = [...RENVOIS, ...RENVOIS_RSI, ...LIGNES_RESULTAT_FISCAL.map((l) => ({ code: l.cle })), ...DETAIL_RESULTAT_FISCAL.map((l) => ({ code: l.cle })), ...CLES_2033_D.map((cle) => ({ code: cle })), ...CLES_2033_E.map((cle) => ({ code: cle })), ...CLES_FORMULAIRES_CASES.map((cle) => ({ code: cle }))];
 /** Lignes du résultat fiscal qui se saisissent en positif ; seule la case 248 (écart de valeurs liquidatives négatif, « entre parenthèses » selon la notice) peut être négative. */
-const CLES_RESULTAT_FISCAL = new Set([...CLES_2033_D, ...CLES_2033_E, ...LIGNES_RESULTAT_FISCAL.map((l) => l.cle), ...DETAIL_RESULTAT_FISCAL.filter((l) => !l.negatifPossible).map((l) => l.cle)]);
+const CLES_RESULTAT_FISCAL = new Set([...CLES_2033_D, ...CLES_2033_E, ...CLES_FORMULAIRES_CASES, ...LIGNES_RESULTAT_FISCAL.map((l) => l.cle), ...DETAIL_RESULTAT_FISCAL.filter((l) => !l.negatifPossible).map((l) => l.cle)]);
 const RUBRIQUE = /^ANX-[0-9A-Za-z-]{1,24}$/;
 const PROPOSITION = /^[A-Za-z0-9:_|.-]{1,200}$/;
 
@@ -350,6 +357,8 @@ export class FiscalController {
       const formulaire2033F = regime === 'reel_simplifie' ? preparerFormulaire2033F({ versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies }) : null;
       // Tableau 2033-G (filiales et participations, régime simplifié, D-117) : saisie ligne par ligne.
       const formulaire2033G = regime === 'reel_simplifie' ? preparerFormulaire2033G({ versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies }) : null;
+      // Formulaires du régime réel normal par saisie case par case (2058-A, D-118).
+      const formulairesCases = regime === 'reel_normal' ? FORMULAIRES_CASES.map((f) => preparerFormulaireCases(f, { versionDonnees: exercice.versionDonnees, renvois: renvoisSaisis })) : null;
       const tableauxImmobilisations = preparerTableauxImmobilisations({
         lignes,
         exercice: { debut: exercice.debut, fin: exercice.fin },
@@ -385,6 +394,8 @@ export class FiscalController {
         formulaire2033F,
         /** Tableau 2033-G (filiales et participations) : saisie ligne par ligne, régime simplifié (D-117) ; null sinon. */
         formulaire2033G,
+        /** Formulaires du régime réel normal servis par saisie case par case (2058-A) : D-118 ; null au régime simplifié. */
+        formulairesCases,
       };
     });
   }

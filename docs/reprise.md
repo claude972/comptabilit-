@@ -104,3 +104,8 @@ Document de passage pour reprendre le travail sans relire la conversation. À me
 - Cause produit probable des échecs de navigation CI trouvée et corrigée : `<div>` / `<ul>` dans `<p>` → erreur d'hydratation (D-159) ; diagnostic de navigation et garde-fou d'hydratation dans `tests/reel/base.ts`. À confirmer par les prochains runs (CI non relue depuis D-158).
 - Faits : en-têtes cochables 2059-B et rappels 2059-C (D-160, migration 0073) ; total (II) / (III) du 2050 (D-161) ; arrêt brutal pendant les contrôles prouvé (D-162).
 - Reste réel indépendant, par impact : relecture de la CI (confirmer D-159) ; arrêt brutal pendant la génération d'un export (non mesuré) ; codes de cases des autres tableaux (2054 bis, 2055 B et C, 2058, 2059, 2065) ; reports 2059-B/C/D. Tout le reste de `exigences.md` est une dépendance externe ou le défaut dockerd non clos.
+
+## Point du 2026-11-22 (midi) — D-164
+- Reports notice entre 2059-B, 2059-D, 2058-A et 2051 faits (D-164) ; aucun report énoncé pour le 2059-C. Parcours D-163 rejoué, inchangé (`node scripts/livrable-demo.mjs`).
+- **CI rouge expliquée (étape « Parcours de bout en bout »)** de 69dbb44 à d2dc92e : deux tests d'intégration périmés par mes changements (`parcours-fiscal` : « aucune ligne n'a de code » ; `parcours-detail-resultat` : cadres du 2059-B / C retrouvés par rang). Corrigés en f40a979 et d8a26bf ; relire la CI pour confirmer. Leçon : lancer les itests des tableaux touchés AVANT chaque push (fait ensuite).
+- Reste réel : relecture de la CI (confirmer D-159 et ces corrections) ; arrêt brutal pendant la génération d'un export (non mesuré) ; relecture sur rendu des codes des autres tableaux ; sous-totaux du 2050 sans code. Le reste est externe.

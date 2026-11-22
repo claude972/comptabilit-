@@ -113,6 +113,8 @@ export interface ReponseLiasse {
   resultat: LiasseProjet | Abstention;
   /** Absent d'une API plus ancienne. */
   tableauxImmobilisations?: TableauxImmobilisationsProjet | Abstention;
+  /** Détail 2052 / 2053 (D-106) ; null hors régime réel normal. */
+  detailResultat?: DetailResultatProjet | Abstention | null;
 }
 export interface RubriqueAnnexe {
   id: string;
@@ -244,3 +246,69 @@ export const LIBELLE_ETAT_COMPTE_IMMOBILISATION: Record<string, string> = {
   absent_de_la_balance: 'Absent de la balance',
 };
 export const LIBELLE_VERIFICATION_SOURCE: Record<string, string> = { verifiee: 'lue en ligne', non_verifiee: 'non vérifiée en ligne', sans_objet: 'convention interne' };
+
+/** Détail du compte de résultat (2052 France / exportations, 2053 exceptionnel, renvois) : champ `detailResultat` de la réponse de la liasse (D-106). */
+export type CelluleVentilation = { statut: 'etabli'; montant: string; codeCase: string; etatCodeCase: string } | { statut: 'abstention'; motif: string; codeCase: string; etatCodeCase: string };
+export interface TraceQualification {
+  note: string;
+  qualifieePar: string;
+  le: string;
+  versionDonnees: number;
+}
+export interface CompteChiffreAffaires {
+  compteNum: string;
+  compteLib: string;
+  solde: string;
+  etat: 'sans_montant' | 'a_qualifier' | 'qualifie' | 'ecart' | 'a_revoir';
+  qualification: (TraceQualification & { compte: string; montantFrance: string; montantExport: string }) | null;
+  ecart?: string;
+}
+export interface LigneChiffreAffaires {
+  id: string;
+  libelle: string;
+  comptes: CompteChiffreAffaires[];
+  total: CelluleVentilation;
+  france: CelluleVentilation;
+  export: CelluleVentilation;
+  qualifiee: boolean;
+}
+export interface RenvoiDetail {
+  code: string;
+  renvoi: string;
+  tableau: '2052' | '2053';
+  libelle: string;
+  etatCodeCase: string;
+  statut: 'a_saisir' | 'saisi' | 'a_revoir';
+  montant: string | null;
+  saisie: (TraceQualification & { code: string; montant: string }) | null;
+  proposition: { montant: string; comptes: string[]; precision: string } | null;
+  precision: string;
+}
+export interface DetailResultatProjet {
+  statut: 'projet';
+  complet: false;
+  regime: 'reel_normal';
+  exercice: { debut: string; fin: string };
+  ventilationChiffreAffaires: {
+    lignes: LigneChiffreAffaires[];
+    chiffreAffairesNet: { total: CelluleVentilation; france: CelluleVentilation; export: CelluleVentilation };
+    comptesNonAffectes: Array<{ compteNum: string; compteLib: string; solde: string; motif: string }>;
+    qualificationsOrphelines: Array<{ compte: string; motif: string }>;
+    nbComptesAQualifier: number;
+    complete: boolean;
+  };
+  detailExceptionnel: { produits: Array<{ compteNum: string; compteLib: string; montant: string }>; charges: Array<{ compteNum: string; compteLib: string; montant: string }>; totalProduits: string; totalCharges: string; resultatExceptionnel: string; origine: string };
+  renvois: RenvoiDetail[];
+  renvoisNonPrepares: string[];
+  controles: Array<{ code: string; statut: 'coherent' | 'ecart' | 'non_verifie'; message: string; ecart?: string }>;
+  limites: string[];
+  sources: string[];
+  mention: string;
+}
+export const LIBELLE_ETAT_QUALIFICATION: Record<string, string> = {
+  sans_montant: 'Sans montant',
+  a_qualifier: 'À qualifier',
+  qualifie: 'Qualifié',
+  ecart: 'Écart : somme ≠ solde',
+  a_revoir: 'À revoir : données modifiées',
+};

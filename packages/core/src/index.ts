@@ -128,6 +128,11 @@ export type {
   CadreImmobilisations, CelluleImmobilisation, CodeTableauImmobilisations, ColonneImmobilisations, CompteLigneImmobilisation, ComparatifImmobilisations, DemandeTableauxImmobilisations, FichierLigneAmortissements,
   FichierLigneBrut, ImmobilisationAbstention, LigneTableauImmobilisations, ResultatTableauxImmobilisations, StatutCellule, TableauImmobilisations, TableauxImmobilisationsProjet,
 } from './etats/tableaux-immobilisations.js';
+export { LIGNES_CA, RENVOIS, preparerDetailResultat } from './etats/detail-resultat.js';
+export type {
+  CelluleVentilation, CompteChiffreAffaires, ControleDetail, DemandeDetailResultat, DetailExceptionnel, DetailResultatProjet, EtatQualification, LigneChiffreAffaires, QualificationRenvoi, QualificationVentilation, RenvoiDetail,
+  ResultatDetailResultat, VentilationChiffreAffaires,
+} from './etats/detail-resultat.js';
 
 // 16. tiers, factures et avoirs suivis, échéances et règlements — aide à la révision, recalculée à la lecture
 export { estDateIso } from './dates.js';

@@ -1423,6 +1423,36 @@ export const confirmationsAnnexe = pgTable(
 );
 
 /**
+ * Qualifications du détail du compte de résultat (tableaux 2052 et 2053, D-106) : ce que la balance ne dit pas et que le cabinet
+ * déclare, tracé (qui, quand, sur quelle version des données, avec quelle note). Deux natures :
+ *  - `ventilation_ca` : pour un compte du chiffre d'affaires (cle = numéro de compte), le montant réalisé en France (`montant`)
+ *    et celui des exportations et livraisons intracommunautaires (`montant_export`), dont la somme doit égaler le solde ;
+ *  - `renvoi` : pour un renvoi de bas de tableau (cle = code de case, ex. « HP »), le montant saisi (`montant`).
+ * Une qualification donnée sur une version antérieure des données est « à revoir » et ne compte plus.
+ */
+export const qualificationsResultat = pgTable(
+  'qualifications_resultat',
+  {
+    id: id(),
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    entiteId: uuid('entite_id').notNull().references(() => entites.id),
+    exerciceId: uuid('exercice_id').notNull().references(() => exercices.id),
+    /** ventilation_ca | renvoi */
+    nature: text('nature').notNull(),
+    cle: text('cle').notNull(),
+    /** Chaîne décimale (peut être négative : rabais, remises et ristournes). */
+    montant: text('montant').notNull(),
+    montantExport: text('montant_export'),
+    /** Justification obligatoire de la saisie. */
+    note: text('note').notNull(),
+    versionDonnees: integer('version_donnees').notNull(),
+    qualifieePar: uuid('qualifiee_par').notNull().references(() => utilisateurs.id),
+    creeLe: creeLe(),
+  },
+  (t) => [uniqueIndex('qualifications_resultat_unique').on(t.exerciceId, t.nature, t.cle)],
+);
+
+/**
  * Fichier des immobilisations d'un dossier, SAISI par le cabinet (aucune donnée importée ne le fournit). Il ne sert qu'à
  * proposer les dotations aux amortissements (linéaires, ou dégressifs sur déclaration du cabinet) ; il ne remplace pas le
  * fichier des immobilisations du logiciel de production comptable, qui reste la référence. Une immobilisation retirée ici

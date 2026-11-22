@@ -182,7 +182,7 @@ export type ComparatifLiasse =
 
 export interface MotifAbstention {
   code: 'territoire_hors_perimetre' | 'territoire_a_confirmer' | 'impot_hors_perimetre' | 'impot_a_confirmer' | 'forme_hors_perimetre' | 'forme_a_confirmer'
-    | 'referentiel_hors_perimetre' | 'devise_hors_perimetre' | 'exercice_invalide' | 'exercice_hors_periode';
+    | 'referentiel_hors_perimetre' | 'devise_hors_perimetre' | 'exercice_invalide' | 'exercice_hors_periode' | 'regime_hors_perimetre';
   message: string;
 }
 

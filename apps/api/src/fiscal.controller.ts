@@ -10,7 +10,13 @@ import {
   type LigneEcriture,
   preparerAnnexe,
   preparerLiasse,
+  preparerDetailResultat,
   preparerTableauxImmobilisations,
+  type QualificationRenvoi,
+  type QualificationVentilation,
+  RENVOIS,
+  LIGNES_CA,
+  schemaChaineDecimale,
   MOTIF_DEGRESSIF_NON_ACTIVE,
   proposerEcrituresInventaire,
   schemaImmobilisation,
@@ -32,6 +38,11 @@ const confirmation = z.object({ etat: z.enum(['complete', 'non_applicable']), no
 /** Mêmes contrôles que la reprise par import (D-092) : le schéma vit dans le moteur, source unique des deux chemins. */
 const immobilisationBase = schemaImmobilisationBase;
 const immobilisation = schemaImmobilisation;
+const montantSigne = schemaChaineDecimale;
+const ventilation = z.object({ montantFrance: montantSigne, montantExport: montantSigne, note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie la ventilation').max(2000) });
+const renvoiSaisie = z.object({ montant: montantSigne, note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie le montant').max(2000) });
+const COMPTE_CA = /^70[0-9A-Za-z]{1,13}$/;
+const CODE_RENVOI = /^[0-9A-Z]{2}$/;
 const RUBRIQUE = /^ANX-[0-9A-Za-z-]{1,24}$/;
 const PROPOSITION = /^[A-Za-z0-9:_|.-]{1,200}$/;
 
@@ -86,6 +97,109 @@ export class FiscalController {
     return { nbImmobilisations: fichier.length, immobilisations };
   }
 
+  /** Détail du compte de résultat (2052 / 2053, D-106) : qualifications du cabinet lues pour l'exercice, moteur appliqué à la balance. */
+  private async detailResultat(tx: Tx, c: { exercice: typeof s.exercices.$inferSelect; entite: typeof s.entites.$inferSelect; lignes: LigneEcriture[]; regime: RegimeLiasse }) {
+    if (c.regime !== 'reel_normal') return null;
+    const rows = await tx.select().from(s.qualificationsResultat).where(eq(s.qualificationsResultat.exerciceId, c.exercice.id));
+    const trace = (r: (typeof rows)[number]) => ({ note: r.note, qualifieePar: r.qualifieePar, le: new Date(r.creeLe).toISOString(), versionDonnees: r.versionDonnees });
+    const ventilations: QualificationVentilation[] = rows.filter((r) => r.nature === 'ventilation_ca').map((r) => ({ compte: r.cle, montantFrance: r.montant, montantExport: r.montantExport ?? '0.00', ...trace(r) }));
+    const renvois: QualificationRenvoi[] = rows.filter((r) => r.nature === 'renvoi').map((r) => ({ code: r.cle, montant: r.montant, ...trace(r) }));
+    return preparerDetailResultat({
+      balance: calculerBalance(c.lignes),
+      exercice: { debut: c.exercice.debut, fin: c.exercice.fin },
+      regime: c.regime,
+      territoire: c.entite.territoireFiscal,
+      impotSurLeResultat: impot(c.entite.regimeFiscal),
+      referentielComptable: c.entite.referentielComptable,
+      devise: 'EUR',
+      societeCommerciale: societeCommerciale(c.entite.formeJuridique),
+      versionDonnees: c.exercice.versionDonnees,
+      ventilations,
+      renvois,
+    });
+  }
+
+  @Put('exercices/:id/qualifications/ventilation/:compte')
+  @ApiRefusVolume()
+  @ApiOperation({
+    summary: 'Qualifier un compte du chiffre d’affaires : montant réalisé en France et montant des exportations et livraisons intracommunautaires (niveau révision)',
+    description:
+      'La balance ne dit pas où se trouve le client : la qualification est une déclaration du cabinet, tracée (auteur, date, version des données, note obligatoire). France + exportations doivent être EXACTEMENT égaux au solde créditeur du compte (un compte de rabais, remises et ristournes se qualifie avec des montants négatifs) ; sinon la saisie est refusée en 409 avec l’écart. Elle devient « à revoir » dès que les données changent. Elle ne vaut pas validation professionnelle.',
+  })
+  @ApiBody({ schema: schemaOpenApi(ventilation) })
+  async qualifierVentilation(@AccesCourant() acces: Acces, @Param('id') id: string, @Param('compte') compte: string, @Body() corps: unknown) {
+    exigerUuid(id);
+    if (!COMPTE_CA.test(compte)) throw new BadRequestException('compte : numéro de compte de la classe 70');
+    const d = valider(ventilation, corps);
+    return avecCalcul(this.bd, acces, async (tx, budget) => {
+      const { exercice, lignes } = await this.donnees(tx, budget, 'Qualification d’un compte du chiffre d’affaires', id, 'revision');
+      const ligne = calculerBalance(lignes).lignes.find((l) => l.compteNum === compte);
+      if (!ligne || !LIGNES_CA.some((l) => l.prefixes.some((p) => compte.startsWith(p)))) throw new NotFoundException('Ce compte n’existe pas dans la balance de l’exercice ou n’appartient à aucune ligne du chiffre d’affaires (marchandises, biens, services)');
+      const solde = dec(ligne.totalCredit).minus(ligne.totalDebit);
+      if (solde.isZero()) throw new ConflictException('Ce compte ne porte aucun montant : rien à qualifier');
+      const ecart = solde.minus(dec(d.montantFrance)).minus(dec(d.montantExport));
+      if (!ecart.isZero()) throw new ConflictException(`France + exportations (${versChaine(dec(d.montantFrance).plus(d.montantExport))}) diffèrent du solde créditeur du compte (${versChaine(solde)}) : écart ${versChaine(ecart)}. Rien n’est enregistré.`);
+      await tx.delete(s.qualificationsResultat).where(and(eq(s.qualificationsResultat.exerciceId, id), eq(s.qualificationsResultat.nature, 'ventilation_ca'), eq(s.qualificationsResultat.cle, compte)));
+      const [q] = await tx
+        .insert(s.qualificationsResultat)
+        .values({ cabinetId: acces.cabinetId, entiteId: exercice.entiteId, exerciceId: id, nature: 'ventilation_ca', cle: compte, montant: versChaine(dec(d.montantFrance)), montantExport: versChaine(dec(d.montantExport)), note: d.note, versionDonnees: exercice.versionDonnees, qualifieePar: acces.utilisateurId })
+        .returning();
+      await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'resultat.ventilation_qualifiee', cibleType: 'exercice', cibleId: id, entiteId: exercice.entiteId, details: { compte, montantFrance: q!.montant, montantExport: q!.montantExport, versionDonnees: exercice.versionDonnees } });
+      return q;
+    });
+  }
+
+  @Delete('exercices/:id/qualifications/ventilation/:compte')
+  @ApiOperation({ summary: 'Retirer la qualification d’un compte du chiffre d’affaires (niveau révision)' })
+  async retirerVentilation(@AccesCourant() acces: Acces, @Param('id') id: string, @Param('compte') compte: string) {
+    return this.retirerQualification(acces, id, 'ventilation_ca', compte, COMPTE_CA);
+  }
+
+  @Put('exercices/:id/qualifications/renvois/:code')
+  @ApiRefusVolume()
+  @ApiOperation({
+    summary: 'Saisir un renvoi de bas de tableau (2052 / 2053) que la balance ne porte pas (niveau révision)',
+    description: 'Montant et note obligatoires ; tracés (auteur, date, version des données) ; « à revoir » dès que les données changent. Une proposition tirée de la balance n’est jamais retenue tant qu’elle n’est pas saisie ici.',
+  })
+  @ApiBody({ schema: schemaOpenApi(renvoiSaisie) })
+  async saisirRenvoi(@AccesCourant() acces: Acces, @Param('id') id: string, @Param('code') code: string, @Body() corps: unknown) {
+    exigerUuid(id);
+    if (!CODE_RENVOI.test(code) || !RENVOIS.some((r) => r.code === code)) throw new NotFoundException('Renvoi inconnu : les renvois préparés sont ' + RENVOIS.map((r) => r.code).join(', '));
+    const d = valider(renvoiSaisie, corps);
+    return this.bd.avecContexte(acces, async (tx) => {
+      const [exercice] = await tx.select().from(s.exercices).where(eq(s.exercices.id, id));
+      if (!exercice) throw new NotFoundException('Exercice introuvable');
+      await exigerNiveau(tx, exercice.entiteId, 'revision');
+      await tx.delete(s.qualificationsResultat).where(and(eq(s.qualificationsResultat.exerciceId, id), eq(s.qualificationsResultat.nature, 'renvoi'), eq(s.qualificationsResultat.cle, code)));
+      const [q] = await tx
+        .insert(s.qualificationsResultat)
+        .values({ cabinetId: acces.cabinetId, entiteId: exercice.entiteId, exerciceId: id, nature: 'renvoi', cle: code, montant: versChaine(dec(d.montant)), note: d.note, versionDonnees: exercice.versionDonnees, qualifieePar: acces.utilisateurId })
+        .returning();
+      await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'resultat.renvoi_saisi', cibleType: 'exercice', cibleId: id, entiteId: exercice.entiteId, details: { code, montant: q!.montant, versionDonnees: exercice.versionDonnees } });
+      return q;
+    });
+  }
+
+  @Delete('exercices/:id/qualifications/renvois/:code')
+  @ApiOperation({ summary: 'Retirer la saisie d’un renvoi (niveau révision)' })
+  async retirerRenvoi(@AccesCourant() acces: Acces, @Param('id') id: string, @Param('code') code: string) {
+    return this.retirerQualification(acces, id, 'renvoi', code, CODE_RENVOI);
+  }
+
+  private async retirerQualification(acces: Acces, id: string, nature: 'ventilation_ca' | 'renvoi', cle: string, motif: RegExp) {
+    exigerUuid(id);
+    if (!motif.test(cle)) throw new BadRequestException('identifiant de qualification invalide');
+    return this.bd.avecContexte(acces, async (tx) => {
+      const [exercice] = await tx.select().from(s.exercices).where(eq(s.exercices.id, id));
+      if (!exercice) throw new NotFoundException('Exercice introuvable');
+      await exigerNiveau(tx, exercice.entiteId, 'revision');
+      const retirees = await tx.delete(s.qualificationsResultat).where(and(eq(s.qualificationsResultat.exerciceId, id), eq(s.qualificationsResultat.nature, nature), eq(s.qualificationsResultat.cle, cle))).returning({ id: s.qualificationsResultat.id });
+      if (!retirees.length) throw new NotFoundException('Aucune qualification pour cet élément');
+      await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: nature === 'renvoi' ? 'resultat.renvoi_retire' : 'resultat.ventilation_retiree', cibleType: 'exercice', cibleId: id, entiteId: exercice.entiteId, details: { cle } });
+      return { cle, retiree: true };
+    });
+  }
+
   @Get('exercices/:id/liasse')
   @ApiRefusVolume()
   @ApiQuery({ name: 'regime', required: false, enum: ['reel_normal', 'reel_simplifie'] })
@@ -113,6 +227,7 @@ export class FiscalController {
         motifPrecedentAbsent: motifPrecedent,
       });
       const { immobilisations } = await this.fichierEnService(tx, entite.id, exercice.fin);
+      const detailResultat = await this.detailResultat(tx, { exercice, entite, lignes, regime });
       const tableauxImmobilisations = preparerTableauxImmobilisations({
         lignes,
         exercice: { debut: exercice.debut, fin: exercice.fin },
@@ -136,6 +251,8 @@ export class FiscalController {
         teletransmission: 'non_disponible',
         resultat,
         tableauxImmobilisations,
+        /** Détail 2052 / 2053 (D-106) : ventilation France / exportations qualifiée par le cabinet, détail exceptionnel, renvois ; null hors régime réel normal. */
+        detailResultat,
       };
     });
   }

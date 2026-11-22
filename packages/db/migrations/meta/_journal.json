@@ -351,6 +351,13 @@
       "when": 1795175000000,
       "tag": "0049_rattrapage_imports_en_cours",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1795306578210,
+      "tag": "0050_qualifications_resultat",
+      "breakpoints": true
     }
   ]
 }

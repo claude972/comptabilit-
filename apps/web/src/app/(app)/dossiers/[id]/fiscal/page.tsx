@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ChoixExercice } from '@/components/dossier';
 import { ErreurAcces } from '@/components/erreurs';
-import { CategorieAnnexe, ConfirmerRubrique } from '@/components/fiscal/actions';
+import { CategorieAnnexe, ConfirmerRubrique, QualifierCompte, SaisirRenvoi } from '@/components/fiscal/actions';
 import { Alerte, Carte, Etiquette, MentionProjet, SousTitre, Tableau } from '@/components/ui/base';
-import { type Abstention, type AnnexeProjet, type CelluleImmobilisation, LIBELLE_CATEGORIE, type LiasseProjet, type ReponseAnnexe, type ReponseLiasse, type TableauxImmobilisationsProjet } from '@/lib/fiscal';
+import { type Abstention, type AnnexeProjet, type CelluleImmobilisation, type CelluleVentilation, type DetailResultatProjet, LIBELLE_CATEGORIE, LIBELLE_ETAT_QUALIFICATION, type LiasseProjet, type ReponseAnnexe, type ReponseLiasse, type TableauxImmobilisationsProjet } from '@/lib/fiscal';
 import { formaterHorodatage, formaterMontant, formaterMontantEuros } from '@/lib/montants';
 
 type Fm = (valeur: string | null | undefined) => string;
@@ -301,6 +301,233 @@ function ImmobilisationsLiasse({ t, fm }: { t: TableauxImmobilisationsProjet | A
   );
 }
 
+function CelluleVentil({ c, fm }: { c: CelluleVentilation; fm: Fm }) {
+  return c.statut === 'etabli' ? (
+    <>
+      {fm(c.montant)}
+      <span className="block text-xs text-texte-doux">case {c.codeCase} (lue, à confirmer)</span>
+    </>
+  ) : (
+    <>
+      <span className="text-texte-doux" title={c.motif}>
+        abstention
+      </span>
+      <span className="block text-xs text-texte-doux">case {c.codeCase} (lue, à confirmer)</span>
+    </>
+  );
+}
+
+/** Détail du compte de résultat (D-106) : ventilation France / exportations qualifiée par le cabinet, détail exceptionnel, renvois. */
+function DetailResultat({ d, fm, exerciceId, revision }: { d: DetailResultatProjet | Abstention; fm: Fm; exerciceId: string; revision: boolean }) {
+  if (d.statut === 'abstention') return <BlocAbstention a={d} quoi="Détail des tableaux 2052 et 2053" />;
+  const v = d.ventilationChiffreAffaires;
+  const net = v.chiffreAffairesNet;
+  return (
+    <section className="space-y-4" aria-labelledby="titre-detail-resultat" data-testid="detail-resultat">
+      <SousTitre id="titre-detail-resultat" className="text-base">
+        Détail du compte de résultat (2052 et 2053) <MentionProjet />
+      </SousTitre>
+      <Alerte ton="attention" titre="Information que la balance ne porte pas : qualifiée par le cabinet, jamais déduite">
+        <p className="text-sm">
+          Une écriture ne dit ni où se trouve le client ni si une vente est une exportation. Pour chaque compte du chiffre d’affaires, le cabinet déclare ici le montant réalisé en France et celui des exportations et livraisons intracommunautaires (leur somme doit égaler le solde du
+          compte ; un compte de rabais se qualifie en négatif), avec une justification. La saisie est tracée et devient « à revoir » si les données changent. Tant qu’un compte n’est pas qualifié, les cellules France et exportations restent en abstention. Rien de ceci ne vaut
+          validation professionnelle.
+        </p>
+        {d.limites.map((l) => (
+          <p key={l} className="text-sm">
+            {l}
+          </p>
+        ))}
+      </Alerte>
+      <ul className="space-y-1" aria-label="Contrôles du détail" data-testid="controles-detail">
+        {d.controles.map((c) => (
+          <li key={c.code}>
+            <Etiquette ton={c.statut === 'coherent' ? 'succes' : c.statut === 'ecart' ? 'danger' : 'attention'}>{c.statut === 'coherent' ? 'Cohérent' : c.statut === 'ecart' ? 'Écart' : 'Non vérifiable'}</Etiquette> {c.message}
+            {c.ecart ? ` (écart : ${fm(c.ecart)})` : ''}
+          </li>
+        ))}
+      </ul>
+
+      <div className="space-y-2">
+        <h3 className="font-semibold" id="titre-2052">
+          2052 — Chiffre d’affaires : France, exportations et livraisons intracommunautaires, total
+        </h3>
+        <Tableau legende="Ventilation du chiffre d’affaires du tableau 2052">
+          <thead>
+            <tr>
+              <th scope="col">Ligne</th>
+              <th scope="col" className="text-right">France</th>
+              <th scope="col" className="text-right">Exportations et livraisons intracom.</th>
+              <th scope="col" className="text-right">Total (balance)</th>
+            </tr>
+          </thead>
+          <tbody data-testid="ventilation-ca">
+            {v.lignes.map((l) => (
+              <tr key={l.id} data-ligne={l.id}>
+                <th scope="row">
+                  {l.libelle}
+                  <span className="block text-xs font-normal text-texte-doux">{l.qualifiee ? 'Tous les comptes sont qualifiés' : 'Comptes à qualifier ci-dessous'}</span>
+                </th>
+                <td className="text-right tabular-nums">
+                  <CelluleVentil c={l.france} fm={fm} />
+                </td>
+                <td className="text-right tabular-nums">
+                  <CelluleVentil c={l.export} fm={fm} />
+                </td>
+                <td className="text-right tabular-nums">
+                  <CelluleVentil c={l.total} fm={fm} />
+                </td>
+              </tr>
+            ))}
+            <tr data-ligne="CA_NET">
+              <th scope="row">Chiffre d’affaires net</th>
+              <td className="text-right tabular-nums">
+                <CelluleVentil c={net.france} fm={fm} />
+              </td>
+              <td className="text-right tabular-nums">
+                <CelluleVentil c={net.export} fm={fm} />
+              </td>
+              <td className="text-right tabular-nums">
+                <CelluleVentil c={net.total} fm={fm} />
+              </td>
+            </tr>
+          </tbody>
+        </Tableau>
+        {v.comptesNonAffectes.length > 0 ? (
+          <Alerte ton="attention" titre="Comptes de la classe 70 sans ligne certaine (absents de tous les totaux)" data-testid="ca-non-affectes">
+            <ul className="list-disc pl-5 text-sm">
+              {v.comptesNonAffectes.map((c) => (
+                <li key={c.compteNum}>
+                  {c.compteNum} {c.compteLib} : {fm(c.solde)}
+                </li>
+              ))}
+            </ul>
+          </Alerte>
+        ) : null}
+        {v.qualificationsOrphelines.length > 0 ? (
+          <Alerte ton="attention" titre="Qualifications ignorées">
+            <ul className="list-disc pl-5 text-sm">
+              {v.qualificationsOrphelines.map((o) => (
+                <li key={o.compte}>
+                  {o.compte} : {o.motif}
+                </li>
+              ))}
+            </ul>
+          </Alerte>
+        ) : null}
+        <h4 className="font-semibold">Qualification par compte ({v.nbComptesAQualifier} à qualifier ou à revoir)</h4>
+        <ul className="space-y-3" data-testid="qualification-comptes">
+          {v.lignes.flatMap((l) => l.comptes).filter((c) => c.etat !== 'sans_montant').map((c) => (
+            <li key={c.compteNum} className="rounded-lg border border-bordure p-3" data-compte={c.compteNum}>
+              <p className="text-sm">
+                <strong>
+                  {c.compteNum} {c.compteLib}
+                </strong>{' '}
+                — solde créditeur {fm(c.solde)} <Etiquette ton={c.etat === 'qualifie' ? 'succes' : c.etat === 'ecart' ? 'danger' : 'attention'}>{LIBELLE_ETAT_QUALIFICATION[c.etat]}</Etiquette>
+              </p>
+              {c.qualification ? (
+                <p className="text-xs text-texte-doux" data-testid={`trace-${c.compteNum}`}>
+                  France {fm(c.qualification.montantFrance)} · exportations et intracom. {fm(c.qualification.montantExport)} · saisi le {formaterHorodatage(c.qualification.le)} sur la version {c.qualification.versionDonnees} des données · « {c.qualification.note} »
+                  {c.ecart ? ` · écart avec le solde : ${fm(c.ecart)}` : ''}
+                </p>
+              ) : null}
+              {revision ? (
+                <QualifierCompte exerciceId={exerciceId} compte={c.compteNum} solde={c.solde} qualification={c.qualification ? { montantFrance: c.qualification.montantFrance, montantExport: c.qualification.montantExport, note: c.qualification.note } : null} />
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="font-semibold" id="titre-2053">
+          2053 — Détail des produits et charges exceptionnels (cadre (7))
+        </h3>
+        <p className="text-sm text-texte-doux">{d.detailExceptionnel.origine}</p>
+        <Tableau legende="Détail des produits et charges exceptionnels du tableau 2053">
+          <thead>
+            <tr>
+              <th scope="col">Compte</th>
+              <th scope="col" className="text-right">Produits exceptionnels</th>
+              <th scope="col" className="text-right">Charges exceptionnelles</th>
+            </tr>
+          </thead>
+          <tbody data-testid="detail-exceptionnel">
+            {d.detailExceptionnel.produits.map((l) => (
+              <tr key={`p-${l.compteNum}`}>
+                <th scope="row">
+                  {l.compteNum} {l.compteLib}
+                </th>
+                <td className="text-right tabular-nums">{fm(l.montant)}</td>
+                <td />
+              </tr>
+            ))}
+            {d.detailExceptionnel.charges.map((l) => (
+              <tr key={`c-${l.compteNum}`}>
+                <th scope="row">
+                  {l.compteNum} {l.compteLib}
+                </th>
+                <td />
+                <td className="text-right tabular-nums">{fm(l.montant)}</td>
+              </tr>
+            ))}
+            <tr>
+              <th scope="row">Total — résultat exceptionnel : {fm(d.detailExceptionnel.resultatExceptionnel)}</th>
+              <td className="text-right font-semibold tabular-nums">{fm(d.detailExceptionnel.totalProduits)}</td>
+              <td className="text-right font-semibold tabular-nums">{fm(d.detailExceptionnel.totalCharges)}</td>
+            </tr>
+          </tbody>
+        </Tableau>
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="font-semibold" id="titre-renvois">
+          Renvois de bas de tableau (2052 et 2053) : saisie tracée
+        </h3>
+        <p className="text-sm text-texte-doux">
+          Une case sans saisie reste vide. Une proposition tirée de la balance (quand un compte du PCG désigne le renvoi sans ambiguïté) n’est jamais retenue tant que le cabinet ne l’a pas saisie.
+        </p>
+        <ul className="space-y-3" data-testid="renvois-detail">
+          {d.renvois.map((r) => (
+            <li key={r.code} className="rounded-lg border border-bordure p-3" data-renvoi={r.code}>
+              <p className="text-sm">
+                <strong>
+                  {r.tableau} {r.renvoi} — {r.libelle}
+                </strong>{' '}
+                <span className="text-texte-doux">(case {r.code}, lue, à confirmer)</span>{' '}
+                <Etiquette ton={r.statut === 'saisi' ? 'succes' : 'attention'}>{r.statut === 'saisi' ? 'Saisi' : r.statut === 'a_revoir' ? 'À revoir : données modifiées' : 'À saisir'}</Etiquette>
+              </p>
+              <p className="text-xs text-texte-doux">
+                {r.precision}
+                {r.proposition ? ` Proposition de la balance : ${fm(r.proposition.montant)} (comptes ${r.proposition.comptes.join(', ')}), non retenue.` : ''}
+              </p>
+              {r.saisie ? (
+                <p className="text-xs text-texte-doux" data-testid={`trace-renvoi-${r.code}`}>
+                  {fm(r.saisie.montant)} · saisi le {formaterHorodatage(r.saisie.le)} sur la version {r.saisie.versionDonnees} des données · « {r.saisie.note} »
+                </p>
+              ) : null}
+              {revision ? <SaisirRenvoi exerciceId={exerciceId} code={r.code} proposition={r.proposition?.montant ?? null} saisie={r.saisie ? { montant: r.saisie.montant, note: r.saisie.note } : null} /> : null}
+            </li>
+          ))}
+        </ul>
+        <ul className="list-disc pl-5 text-sm text-texte-doux" data-testid="renvois-non-prepares">
+          {d.renvoisNonPrepares.map((n) => (
+            <li key={n}>Non préparé — {n}</li>
+          ))}
+        </ul>
+      </div>
+      <details className="text-sm">
+        <summary>Sources officielles lues</summary>
+        <ul className="list-disc pl-5">
+          {d.sources.map((x) => (
+            <li key={x}>{x}</li>
+          ))}
+        </ul>
+      </details>
+    </section>
+  );
+}
+
 function Annexe({ a, reponse, exerciceId, revision }: { a: AnnexeProjet; reponse: ReponseAnnexe; exerciceId: string; revision: boolean }) {
   const confirmations = new Map(reponse.confirmations.map((c) => [c.rubrique, c]));
   const requises = a.rubriques.filter((r) => r.requise);
@@ -478,6 +705,7 @@ export default async function PageFiscal({ params, searchParams }: { params: Pro
       ) : null}
       {liasse?.ok ? liasse.donnees.resultat.statut === 'abstention' ? <BlocAbstention a={liasse.donnees.resultat} quoi="Liasse fiscale" /> : <Liasse l={liasse.donnees.resultat} fm={fm} /> : null}
       {liasse?.ok && liasse.donnees.tableauxImmobilisations ? <ImmobilisationsLiasse t={liasse.donnees.tableauxImmobilisations} fm={fm} /> : null}
+      {liasse?.ok && liasse.donnees.detailResultat ? <DetailResultat d={liasse.donnees.detailResultat} fm={fm} exerciceId={exercice.id} revision={revision} /> : null}
       {annexe?.ok ? (
         annexe.donnees.resultat.statut === 'abstention' ? (
           <BlocAbstention a={annexe.donnees.resultat} quoi="Projet d’annexe" />

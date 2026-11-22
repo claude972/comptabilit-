@@ -72,6 +72,91 @@ export function ConfirmerRubrique({ exerciceId, rubrique, titre, confirmation, n
   );
 }
 
+/** Qualification d'un compte du chiffre d'affaires : France + exportations = solde (`PUT`/`DELETE v1/exercices/:id/qualifications/ventilation/:compte`). */
+export function QualifierCompte({ exerciceId, compte, solde, qualification }: { exerciceId: string; compte: string; solde: string; qualification: { montantFrance: string; montantExport: string; note: string } | null }) {
+  const appel = useAppel();
+  const [france, setFrance] = useState(qualification?.montantFrance ?? '');
+  const [export_, setExport] = useState(qualification?.montantExport ?? '');
+  const [note, setNote] = useState(qualification?.note ?? '');
+  const id = useId();
+  return (
+    <form
+      className="grid gap-2 sm:grid-cols-[8rem_8rem_1fr_auto] sm:items-end"
+      data-testid={`qualifier-${compte}`}
+      onSubmit={(e) => {
+        e.preventDefault();
+        void appel.executer(`v1/exercices/${exerciceId}/qualifications/ventilation/${compte}`, { method: 'PUT', json: { montantFrance: france.trim(), montantExport: export_.trim(), note: note.trim() } }, 'Qualification enregistrée.');
+      }}
+    >
+      <div>
+        <Libelle htmlFor={`${id}-f`}>France</Libelle>
+        <Saisie id={`${id}-f`} inputMode="decimal" placeholder={solde} value={france} onChange={(e) => setFrance(e.target.value)} required />
+      </div>
+      <div>
+        <Libelle htmlFor={`${id}-e`}>Export. et intracom.</Libelle>
+        <Saisie id={`${id}-e`} inputMode="decimal" placeholder="0.00" value={export_} onChange={(e) => setExport(e.target.value)} required />
+      </div>
+      <div>
+        <Libelle htmlFor={`${id}-n`}>Justification (obligatoire)</Libelle>
+        <Saisie id={`${id}-n`} maxLength={2000} value={note} onChange={(e) => setNote(e.target.value)} required minLength={5} />
+      </div>
+      <div className="flex gap-2">
+        <Bouton type="submit" variante="secondaire" disabled={appel.occupe} aria-label={`Qualifier le compte ${compte}`}>
+          Enregistrer
+        </Bouton>
+        {qualification ? (
+          <Bouton type="button" variante="contour" disabled={appel.occupe} onClick={() => void appel.executer(`v1/exercices/${exerciceId}/qualifications/ventilation/${compte}`, { method: 'DELETE' }, 'Qualification retirée.')} aria-label={`Retirer la qualification du compte ${compte}`}>
+            Retirer
+          </Bouton>
+        ) : null}
+      </div>
+      <div className="sm:col-span-4">
+        <Retours erreur={appel.erreur} succes={appel.succes} />
+      </div>
+    </form>
+  );
+}
+
+/** Saisie d'un renvoi de bas de tableau (`PUT`/`DELETE v1/exercices/:id/qualifications/renvois/:code`). */
+export function SaisirRenvoi({ exerciceId, code, proposition, saisie }: { exerciceId: string; code: string; proposition: string | null; saisie: { montant: string; note: string } | null }) {
+  const appel = useAppel();
+  const [montant, setMontant] = useState(saisie?.montant ?? '');
+  const [note, setNote] = useState(saisie?.note ?? '');
+  const id = useId();
+  return (
+    <form
+      className="grid gap-2 sm:grid-cols-[8rem_1fr_auto] sm:items-end"
+      data-testid={`renvoi-${code}`}
+      onSubmit={(e) => {
+        e.preventDefault();
+        void appel.executer(`v1/exercices/${exerciceId}/qualifications/renvois/${code}`, { method: 'PUT', json: { montant: montant.trim(), note: note.trim() } }, 'Renvoi enregistré.');
+      }}
+    >
+      <div>
+        <Libelle htmlFor={`${id}-m`}>Montant</Libelle>
+        <Saisie id={`${id}-m`} inputMode="decimal" placeholder={proposition ?? '0.00'} value={montant} onChange={(e) => setMontant(e.target.value)} required />
+      </div>
+      <div>
+        <Libelle htmlFor={`${id}-n`}>Justification (obligatoire)</Libelle>
+        <Saisie id={`${id}-n`} maxLength={2000} value={note} onChange={(e) => setNote(e.target.value)} required minLength={5} />
+      </div>
+      <div className="flex gap-2">
+        <Bouton type="submit" variante="secondaire" disabled={appel.occupe} aria-label={`Enregistrer le renvoi ${code}`}>
+          Enregistrer
+        </Bouton>
+        {saisie ? (
+          <Bouton type="button" variante="contour" disabled={appel.occupe} onClick={() => void appel.executer(`v1/exercices/${exerciceId}/qualifications/renvois/${code}`, { method: 'DELETE' }, 'Saisie retirée.')} aria-label={`Retirer la saisie du renvoi ${code}`}>
+            Retirer
+          </Bouton>
+        ) : null}
+      </div>
+      <div className="sm:col-span-3">
+        <Retours erreur={appel.erreur} succes={appel.succes} />
+      </div>
+    </form>
+  );
+}
+
 /** Reprise d'une proposition du moteur comme écriture d'inventaire proposée (`POST …/inventaire/propositions/:id/reprise`). */
 export function ReprendreProposition({ exerciceId, propositionId, libelle }: { exerciceId: string; propositionId: string; libelle: string }) {
   const appel = useAppel();

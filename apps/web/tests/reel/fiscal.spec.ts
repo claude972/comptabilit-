@@ -45,6 +45,13 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
     await expect(liasse.getByText('à confirmer').first()).toBeVisible();
     await expect(page.getByTestId('tableaux-non-couverts').locator('li').first()).toBeVisible();
     await expect(page.getByTestId('controles-liasse').locator('li').first()).toBeVisible();
+    // Détail 2052 / 2053 (D-106) : la ventilation France / exportations est qualifiée par le cabinet, jamais déduite ; renvois tracés.
+    const detail = page.getByTestId('detail-resultat');
+    await expect(detail).toBeVisible();
+    await expect(detail).toContainText('qualifiée par le cabinet, jamais déduite');
+    await expect(detail.getByTestId('ventilation-ca').locator('tr[data-ligne="CA_NET"]')).toBeVisible();
+    await expect(detail.getByTestId('renvois-detail').locator('li[data-renvoi]').first()).toBeVisible();
+    await expect(detail.getByTestId('renvois-non-prepares')).toContainText('exploitants individuels');
     // Euros entiers (D-105) : présentation seulement, la note dit les limites ; retour aux centimes.
     await expect(page.getByTestId('choix-montants')).toContainText('au centime');
     await page.getByTestId('choix-montants').getByRole('link', { name: /euros entiers/ }).click();

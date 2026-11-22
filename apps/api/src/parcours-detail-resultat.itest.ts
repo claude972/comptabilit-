@@ -585,7 +585,7 @@ describe('2058-A (régime réel normal) : détermination du résultat fiscal par
     expect(f.cases.every((c: any) => c.statut === 'a_saisir' && c.montant === null && c.etatCodeCase === 'lu_verifie')).toBe(true);
     expect(calc(f, 'XI').statut).toBe('abstention');
     expect(f.imputation.avant.statut).toBe('abstention');
-    expect((await liasse(exN, 'reel_simplifie')).json.formulairesCases).toBeNull();
+    expect(((await liasse(exN, 'reel_simplifie')).json.formulairesCases as any[]).map((f) => f.id)).toEqual(['2033-A-RENVOIS']);
   }, 120_000);
 
   it('refus : négatif, note, clé inconnue, droits', async () => {
@@ -880,7 +880,7 @@ describe('2056 (régime réel normal) : provisions inscrites au bilan, saisie ca
     expect(f.cases).toHaveLength(107);
     expect(f.cases.every((c: any) => c.statut === 'a_saisir' && c.montant === null && c.etatCodeCase === 'lu_verifie')).toBe(true);
     expect(f.calculs.every((c: any) => c.statut === 'abstention')).toBe(true);
-    expect((await liasse(exN, 'reel_simplifie')).json.formulairesCases).toBeNull();
+    expect(((await liasse(exN, 'reel_simplifie')).json.formulairesCases as any[]).map((f) => f.id)).toEqual(['2033-A-RENVOIS']);
     expect((await pp('4A', '-1.00')).statut).toBe(400);
     expect((await pp('ZZZ', '1.00')).statut).toBe(404);
     expect((await pp('4A', '1.00', 'Essai collaborateur', 'chloe')).statut).toBeGreaterThanOrEqual(400);

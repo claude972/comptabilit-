@@ -31,6 +31,7 @@ import {
   preparerFormulaireCases,
   cleCase,
   FORMULAIRE_2056,
+  FORMULAIRE_RENVOIS_2033A,
   FORMULAIRE_RENVOIS_BILAN,
   FORMULAIRE_2058_A,
   FORMULAIRE_2058_B,
@@ -89,7 +90,9 @@ const ligneAdmise = (tableau: string, ligne: string) => (estGrille(tableau) ? LI
 const COMPTE_CA = /^70[0-9A-Za-z]{1,13}$/;
 /** Formulaires du régime réel normal servis par saisie case par case (moteur générique, D-118). */
 const FORMULAIRES_CASES: readonly DefinitionFormulaire[] = [FORMULAIRE_RENVOIS_BILAN, FORMULAIRE_2056, FORMULAIRE_2058_A, FORMULAIRE_2058_B, FORMULAIRE_2058_C, FORMULAIRE_2059_E];
-const CLES_FORMULAIRES_CASES = FORMULAIRES_CASES.flatMap((f) => f.cases.map((c) => cleCase(f.prefixe, c.code)));
+/** Régime simplifié : renvois du bilan 2033-A (D-135). */
+const FORMULAIRES_CASES_SIMPLIFIE: readonly DefinitionFormulaire[] = [FORMULAIRE_RENVOIS_2033A];
+const CLES_FORMULAIRES_CASES = [...FORMULAIRES_CASES, ...FORMULAIRES_CASES_SIMPLIFIE].flatMap((f) => f.cases.map((c) => cleCase(f.prefixe, c.code)));
 const CODE_RENVOI = /^[0-9A-Z_]{2,12}$/;
 const RENVOIS_CONNUS = [...RENVOIS, ...RENVOIS_RSI, ...LIGNES_RESULTAT_FISCAL.map((l) => ({ code: l.cle })), ...DETAIL_RESULTAT_FISCAL.map((l) => ({ code: l.cle })), ...CLES_2033_D.map((cle) => ({ code: cle })), ...CLES_2033_E.map((cle) => ({ code: cle })), ...CLES_FORMULAIRES_CASES.map((cle) => ({ code: cle }))];
 /** Lignes du résultat fiscal qui se saisissent en positif ; seule la case 248 (écart de valeurs liquidatives négatif, « entre parenthèses » selon la notice) peut être négative. */
@@ -386,7 +389,7 @@ export class FiscalController {
       const formulaire2033G = preparerFormulaire2033G({ versionDonnees: exercice.versionDonnees, saisiesTableaux: saisies });
       // Formulaires du régime réel normal par saisie case par case (2058-A, D-118).
       // Les formulaires sont préparés dans l'ordre : les valeurs établies des précédents (saisies retenues, calculs, résultat après imputation du 2058-A) alimentent les propositions et rapprochements des suivants.
-      const formulairesCases: FormulaireProjet[] | null = regime === 'reel_normal' ? [] : null;
+      const formulairesCases: FormulaireProjet[] | null = [];
       if (formulairesCases !== null) {
         const valeursAutres: Record<string, string> = {};
         // Lignes FW (autres achats et charges externes) et FX (impôts, taxes et versements assimilés) du 2052, déduites de la balance : rapprochements indicatifs du 2058-C (ZJ, YX).
@@ -397,7 +400,7 @@ export class FiscalController {
           if (fw) valeursAutres.R52_FW = fw.montant;
           if (fx) valeursAutres.R52_FX = fx.montant;
         }
-        for (const def of FORMULAIRES_CASES) {
+        for (const def of regime === 'reel_normal' ? FORMULAIRES_CASES : FORMULAIRES_CASES_SIMPLIFIE) {
           const f = preparerFormulaireCases(def, { versionDonnees: exercice.versionDonnees, renvois: renvoisSaisis, valeursAutres, dureeMois: dureeEnMois(exercice.debut, exercice.fin) });
           formulairesCases.push(f);
           for (const x of f.cases) if (x.statut === 'saisi' && x.montant !== null) valeursAutres[x.cle] = x.montant;

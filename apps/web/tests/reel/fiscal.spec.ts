@@ -119,6 +119,8 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
     await expect(detailRsi).toContainText('Détail du compte de résultat simplifié (2033-B)');
     await expect(detailRsi.getByTestId('renvois-detail').locator('li[data-renvoi="255"]')).toBeVisible();
     await expect(detailRsi.locator('#titre-2053')).toHaveCount(0);
+    // Renvois du bilan 2033-A (D-135) : 8 cases saisies une à une, régime simplifié.
+    await expect(page.getByTestId('formulaire-2033-A-RENVOIS').locator('li[data-case-f]')).toHaveCount(8);
     // Feuillet des déficits transférés (D-132) : vingt opérations saisies une à une, régime simplifié.
     await expect(page.getByTestId('grille-2033-D-982').locator('li[data-ligne-grille]')).toHaveCount(20);
     // 2033-G (D-117) : filiales et participations par saisie ligne par ligne.

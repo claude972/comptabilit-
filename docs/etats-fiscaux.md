@@ -18,7 +18,7 @@ Périmètre explicite : **société commerciale soumise à l’impôt sur les so
 | 2051 Bilan-passif | partiel | Montants de l’exercice (avant répartition) ; renvois (1) à (5) et « dont » saisis (D-135) | idem |
 | 2052 Compte de résultat | partiel | Montants de l’exercice jusqu’au résultat courant | idem + ventilation France / export du chiffre d’affaires |
 | 2053 Compte de résultat (suite) | partiel | Exceptionnel, participation, impôt, totaux, bénéfice ou perte | idem + détail des produits et charges exceptionnels |
-| 2033-A Bilan simplifié (régime simplifié) | partiel | Montants de l’exercice par ligne agrégée | idem + postes sans ligne certaine (voir 3.3) |
+| 2033-A Bilan simplifié (régime simplifié) | partiel | Montants de l’exercice par ligne agrégée ; renvois et « dont » (8 cases) saisis (D-135) | idem + postes sans ligne certaine (voir 3.3) |
 | 2033-B Compte de résultat simplifié | partiel | Partie comptable seulement | idem + **toute la partie « résultat fiscal »** |
 | 2054 Immobilisations (cadres A et B) | partiel (D-104) | Valeurs brutes à l’ouverture et à la clôture, augmentations (débits), diminutions totales, par ligne du formulaire, avec N-1 et rapprochement avec le fichier des immobilisations | Réévaluations, ventilation des diminutions et « dont composants » : saisies justifiées (D-134), contrôle indicatif avec la balance ; euros entiers à l’écran (D-105) ; codes de cases lus, à confirmer |
 | 2055 cadres B et C | partiel (D-113) | Saisie ligne par ligne, colonne 7, totaux, non ventilé et montant net à la fin calculés comme le formulaire | Origine des dotations et reprises (décision du cabinet) ; 2053 HG et HC, 2056 TM et TN non préparés |

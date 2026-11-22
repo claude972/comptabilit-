@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import type { QualificationRenvoi } from './detail-resultat.js';
 import { FORMULAIRE_2056 } from './definitions-2056.js';
-import { FORMULAIRE_RENVOIS_BILAN } from './definitions-renvois.js';
+import { FORMULAIRE_RENVOIS_2033A, FORMULAIRE_RENVOIS_BILAN } from './definitions-renvois.js';
 import { FORMULAIRE_2058_A, FORMULAIRE_2058_B, FORMULAIRE_2058_C } from './definitions-2058.js';
 import { FORMULAIRE_2059_E } from './definitions-2059.js';
 import { cleCase, preparerFormulaireCases } from './formulaire-cases.js';
@@ -219,6 +219,14 @@ describe('renvois des bilans 2050 et 2051 (D-135)', () => {
     const f = preparerFormulaireCases(FORMULAIRE_RENVOIS_BILAN, { versionDonnees: 7, renvois: [{ code: cleCase('R51', 'EK'), montant: '0.00', ...TRACE }] });
     expect(f.cases.find((c) => c.code === 'EK')).toMatchObject({ statut: 'saisi', neant: true });
     expect(f.cases.find((c) => c.code === 'EG')!.statut).toBe('a_saisir');
+  });
+  it('2033-A : 8 cases lues, clés valides et uniques', () => {
+    const codes = FORMULAIRE_RENVOIS_2033A.cases.map((c) => c.code);
+    expect(codes).toEqual(['131', '169', '193', '197', '199', '195', '182', '184']);
+    expect(new Set(codes.map((c) => cleCase('R33', c))).size).toBe(8);
+    for (const c of codes) expect(cleCase('R33', c)).toMatch(/^R33_\d{3}$/);
+    const f = preparerFormulaireCases(FORMULAIRE_RENVOIS_2033A, { versionDonnees: 7, renvois: [{ code: cleCase('R33', '199'), montant: '1500.00', ...TRACE }] });
+    expect(f.cases.find((c) => c.code === '199')).toMatchObject({ statut: 'saisi', montant: '1500.00' });
   });
 });
 

@@ -45,3 +45,38 @@ export const FORMULAIRE_RENVOIS_BILAN: DefinitionFormulaire = {
     'Statut « projet » : aucune transmission, aucune validation professionnelle.',
   ],
 };
+
+/**
+ * Renvois du bilan simplifié 2033-A-SD (régime simplifié, D-135) : `2033-sd_5394.pdf` (SHA-256 ce4c5190…b6cb), page 1 ; codes lus par extraction positionnée puis
+ * vérifiés sur le rendu image (2026-11-22). Mêmes principes que le tableau ci-dessus : saisies justifiées du cabinet, aucun calcul ni rapprochement supposé.
+ */
+export const FORMULAIRE_RENVOIS_2033A: DefinitionFormulaire = {
+  id: '2033-A-RENVOIS',
+  titre: '2033-A — Renvois du bilan simplifié',
+  prefixe: 'R33',
+  source: '2033-sd_5394.pdf, page 1 (2033-A-SD, millésime 2026).',
+  groupes: [
+    { id: 'PASSIF', titre: 'Passif : « dont »' },
+    { id: 'RENVOIS', titre: 'Renvois du bas du bilan' },
+  ],
+  cases: [
+    c('131', 'Autres réserves : dont réserve relative à l’achat d’œuvres originales d’artistes vivants', 'PASSIF'),
+    c('169', 'Dettes fiscales et sociales : dont montant de la TVA', 'PASSIF'),
+    c('193', 'Renvoi (1) : dont immobilisations financières à moins d’un an', 'RENVOIS'),
+    c('197', 'Renvoi (2) : dont créances à plus d’un an', 'RENVOIS'),
+    c('199', 'Renvoi (3) : dont compte courant d’associés débiteurs', 'RENVOIS'),
+    c('195', 'Renvoi (4) : dont dettes à plus d’un an', 'RENVOIS'),
+    c('182', 'Renvoi (5) : coût de revient des immobilisations acquises ou créées au cours de l’exercice', 'RENVOIS'),
+    c('184', 'Renvoi (5) : prix de vente hors TVA des immobilisations cédées au cours de l’exercice', 'RENVOIS'),
+  ],
+  calculs: [],
+  controles: [],
+  nonPrepare: [
+    'Aucun rapprochement avec les postes du bilan simplifié n’est supposé : la relation entre ces « dont » et les postes n’est pas énoncée comme un calcul par le formulaire.',
+    'Aucune de ces valeurs n’est déduite de la balance : chacune est une saisie justifiée du cabinet ; le prix de vente et le coût de revient des immobilisations (renvoi 5) ne reprennent pas le cadre III du 2033-C, aucun report automatique.',
+  ],
+  limites: [
+    'Chaque case est saisie avec une justification obligatoire, tracée et historisée ; « néant » (0,00) est une déclaration explicite, distincte d’une case non renseignée.',
+    'Statut « projet » : aucune transmission, aucune validation professionnelle.',
+  ],
+};

@@ -136,15 +136,22 @@ test('ventilation 2050 par l’interface : saisir et justifier, retenir la repri
   // Mise en page d'impression : la navigation de l'application et les actions disparaissent (régression D-174 : style en ligne bloqué par la politique de sécurité du contenu).
   await expect(page.getByTestId('actions-etat-joint')).toBeHidden();
   await expect(page.getByRole('link', { name: 'Tableau de bord' })).toBeHidden();
-  const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
-  const { getDocument } = await import(path.resolve(import.meta.dirname, '../../../../node_modules/.pnpm/pdfjs-dist@6.5.438/node_modules/pdfjs-dist/legacy/build/pdf.mjs'));
-  const doc = await getDocument({ data: new Uint8Array(pdf), useSystemFonts: true }).promise;
-  let texte = '';
-  for (let i = 1; i <= doc.numPages; i++) texte += ((await (await doc.getPage(i)).getTextContent()).items as Array<{ str: string }>).map((x) => x.str).join(' ') + '\n';
-  expect(texte).toMatch(/cases BN à BS retenues/);
-  expect(texte).not.toMatch(/Tableau de bord|Retour aux états fiscaux/);
-  expect(doc.numPages).toBeLessThanOrEqual(12);
-  for (const m of ['700.00', '300.00', '500.00']) expect(texte, `PDF : ${m}`).toContain(m);
-  expect(texte).toMatch(/PROJET, non validé/);
+  // L'état joint reste lisible sous l'émulation d'impression, dans TOUS les navigateurs ; le FICHIER PDF n'est produit que par Chromium (page.pdf : « only supported for Headless Chromium »),
+  // le texte et le rendu du PDF sont donc vérifiés là (WebKit et Firefox ont exécuté tout le parcours, la vue ciblée, le CSV et la mise en page d'impression).
+  await expect(page.locator('[data-tableau-joint]').first()).toBeVisible();
+  if (browser.browserType().name() === 'chromium') {
+    const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
+    const { getDocument } = await import(path.resolve(import.meta.dirname, '../../../../node_modules/.pnpm/pdfjs-dist@6.5.438/node_modules/pdfjs-dist/legacy/build/pdf.mjs'));
+    const doc = await getDocument({ data: new Uint8Array(pdf), useSystemFonts: true }).promise;
+    let texte = '';
+    for (let i = 1; i <= doc.numPages; i++) texte += ((await (await doc.getPage(i)).getTextContent()).items as Array<{ str: string }>).map((x) => x.str).join(' ') + '\n';
+    expect(texte).toMatch(/cases BN à BS retenues/);
+    expect(texte).not.toMatch(/Tableau de bord|Retour aux états fiscaux/);
+    expect(doc.numPages).toBeLessThanOrEqual(12);
+    for (const m of ['700.00', '300.00', '500.00']) expect(texte, `PDF : ${m}`).toContain(m);
+    expect(texte).toMatch(/PROJET, non validé/);
+  } else {
+    test.info().annotations.push({ type: 'pdf', description: `fichier PDF vérifié sous Chromium seulement (${browser.browserType().name()} ne sait pas le produire) ; mise en page d'impression vérifiée ici` });
+  }
   await contexte.close();
 });

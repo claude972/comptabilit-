@@ -48,13 +48,15 @@ export interface CadreGrille {
   calculs: readonly CalculGrille[];
   /** Contrôle indicatif de ventilation : sur chaque ligne saisie, la colonne `total` égale la somme des colonnes `parties` (les colonnes absentes de la ligne ne sont pas contrôlées). */
   ventilation?: { total: string; parties: readonly string[] };
+  /** Rapprochements indicatifs avec des valeurs d'AUTRES tableaux (`valeursAutres`) : somme d'une colonne ou nombre de lignes saisies. Sans valeur externe, aucun contrôle. */
+  controlesExternes?: ReadonlyArray<{ code: string; libelle: string; mode: 'somme' | 'nombre'; colonne?: string; externe: string }>;
   /** Contrôles indicatifs d'ordre entre deux colonnes date d'une même ligne (la première ne doit pas suivre la seconde). */
   ordreDates?: ReadonlyArray<[string, string]>;
   /** Colonne calculée par ligne : somme signée d'autres colonnes de la MÊME ligne (les colonnes non servies sont ignorées). */
   colonneCalculee?: { cle: string; libelle: string; termes: ReadonlyArray<{ col: string; signe: 1 | -1 }> };
 }
 export interface DefinitionGrille {
-  id: '2059-B' | '2059-C' | '2059-D' | '2065' | '2033-E-DATES' | '2057' | '2065-BIS';
+  id: '2059-B' | '2059-C' | '2059-D' | '2065' | '2033-E-DATES' | '2057' | '2065-BIS' | '2033-D-982';
   titre: string;
   /** Tableau portant la ligne NEANT du formulaire ; absent si le formulaire n'a pas de « néant » (le 2065 est toujours servi). */
   neantSur?: string;
@@ -402,7 +404,32 @@ export const GRILLE_2065_BIS: DefinitionGrille = {
   ],
 };
 
-const TOUTES: readonly DefinitionGrille[] = [...GRILLES_2059, GRILLE_2065, GRILLE_DATES_CVAE, GRILLE_2057, GRILLE_2065_BIS];
+/** Feuillet des déficits transférés de plein droit (case 982 bis du 2033-D, art. 209 II-2-a du CGI) : « identifier, opération par opération, la société d'origine sur feuillet séparé » (formulaire). Pas de modèle officiel de feuillet : disposition propre à Comtaple. */
+export const GRILLE_2033D_982: DefinitionGrille = {
+  id: '2033-D-982',
+  titre: 'Feuillet des déficits transférés de plein droit (cases 982 bis et 982 ter du 2033-D)',
+  cadres: [
+    {
+      tableau: '2033D_982',
+      titre: 'Opérations de transfert : société d’origine, date de l’opération, montant du déficit transféré',
+      colonnes: [{ cle: 'siren', libelle: 'SIREN de la société d’origine', type: 'texte' }, { cle: 'date', libelle: 'Date de l’opération — AAAA-MM-JJ', type: 'date' }, { cle: 'm', libelle: 'Montant du déficit transféré' }],
+      lignes: [],
+      libre: { max: 20, libelleOrigine: 'Dénomination de la société d’origine' },
+      calculs: [{ id: 'TOTAL', libelle: 'Total des déficits transférés listés', colonnes: ['m'], termes: [{ ref: 'saisies', signe: 1 }] }],
+      controlesExternes: [
+        { code: 'SOMME_982BIS', libelle: 'Total des déficits transférés listés et case 982 bis du 2033-D', mode: 'somme', colonne: 'm', externe: 'D_982B' },
+        { code: 'NOMBRE_982TER', libelle: 'Nombre d’opérations listées et case 982 ter du 2033-D', mode: 'nombre', externe: 'D_982T' },
+      ],
+    },
+  ],
+  nonPrepare: [
+    'Le formulaire demande ce feuillet sans en fixer le modèle : la disposition (société d’origine, SIREN, date, montant) est propre à Comtaple et non officielle.',
+    'Le SIREN n’est pas contrôlé ; l’identification de la société d’origine et le calcul du déficit transférable relèvent du cabinet.',
+    'Au-delà de vingt opérations : non préparé.',
+  ],
+};
+
+const TOUTES: readonly DefinitionGrille[] = [...GRILLES_2059, GRILLE_2065, GRILLE_DATES_CVAE, GRILLE_2057, GRILLE_2065_BIS, GRILLE_2033D_982];
 export const TABLEAUX_GRILLES: readonly string[] = TOUTES.flatMap((g) => g.cadres.map((c) => c.tableau));
 
 /** Lignes admises pour un tableau en grille : `null` si le tableau n'est pas une grille. Utilisée par la validation de forme. */
@@ -415,7 +442,7 @@ export function descriptionLigneGrille(tableau: string, ligne: string): { colonn
       const dates = c.colonnes.filter((x) => x.type === 'date').map((x) => x.cle);
       const textes = c.colonnes.filter((x) => x.type === 'texte').map((x) => x.cle);
       const annees = c.colonnes.filter((x) => x.type === 'annee').map((x) => x.cle);
-      if (c.libre !== undefined) return /^(0[1-9]|1[0-9])$/.test(ligne) && Number(ligne) <= c.libre.max ? { colonnes: c.colonnes.map((x) => x.cle), signees, dates, textes, annees, libre: true } : 'inconnue';
+      if (c.libre !== undefined) return /^(0[1-9]|1[0-9]|20)$/.test(ligne) && Number(ligne) <= c.libre.max ? { colonnes: c.colonnes.map((x) => x.cle), signees, dates, textes, annees, libre: true } : 'inconnue';
       const l = c.lignes.find((x) => x.ligne === ligne);
       return l ? { colonnes: l.colonnes ?? c.colonnes.map((x) => x.cle), signees, dates, textes, annees, libre: false } : 'inconnue';
     }
@@ -459,6 +486,8 @@ export interface GrilleProjet {
 }
 export interface DemandeGrilles {
   versionDonnees: number;
+  /** Valeurs d'autres tableaux pour les rapprochements indicatifs (`controlesExternes`). */
+  valeursAutres?: Readonly<Record<string, string>>;
   saisiesTableaux: readonly SaisieTableau[];
 }
 
@@ -550,6 +579,17 @@ export function preparerGrille(def: DefinitionGrille, demande: DemandeGrilles): 
         : { code: `${def.id}_VENT_${l.ligne}`, statut: 'ecart', message: `${l.libelle} : le montant brut (${versChaine(new Decimal(x[v2.total]!))}) diffère de la somme de ses échéances (${versChaine(somme)}). Rien n’est corrigé. Contrôle indicatif.`, ecart: versChaine(ecart) });
     }
   }
+  for (const c of def.cadres)
+    for (const k of c.controlesExternes ?? []) {
+      const externe = demande.valeursAutres?.[k.externe];
+      if (externe === undefined) continue;
+      const saisies2 = cadres.find((x) => x.tableau === c.tableau)!.lignes.filter((l) => l.statut === 'saisi');
+      const interne = k.mode === 'nombre' ? new Decimal(saisies2.length) : saisies2.reduce((a, l) => a.plus(l.valeurs![k.colonne ?? 'm'] ?? '0'), new Decimal(0));
+      const ecart = interne.minus(externe);
+      controles.push(ecart.isZero()
+        ? { code: `${def.id}_${k.code}`, statut: 'coherent', message: `${k.libelle} : égaux (${versChaine(interne)}). Contrôle indicatif.` }
+        : { code: `${def.id}_${k.code}`, statut: 'ecart', message: `${k.libelle} : ${versChaine(interne)} ici contre ${versChaine(new Decimal(externe))} dans l’autre tableau. Rien n’est corrigé. Contrôle indicatif.`, ecart: versChaine(ecart) });
+    }
   for (const c of def.cadres)
     for (const [a, b] of c.ordreDates ?? [])
       for (const l of cadres.find((x) => x.tableau === c.tableau)!.lignes)

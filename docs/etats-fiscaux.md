@@ -27,6 +27,7 @@ Périmètre explicite : **société commerciale soumise à l’impôt sur les so
 | 2033-D | partiel (D-114) | Cadres I-A, I-B, I-C, II et III par saisie case par case ; totaux 870 et 780 calculés comme la notice ; contrôles indicatifs | Cadre IV (travailleurs indépendants), feuillets joints |
 | 2033-E | partiel (D-115) | Effectifs, produits et charges de la valeur ajoutée par saisie case par case ; totaux 106, 144, 152, valeur ajoutée 137 et case 117 calculés comme le formulaire, seulement si tout est saisi | Dates de période (024, 016), 1330-CVAE-SD |
 | 2033-F | partiel (D-116) | Nombres 901 à 904, quatre personnes morales, deux personnes physiques par saisie ligne par ligne ; totaux 905 et 906 calculés comme le formulaire | Tableaux supplémentaires ; données personnelles : voir D-116 |
+| 2033-D feuillet des déficits transférés | partiel (D-132) | Vingt opérations saisies, rapprochées des cases 982 bis et 982 ter ; disposition propre à Comtaple (pas de modèle officiel) | Calcul du déficit transférable |
 | 2033-D cadre IV, dates 2033-E / 2059-E | partiel (D-126) | Cases 690 à 693 saisies ; dates 024, 016 et cessation saisies | Revenu brut social non calculé |
 | 2033-G | partiel (D-117) | Nombre de filiales (905) et sept lignes par saisie ligne par ligne ; contrôles indicatifs | Tableaux supplémentaires |
 | 2056 | partiel (D-129) | 107 cases saisies ; totaux I, II, III et général calculés comme le formulaire ; contrôles indicatifs | Feuillets séparés des lignes (1), charges à payer |

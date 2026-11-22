@@ -137,6 +137,8 @@ export interface ReponseLiasse {
   formulaire2057?: GrilleProjet | null;
   /** Annexe 2065 bis-SD (D-131). */
   formulaire2065Bis?: GrilleProjet | null;
+  /** Feuillet des déficits transférés de plein droit, régime simplifié (D-132). */
+  feuilletDeficits?: GrilleProjet | null;
   /** Formulaires du régime réel normal servis par saisie case par case (2058-A, D-118) ; null au régime simplifié. */
   formulairesCases?: FormulaireCasesProjet[] | null;
 }

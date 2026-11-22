@@ -771,6 +771,13 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Aucun calcul inventé** : le solde des MVLT, la répartition éligible / non éligible à l'abattement de 40 % ne sont pas calculés ni contrôlés ; aucun report automatique depuis le 2065, le 2058-A ou le 2059-C. **Non préparé, dit** : identification, état joint au-delà de dix lignes du cadre H. Statut « projet ».
 - **Preuves** : test du moteur (9 verts), 2 essais d'intégration sur la pile réelle (61 verts), Playwright `fiscal.spec.ts` (30 lignes), captures `fiscal-2065bis-avant/total.png` (`--2065bis`).
 
+### D-132 — Feuillet des déficits transférés de plein droit (982 bis, 982 ter du 2033-D) (2026-11-22)
+
+- **Besoin** : la case 982 bis du 2033-D précise « identifier, opération par opération, la société d'origine sur feuillet séparé » (art. 209 II-2-a du CGI), la case 982 ter donnant le nombre d'opérations.
+- **Décision** : tableau `2033D_982` servi par le moteur de grilles (D-122) : jusqu'à vingt opérations (dénomination de la société d'origine, SIREN, date de l'opération, montant du déficit transféré), saisies justifiées, historisées, avec total des montants listés calculé. **Rapprochements indicatifs, jamais corrigés**, avec les valeurs saisies aux cases 982 bis (somme) et 982 ter (nombre de lignes), uniquement quand ces cases sont saisies sur la version courante des données. Régime simplifié seulement ; migration 0063 additive.
+- **Limites, dites** : **le formulaire ne fixe pas de modèle de feuillet** : la disposition (société d'origine, SIREN, date, montant) est propre à Comtaple et non officielle ; le SIREN n'est pas contrôlé ; le calcul du déficit transférable n'est pas fait (décision du cabinet) ; au-delà de vingt opérations : non préparé. Statut « projet ».
+- **Preuves** : test du moteur (10 verts), essai d'intégration sur la pile réelle (62 verts) incluant les rapprochements 982 bis et 982 ter, Playwright `fiscal.spec.ts`.
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

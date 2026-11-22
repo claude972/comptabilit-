@@ -2035,7 +2035,7 @@ function Grille2059({ g, fm, exerciceId, revision, evenements }: { g: GrilleProj
         État du tableau : <strong>{g.etat === 'saisi' ? 'saisies présentes' : g.etat === 'neant' ? 'néant déclaré' : 'à saisir (ni saisie ni néant)'}</strong>
         {g.neant ? ` — déclaré le ${formaterHorodatage(g.neant.le)} sur la version ${g.neant.versionDonnees} des données` : ''}.
       </p>
-      {revision && g.id !== '2065' && g.id !== '2065-BIS' && g.id !== '2033-E-DATES' ? <NeantTableau exerciceId={exerciceId} tableau={g.cadres[0]!.tableau} declare={g.etat === 'neant'} etiquette={`tableau ${g.id} (aucune donnée)`} /> : null}
+      {revision && g.id !== '2065' && g.id !== '2065-BIS' && g.id !== '2033-D-982' && g.id !== '2033-E-DATES' ? <NeantTableau exerciceId={exerciceId} tableau={g.cadres[0]!.tableau} declare={g.etat === 'neant'} etiquette={`tableau ${g.id} (aucune donnée)`} /> : null}
       {g.cadres.map((c) => (
         <div key={c.tableau} className="space-y-2" data-cadre-grille={c.tableau}>
           <h3 className="text-sm font-semibold">{c.titre}</h3>
@@ -2300,6 +2300,7 @@ export default async function PageFiscal({ params, searchParams }: { params: Pro
       {liasse?.ok && liasse.donnees.grilles2059 ? liasse.donnees.grilles2059.map((g) => <Grille2059 key={g.id} g={g} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} />) : null}
       {liasse?.ok && liasse.donnees.formulaire2065 ? <Grille2059 g={liasse.donnees.formulaire2065} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.formulaire2057 ? <Grille2059 g={liasse.donnees.formulaire2057} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
+      {liasse?.ok && liasse.donnees.feuilletDeficits ? <Grille2059 g={liasse.donnees.feuilletDeficits} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.formulaire2065Bis ? <Grille2059 g={liasse.donnees.formulaire2065Bis} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.datesCvae ? <Grille2059 g={liasse.donnees.datesCvae} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {liasse?.ok && liasse.donnees.detailResultat ? <DetailResultat d={liasse.donnees.detailResultat} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}

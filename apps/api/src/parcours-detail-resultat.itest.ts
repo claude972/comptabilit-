@@ -970,6 +970,29 @@ describe('2065 bis-SD (annexe) : revenus distribués, rémunérations, divers, M
   }, 180_000);
 });
 
+describe('feuillet des déficits transférés de plein droit (982 bis, 982 ter), régime simplifié (D-132)', () => {
+  const feuillet = async (regime = 'reel_simplifie') => (await liasse(exN, regime)).json.feuilletDeficits;
+  const op = (ligne: string, m: string) => api('remi', 'PUT', `/v1/exercices/${exN}/tableaux/2033D_982/${ligne}`, { valeurs: { origine: `Société d’origine ${ligne} (fictive)`, siren: '123456789', date: '2025-03-01', m }, note: 'Opération de transfert (essai)' });
+
+  it('absent au régime normal ; opérations saisies et rapprochées des cases 982 bis et 982 ter, jamais corrigées', async () => {
+    expect((await feuillet('reel_normal'))).toBeNull();
+    expect(await feuillet()).toMatchObject({ id: '2033-D-982', etat: 'a_saisir' });
+    expect((await api('remi', 'PUT', `/v1/exercices/${exN}/qualifications/renvois/D_982B`, { montant: '1500.00', note: 'Déficits transférés (essai)' })).statut).toBeLessThan(300);
+    expect((await api('remi', 'PUT', `/v1/exercices/${exN}/qualifications/renvois/D_982T`, { montant: '2', note: 'Nombre d’opérations (essai)' })).statut).toBeLessThan(300);
+    expect((await op('01', '1000.00')).statut).toBeLessThan(300);
+    let f = await feuillet();
+    expect(f.controles.find((c: any) => c.code === '2033-D-982_SOMME_982BIS')).toMatchObject({ statut: 'ecart', ecart: '-500.00' });
+    expect((await op('02', '500.00')).statut).toBeLessThan(300);
+    f = await feuillet();
+    expect(f.controles.find((c: any) => c.code === '2033-D-982_SOMME_982BIS').statut).toBe('coherent');
+    expect(f.controles.find((c: any) => c.code === '2033-D-982_NOMBRE_982TER').statut).toBe('coherent');
+    expect((await api('remi', 'PUT', `/v1/exercices/${exN}/tableaux/2033D_982/21`, { valeurs: { origine: 'X1', siren: '1', date: '2025-03-01', m: '1.00' }, note: 'Au-delà (essai)' })).statut).toBe(404);
+    for (const l of ['01', '02']) expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/2033D_982/${l}`)).statut).toBeLessThan(300);
+    for (const c of ['D_982B', 'D_982T']) expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/qualifications/renvois/${c}`)).statut).toBeLessThan(300);
+    expect((await feuillet()).etat).toBe('a_saisir');
+  }, 120_000);
+});
+
 describe('détail du compte de résultat : qualification tracée, abstention sans qualification', () => {
   it('sans qualification : totaux de la balance, France et exportations en abstention, renvois à saisir, exceptionnel détaillé', async () => {
     const d = await detail();

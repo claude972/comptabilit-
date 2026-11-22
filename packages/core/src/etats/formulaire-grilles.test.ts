@@ -1,6 +1,6 @@
 /** Recette des grilles 2059-B, 2059-C et 2059-D (D-122) : saisie ligne par ligne, calculs énoncés seulement à composantes saisies. */
 import { describe, expect, it } from 'vitest';
-import { GRILLE_2057, GRILLE_2065, GRILLE_2065_BIS, GRILLE_DATES_CVAE, GRILLES_2059, preparerGrille } from './formulaire-grilles.js';
+import { GRILLE_2033D_982, GRILLE_2057, GRILLE_2065, GRILLE_2065_BIS, GRILLE_DATES_CVAE, GRILLES_2059, preparerGrille } from './formulaire-grilles.js';
 import { type SaisieTableau, validerSaisieTableau } from './saisies-tableaux.js';
 
 const TRACE = { note: 'Suivi des plus-values (essai)', qualifieePar: 'u-1', le: '2026-12-31T10:00:00Z', versionDonnees: 7 };
@@ -129,5 +129,17 @@ describe('grilles 2059', () => {
     expect(validerSaisieTableau('2065B_J2', 'OUVERT', { m0: '1.00' }).join(' ')).toMatch(/obligatoire/);
     expect(validerSaisieTableau('2065B_K', 'RECUS', { m: '12' })).toEqual([]);
     expect(validerSaisieTableau('2065B_G', 'NEANT', {}).join(' ')).toMatch(/Ligne inconnue/);
+  });
+  it('feuillet des déficits transférés : total et nombre rapprochés des cases 982 bis et 982 ter, indicatif', () => {
+    const ligne = (n: string, m: string) => s('2033D_982', n, { origine: `Société ${n} (fictive)`, siren: '123456789', date: '2025-03-01', m });
+    const f = preparerGrille(GRILLE_2033D_982, { versionDonnees: 7, saisiesTableaux: [ligne('01', '1000.00'), ligne('02', '500.00')], valeursAutres: { D_982B: '1500.00', D_982T: '2' } });
+    expect(f.controles.find((c) => c.code.endsWith('SOMME_982BIS'))?.statut).toBe('coherent');
+    expect(f.controles.find((c) => c.code.endsWith('NOMBRE_982TER'))?.statut).toBe('coherent');
+    expect(f.cadres[0]!.calculs[0]!.cellules.m).toEqual({ statut: 'etabli', montant: '1500.00' });
+    const g = preparerGrille(GRILLE_2033D_982, { versionDonnees: 7, saisiesTableaux: [ligne('01', '1000.00')], valeursAutres: { D_982B: '1500.00', D_982T: '2' } });
+    expect(g.controles.find((c) => c.code.endsWith('SOMME_982BIS'))).toMatchObject({ statut: 'ecart', ecart: '-500.00' });
+    expect(preparerGrille(GRILLE_2033D_982, { versionDonnees: 7, saisiesTableaux: [ligne('01', '1.00')] }).controles.some((c) => c.code.endsWith('_982BIS') || c.code.endsWith('_982TER'))).toBe(false);
+    expect(validerSaisieTableau('2033D_982', '20', { origine: 'Société vingt', siren: '123456789', date: '2025-03-01', m: '1.00' })).toEqual([]);
+    expect(validerSaisieTableau('2033D_982', '21', { origine: 'Société', siren: '1', date: '2025-03-01', m: '1.00' }).join(' ')).toMatch(/Ligne inconnue/);
   });
 });

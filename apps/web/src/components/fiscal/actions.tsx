@@ -169,6 +169,89 @@ export function SaisirRenvoi({ exerciceId, code, proposition, saisie, avecNeant 
   );
 }
 
+/** Champ d'une saisie de tableau (cadre III du 2033-C, 2054 bis) : libellé, nature (texte, montant, choix) et valeur courante. */
+export interface ChampSaisie {
+  cle: string;
+  libelle: string;
+  type: 'texte' | 'montant' | 'choix';
+  options?: Array<{ valeur: string; libelle: string }>;
+  valeur?: string;
+}
+
+/**
+ * Saisie d'UNE ligne d'un tableau servi par saisie (`PUT`/`DELETE v1/exercices/:id/tableaux/:tableau/:ligne`) : champs du tableau,
+ * justification obligatoire. « Déclarer néant » (tableau entier) se fait par `NeantTableau`.
+ */
+export function SaisieLigneTableau({ exerciceId, tableau, ligne, champs, noteCourante, saisie, etiquette }: { exerciceId: string; tableau: string; ligne: string; champs: ChampSaisie[]; noteCourante: string | null; saisie: boolean; etiquette: string }) {
+  const appel = useAppel();
+  const [valeurs, setValeurs] = useState<Record<string, string>>(Object.fromEntries(champs.map((c) => [c.cle, c.valeur ?? (c.type === 'choix' ? (c.options?.[0]?.valeur ?? '') : '')])));
+  const [note, setNote] = useState(noteCourante ?? '');
+  const id = useId();
+  return (
+    <form
+      className="space-y-2"
+      data-testid={`saisie-${tableau}-${ligne}`}
+      onSubmit={(e) => {
+        e.preventDefault();
+        void appel.executer(`v1/exercices/${exerciceId}/tableaux/${tableau}/${ligne}`, { method: 'PUT', json: { valeurs: Object.fromEntries(Object.entries(valeurs).map(([k, v]) => [k, v.trim()])), note: note.trim() } }, 'Ligne enregistrée.');
+      }}
+    >
+      <div className="flex flex-wrap items-end gap-2">
+        {champs.map((c) => (
+          <div key={c.cle} className={c.type === 'texte' ? 'min-w-56 flex-1' : ''}>
+            <Libelle htmlFor={`${id}-${c.cle}`}>{c.libelle}</Libelle>
+            {c.type === 'choix' ? (
+              <Liste id={`${id}-${c.cle}`} value={valeurs[c.cle]} onChange={(e) => setValeurs({ ...valeurs, [c.cle]: e.target.value })}>
+                {c.options?.map((o) => (
+                  <option key={o.valeur} value={o.valeur}>
+                    {o.libelle}
+                  </option>
+                ))}
+              </Liste>
+            ) : (
+              <Saisie id={`${id}-${c.cle}`} className={c.type === 'montant' ? 'w-28' : ''} inputMode={c.type === 'montant' ? 'decimal' : undefined} placeholder={c.type === 'montant' ? '0.00' : undefined} maxLength={c.type === 'texte' ? 200 : 20} value={valeurs[c.cle]} onChange={(e) => setValeurs({ ...valeurs, [c.cle]: e.target.value })} required />
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="min-w-64 flex-1">
+          <Libelle htmlFor={`${id}-note`}>Justification (obligatoire)</Libelle>
+          <Saisie id={`${id}-note`} maxLength={2000} minLength={5} value={note} onChange={(e) => setNote(e.target.value)} required />
+        </div>
+        <Bouton type="submit" variante="secondaire" disabled={appel.occupe} aria-label={`Enregistrer ${etiquette}`}>
+          Enregistrer
+        </Bouton>
+        {saisie ? (
+          <Bouton type="button" variante="contour" disabled={appel.occupe} onClick={() => void appel.executer(`v1/exercices/${exerciceId}/tableaux/${tableau}/${ligne}`, { method: 'DELETE' }, 'Saisie retirée.')} aria-label={`Retirer la saisie de ${etiquette}`}>
+            Retirer
+          </Bouton>
+        ) : null}
+      </div>
+      <Retours erreur={appel.erreur} succes={appel.succes} />
+    </form>
+  );
+}
+
+/** Déclaration « néant » d'un tableau entier (ligne NEANT) ou retrait de cette déclaration. */
+export function NeantTableau({ exerciceId, tableau, declare, etiquette }: { exerciceId: string; tableau: string; declare: boolean; etiquette: string }) {
+  const appel = useAppel();
+  return (
+    <div className="flex flex-wrap items-center gap-2" data-testid={`neant-${tableau}`}>
+      {declare ? (
+        <Bouton variante="contour" disabled={appel.occupe} onClick={() => void appel.executer(`v1/exercices/${exerciceId}/tableaux/${tableau}/NEANT`, { method: 'DELETE' }, 'Néant retiré.')} aria-label={`Retirer le néant : ${etiquette}`}>
+          Retirer la déclaration « néant »
+        </Bouton>
+      ) : (
+        <Bouton variante="contour" disabled={appel.occupe} onClick={() => void appel.executer(`v1/exercices/${exerciceId}/tableaux/${tableau}/NEANT`, { method: 'PUT', json: { valeurs: {}, note: `Néant : aucune opération de cette nature (${etiquette}), déclaré par le cabinet` } }, 'Néant enregistré.')} aria-label={`Déclarer néant : ${etiquette}`}>
+          Déclarer néant : {etiquette}
+        </Bouton>
+      )}
+      <Retours erreur={appel.erreur} succes={appel.succes} />
+    </div>
+  );
+}
+
 /** Reprise d'une proposition du moteur comme écriture d'inventaire proposée (`POST …/inventaire/propositions/:id/reprise`). */
 export function ReprendreProposition({ exerciceId, propositionId, libelle }: { exerciceId: string; propositionId: string; libelle: string }) {
   const appel = useAppel();

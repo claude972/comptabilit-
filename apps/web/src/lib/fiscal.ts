@@ -115,6 +115,8 @@ export interface ReponseLiasse {
   tableauxImmobilisations?: TableauxImmobilisationsProjet | Abstention;
   /** Détail 2052 / 2053 (régime réel normal, D-106) ou « dont export » et renvois du 2033-B (régime simplifié, D-107). */
   detailResultat?: DetailResultatProjet | Abstention | null;
+  /** Cadre III du 2033-C (régime simplifié) ou 2054 bis (régime réel normal), saisies ligne par ligne (D-112). */
+  tableauxSaisis?: TableauxSaisisProjet | Abstention;
 }
 export interface RubriqueAnnexe {
   id: string;
@@ -358,7 +360,7 @@ export interface ResultatFiscalProjet {
   nonPrepare: string[];
 }
 export interface EvenementQualification {
-  nature: 'ventilation_ca' | 'renvoi';
+  nature: 'ventilation_ca' | 'renvoi' | 'tableau';
   cle: string;
   action: 'saisie' | 'retrait';
   montant: string | null;
@@ -372,3 +374,74 @@ export interface ReponseHistorique {
   exerciceId: string;
   evenements: EvenementQualification[];
 }
+
+/** Cadre III du 2033-C et 2054 bis : champ `tableauxSaisis` de la réponse de la liasse (D-112). */
+export type CelluleMontantSaisie = { statut: 'etabli'; montant: string; codeCase: string | null; etatCodeCase: string } | { statut: 'abstention'; motifs: string[]; codeCase: string | null; etatCodeCase: string };
+export interface TraceSaisie {
+  note: string;
+  qualifieePar: string;
+  le: string;
+  versionDonnees: number;
+}
+export type StatutLigneSaisie = 'a_saisir' | 'saisi' | 'a_revoir';
+export interface LigneCession {
+  ligne: string;
+  statut: StatutLigneSaisie;
+  trace: TraceSaisie | null;
+  nature: string | null;
+  valeurActif: string | null;
+  amortissements: string | null;
+  valeurResiduelle: string | null;
+  prixCession: string | null;
+  classement: 'court_terme' | 'long_terme_19' | 'long_terme_15_12_8' | 'long_terme_0' | null;
+  plusOuMoinsValue: string | null;
+  colonnePlusValue: 'c5' | 'c6' | 'c7' | 'c8' | null;
+}
+export interface CadreIIIProjet {
+  statut: 'projet';
+  etat: 'a_saisir' | 'neant' | 'saisi';
+  lignes: LigneCession[];
+  totaux: { valeurActif: CelluleMontantSaisie; amortissements: CelluleMontantSaisie; valeurResiduelle: CelluleMontantSaisie; prixCession: CelluleMontantSaisie; c5: CelluleMontantSaisie; c6: CelluleMontantSaisie; c7: CelluleMontantSaisie; c8: CelluleMontantSaisie };
+  plusValues19: { statut: StatutLigneSaisie; montant: string | null; trace: TraceSaisie | null; codeCase: string };
+  regularisations: { statut: StatutLigneSaisie; trace: TraceSaisie | null; c5: string | null; c6: string | null; c7: string | null; c8: string | null; codes: { c5: string; c6: string; c7: string; c8: string } };
+  totalGeneral: { c5: CelluleMontantSaisie; c6: CelluleMontantSaisie; c7: CelluleMontantSaisie; c8: CelluleMontantSaisie };
+  controles: Array<{ code: string; statut: 'coherent' | 'ecart' | 'non_verifie'; message: string; ecart?: string }>;
+  limites: string[];
+  neant: TraceSaisie | null;
+  mention: string;
+}
+export interface LigneEcartReevaluation {
+  ligne: string;
+  libelle: string;
+  statut: StatutLigneSaisie;
+  trace: TraceSaisie | null;
+  c1: string | null;
+  c2: string | null;
+  c3: string | null;
+  c4: string | null;
+  c5: string | null;
+  ecart: string | null;
+  c6: string | null;
+}
+export interface EcartsReevaluationProjet {
+  statut: 'projet';
+  etat: 'a_saisir' | 'neant' | 'saisi';
+  lignes: LigneEcartReevaluation[];
+  totaux: { c1: CelluleMontantSaisie; c2: CelluleMontantSaisie; c3: CelluleMontantSaisie; c4: CelluleMontantSaisie; c5: CelluleMontantSaisie; c6: CelluleMontantSaisie };
+  cadreB: { b1: { statut: StatutLigneSaisie; montant: string | null; trace: TraceSaisie | null }; b2: { statut: StatutLigneSaisie; montant: string | null; trace: TraceSaisie | null }; b3: CelluleMontantSaisie };
+  controles: Array<{ code: string; statut: 'coherent' | 'ecart' | 'non_verifie'; message: string; ecart?: string }>;
+  limites: string[];
+  neant: TraceSaisie | null;
+  mention: string;
+}
+export interface TableauxSaisisProjet {
+  statut: 'projet';
+  cadreIII: CadreIIIProjet | null;
+  ecartsReevaluation: EcartsReevaluationProjet | null;
+}
+export const LIBELLE_CLASSEMENT: Record<string, string> = {
+  court_terme: 'Court terme (colonne 5)',
+  long_terme_19: 'Long terme à 19 % (colonne 6)',
+  long_terme_15_12_8: 'Long terme à 15 % ou 12,8 % (colonne 7)',
+  long_terme_0: 'Long terme à 0 % (colonne 8)',
+};

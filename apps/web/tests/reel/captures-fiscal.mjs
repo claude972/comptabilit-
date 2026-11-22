@@ -113,6 +113,49 @@ if (process.argv.includes('--detail-330')) {
   await page.getByTestId('detail-rf-RF_330').scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${sortie}fiscal-rf-detail-330.png` });
 }
+// Cadre III du 2033-C et 2054 bis (D-112) : saisies par les formulaires (MODIFIE le dossier fictif indiqué).
+async function saisirLigne(tableau, ligne, valeurs, note) {
+  const f = page.getByTestId(`saisie-${tableau}-${ligne}`);
+  await f.scrollIntoViewIfNeeded();
+  for (const [libelle, v] of Object.entries(valeurs)) {
+    const champ = f.getByLabel(libelle, { exact: true });
+    if ((await champ.evaluate((e) => e.tagName)) === 'SELECT') await champ.selectOption({ value: v });
+    else await champ.fill(v);
+  }
+  await f.getByLabel('Justification (obligatoire)').fill(note);
+  await f.getByRole('button', { name: /^Enregistrer/ }).click();
+  await f.getByText('Ligne enregistrée.').waitFor();
+}
+if (process.argv.includes('--cadre-iii')) {
+  await page.goto(`${base}&vue=liasse&regime=reel_simplifie`);
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('cadre-iii').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-cadre-iii-avant.png` });
+  await saisirLigne('2033C_III', '01', { 'Nature de l’immobilisation cédée': 'Machine de découpe (démonstration fictive)', '① Valeur d’actif': '3000.00', '② Amortissements': '1500.00', '④ Prix de cession': '800.00', 'Régime de la plus ou moins-value (décision du cabinet)': 'court_terme' }, 'Cession de la machine au registre des immobilisations (démonstration fictive)');
+  await saisirLigne('2033C_III', 'REG', { 'Colonne 5 (case 590, signée)': '100.00', 'Colonne 6 (case 583, signée)': '0.00', 'Colonne 7 (case 594, signée)': '0.00', 'Colonne 8 (case 595, signée)': '0.00' }, 'Amortissements irrégulièrement différés (démonstration fictive)');
+  await saisirLigne('2033C_III', 'PV19', { 'Montant (case 579)': '0.00' }, 'Aucune plus-value à 19 % (démonstration fictive)');
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('cadre-iii').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-cadre-iii-apres.png` });
+  await page.getByRole('region', { name: 'Cadre III du tableau 2033-C : cessions, plus-values et moins-values' }).screenshot({ path: `${sortie}fiscal-cadre-iii-tableau.png` });
+}
+if (process.argv.includes('--bis')) {
+  await page.goto(`${base}&vue=liasse&regime=reel_normal`);
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('ecarts-reevaluation').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2054bis-avant.png` });
+  const colonnes = (a, b, c, d, e) => ({ '① Augmentation du montant brut': a, '② Augmentation des amortissements': b, '③ Suppléments d’amortissement': c, '④ Fraction résiduelle (cédés)': d, '⑤ Montant cumulé fin d’exercice': e });
+  await saisirLigne('2054BIS_A', '03', colonnes('5000.00', '0.00', '100.00', '50.00', '1200.00'), 'Réévaluation légale des terrains (démonstration fictive)');
+  await saisirLigne('2054BIS_A', '04', colonnes('8000.00', '3000.00', '200.00', '0.00', '2000.00'), 'Réévaluation légale des constructions (démonstration fictive)');
+  await saisirLigne('2054BIS_B', 'B1', { Montant: '900.00' }, 'Fraction incluse au début de l’exercice (démonstration fictive)');
+  await saisirLigne('2054BIS_B', 'B2', { Montant: '250.50' }, 'Fraction rattachée au résultat (démonstration fictive)');
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+  await page.getByTestId('ecarts-reevaluation').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${sortie}fiscal-2054bis-apres.png` });
+  await page.getByRole('region', { name: 'Cadre A du tableau 2054 bis : écarts de réévaluation' }).screenshot({ path: `${sortie}fiscal-2054bis-tableau.png` });
+}
 // 2033-B (D-107) : « dont export » et lignes « dont » du régime simplifié.
 await page.goto(`${base}&vue=liasse&regime=reel_simplifie`);
 await page.waitForLoadState('networkidle');

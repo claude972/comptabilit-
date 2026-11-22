@@ -45,6 +45,9 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
     await expect(liasse.getByText('à confirmer').first()).toBeVisible();
     await expect(page.getByTestId('tableaux-non-couverts').locator('li').first()).toBeVisible();
     await expect(page.getByTestId('controles-liasse').locator('li').first()).toBeVisible();
+    // 2054 bis (D-112) : tableau servi par saisie, sans saisie les totaux restent en abstention.
+    await expect(page.getByTestId('ecarts-reevaluation')).toBeVisible();
+    await expect(page.getByTestId('lignes-2054-bis').locator('tr[data-bis]')).toHaveCount(10);
     // Détail 2052 / 2053 (D-106) : la ventilation France / exportations est qualifiée par le cabinet, jamais déduite ; renvois tracés.
     const detail = page.getByTestId('detail-resultat');
     await expect(detail).toBeVisible();
@@ -67,6 +70,9 @@ test('états fiscaux : projets de liasse et d’annexe, propositions du moteur �
     await expect(detailRsi).toContainText('Détail du compte de résultat simplifié (2033-B)');
     await expect(detailRsi.getByTestId('renvois-detail').locator('li[data-renvoi="255"]')).toBeVisible();
     await expect(detailRsi.locator('#titre-2053')).toHaveCount(0);
+    // Cadre III du 2033-C (D-112) : dix lignes de cessions saisies par le cabinet, totaux en abstention sans saisie ni néant.
+    await expect(page.getByTestId('cadre-iii')).toBeVisible();
+    await expect(page.getByTestId('lignes-cessions').locator('tr[data-cession]')).toHaveCount(13);
     // Partie B (D-110) : résultat fiscal en saisie justifiée ; sans saisie, abstention explicite (jamais un résultat inventé).
     const resultatFiscal = detailRsi.getByTestId('resultat-fiscal');
     await expect(resultatFiscal).toBeVisible();

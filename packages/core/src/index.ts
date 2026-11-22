@@ -133,6 +133,10 @@ export type {
   CelluleVentilation, CompteChiffreAffaires, ControleDetail, DemandeDetailResultat, DetailExceptionnel, DetailResultatProjet, EtatQualification, LigneChiffreAffaires, QualificationRenvoi, QualificationVentilation, RenvoiDetail,
   LigneDetailResultatFiscal, LigneResultatFiscal, ResultatDetailResultat, ResultatFiscalProjet, ResultatSigne, VentilationChiffreAffaires,
 } from './etats/detail-resultat.js';
+export { CLASSEMENTS, LIBELLE_CLASSEMENT, LIBELLES_2054_BIS, LIGNES_CESSIONS, TABLEAUX_SAISIS, preparerSaisiesTableaux, validerSaisieTableau } from './etats/saisies-tableaux.js';
+export type {
+  CadreIIIProjet, CelluleMontant, ClassementPlusValue, DemandeSaisiesTableaux, EcartsReevaluationProjet, LigneCession, LigneEcartReevaluation, ResultatSaisiesTableaux, SaisieTableau, StatutLigneSaisie, TableauSaisi, TraceSaisie,
+} from './etats/saisies-tableaux.js';
 
 // 16. tiers, factures et avoirs suivis, échéances et règlements — aide à la révision, recalculée à la lecture
 export { estDateIso } from './dates.js';

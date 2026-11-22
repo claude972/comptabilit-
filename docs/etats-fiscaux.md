@@ -22,7 +22,8 @@ Périmètre explicite : **société commerciale soumise à l’impôt sur les so
 | 2033-B Compte de résultat simplifié | partiel | Partie comptable seulement | idem + **toute la partie « résultat fiscal »** |
 | 2054 Immobilisations (cadres A et B) | partiel (D-104) | Valeurs brutes à l’ouverture et à la clôture, augmentations (débits), diminutions totales, par ligne du formulaire, avec N-1 et rapprochement avec le fichier des immobilisations | Réévaluations, ventilation des diminutions (virement / cession) quand des crédits existent, « dont composants » ; euros entiers à l’écran (D-105) ; codes de cases lus, à confirmer |
 | 2055 Amortissements (cadre A) | partiel (D-104) | Amortissements à l’ouverture, dotations, diminutions, clôture, avec N-1 ; dotation du moteur comparée à la dotation comptabilisée | Cadres B (amortissements dérogatoires) et C (charges réparties) |
-| 2054 bis, 2056, 2057 | **non couvert** | — | Écarts de réévaluation, provisions, état des échéances |
+| 2054 bis | partiel (D-112) | Saisie ligne par ligne (cadres A et B), écart, colonne ⑥ et totaux calculés comme le formulaire | Aucune donnée de la balance ; colonne ⑤ non reconstituée |
+| 2056, 2057 | **non couvert** | — | Provisions, état des échéances |
 | 2058-A, 2058-B, 2058-C | **non couvert** | — | Réintégrations et déductions extra-comptables, déficits, affectation du résultat |
 | 2059-A à 2059-G | **non couvert** | — | Plus-values, valeur ajoutée fiscale, composition du capital, filiales |
 | 2033-C Immobilisations et amortissements (cadres I et II) | partiel (D-104) | Mêmes calculs que 2054 et 2055 au format simplifié, avec N-1 | Cadre III (plus-values et moins-values, prix de cession), colonne 5 (réévaluation) |
@@ -47,7 +48,7 @@ Guide utilisateur : `tableaux-immobilisations.md`. Entrées : écritures de l’
 - **Fichier des immobilisations** : valeurs brutes à l’ouverture et à la clôture selon le fichier, amortissements antérieurs saisis, sorties d’actif, composants, dotation calculée par le moteur (linéaire ; dégressif non activé) ; immobilisation sans date ou sans base exclue avec motif ; écarts avec la balance affichés, jamais corrigés.
 - **Contrôles** : `valeur_brute_egale_projet_de_bilan`, `ouverture_brute_egale_cloture_n1`, `ouverture_amortissements_egale_cloture_n1`, `fichier_valeurs_brutes`, `fichier_dotations`, `dotations_egales_compte_6811`.
 - Détail 2052 / 2053 (D-106) et 2033-B (D-107, « dont export » 209 / 215 / 217, huit lignes « dont » en saisie tracée, codes de 24 lignes vérifiés sur le rendu du formulaire) : ventilation France / exportations qualifiée par compte (tracée, abstention sans qualification), détail des produits et charges exceptionnels, 13 renvois en saisie tracée ; partie B « résultat fiscal » du 2033-B (D-110 : saisie justifiée et historisée des neuf lignes, néant explicite, calcul 352 / 354 puis 370 / 372, plafond d’imputation de la notice, abstention explicite) ; détail justifié des totaux 330, 342 et 350 (D-111, 24 cases, contrôle indicatif) ; non préparés : régime de taxation au tonnage, renvois d’exploitant individuel, détail (8) des exercices antérieurs.
-- Non préparés : 2054 bis, 2055 cadres B et C, 2033-C cadre III, renvois de bas de tableau. L’arrondi à l’euro est proposé à l’écran (D-105).
+- Cadre III du 2033-C et 2054 bis (D-112) : saisie ligne par ligne, justifiée, historisée, avec néant explicite et abstention sans saisie (le classement des plus-values reste une décision du cabinet). Non préparés : 2055 cadres B et C, renvois de bas de tableau. L’arrondi à l’euro est proposé à l’écran (D-105).
 
 ### 1.2 Projet d’annexe — `preparerAnnexe`
 

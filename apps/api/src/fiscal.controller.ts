@@ -11,6 +11,9 @@ import {
   preparerAnnexe,
   preparerLiasse,
   preparerDetailResultat,
+  preparerSaisiesTableaux,
+  validerSaisieTableau,
+  type SaisieTableau,
   preparerTableauxImmobilisations,
   type QualificationRenvoi,
   type QualificationVentilation,
@@ -44,6 +47,9 @@ const immobilisation = schemaImmobilisation;
 const montantSigne = schemaChaineDecimale;
 const ventilation = z.object({ montantFrance: montantSigne, montantExport: montantSigne, note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie la ventilation').max(2000) });
 const renvoiSaisie = z.object({ montant: montantSigne, note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie le montant').max(2000) });
+const saisieTableau = z.object({ valeurs: z.record(z.string().max(40), z.string().max(200)), note: z.string().trim().min(5, 'Note obligatoire (5 caractères au moins) : elle justifie la saisie').max(2000) });
+const TABLEAU_SAISI = /^(2033C_III|2054BIS_A|2054BIS_B)$/;
+const LIGNE_TABLEAU = /^(0[1-9]|10|REG|PV19|NEANT|B1|B2)$/;
 const COMPTE_CA = /^70[0-9A-Za-z]{1,13}$/;
 const CODE_RENVOI = /^[0-9A-Z_]{2,7}$/;
 const RENVOIS_CONNUS = [...RENVOIS, ...RENVOIS_RSI, ...LIGNES_RESULTAT_FISCAL.map((l) => ({ code: l.cle })), ...DETAIL_RESULTAT_FISCAL.map((l) => ({ code: l.cle }))];
@@ -126,7 +132,7 @@ export class FiscalController {
   }
 
   /** Ajoute une ligne à l'historique (AJOUT SEUL, D-110) : chaque saisie et chaque retrait, avec son auteur, sa note et la version des données. */
-  private async historiser(tx: Tx, acces: Acces, exercice: typeof s.exercices.$inferSelect, nature: 'ventilation_ca' | 'renvoi', cle: string, action: 'saisie' | 'retrait', v?: { montant: string; montantExport?: string | null; note: string }) {
+  private async historiser(tx: Tx, acces: Acces, exercice: typeof s.exercices.$inferSelect, nature: 'ventilation_ca' | 'renvoi' | 'tableau', cle: string, action: 'saisie' | 'retrait', v?: { montant: string; montantExport?: string | null; note: string }) {
     await tx.insert(s.historiqueQualifications).values({
       cabinetId: acces.cabinetId, entiteId: exercice.entiteId, exerciceId: exercice.id, nature, cle, action,
       montant: v?.montant ?? null, montantExport: v?.montantExport ?? null, note: v?.note ?? null, versionDonnees: exercice.versionDonnees, auteurId: acces.utilisateurId,
@@ -141,7 +147,7 @@ export class FiscalController {
   })
   async historique(@AccesCourant() acces: Acces, @Param('id') id: string, @Query('cle') cle?: string) {
     exigerUuid(id);
-    if (cle !== undefined && !/^[0-9A-Za-z_]{2,20}$/.test(cle)) throw new BadRequestException('cle invalide');
+    if (cle !== undefined && !/^[0-9A-Za-z_:]{2,30}$/.test(cle)) throw new BadRequestException('cle invalide');
     return this.bd.avecContexte(acces, async (tx) => {
       const [exercice] = await tx.select().from(s.exercices).where(eq(s.exercices.id, id));
       if (!exercice) throw new NotFoundException('Exercice introuvable');
@@ -226,6 +232,48 @@ export class FiscalController {
     return this.retirerQualification(acces, id, 'renvoi', code, CODE_RENVOI);
   }
 
+  @Put('exercices/:id/tableaux/:tableau/:ligne')
+  @ApiOperation({
+    summary: 'Saisir une ligne du cadre III du 2033-C (cessions) ou du tableau 2054 bis (écarts de réévaluation) (niveau révision)',
+    description:
+      'Tableaux : 2033C_III (lignes 01 à 10 : nature, valeurActif, amortissements, prixCession, classement ; REG : c5 à c8 signés ; PV19 : montant ; NEANT), 2054BIS_A (lignes 01 à 09 : c1 à c5 ; NEANT), 2054BIS_B (B1, B2 : montant). Montants en chaînes décimales positives (sauf REG). Note de justification obligatoire. La saisie est tracée, historisée (ajout seul) et « à revoir » si les données changent. Le moteur ne calcule que ce que le formulaire calcule ; aucune décision fiscale n’est prise (le classement d’une plus-value est choisi par le cabinet).',
+  })
+  @ApiBody({ schema: schemaOpenApi(saisieTableau) })
+  async saisirLigneTableau(@AccesCourant() acces: Acces, @Param('id') id: string, @Param('tableau') tableau: string, @Param('ligne') ligne: string, @Body() corps: unknown) {
+    exigerUuid(id);
+    if (!TABLEAU_SAISI.test(tableau) || !LIGNE_TABLEAU.test(ligne)) throw new NotFoundException('Tableau ou ligne inconnu');
+    const d = valider(saisieTableau, corps);
+    const erreurs = validerSaisieTableau(tableau, ligne, d.valeurs);
+    if (erreurs.length > 0) throw new BadRequestException(erreurs.join(' '));
+    return this.bd.avecContexte(acces, async (tx) => {
+      const [exercice] = await tx.select().from(s.exercices).where(eq(s.exercices.id, id));
+      if (!exercice) throw new NotFoundException('Exercice introuvable');
+      await exigerNiveau(tx, exercice.entiteId, 'revision');
+      await tx.delete(s.saisiesTableaux).where(and(eq(s.saisiesTableaux.exerciceId, id), eq(s.saisiesTableaux.tableau, tableau), eq(s.saisiesTableaux.ligne, ligne)));
+      const [q] = await tx.insert(s.saisiesTableaux).values({ cabinetId: acces.cabinetId, entiteId: exercice.entiteId, exerciceId: id, tableau, ligne, valeurs: d.valeurs, note: d.note, versionDonnees: exercice.versionDonnees, auteurId: acces.utilisateurId }).returning();
+      await this.historiser(tx, acces, exercice, 'tableau', `${tableau}:${ligne}`, 'saisie', { montant: JSON.stringify(d.valeurs), note: d.note });
+      await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'tableau.ligne_saisie', cibleType: 'exercice', cibleId: id, entiteId: exercice.entiteId, details: { tableau, ligne, versionDonnees: exercice.versionDonnees } });
+      return q;
+    });
+  }
+
+  @Delete('exercices/:id/tableaux/:tableau/:ligne')
+  @ApiOperation({ summary: 'Retirer la saisie d’une ligne du cadre III du 2033-C ou du 2054 bis (niveau révision)' })
+  async retirerLigneTableau(@AccesCourant() acces: Acces, @Param('id') id: string, @Param('tableau') tableau: string, @Param('ligne') ligne: string) {
+    exigerUuid(id);
+    if (!TABLEAU_SAISI.test(tableau) || !LIGNE_TABLEAU.test(ligne)) throw new NotFoundException('Tableau ou ligne inconnu');
+    return this.bd.avecContexte(acces, async (tx) => {
+      const [exercice] = await tx.select().from(s.exercices).where(eq(s.exercices.id, id));
+      if (!exercice) throw new NotFoundException('Exercice introuvable');
+      await exigerNiveau(tx, exercice.entiteId, 'revision');
+      const retirees = await tx.delete(s.saisiesTableaux).where(and(eq(s.saisiesTableaux.exerciceId, id), eq(s.saisiesTableaux.tableau, tableau), eq(s.saisiesTableaux.ligne, ligne))).returning({ id: s.saisiesTableaux.id });
+      if (!retirees.length) throw new NotFoundException('Aucune saisie pour cette ligne');
+      await this.historiser(tx, acces, exercice, 'tableau', `${tableau}:${ligne}`, 'retrait');
+      await journaliser(tx, { cabinetId: acces.cabinetId, acteurId: acces.utilisateurId, action: 'tableau.ligne_retiree', cibleType: 'exercice', cibleId: id, entiteId: exercice.entiteId, details: { tableau, ligne } });
+      return { tableau, ligne, retiree: true };
+    });
+  }
+
   private async retirerQualification(acces: Acces, id: string, nature: 'ventilation_ca' | 'renvoi', cle: string, motif: RegExp) {
     exigerUuid(id);
     if (!motif.test(cle)) throw new BadRequestException('identifiant de qualification invalide');
@@ -271,6 +319,20 @@ export class FiscalController {
       // Résultat comptable de la ligne 310 du 2033-B (produits − charges, signé) : base de la partie B « résultat fiscal » (régime simplifié).
       const resultatComptable = resultat.statut === 'projet' && regime === 'reel_simplifie' ? (resultat.tableaux.flatMap((t) => t.lignes).find((l) => l.ligne === 'RSI_2033B_RESULTAT')?.montant ?? null) : null;
       const detailResultat = await this.detailResultat(tx, { exercice, entite, lignes, regime, resultatComptable });
+      const saisiesRows = await tx.select().from(s.saisiesTableaux).where(eq(s.saisiesTableaux.exerciceId, id));
+      const saisies: SaisieTableau[] = saisiesRows.map((r) => ({ tableau: r.tableau as SaisieTableau['tableau'], ligne: r.ligne, valeurs: r.valeurs as Record<string, string>, note: r.note, qualifieePar: r.auteurId, le: new Date(r.creeLe).toISOString(), versionDonnees: r.versionDonnees }));
+      const tableauxSaisis = preparerSaisiesTableaux({
+        balance: calculerBalance(lignes),
+        exercice: { debut: exercice.debut, fin: exercice.fin },
+        regime,
+        territoire: entite.territoireFiscal,
+        impotSurLeResultat: impot(entite.regimeFiscal),
+        referentielComptable: entite.referentielComptable,
+        devise: 'EUR',
+        societeCommerciale: societeCommerciale(entite.formeJuridique),
+        versionDonnees: exercice.versionDonnees,
+        saisies,
+      });
       const tableauxImmobilisations = preparerTableauxImmobilisations({
         lignes,
         exercice: { debut: exercice.debut, fin: exercice.fin },
@@ -296,6 +358,8 @@ export class FiscalController {
         tableauxImmobilisations,
         /** Détail 2052 / 2053 (régime réel normal, D-106) ou « dont export » et renvois du 2033-B (régime simplifié, D-107) : qualification tracée par le cabinet, abstention sans qualification. */
         detailResultat,
+        /** Cadre III du 2033-C (régime simplifié) ou 2054 bis (régime réel normal) : saisies ligne par ligne, tracées et historisées (D-112). */
+        tableauxSaisis,
       };
     });
   }

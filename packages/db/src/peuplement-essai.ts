@@ -56,6 +56,10 @@ const VALEURS: Record<string, (c: Cabinet | null) => unknown> = {
   'historique_qualifications.action': () => 'saisie',
   'historique_qualifications.montant': () => '10.00',
   'historique_qualifications.note': () => 'Saisie de démonstration (essai de peuplement)',
+  'saisies_tableaux.tableau': () => '2054BIS_A',
+  'saisies_tableaux.ligne': () => '01',
+  'saisies_tableaux.valeurs': () => ({ c1: '10.00' }),
+  'saisies_tableaux.note': () => 'Saisie de démonstration (essai de peuplement)',
   'immobilisations.compte_immobilisation': () => '2183',
   // Provenance d'une reprise par import : l'identifiant de la reprise et le numéro de ligne vont ensemble (contrainte de la base).
   'immobilisations.reprise_ligne': () => 2,

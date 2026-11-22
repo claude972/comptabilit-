@@ -1453,6 +1453,31 @@ export const qualificationsResultat = pgTable(
 );
 
 /**
+ * Saisies LIGNE PAR LIGNE de tableaux de la liasse que la balance ne porte pas (D-112) : cadre III du 2033-C (cessions d'immobilisations,
+ * plus-values et moins-values) et tableau 2054 bis (écarts de réévaluation). Une ligne porte ses valeurs (chaînes décimales ou libellés, selon
+ * le tableau), une note de justification obligatoire et sa trace. État courant seulement : l'historique est dans `historique_qualifications`.
+ */
+export const saisiesTableaux = pgTable(
+  'saisies_tableaux',
+  {
+    id: id(),
+    cabinetId: uuid('cabinet_id').notNull().references(() => cabinets.id),
+    entiteId: uuid('entite_id').notNull().references(() => entites.id),
+    exerciceId: uuid('exercice_id').notNull().references(() => exercices.id),
+    /** 2033C_III | 2054BIS_A | 2054BIS_B */
+    tableau: text('tableau').notNull(),
+    /** 01 à 10, REG, PV19, NEANT, B1, B2 selon le tableau. */
+    ligne: text('ligne').notNull(),
+    valeurs: jsonb('valeurs').notNull(),
+    note: text('note').notNull(),
+    versionDonnees: integer('version_donnees').notNull(),
+    auteurId: uuid('auteur_id').notNull().references(() => utilisateurs.id),
+    creeLe: creeLe(),
+  },
+  (t) => [uniqueIndex('saisies_tableaux_unique').on(t.exerciceId, t.tableau, t.ligne)],
+);
+
+/**
  * HISTORIQUE des qualifications du détail du compte de résultat (D-110) : journal en AJOUT SEUL de chaque saisie et de chaque retrait
  * (la table `qualifications_resultat` ne garde que l'état courant). Une ligne n'est jamais modifiée ni supprimée par l'application.
  */

@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ChoixExercice } from '@/components/dossier';
 import { ErreurAcces } from '@/components/erreurs';
-import { CategorieAnnexe, ConfirmerRubrique, QualifierCompte, SaisirRenvoi } from '@/components/fiscal/actions';
+import { CategorieAnnexe, ConfirmerRubrique, NeantTableau, QualifierCompte, SaisieLigneTableau, SaisirRenvoi } from '@/components/fiscal/actions';
 import { Alerte, Carte, Etiquette, MentionProjet, SousTitre, Tableau } from '@/components/ui/base';
-import { type Abstention, type AnnexeProjet, type CelluleImmobilisation, type CelluleVentilation, type DetailResultatProjet, type EvenementQualification, type ReponseHistorique, type ResultatSigne, LIBELLE_CATEGORIE, LIBELLE_ETAT_QUALIFICATION, type LiasseProjet, type ReponseAnnexe, type ReponseLiasse, type TableauxImmobilisationsProjet } from '@/lib/fiscal';
+import { type Abstention, type AnnexeProjet, type CelluleImmobilisation, type CelluleVentilation, type CadreIIIProjet, type CelluleMontantSaisie, type DetailResultatProjet, type EcartsReevaluationProjet, type EvenementQualification, LIBELLE_CLASSEMENT, type TableauxSaisisProjet, type ReponseHistorique, type ResultatSigne, LIBELLE_CATEGORIE, LIBELLE_ETAT_QUALIFICATION, type LiasseProjet, type ReponseAnnexe, type ReponseLiasse, type TableauxImmobilisationsProjet } from '@/lib/fiscal';
 import { formaterHorodatage, formaterMontant, formaterMontantEuros } from '@/lib/montants';
 
 type Fm = (valeur: string | null | undefined) => string;
@@ -319,6 +319,35 @@ function CelluleVentil({ c, fm }: { c: CelluleVentilation; fm: Fm }) {
   );
 }
 
+/** Résumé lisible des valeurs JSON d'une saisie de tableau (historique). */
+function resumeValeurs(json: string | null): string {
+  if (json === null) return '';
+  try {
+    const v = JSON.parse(json) as Record<string, string>;
+    const e = Object.entries(v);
+    return e.length === 0 ? '« néant »' : e.map(([k, x]) => `${k} = ${x}`).join(', ');
+  } catch {
+    return '';
+  }
+}
+
+function CelluleMs({ c, fm }: { c: CelluleMontantSaisie; fm: Fm }) {
+  const code = c.codeCase === null ? null : <span className="block text-xs text-texte-doux">case {c.codeCase} ({c.etatCodeCase === 'lu_verifie' ? 'lue, vérifiée sur le PDF' : 'lue, à confirmer'})</span>;
+  return c.statut === 'etabli' ? (
+    <>
+      <span className="tabular-nums">{fm(c.montant)}</span>
+      {code}
+    </>
+  ) : (
+    <>
+      <span className="text-texte-doux" title={c.motifs.join(' ')}>
+        abstention
+      </span>
+      {code}
+    </>
+  );
+}
+
 function CelluleSigne({ r, fm, testid }: { r: ResultatSigne; fm: Fm; testid: string }) {
   if (r.statut === 'abstention') {
     return (
@@ -350,7 +379,7 @@ function HistoriqueLigne({ evenements, cle, fm }: { evenements: EvenementQualifi
       <ol className="list-decimal pl-5">
         {e.map((x, i) => (
           <li key={`${x.le}-${i}`}>
-            {formaterHorodatage(x.le)} — {x.action === 'retrait' ? 'retrait de la saisie' : x.nature === 'renvoi' && x.montant === '0.00' ? 'néant déclaré' : `saisie de ${fm(x.montant)}${x.montantExport !== null ? ` (export ${fm(x.montantExport)})` : ''}`} · version {x.versionDonnees} des données · utilisateur {x.auteurId.slice(0, 8)}
+            {formaterHorodatage(x.le)} — {x.action === 'retrait' ? 'retrait de la saisie' : x.nature === 'tableau' ? `saisie ${resumeValeurs(x.montant)}` : x.nature === 'renvoi' && x.montant === '0.00' ? 'néant déclaré' : `saisie de ${fm(x.montant)}${x.montantExport !== null ? ` (export ${fm(x.montantExport)})` : ''}`} · version {x.versionDonnees} des données · utilisateur {x.auteurId.slice(0, 8)}
             {x.note ? ` · « ${x.note} »` : ''}
           </li>
         ))}
@@ -704,6 +733,295 @@ function DetailResultat({ d, fm, exerciceId, revision, evenements }: { d: Detail
   );
 }
 
+/** Cadre III du 2033-C (cessions, plus-values et moins-values) : saisie ligne par ligne, tracée et historisée (D-112). */
+function CadreIII({ c, fm, exerciceId, revision, evenements }: { c: CadreIIIProjet; fm: Fm; exerciceId: string; revision: boolean; evenements: EvenementQualification[] }) {
+  const choix = Object.entries(LIBELLE_CLASSEMENT).map(([valeur, libelle]) => ({ valeur, libelle }));
+  const badge = (statut: string) => <Etiquette ton={statut === 'saisi' ? 'succes' : 'attention'}>{statut === 'saisi' ? 'Saisi' : statut === 'a_revoir' ? 'À revoir : données modifiées' : 'À saisir'}</Etiquette>;
+  return (
+    <section className="space-y-3" aria-labelledby="titre-cadre-iii" data-testid="cadre-iii">
+      <SousTitre id="titre-cadre-iii" className="text-base">
+        2033-C — Cadre III : plus-values et moins-values (cessions d’immobilisations) <MentionProjet />
+      </SousTitre>
+      <Alerte ton="attention" titre="Saisie du cabinet : les cessions ne se déduisent pas de la balance">
+        <p className="text-sm">
+          Chaque cession se saisit ligne par ligne (nature, valeur d’actif, amortissements, prix de cession, régime d’imposition de la plus ou moins-value), avec une justification obligatoire, tracée et historisée. Le logiciel calcule seulement ce que le formulaire calcule
+          (valeur résiduelle = valeur d’actif − amortissements ; plus ou moins-value = prix de cession − valeur résiduelle ; totaux). Le classement court terme / long terme est une décision du cabinet. Sans cession saisie ni « néant », les totaux restent en abstention.
+        </p>
+        {c.limites.map((l) => (
+          <p key={l} className="text-sm">
+            {l}
+          </p>
+        ))}
+      </Alerte>
+      <ul className="space-y-1" aria-label="Contrôles du cadre III" data-testid="controles-cadre-iii">
+        {c.controles.map((x) => (
+          <li key={x.code}>
+            <Etiquette ton={x.statut === 'coherent' ? 'succes' : x.statut === 'ecart' ? 'danger' : 'attention'}>{x.statut === 'coherent' ? 'Cohérent' : x.statut === 'ecart' ? 'Écart' : 'Non vérifiable'}</Etiquette> {x.message}
+            {x.ecart ? ` (écart : ${fm(x.ecart)})` : ''}
+          </li>
+        ))}
+      </ul>
+      <Tableau legende="Cadre III du tableau 2033-C : cessions, plus-values et moins-values">
+        <thead>
+          <tr>
+            <th scope="col">Ligne</th>
+            <th scope="col">Nature</th>
+            <th scope="col" className="text-right">① Valeur d’actif</th>
+            <th scope="col" className="text-right">② Amortissements</th>
+            <th scope="col" className="text-right">③ Valeur résiduelle</th>
+            <th scope="col" className="text-right">④ Prix de cession</th>
+            <th scope="col" className="text-right">⑤ Court terme</th>
+            <th scope="col" className="text-right">⑥ Long terme 19 %</th>
+            <th scope="col" className="text-right">⑦ 15 % ou 12,8 %</th>
+            <th scope="col" className="text-right">⑧ 0 %</th>
+          </tr>
+        </thead>
+        <tbody data-testid="lignes-cessions">
+          {c.lignes.map((l) => (
+            <tr key={l.ligne} data-cession={l.ligne}>
+              <th scope="row">{Number(l.ligne)}</th>
+              <td>{l.statut === 'saisi' ? l.nature : badge(l.statut)}</td>
+              <td className="text-right tabular-nums">{l.valeurActif !== null ? fm(l.valeurActif) : ''}</td>
+              <td className="text-right tabular-nums">{l.amortissements !== null ? fm(l.amortissements) : ''}</td>
+              <td className="text-right tabular-nums">{l.valeurResiduelle !== null ? fm(l.valeurResiduelle) : ''}</td>
+              <td className="text-right tabular-nums">{l.prixCession !== null ? fm(l.prixCession) : ''}</td>
+              {(['c5', 'c6', 'c7', 'c8'] as const).map((k) => (
+                <td key={k} className="text-right tabular-nums">
+                  {l.colonnePlusValue === k && l.plusOuMoinsValue !== null ? fm(l.plusOuMoinsValue) : ''}
+                </td>
+              ))}
+            </tr>
+          ))}
+          <tr data-cession="TOTAL" className="font-semibold">
+            <th scope="row" colSpan={2}>
+              Total (lignes saisies)
+            </th>
+            {(['valeurActif', 'amortissements', 'valeurResiduelle', 'prixCession', 'c5', 'c6', 'c7', 'c8'] as const).map((k) => (
+              <td key={k} className="text-right tabular-nums" data-total={k}>
+                <CelluleMs c={c.totaux[k]} fm={fm} />
+              </td>
+            ))}
+          </tr>
+          <tr data-cession="REG">
+            <th scope="row" colSpan={6}>
+              Régularisations (cases 590, 583, 594, 595) {badge(c.regularisations.statut)}
+            </th>
+            {(['c5', 'c6', 'c7', 'c8'] as const).map((k) => (
+              <td key={k} className="text-right tabular-nums">
+                {c.regularisations[k] !== null ? fm(c.regularisations[k]) : ''}
+                <span className="block text-xs text-texte-doux">case {c.regularisations.codes[k]}</span>
+              </td>
+            ))}
+          </tr>
+          <tr data-cession="TOTAL_GENERAL" className="font-semibold">
+            <th scope="row" colSpan={6}>
+              TOTAL (total de colonne + régularisations)
+            </th>
+            {(['c5', 'c6', 'c7', 'c8'] as const).map((k) => (
+              <td key={k} className="text-right tabular-nums" data-total-general={k}>
+                <CelluleMs c={c.totalGeneral[k]} fm={fm} />
+              </td>
+            ))}
+          </tr>
+        </tbody>
+      </Tableau>
+      <p className="text-sm" data-testid="plus-values-19">
+        Plus-values taxables à 19 % (case 579) : {c.plusValues19.montant !== null ? <strong>{fm(c.plusValues19.montant)}</strong> : 'à saisir'} {badge(c.plusValues19.statut)}
+      </p>
+      <p className="text-sm" data-testid="etat-cadre-iii">
+        État du cadre : <strong>{c.etat === 'saisi' ? 'cessions saisies' : c.etat === 'neant' ? 'néant déclaré' : 'à saisir (ni cession ni néant)'}</strong>
+        {c.neant ? ` — déclaré le ${formaterHorodatage(c.neant.le)} sur la version ${c.neant.versionDonnees} des données` : ''}.
+      </p>
+      {revision ? (
+        <div className="space-y-3">
+          <NeantTableau exerciceId={exerciceId} tableau="2033C_III" declare={c.etat === 'neant'} etiquette="cadre III du 2033-C (aucune cession)" />
+          <ul className="space-y-3">
+            {c.lignes.map((l) => (
+              <li key={l.ligne} className="rounded-lg border border-bordure p-3" data-saisie-cession={l.ligne}>
+                <p className="text-sm font-semibold">Cession n° {Number(l.ligne)} {badge(l.statut)}</p>
+                {l.trace ? (
+                  <p className="text-xs text-texte-doux" data-testid={`trace-cession-${l.ligne}`}>
+                    saisie le {formaterHorodatage(l.trace.le)} sur la version {l.trace.versionDonnees} des données · « {l.trace.note} »
+                  </p>
+                ) : null}
+                <HistoriqueLigne evenements={evenements} cle={`2033C_III:${l.ligne}`} fm={fm} />
+                <SaisieLigneTableau
+                  exerciceId={exerciceId}
+                  tableau="2033C_III"
+                  ligne={l.ligne}
+                  etiquette={`la cession ${Number(l.ligne)}`}
+                  saisie={l.statut !== 'a_saisir'}
+                  noteCourante={l.trace?.note ?? null}
+                  champs={[
+                    { cle: 'nature', libelle: 'Nature de l’immobilisation cédée', type: 'texte', valeur: l.nature ?? '' },
+                    { cle: 'valeurActif', libelle: '① Valeur d’actif', type: 'montant', valeur: l.valeurActif ?? '' },
+                    { cle: 'amortissements', libelle: '② Amortissements', type: 'montant', valeur: l.amortissements ?? '' },
+                    { cle: 'prixCession', libelle: '④ Prix de cession', type: 'montant', valeur: l.prixCession ?? '' },
+                    { cle: 'classement', libelle: 'Régime de la plus ou moins-value (décision du cabinet)', type: 'choix', options: choix, valeur: l.classement ?? 'court_terme' },
+                  ]}
+                />
+              </li>
+            ))}
+            <li className="rounded-lg border border-bordure p-3" data-saisie-cession="REG">
+              <p className="text-sm font-semibold">Régularisations {badge(c.regularisations.statut)}</p>
+              <HistoriqueLigne evenements={evenements} cle="2033C_III:REG" fm={fm} />
+              <SaisieLigneTableau
+                exerciceId={exerciceId}
+                tableau="2033C_III"
+                ligne="REG"
+                etiquette="les régularisations"
+                saisie={c.regularisations.statut !== 'a_saisir'}
+                noteCourante={c.regularisations.trace?.note ?? null}
+                champs={(['c5', 'c6', 'c7', 'c8'] as const).map((k) => ({ cle: k, libelle: `Colonne ${k.slice(1)} (case ${c.regularisations.codes[k]}, signée)`, type: 'montant' as const, valeur: c.regularisations[k] ?? '' }))}
+              />
+            </li>
+            <li className="rounded-lg border border-bordure p-3" data-saisie-cession="PV19">
+              <p className="text-sm font-semibold">Plus-values taxables à 19 % (case 579) {badge(c.plusValues19.statut)}</p>
+              <HistoriqueLigne evenements={evenements} cle="2033C_III:PV19" fm={fm} />
+              <SaisieLigneTableau exerciceId={exerciceId} tableau="2033C_III" ligne="PV19" etiquette="la case 579" saisie={c.plusValues19.statut !== 'a_saisir'} noteCourante={c.plusValues19.trace?.note ?? null} champs={[{ cle: 'montant', libelle: 'Montant (case 579)', type: 'montant', valeur: c.plusValues19.montant ?? '' }]} />
+            </li>
+          </ul>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+/** Tableau 2054 bis (écarts de réévaluation des immobilisations amortissables) : saisie ligne par ligne, tracée et historisée (D-112). */
+function EcartsReevaluation({ t, fm, exerciceId, revision, evenements }: { t: EcartsReevaluationProjet; fm: Fm; exerciceId: string; revision: boolean; evenements: EvenementQualification[] }) {
+  const badge = (statut: string) => <Etiquette ton={statut === 'saisi' ? 'succes' : 'attention'}>{statut === 'saisi' ? 'Saisi' : statut === 'a_revoir' ? 'À revoir : données modifiées' : 'À saisir'}</Etiquette>;
+  return (
+    <section className="space-y-3" aria-labelledby="titre-2054-bis" data-testid="ecarts-reevaluation">
+      <SousTitre id="titre-2054-bis" className="text-base">
+        2054 bis — Écarts de réévaluation sur immobilisations amortissables <MentionProjet />
+      </SousTitre>
+      <Alerte ton="attention" titre="Saisie du cabinet : tableau réservé aux entreprises ayant pratiqué la réévaluation légale">
+        <p className="text-sm">
+          Aucune donnée de la balance ne porte ce tableau. Chaque ligne se saisit (colonnes ① à ⑤) avec une justification obligatoire, tracée et historisée ; le logiciel calcule seulement ce que le formulaire calcule : écart = ① − ②, colonne ⑥ = (① − ②) − ⑤, ligne 10 = somme des lignes,
+          cadre B ligne 3 = ligne 1 − ligne 2. Une ligne non saisie n’est jamais présumée nulle ; sans ligne ni « néant », les totaux restent en abstention.
+        </p>
+        {t.limites.map((l) => (
+          <p key={l} className="text-sm">
+            {l}
+          </p>
+        ))}
+      </Alerte>
+      <ul className="space-y-1" aria-label="Contrôles du 2054 bis" data-testid="controles-2054-bis">
+        {t.controles.map((x) => (
+          <li key={x.code}>
+            <Etiquette ton={x.statut === 'coherent' ? 'succes' : x.statut === 'ecart' ? 'danger' : 'attention'}>{x.statut === 'coherent' ? 'Cohérent' : x.statut === 'ecart' ? 'Écart' : 'Non vérifiable'}</Etiquette> {x.message}
+          </li>
+        ))}
+      </ul>
+      <Tableau legende="Cadre A du tableau 2054 bis : écarts de réévaluation">
+        <thead>
+          <tr>
+            <th scope="col">Ligne</th>
+            <th scope="col" className="text-right">① Augmentation du montant brut</th>
+            <th scope="col" className="text-right">② Augmentation des amortissements</th>
+            <th scope="col" className="text-right">Écart (① − ②)</th>
+            <th scope="col" className="text-right">③ Suppléments d’amortissement</th>
+            <th scope="col" className="text-right">④ Fraction résiduelle (éléments cédés)</th>
+            <th scope="col" className="text-right">⑤ Montant cumulé fin d’exercice</th>
+            <th scope="col" className="text-right">⑥ Provision spéciale fin d’exercice</th>
+          </tr>
+        </thead>
+        <tbody data-testid="lignes-2054-bis">
+          {t.lignes.map((l) => (
+            <tr key={l.ligne} data-bis={l.ligne}>
+              <th scope="row">
+                {Number(l.ligne)} — {l.libelle} {l.statut !== 'saisi' ? badge(l.statut) : null}
+              </th>
+              {([l.c1, l.c2, l.ecart, l.c3, l.c4, l.c5, l.c6] as Array<string | null>).map((v, i) => (
+                <td key={i} className="text-right tabular-nums">
+                  {v !== null ? fm(v) : ''}
+                </td>
+              ))}
+            </tr>
+          ))}
+          <tr data-bis="TOTAUX" className="font-semibold">
+            <th scope="row">10 — TOTAUX (lignes saisies)</th>
+            <td className="text-right tabular-nums">
+              <CelluleMs c={t.totaux.c1} fm={fm} />
+            </td>
+            <td className="text-right tabular-nums">
+              <CelluleMs c={t.totaux.c2} fm={fm} />
+            </td>
+            <td />
+            <td className="text-right tabular-nums">
+              <CelluleMs c={t.totaux.c3} fm={fm} />
+            </td>
+            <td className="text-right tabular-nums">
+              <CelluleMs c={t.totaux.c4} fm={fm} />
+            </td>
+            <td className="text-right tabular-nums">
+              <CelluleMs c={t.totaux.c5} fm={fm} />
+            </td>
+            <td className="text-right tabular-nums" data-total="c6">
+              <CelluleMs c={t.totaux.c6} fm={fm} />
+            </td>
+          </tr>
+        </tbody>
+      </Tableau>
+      <p className="text-sm" data-testid="cadre-b-2054-bis">
+        Cadre B (déficits au 31 décembre 1976 imputés sur la provision spéciale) : ligne 1 {t.cadreB.b1.montant !== null ? <strong>{fm(t.cadreB.b1.montant)}</strong> : 'à saisir'} {badge(t.cadreB.b1.statut)} · ligne 2{' '}
+        {t.cadreB.b2.montant !== null ? <strong>{fm(t.cadreB.b2.montant)}</strong> : 'à saisir'} {badge(t.cadreB.b2.statut)} · ligne 3 (1 − 2) : <CelluleMs c={t.cadreB.b3} fm={fm} />
+      </p>
+      <p className="text-sm" data-testid="etat-2054-bis">
+        État du tableau : <strong>{t.etat === 'saisi' ? 'lignes saisies' : t.etat === 'neant' ? 'néant déclaré' : 'à saisir (ni ligne ni néant)'}</strong>
+        {t.neant ? ` — déclaré le ${formaterHorodatage(t.neant.le)} sur la version ${t.neant.versionDonnees} des données` : ''}.
+      </p>
+      {revision ? (
+        <div className="space-y-3">
+          <NeantTableau exerciceId={exerciceId} tableau="2054BIS_A" declare={t.etat === 'neant'} etiquette="tableau 2054 bis (aucune réévaluation légale)" />
+          <ul className="space-y-3">
+            {t.lignes.map((l) => (
+              <li key={l.ligne} className="rounded-lg border border-bordure p-3" data-saisie-bis={l.ligne}>
+                <p className="text-sm font-semibold">
+                  Ligne {Number(l.ligne)} — {l.libelle} {badge(l.statut)}
+                </p>
+                {l.trace ? (
+                  <p className="text-xs text-texte-doux" data-testid={`trace-bis-${l.ligne}`}>
+                    saisie le {formaterHorodatage(l.trace.le)} sur la version {l.trace.versionDonnees} des données · « {l.trace.note} »
+                  </p>
+                ) : null}
+                <HistoriqueLigne evenements={evenements} cle={`2054BIS_A:${l.ligne}`} fm={fm} />
+                <SaisieLigneTableau
+                  exerciceId={exerciceId}
+                  tableau="2054BIS_A"
+                  ligne={l.ligne}
+                  etiquette={`la ligne ${Number(l.ligne)} du 2054 bis`}
+                  saisie={l.statut !== 'a_saisir'}
+                  noteCourante={l.trace?.note ?? null}
+                  champs={[
+                    { cle: 'c1', libelle: '① Augmentation du montant brut', type: 'montant', valeur: l.c1 ?? '' },
+                    { cle: 'c2', libelle: '② Augmentation des amortissements', type: 'montant', valeur: l.c2 ?? '' },
+                    { cle: 'c3', libelle: '③ Suppléments d’amortissement', type: 'montant', valeur: l.c3 ?? '' },
+                    { cle: 'c4', libelle: '④ Fraction résiduelle (cédés)', type: 'montant', valeur: l.c4 ?? '' },
+                    { cle: 'c5', libelle: '⑤ Montant cumulé fin d’exercice', type: 'montant', valeur: l.c5 ?? '' },
+                  ]}
+                />
+              </li>
+            ))}
+            {(['B1', 'B2'] as const).map((b) => {
+              const x = b === 'B1' ? t.cadreB.b1 : t.cadreB.b2;
+              return (
+                <li key={b} className="rounded-lg border border-bordure p-3" data-saisie-bis={b}>
+                  <p className="text-sm font-semibold">
+                    Cadre B, ligne {b === 'B1' ? '1 — fraction incluse dans la provision spéciale au début de l’exercice' : '2 — fraction rattachée au résultat de l’exercice'} {badge(x.statut)}
+                  </p>
+                  <HistoriqueLigne evenements={evenements} cle={`2054BIS_B:${b}`} fm={fm} />
+                  <SaisieLigneTableau exerciceId={exerciceId} tableau="2054BIS_B" ligne={b} etiquette={`la ligne ${b === 'B1' ? 1 : 2} du cadre B`} saisie={x.statut !== 'a_saisir'} noteCourante={x.trace?.note ?? null} champs={[{ cle: 'montant', libelle: 'Montant', type: 'montant', valeur: x.montant ?? '' }]} />
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function Annexe({ a, reponse, exerciceId, revision }: { a: AnnexeProjet; reponse: ReponseAnnexe; exerciceId: string; revision: boolean }) {
   const confirmations = new Map(reponse.confirmations.map((c) => [c.rubrique, c]));
   const requises = a.rubriques.filter((r) => r.requise);
@@ -883,6 +1201,16 @@ export default async function PageFiscal({ params, searchParams }: { params: Pro
       ) : null}
       {liasse?.ok ? liasse.donnees.resultat.statut === 'abstention' ? <BlocAbstention a={liasse.donnees.resultat} quoi="Liasse fiscale" /> : <Liasse l={liasse.donnees.resultat} fm={fm} /> : null}
       {liasse?.ok && liasse.donnees.tableauxImmobilisations ? <ImmobilisationsLiasse t={liasse.donnees.tableauxImmobilisations} fm={fm} /> : null}
+      {liasse?.ok && liasse.donnees.tableauxSaisis ? (
+        liasse.donnees.tableauxSaisis.statut === 'abstention' ? (
+          <BlocAbstention a={liasse.donnees.tableauxSaisis} quoi="Cadre III du 2033-C et 2054 bis" />
+        ) : (
+          <>
+            {liasse.donnees.tableauxSaisis.cadreIII ? <CadreIII c={liasse.donnees.tableauxSaisis.cadreIII} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
+            {liasse.donnees.tableauxSaisis.ecartsReevaluation ? <EcartsReevaluation t={liasse.donnees.tableauxSaisis.ecartsReevaluation} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
+          </>
+        )
+      ) : null}
       {liasse?.ok && liasse.donnees.detailResultat ? <DetailResultat d={liasse.donnees.detailResultat} fm={fm} exerciceId={exercice.id} revision={revision} evenements={evenements} /> : null}
       {annexe?.ok ? (
         annexe.donnees.resultat.statut === 'abstention' ? (

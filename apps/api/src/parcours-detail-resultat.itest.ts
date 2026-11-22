@@ -213,6 +213,81 @@ describe('2033-B partie B « Résultat fiscal » : saisie justifiée, néant exp
   }, 120_000);
 });
 
+describe('cadre III du 2033-C et 2054 bis : saisies ligne par ligne, tracées, historisées, abstention sans saisie (D-112)', () => {
+  const tableaux = async (regime: 'reel_simplifie' | 'reel_normal') => (await liasse(exN, regime)).json.tableauxSaisis;
+  const lig = (tableau: string, ligne: string, valeurs: Record<string, string>, note = 'Saisie du cabinet pour l’essai', qui = 'remi') => api(qui, 'PUT', `/v1/exercices/${exN}/tableaux/${tableau}/${ligne}`, { valeurs, note });
+  const CESSION = { nature: 'Machine de découpe (essai)', valeurActif: '3000.00', amortissements: '1500.00', prixCession: '800.00', classement: 'court_terme' };
+
+  it('cadre III sans saisie : totaux en abstention, cessions de la balance signalées ; le 2054 bis n’existe pas au régime simplifié', async () => {
+    const t = await tableaux('reel_simplifie');
+    expect(t).toMatchObject({ statut: 'projet', ecartsReevaluation: null });
+    expect(t.cadreIII.etat).toBe('a_saisir');
+    expect(t.cadreIII.totaux.prixCession).toMatchObject({ statut: 'abstention', codeCase: '584' });
+    expect(t.cadreIII.controles.find((c: any) => c.code === 'III_CESSIONS_A_DETAILLER').statut).toBe('non_verifie');
+    expect((await tableaux('reel_normal')).cadreIII).toBeNull();
+  }, 120_000);
+
+  it('refus : forme (montant, champ, classement, ligne), note, droits', async () => {
+    expect((await lig('2033C_III', '01', { ...CESSION, prixCession: '800,00' })).statut).toBe(400);
+    expect((await lig('2033C_III', '01', { ...CESSION, classement: 'inconnu' })).statut).toBe(400);
+    expect((await lig('2033C_III', '01', { ...CESSION, valeurActif: '-3.00' })).statut).toBe(400);
+    expect((await lig('2033C_III', '01', CESSION, 'ok')).statut).toBe(400);
+    expect((await lig('2033C_III', '11', CESSION)).statut).toBe(404);
+    expect((await lig('autre', '01', CESSION)).statut).toBe(404);
+    expect((await lig('2033C_III', '01', CESSION, 'Essai collaborateur', 'chloe')).statut).toBeGreaterThanOrEqual(400);
+    expect((await lig('2033C_III', '01', CESSION, 'Essai déposant', 'client')).statut).toBe(404);
+    expect((await tableaux('reel_simplifie')).cadreIII.etat).toBe('a_saisir');
+  });
+
+  it('cadre III : cession saisie, valeur résiduelle et moins-value calculées, totaux avec régularisations, contrôles avec la balance, trace', async () => {
+    expect((await lig('2033C_III', '01', CESSION, 'Cession de la machine au registre des immobilisations')).statut).toBeLessThan(300);
+    let c = (await tableaux('reel_simplifie')).cadreIII;
+    expect(c.etat).toBe('saisi');
+    expect(c.lignes[0]).toMatchObject({ statut: 'saisi', valeurResiduelle: '1500.00', plusOuMoinsValue: '-700.00', colonnePlusValue: 'c5', trace: { qualifieePar: DEMO.remi, note: 'Cession de la machine au registre des immobilisations' } });
+    expect(c.totaux.c5).toMatchObject({ statut: 'etabli', montant: '-700.00', codeCase: '586' });
+    expect(c.totalGeneral.c5.statut).toBe('abstention'); // régularisations non saisies
+    expect(c.controles.find((x: any) => x.code === 'III_PRIX_775').statut).toBe('coherent'); // 800 au compte 775
+    expect(c.controles.find((x: any) => x.code === 'III_VNC_675').statut).toBe('coherent'); // 1 500 au compte 675
+    expect((await lig('2033C_III', 'REG', { c5: '100.00', c6: '0.00', c7: '0.00', c8: '0.00' }, 'Amortissements irrégulièrement différés (essai)')).statut).toBeLessThan(300);
+    expect((await lig('2033C_III', 'PV19', { montant: '0.00' }, 'Aucune plus-value à 19 % (essai)')).statut).toBeLessThan(300);
+    c = (await tableaux('reel_simplifie')).cadreIII;
+    expect(c.totalGeneral.c5).toMatchObject({ statut: 'etabli', montant: '-600.00', codeCase: '596' });
+    expect(c.plusValues19).toMatchObject({ statut: 'saisi', montant: '0.00', codeCase: '579' });
+  }, 120_000);
+
+  it('2054 bis (régime normal) : abstention, lignes saisies, écart et colonne 6 calculés, ligne 10, cadre B, néant', async () => {
+    let t = (await tableaux('reel_normal')).ecartsReevaluation;
+    expect(t.etat).toBe('a_saisir');
+    expect(t.totaux.c6.statut).toBe('abstention');
+    expect((await lig('2054BIS_A', '03', { c1: '5000.00', c2: '0.00', c3: '100.00', c4: '50.00', c5: '1200.00' }, 'Réévaluation légale des terrains (essai)')).statut).toBeLessThan(300);
+    expect((await lig('2054BIS_A', '04', { c1: '8000.00', c2: '3000.00', c3: '200.00', c4: '0.00', c5: '2000.00' }, 'Réévaluation légale des constructions (essai)')).statut).toBeLessThan(300);
+    expect((await lig('2054BIS_B', 'B1', { montant: '900.00' }, 'Fraction incluse au début (essai)')).statut).toBeLessThan(300);
+    expect((await lig('2054BIS_B', 'B2', { montant: '250.50' }, 'Fraction rattachée au résultat (essai)')).statut).toBeLessThan(300);
+    t = (await tableaux('reel_normal')).ecartsReevaluation;
+    expect(t.lignes[2]).toMatchObject({ libelle: 'Terrains', statut: 'saisi', ecart: '5000.00', c6: '3800.00' });
+    expect(t.totaux.c1).toMatchObject({ statut: 'etabli', montant: '13000.00' });
+    expect(t.totaux.c6).toMatchObject({ statut: 'etabli', montant: '6800.00' });
+    expect(t.cadreB.b3).toMatchObject({ statut: 'etabli', montant: '649.50' });
+    expect((await lig('2054BIS_A', 'NEANT', {}, 'Tableau déclaré néant (essai)')).statut).toBeLessThan(300);
+    expect((await tableaux('reel_normal')).ecartsReevaluation.controles.some((x: any) => x.code === 'BIS_NEANT_ET_LIGNES')).toBe(true);
+  }, 120_000);
+
+  it('historique en ajout seul des saisies de tableaux ; retrait journalisé ; la ligne retirée redevient « à saisir »', async () => {
+    const h = (await api('remi', 'GET', `/v1/exercices/${exN}/qualifications/historique?cle=2033C_III:01`)).json.evenements as any[];
+    expect(h).toHaveLength(1);
+    expect(h[0]).toMatchObject({ nature: 'tableau', cle: '2033C_III:01', action: 'saisie', auteurId: DEMO.remi, note: 'Cession de la machine au registre des immobilisations' });
+    expect(JSON.parse(h[0].montant)).toMatchObject({ nature: 'Machine de découpe (essai)', prixCession: '800.00' });
+    expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/2033C_III/01`)).statut).toBeLessThan(300);
+    expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/2033C_III/01`)).statut).toBe(404);
+    const h2 = (await api('remi', 'GET', `/v1/exercices/${exN}/qualifications/historique?cle=2033C_III:01`)).json.evenements as any[];
+    expect(h2.map((e) => e.action)).toEqual(['retrait', 'saisie']);
+    const c = (await tableaux('reel_simplifie')).cadreIII;
+    expect(c.lignes[0].statut).toBe('a_saisir');
+    expect(c.etat).toBe('a_saisir');
+    expect((await api('remi', 'DELETE', `/v1/exercices/${exN}/tableaux/2054BIS_A/NEANT`)).statut).toBeLessThan(300);
+  }, 120_000);
+});
+
 describe('détail du compte de résultat : qualification tracée, abstention sans qualification', () => {
   it('sans qualification : totaux de la balance, France et exportations en abstention, renvois à saisir, exceptionnel détaillé', async () => {
     const d = await detail();

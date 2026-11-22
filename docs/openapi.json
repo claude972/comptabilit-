@@ -5937,6 +5937,128 @@
         ]
       }
     },
+    "/v1/exercices/{id}/tableaux/{tableau}/{ligne}": {
+      "put": {
+        "description": "Tableaux : 2033C_III (lignes 01 à 10 : nature, valeurActif, amortissements, prixCession, classement ; REG : c5 à c8 signés ; PV19 : montant ; NEANT), 2054BIS_A (lignes 01 à 09 : c1 à c5 ; NEANT), 2054BIS_B (B1, B2 : montant). Montants en chaînes décimales positives (sauf REG). Note de justification obligatoire. La saisie est tracée, historisée (ajout seul) et « à revoir » si les données changent. Le moteur ne calcule que ce que le formulaire calcule ; aucune décision fiscale n’est prise (le classement d’une plus-value est choisi par le cabinet).",
+        "operationId": "FiscalController_saisirLigneTableau",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tableau",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ligne",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "valeurs": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "maxLength": 40
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "maxLength": 200
+                    }
+                  },
+                  "note": {
+                    "type": "string",
+                    "minLength": 5,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "valeurs",
+                  "note"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Saisir une ligne du cadre III du 2033-C (cessions) ou du tableau 2054 bis (écarts de réévaluation) (niveau révision)",
+        "tags": [
+          "États fiscaux (projets)"
+        ]
+      },
+      "delete": {
+        "operationId": "FiscalController_retirerLigneTableau",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tableau",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ligne",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Retirer la saisie d’une ligne du cadre III du 2033-C ou du 2054 bis (niveau révision)",
+        "tags": [
+          "États fiscaux (projets)"
+        ]
+      }
+    },
     "/v1/exercices/{id}/liasse": {
       "get": {
         "description": "Périmètre : société commerciale à l’IS, PCG, euros, France métropolitaine. Hors périmètre, ou tant qu’une caractéristique du dossier est « à confirmer », la réponse est une ABSTENTION motivée, sans aucun chiffre. Dans le périmètre : toujours « projet », jamais « complet » (les autres tableaux, listés avec les informations qu’ils exigent, ne sont pas couverts ; les codes de cases des formulaires ne sont pas vérifiés et restent « à confirmer »). Calcul sur les écritures importées, AVANT écritures d’inventaire. Colonne N-1 : exercice précédent CONTIGU du dossier, s’il a une comptabilité importée, préparé par la même table et les mêmes règles ; sinon « indisponible » avec son motif (jamais approximée). Aucune télétransmission n’existe. « tableauxImmobilisations » (D-104) : 2054 et 2055 (régime réel normal) ou 2033-C cadres I et II (régime simplifié), déduits de la balance (mouvements des comptes 20 à 28, hors à-nouveaux) et du fichier des immobilisations saisi ou repris : chaque cellule porte son montant, son N-1, son code de case lu sur le formulaire 2026 (« à confirmer »), ou un motif d’abstention (à-nouveaux non identifiés, ventilation des diminutions, réévaluation, composants) ; les écarts entre la balance et le fichier sont AFFICHÉS, jamais corrigés ; le dégressif reste non activé sauf décision de l’éditeur.",

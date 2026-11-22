@@ -946,6 +946,11 @@ Preuves : tests du moteur `tableaux-immobilisations.test.ts` (22 cas : calcul, c
 - **Preuves** : test du cœur ; itest `parcours-detail-resultat` (liste des feuillets) ; parcours réel ; démonstration : ligne 20 = 500,00 en colonne 9, détail 300,00 + 200,00 cohérent ; colonne 11 : 15,00 détaillés contre 10,00 à la ligne 20 : écart 5,00 affiché, jamais corrigé.
 - **Non fait** : aucune règle de report vers les 2059-B, C, D ; au-delà de vingt lignes.
 
+### D-158 — Seconde lecture de la CI : trois échecs navigateur de même famille, dont un nouveau ; causes NON confirmées (2026-11-22)
+- **Lus** (annotations) : 4ad0511 et ecd40cb (Firefox) : `nouveautes.spec.ts:347` `page.reload: NS_BINDING_ABORTED` — antérieurs à l'attente ajoutée en D-151 (82a9514) ; 4e9b230 (WebKit) : `banque-administration.spec.ts:50` — après la création d'un dossier, le clic sur « Ouvrir la fiche d'administration du dossier » n'a mené à aucune navigation (le titre reste « Administration du cabinet » 20 s). **c9c932f et a769790 : verts.**
+- **Mesure** : attente de fin de chargement avant ce clic (assertions inchangées). Quatrième site de la même famille (action utilisateur sur une page peut-être non hydratée ou avec une requête en vol) : la **cause commune reste une hypothèse** (ni trace ni reproduction locale) ; si l'échec persiste après D-151 et D-158, une correction à la source (attente d'hydratation exposée par l'application, pas par chaque test) sera préférable à des attentes dispersées.
+- **En cours à cette lecture** : 82a9514, 487e94e, 69dbb44, a3830be, cbb535c (non lus).
+
 ## Écarts par rapport au cahier des charges
 
 | Sujet | Écart | Raison |

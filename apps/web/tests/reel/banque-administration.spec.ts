@@ -73,6 +73,8 @@ test('administration : création d’un dossier, habilitations et ouverture de l
   await creation.getByRole('button', { name: 'Créer le dossier' }).click();
   const cree = page.getByTestId('dossier-cree');
   await expect(cree).toContainText('Vous n’êtes pas habilité sur ce dossier');
+  // Aucune requête en vol avant d'ouvrir la fiche (D-158) : en WebKit CI, ce clic n'a abouti à aucune navigation (échec du 2026-11-22) ; hypothèse, non confirmée.
+  await page.waitForLoadState('networkidle');
   await cree.getByRole('link', { name: 'Ouvrir la fiche d’administration du dossier' }).click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(NOM);
   dossier = /\/administration\/dossiers\/([0-9a-f-]{36})/.exec(page.url())![1]!;
